@@ -27,8 +27,17 @@
 extern bool
 StreamInformationNameEqual(const StreamInformation*, const TemLangString*);
 
-extern const char*
-getAddrString(struct sockaddr_storage*, char[64]);
+extern bool
+StreamInformationOwnerEqual(const StreamInformation*, const int32_t*);
+
+extern bool
+StreamTypeMatchStreamMessage(const StreamType, const StreamMessageTag);
+
+typedef struct Consumer
+{
+    struct sockaddr_storage addr;
+    int32_t sockfd;
+} Consumer, *pConsumer;
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 1
@@ -46,6 +55,17 @@ signalHandler(int);
 
 // Networking
 
+extern const char*
+getAddrString(const struct sockaddr_storage*, char[64], int*);
+
+extern const char*
+getAddrInfoString(const struct addrinfo*, char[64], int*);
+
+typedef struct pollfd Pfds;
+
+MAKE_COPY_AND_FREE(Pfds);
+MAKE_DEFAULT_LIST(Pfds);
+
 extern void
 closeSocket(int);
 
@@ -57,6 +77,9 @@ openIpSocket(const char* ip, const char* port, SocketOptions);
 
 extern int
 openUnixSocket(const char* filename, SocketOptions);
+
+extern int
+openSocketFromAddress(const Address*, SocketOptions);
 
 typedef int (*SendFunc)(const int,
                         const void*,

@@ -12,16 +12,6 @@ enum StreamType {
 
 inlineC "extern void closeSocket(int);"
 
-resource Connection{
-    i32 fd
-    i16 events
-    i16 revents
-} c {
-    inlineC "closeSocket(c.fd);"
-}
-
-inlineC "MAKE_DEFAULT_LIST(Connection);"
-
 flag SocketOptions {
     Tcp
     Server
@@ -52,6 +42,7 @@ struct ServerConfiguration {
 }
 
 struct ProducerConfiguration {
+    string name
     StreamType streamType
 }
 
@@ -68,15 +59,13 @@ struct AllConfiguration {
     bool authentication
 }
 
-variant StreamMessageData {
+variant StreamMessage {
+    null none
     string text
     string chatMessage
 }
 
-struct StreamMessage {
-    StreamType type
-    StreamMessageData data
-}
+inlineC "MAKE_DEFAULT_LIST(StreamMessage);"
 
 struct StreamInformation {
     string name
@@ -95,3 +84,47 @@ variant Message {
     bool createStreamAck
     null getStreams
 }
+
+struct Guid {
+    [u64 2] numbers
+}
+
+inlineC "MAKE_DEFAULT_LIST(Guid);"
+
+inlineC "
+static inline Guid
+randomGuid(pRandomState rs)
+{
+    return (Guid){
+        .numbers = {
+            random64(rs),
+            random64(rs)
+        }
+    };
+}
+static inline int getGuidString(const Guid* g, char buffer[128]){
+    union {
+        struct {
+            uint32_t Data1;
+            uint16_t Data2;
+            uint16_t Data3;
+            uint8_t Data4[8];
+        };
+        Guid g;
+    } guid;
+    guid.g = *g;
+    return snprintf(buffer,128,
+    \"%08X-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX\",
+    guid.Data1, guid.Data2, guid.Data3, 
+    guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
+    guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+}
+"
+
+struct MarkedMessage {
+    Message message
+    Guid guid
+    i32 sent
+}
+
+inlineC "MAKE_DEFAULT_LIST(MarkedMessage);"

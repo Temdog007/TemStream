@@ -21,12 +21,18 @@ openSocket(void* data, const SocketOptions options)
     int fd = INVALID_SOCKET;
     struct addrinfo* res = (struct addrinfo*)data;
     struct sockaddr* addr = (struct sockaddr*)data;
+
+#if _DEBUG
+    char buffer[64];
+    int port;
+    getAddrInfoString(res, buffer, &port);
+    printf("Attempting to open socket: %s:%d\n", buffer, port);
+#endif
+
+    const bool isTcp = (options & SocketOptions_Tcp) != 0;
     const bool isLocal = (options & SocketOptions_Local) != 0;
     if (isLocal) {
-        fd =
-          socket(AF_UNIX,
-                 (options & SocketOptions_Tcp) == 0 ? SOCK_DGRAM : SOCK_STREAM,
-                 0);
+        fd = socket(AF_UNIX, isTcp ? SOCK_STREAM : SOCK_DGRAM, 0);
     } else {
         fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     }
@@ -35,9 +41,19 @@ openSocket(void* data, const SocketOptions options)
         goto end;
     }
 
+    if (!isLocal) {
+        int yes = 1;
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+            perror("setsockopt");
+            closeSocket(fd);
+            fd = INVALID_SOCKET;
+            goto end;
+        }
+    }
+
     if ((options & SocketOptions_Server) == 0) {
         if ((isLocal ? connect(fd, addr, sizeof(struct sockaddr_un))
-                     : connect(fd, res->ai_addr, res->ai_addrlen)) <= 0) {
+                     : connect(fd, res->ai_addr, res->ai_addrlen)) == -1) {
             perror("connect");
             closeSocket(fd);
             fd = INVALID_SOCKET;
@@ -51,12 +67,8 @@ openSocket(void* data, const SocketOptions options)
             fd = INVALID_SOCKET;
             goto end;
         }
-    }
-
-    if (!isLocal) {
-        int yes = 1;
-        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
-            perror("setsockopt");
+        if (isTcp && listen(fd, 128) == -1) {
+            perror("listen");
             closeSocket(fd);
             fd = INVALID_SOCKET;
             goto end;
@@ -71,7 +83,7 @@ int
 openIpSocket(const char* ip, const char* port, const SocketOptions options)
 {
     struct addrinfo hints = { 0 };
-    hints.ai_family = AF_UNSPEC;
+    hints.ai_family = AF_INET;
     hints.ai_socktype =
       (options & SocketOptions_Tcp) == 0 ? SOCK_DGRAM : SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
@@ -94,7 +106,7 @@ openIpSocket(const char* ip, const char* port, const SocketOptions options)
 int
 openUnixSocket(const char* filename, SocketOptions options)
 {
-
+    const bool isServer = (options & SocketOptions_Server) != 0;
     struct sockaddr_un addr = { 0 };
     addr.sun_family = AF_UNIX;
     snprintf(addr.sun_path,
@@ -102,23 +114,82 @@ openUnixSocket(const char* filename, SocketOptions options)
              "%s_%s",
              filename,
              (options & SocketOptions_Tcp) == 0 ? "udp" : "tcp");
-    unlink(addr.sun_path);
-    const int fd = openSocket((struct sockaddr*)&addr, options);
-    if (fd <= 0) {
+    if (isServer) {
+        unlink(addr.sun_path);
+    }
+    const int fd =
+      openSocket((struct sockaddr*)&addr, options | SocketOptions_Local);
+    if (isServer && fd <= 0) {
         unlink(addr.sun_path);
     }
     return fd;
 }
 
 const char*
-getAddrString(struct sockaddr_storage* addr, char ipstr[64])
+getAddrString(const struct sockaddr_storage* addr, char ipstr[64], int* port)
 {
-    if (addr->ss_family == AF_INET) {
-        struct sockaddr_in* s = (struct sockaddr_in*)&addr;
-        return inet_ntop(AF_INET, &s->sin_addr, ipstr, 64);
-    } else { // AF_INET6
-        struct sockaddr_in6* s = (struct sockaddr_in6*)&addr;
-        return inet_ntop(AF_INET6, &s->sin6_addr, ipstr, 64);
+    switch (addr->ss_family) {
+        case AF_INET: {
+            struct sockaddr_in* s = (struct sockaddr_in*)addr;
+            if (port != NULL) {
+                *port = ntohs(s->sin_port);
+            }
+            return inet_ntop(AF_INET, &s->sin_addr, ipstr, 64);
+        } break;
+        case AF_INET6: {
+            struct sockaddr_in6* s = (struct sockaddr_in6*)addr;
+            if (port != NULL) {
+                *port = ntohs(s->sin6_port);
+            }
+            return inet_ntop(AF_INET6, &s->sin6_addr, ipstr, 64);
+        } break;
+        case AF_UNIX: {
+            struct sockaddr_un* s = (struct sockaddr_un*)addr;
+            snprintf(ipstr, 64, "%s", s->sun_path);
+            if (port != NULL) {
+                *port = 0;
+            }
+            return ipstr;
+        } break;
+        default:
+            if (port != NULL) {
+                *port = 0;
+            }
+            return ipstr;
+    }
+}
+
+const char*
+getAddrInfoString(const struct addrinfo* addr, char ipstr[64], int* port)
+{
+    switch (addr->ai_family) {
+        case AF_INET: {
+            struct sockaddr_in* s = (struct sockaddr_in*)addr->ai_addr;
+            if (port != NULL) {
+                *port = ntohs(s->sin_port);
+            }
+            return inet_ntop(AF_INET, &s->sin_addr, ipstr, 64);
+        } break;
+        case AF_INET6: {
+            struct sockaddr_in6* s = (struct sockaddr_in6*)addr->ai_addr;
+            if (port != NULL) {
+                *port = ntohs(s->sin6_port);
+            }
+            return inet_ntop(AF_INET6, &s->sin6_addr, ipstr, 64);
+        } break;
+        case AF_UNIX: {
+            struct sockaddr_un* s = (struct sockaddr_un*)addr->ai_addr;
+            snprintf(ipstr, 64, "%s", s->sun_path);
+            if (port != NULL) {
+                *port = 0;
+            }
+            return ipstr;
+        } break;
+        default:
+            if (port != NULL) {
+                *port = 0;
+            }
+            return ipstr;
     }
 }
 
@@ -128,6 +199,7 @@ sendTcp(const int fd,
         const size_t size,
         const struct sockaddr_storage* addr)
 {
+    (void)addr;
     return send(fd, buf, size, 0);
 }
 
@@ -138,4 +210,21 @@ sendUdp(const int fd,
         const struct sockaddr_storage* addr)
 {
     return sendto(fd, buf, size, 0, (struct sockaddr*)addr, sizeof(*addr));
+}
+
+int
+openSocketFromAddress(const Address* address, const SocketOptions options)
+{
+    switch (address->tag) {
+        case AddressTag_domainSocket:
+            return openUnixSocket(address->domainSocket.buffer, options);
+            break;
+        case AddressTag_ipAddress:
+            return openIpSocket(address->ipAddress.ip.buffer,
+                                address->ipAddress.port.buffer,
+                                options);
+        default:
+            break;
+    }
+    return INVALID_SOCKET;
 }

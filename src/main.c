@@ -211,3 +211,10 @@ StreamInformationNameEqual(const StreamInformation* info,
 {
     return TemLangStringCompare(&info->name, str) == ComparisonOperator_EqualTo;
 }
+
+bool
+StreamTypeMatchStreamMessage(const StreamType type, const StreamMessageTag tag)
+{
+    return (type == StreamType_Text && tag == StreamMessageTag_text) ||
+           (type == StreamType_Chat && tag == StreamMessageTag_chatMessage);
+}
