@@ -1,17 +1,28 @@
 #include <include/main.h>
 
 #include "consumer.c"
+#include "networking.c"
 #include "producer.c"
 #include "server.c"
 
 const Allocator* currentAllocator = NULL;
+bool appDone = false;
 
 int
 main(const int argc, const char** argv)
 {
+    printVersion();
     if (argc < 2) {
         fprintf(stderr, "Expected P, C, or S as the first argument\n");
         return EXIT_FAILURE;
+    }
+
+    {
+        struct sigaction action;
+        action.sa_handler = signalHandler;
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = 0;
+        sigaction(SIGINT, &action, NULL);
     }
 
     static Allocator allocator = { 0 };
@@ -68,6 +79,22 @@ runApp(const int argc, const char** argv)
     }
     AllConfigurationFree(&allConfiguration);
     return result;
+}
+
+int
+printVersion()
+{
+    return printf(
+      "TemStream %d.%d.%d\n", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+}
+
+void
+signalHandler(int signal)
+{
+    if (signal == SIGINT) {
+        puts("Ending TemStream");
+        appDone = true;
+    }
 }
 
 Configuration
@@ -127,31 +154,10 @@ parseAddress(const char* str, pAddress address)
             continue;
         }
 
-        for (size_t j = i; j < len; ++j) {
-            if (str[j] != ':') {
-                continue;
-            }
-            for (size_t k = j; k < len; ++k) {
-                if (str[k] != ':') {
-                    continue;
-                }
-                address->tag = AddressTag_secure;
-                address->secure.address.ip =
-                  TemLangStringCreateFromSize(str, i, currentAllocator);
-                address->secure.address.port = TemLangStringCreateFromSize(
-                  str + i + 1, j - i, currentAllocator);
-                address->secure.certFile = TemLangStringCreateFromSize(
-                  str + j + 1, k - j, currentAllocator);
-                address->secure.keyFile =
-                  TemLangStringCreate(str + k + 1, currentAllocator);
-                return true;
-            }
-        }
-
-        address->tag = AddressTag_unsecure;
-        address->unsecure.ip =
-          TemLangStringCreateFromSize(str, i, currentAllocator);
-        address->unsecure.port =
+        address->tag = AddressTag_ipAddress;
+        address->ipAddress.ip =
+          TemLangStringCreateFromSize(str, i + 1, currentAllocator);
+        address->ipAddress.port =
           TemLangStringCreate(str + i + 1, currentAllocator);
         return true;
     }
@@ -190,17 +196,18 @@ printAddress(const Address* address)
     switch (address->tag) {
         case AddressTag_domainSocket:
             return printf("Domain socket: %s\n", address->domainSocket.buffer);
-        case AddressTag_secure:
-            return printf("Secure socket: %s:%s:%s:%s\n",
-                          address->secure.address.ip.buffer,
-                          address->secure.address.port.buffer,
-                          address->secure.certFile.buffer,
-                          address->secure.keyFile.buffer);
-        case AddressTag_unsecure:
-            return printf("Unsecure socket: %s:%s\n",
-                          address->unsecure.ip.buffer,
-                          address->unsecure.port.buffer);
+        case AddressTag_ipAddress:
+            return printf("Ip socket: %s:%s\n",
+                          address->ipAddress.ip.buffer,
+                          address->ipAddress.port.buffer);
         default:
             return 0;
     }
+}
+
+bool
+StreamInformationNameEqual(const StreamInformation* info,
+                           const TemLangString* str)
+{
+    return TemLangStringCompare(&info->name, str) == ComparisonOperator_EqualTo;
 }

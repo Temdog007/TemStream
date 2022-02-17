@@ -3,7 +3,7 @@
 ProducerConfiguration
 defaultProducerConfiguration()
 {
-    return (ProducerConfiguration){ .unused = NULL };
+    return (ProducerConfiguration){ .streamType = StreamType_Invalid };
 }
 
 bool
@@ -25,7 +25,8 @@ parseProducerConfiguration(const int argc,
 int
 printProducerConfiguration(const ProducerConfiguration* configuration)
 {
-    return printf("%d\n", configuration->unused);
+    return printf("Mode: %s\n",
+                  StreamTypeToCharString(configuration->streamType));
 }
 
 int

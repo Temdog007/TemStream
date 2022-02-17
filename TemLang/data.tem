@@ -4,33 +4,38 @@ enum StreamType {
     Other
     Text
     Chat
+    Image
     Video
     Audio
+    Replay
 }
 
-struct StreamInformation {
-    string name
-    StreamType type
-    bool authentication
+inlineC "extern void closeSocket(int);"
+
+resource Connection{
+    i32 fd
+    i16 events
+    i16 revents
+} c {
+    inlineC "closeSocket(c.fd);"
 }
 
-inlineC "MAKE_DEFAULT_LIST(StreamInformation);"
+inlineC "MAKE_DEFAULT_LIST(Connection);"
+
+flag SocketOptions {
+    Tcp
+    Server
+    Local
+}
 
 struct IpAddress {
     string ip
     string port
 }
 
-struct SecureIpAddress {
-    IpAddress address
-    string certFile
-    string keyFile
-}
-
 variant Address {
     string domainSocket
-    IpAddress unsecure
-    SecureIpAddress secure
+    IpAddress ipAddress
 }
 
 struct ConsumerConfiguration {
@@ -47,7 +52,7 @@ struct ServerConfiguration {
 }
 
 struct ProducerConfiguration {
-    null unused
+    StreamType streamType
 }
 
 variant Configuration {
@@ -73,8 +78,19 @@ struct StreamMessage {
     StreamMessageData data
 }
 
+struct StreamInformation {
+    string name
+    StreamType type
+    bool authentication
+}
+
+inlineC "MAKE_DEFAULT_LIST(StreamInformation);"
+
 variant Message {
     StreamInformation createStream
     [0 StreamInformation] currentStreams
     StreamMessage streamMessage
+    string consume
+    bool createdStream
+    null getStreams
 }
