@@ -1,0 +1,80 @@
+inlineCHeaders
+
+enum StreamType {
+    Other
+    Text
+    Chat
+    Video
+    Audio
+}
+
+struct StreamInformation {
+    string name
+    StreamType type
+    bool authentication
+}
+
+inlineC "MAKE_DEFAULT_LIST(StreamInformation);"
+
+struct IpAddress {
+    string ip
+    string port
+}
+
+struct SecureIpAddress {
+    IpAddress address
+    string certFile
+    string keyFile
+}
+
+variant Address {
+    string domainSocket
+    IpAddress unsecure
+    SecureIpAddress secure
+}
+
+struct ConsumerConfiguration {
+    string ttfFile
+    i32 width
+    i32 height
+    bool fullscreen
+}
+
+struct ServerConfiguration {
+    u32 maxProducers
+    u32 maxConsumers
+    bool record
+}
+
+struct ProducerConfiguration {
+    null unused
+}
+
+variant Configuration {
+    null none
+    ConsumerConfiguration consumer
+    ProducerConfiguration producer
+    ServerConfiguration server
+}
+
+struct AllConfiguration {
+    Configuration configuration
+    Address address
+    bool authentication
+}
+
+variant StreamMessageData {
+    string text
+    string chatMessage
+}
+
+struct StreamMessage {
+    StreamType type
+    StreamMessageData data
+}
+
+variant Message {
+    StreamInformation createStream
+    [0 StreamInformation] currentStreams
+    StreamMessage streamMessage
+}
