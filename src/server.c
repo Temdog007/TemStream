@@ -100,16 +100,16 @@ handleServerMessage(pBytes bytes,
                 }
                 char buffer[INET6_ADDRSTRLEN] = { 0 };
                 getAddrString(addr, buffer);
-                fprintf(stderr,
-                        "Client '%s' attempted to add a duplicate "
-                        "stream '%s'\n",
-                        buffer,
-                        message.createStream.name.buffer);
+                printf("Client '%s' attempted to add a duplicate "
+                       "stream '%s'\n",
+                       buffer,
+                       message.createStream.name.buffer);
             } else {
+                StreamInformationListAppend(&streams, &message.createStream);
             }
             SDL_UnlockMutex(streamMutex);
-            message.tag = MessageTag_createdStream;
-            message.createdStream = !exists;
+            message.tag = MessageTag_createStreamAck;
+            message.createStreamAck = !exists;
             bytes->used = 0;
             MessageSerialize(&message, bytes, 0);
             if (sendMessage(fd, bytes->buffer, bytes->used, addr) <= 0) {
@@ -289,10 +289,32 @@ end:
     return EXIT_SUCCESS;
 }
 
+uint32_t
+checkValidStreams(uint32_t timeout)
+{
+    SDL_LockMutex(streamMutex);
+    char ipstr[64] = { 0 };
+    struct sockaddr_storage addr = { 0 };
+    socklen_t socklen = 0;
+    size_t i = 0;
+    while (i < streams.used) {
+        socklen = sizeof(addr);
+        const StreamInformation* info = &streams.buffer[i];
+        if (getpeername(info->owner, (struct sockaddr*)&addr, &socklen) == -1) {
+            printf("Producer for stream '%s' was closed\n", info->name.buffer);
+            StreamInformationListSwapRemove(&streams, i);
+        } else {
+            ++i;
+        }
+    }
+    SDL_UnlockMutex(streamMutex);
+    return timeout;
+}
+
 int
 runServer(const AllConfiguration* configuration)
 {
-    if (SDL_Init(0) != 0) {
+    if (SDL_Init(SDL_INIT_TIMER) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
         goto end;
     }
@@ -307,6 +329,13 @@ runServer(const AllConfiguration* configuration)
     puts("Running server");
     printAllConfiguration(configuration);
 
+    const SDL_TimerID id =
+      SDL_AddTimer(3000U, (SDL_TimerCallback)checkValidStreams, NULL);
+    if (id == 0) {
+        fprintf(stderr, "Failed to start timer: %s\n", SDL_GetError());
+        goto end;
+    }
+
     SDL_Thread* threads[] = {
         SDL_CreateThread(
           (SDL_ThreadFunction)runTcpServer, "Tcp", (void*)configuration),
@@ -316,6 +345,7 @@ runServer(const AllConfiguration* configuration)
     for (size_t i = 0; i < sizeof(threads) / sizeof(SDL_Thread*); ++i) {
         SDL_WaitThread(threads[i], NULL);
     }
+    SDL_RemoveTimer(id);
 
 end:
     if (configuration->address.tag == AddressTag_domainSocket) {
@@ -335,5 +365,6 @@ end:
     StreamInformationListFree(&streams);
     SDL_UnlockMutex(streamMutex);
     SDL_DestroyMutex(streamMutex);
+    SDL_Quit();
     return EXIT_SUCCESS;
 }

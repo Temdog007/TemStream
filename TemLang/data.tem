@@ -80,6 +80,7 @@ struct StreamMessage {
 
 struct StreamInformation {
     string name
+    i32 owner
     StreamType type
     bool authentication
 }
@@ -87,10 +88,10 @@ struct StreamInformation {
 inlineC "MAKE_DEFAULT_LIST(StreamInformation);"
 
 variant Message {
-    StreamInformation createStream
     [0 StreamInformation] currentStreams
+    StreamInformation createStream
     StreamMessage streamMessage
     string consume
-    bool createdStream
+    bool createStreamAck
     null getStreams
 }
