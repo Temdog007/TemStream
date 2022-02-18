@@ -1,8 +1,7 @@
 #include <include/main.h>
 
-#include "consumer.c"
+#include "client.c"
 #include "networking.c"
-#include "producer.c"
 #include "server.c"
 
 const Allocator* currentAllocator = NULL;
@@ -13,7 +12,7 @@ main(const int argc, const char** argv)
 {
     printVersion();
     if (argc < 2) {
-        fprintf(stderr, "Expected P, C, or S as the first argument\n");
+        fprintf(stderr, "Expected C or S as the first argument\n");
         return EXIT_FAILURE;
     }
 
@@ -39,27 +38,16 @@ runApp(const int argc, const char** argv)
     const char c = argv[1][0];
     int result = EXIT_FAILURE;
     switch (c) {
-        case 'p':
-        case 'P':
-            allConfiguration.configuration.tag = ConfigurationTag_producer;
-            allConfiguration.configuration.producer =
-              defaultProducerConfiguration();
-            if (!parseProducerConfiguration(argc, argv, &allConfiguration)) {
-                result = EXIT_FAILURE;
-                break;
-            }
-            result = runProducer(&allConfiguration);
-            break;
         case 'c':
         case 'C':
-            allConfiguration.configuration.tag = ConfigurationTag_consumer;
-            allConfiguration.configuration.consumer =
-              defaultConsumerConfiguration();
-            if (!parseConsumerConfiguration(argc, argv, &allConfiguration)) {
+            allConfiguration.configuration.tag = ConfigurationTag_client;
+            allConfiguration.configuration.client =
+              defaultClientConfiguration();
+            if (!parseClientConfiguration(argc, argv, &allConfiguration)) {
                 result = EXIT_FAILURE;
                 break;
             }
-            result = runConsumer(&allConfiguration);
+            result = runClient(&allConfiguration);
             break;
         case 's':
         case 'S':
@@ -74,7 +62,7 @@ runApp(const int argc, const char** argv)
             break;
         default:
             fprintf(
-              stderr, "Expected P, C, or S as the first argument. Got %c\n", c);
+              stderr, "Expected C or S as the first argument. Got %c\n", c);
             break;
     }
     AllConfigurationFree(&allConfiguration);
@@ -109,7 +97,6 @@ defaultAllConfiguration()
     return (AllConfiguration){ .address = { .domainSocket = TemLangStringCreate(
                                               "app.sock", currentAllocator),
                                             .tag = AddressTag_domainSocket },
-                               .authentication = false,
                                .configuration = defaultConfiguration() };
 }
 
@@ -135,14 +122,7 @@ parseCommonConfiguration(const char* key,
     STR_EQUALS(key, "--address", keyLen, {
         return parseAddress(value, &configuration->address);
     });
-    STR_EQUALS(key, "-AU", keyLen, { goto parseAuthentication; });
-    STR_EQUALS(key, "--authentication", keyLen, { goto parseAuthentication; })
     return false;
-
-parseAuthentication : {
-    configuration->authentication = atoi(value);
-    return true;
-}
 }
 
 bool
@@ -166,19 +146,30 @@ parseAddress(const char* str, pAddress address)
     return true;
 }
 
+bool
+parseCredentials(const char* str, pCredentials c)
+{
+    const size_t len = strlen(str);
+    for (size_t i = 0; i < len; ++i) {
+        if (str[i] != ':') {
+            continue;
+        }
+
+        c->username = TemLangStringCreateFromSize(str, i + 1, currentAllocator);
+        c->password = TemLangStringCreate(str + i + 1, currentAllocator);
+        return true;
+    }
+    return false;
+}
+
 int
 printAllConfiguration(const AllConfiguration* configuration)
 {
     int output = printAddress(&configuration->address);
-    output += printf("Authentication: %d\n", configuration->authentication);
     switch (configuration->configuration.tag) {
-        case ConfigurationTag_consumer:
-            output += printConsumerConfiguration(
-              &configuration->configuration.consumer);
-            break;
-        case ConfigurationTag_producer:
-            output += printProducerConfiguration(
-              &configuration->configuration.producer);
+        case ConfigurationTag_client:
+            output +=
+              printClientConfiguration(&configuration->configuration.client);
             break;
         case ConfigurationTag_server:
             output +=
@@ -206,15 +197,27 @@ printAddress(const Address* address)
 }
 
 bool
-StreamInformationNameEqual(const StreamInformation* info,
-                           const TemLangString* str)
+StreamTypeMatchStreamMessage(const StreamType type,
+                             const StreamMessageDataTag tag)
 {
-    return TemLangStringCompare(&info->name, str) == ComparisonOperator_EqualTo;
+    return (type == StreamType_Text && tag == StreamMessageDataTag_text) ||
+           (type == StreamType_Chat && tag == StreamMessageDataTag_chatMessage);
 }
 
 bool
-StreamTypeMatchStreamMessage(const StreamType type, const StreamMessageTag tag)
+MessageUsesUdp(const StreamMessage* message)
 {
-    return (type == StreamType_Text && tag == StreamMessageTag_text) ||
-           (type == StreamType_Chat && tag == StreamMessageTag_chatMessage);
+    switch (message->data.tag) {
+        case StreamMessageDataTag_none:
+            return true;
+        default:
+            break;
+    }
+    return false;
+}
+
+extern bool
+StreamGuidEquals(const Stream* stream, const Guid* guid)
+{
+    return memcmp(&stream->id, guid, sizeof(Guid)) == 0;
 }

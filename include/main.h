@@ -24,20 +24,34 @@
 
 #include <generated/data.h>
 
-extern bool
-StreamInformationNameEqual(const StreamInformation*, const TemLangString*);
+#define MAX_PACKET_SIZE KB(10)
 
-extern bool
-StreamInformationOwnerEqual(const StreamInformation*, const int32_t*);
-
-extern bool
-StreamTypeMatchStreamMessage(const StreamType, const StreamMessageTag);
-
-typedef struct Consumer
+typedef struct Client
 {
     struct sockaddr_storage addr;
+    Guid guid;
+    TemLangString name;
+    ClientAuthentication authentication;
+    GuidList connectedStreams;
     int32_t sockfd;
-} Consumer, *pConsumer;
+} Client, *pClient;
+
+extern void ClientFree(pClient);
+
+extern bool
+ClientGuidEquals(const pClient*, const Guid*);
+
+MAKE_COPY_AND_FREE(pClient);
+MAKE_DEFAULT_LIST(pClient);
+
+extern bool
+StreamTypeMatchStreamMessage(const StreamType, const StreamMessageDataTag);
+
+extern bool
+StreamGuidEquals(const Stream*, const Guid*);
+
+extern bool
+MessageUsesUdp(const StreamMessage*);
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 1
@@ -61,11 +75,6 @@ getAddrString(const struct sockaddr_storage*, char[64], int*);
 extern const char*
 getAddrInfoString(const struct addrinfo*, char[64], int*);
 
-typedef struct pollfd Pfds;
-
-MAKE_COPY_AND_FREE(Pfds);
-MAKE_DEFAULT_LIST(Pfds);
-
 extern void
 closeSocket(int);
 
@@ -81,11 +90,6 @@ openUnixSocket(const char* filename, SocketOptions);
 extern int
 openSocketFromAddress(const Address*, SocketOptions);
 
-typedef int (*SendFunc)(const int,
-                        const void*,
-                        const size_t,
-                        const struct sockaddr_storage*);
-
 extern int
 sendTcp(const int, const void*, const size_t, const struct sockaddr_storage*);
 
@@ -94,11 +98,8 @@ sendUdp(const int, const void*, const size_t, const struct sockaddr_storage*);
 
 // Defaults
 
-extern ConsumerConfiguration
-defaultConsumerConfiguration();
-
-extern ProducerConfiguration
-defaultProducerConfiguration();
+extern ClientConfiguration
+defaultClientConfiguration();
 
 extern ServerConfiguration
 defaultServerConfiguration();
@@ -118,10 +119,7 @@ extern int
 printAllConfiguration(const AllConfiguration*);
 
 extern int
-printConsumerConfiguration(const ConsumerConfiguration*);
-
-extern int
-printProducerConfiguration(const ProducerConfiguration*);
+printClientConfiguration(const ClientConfiguration*);
 
 extern int
 printServerConfiguration(const ServerConfiguration*);
@@ -132,7 +130,7 @@ extern bool
 parseProducerConfiguration(const int, const char**, pAllConfiguration);
 
 extern bool
-parseConsumerConfiguration(const int, const char**, pAllConfiguration);
+parseClientConfiguration(const int, const char**, pAllConfiguration);
 
 extern bool
 parseServerConfiguration(const int, const char**, pAllConfiguration);
@@ -146,13 +144,16 @@ parseCommonConfiguration(const char*, const char*, pAllConfiguration);
 extern bool
 parseAddress(const char*, pAddress);
 
+extern bool
+parseCredentials(const char*, pCredentials);
+
 // Run
 
 extern int
 runApp(const int, const char**);
 
 extern int
-runConsumer(const AllConfiguration*);
+runClient(const AllConfiguration*);
 
 extern int
 runServer(const AllConfiguration*);

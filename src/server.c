@@ -1,18 +1,72 @@
 #include <include/main.h>
 
-SDL_mutex* streamMutex = NULL;
-SDL_cond* streamCond = NULL;
-StreamInformationList streams = { 0 };
-MarkedMessageList pendingMessages = { 0 };
-int32_t udpSocket = INVALID_SOCKET;
-SDL_atomic_t consumerCount = { 0 };
+typedef struct ServerData
+{
+    SDL_mutex* mutex;
+    StreamList streams;
+    pClientList clients;
+    int32_t udpSocket;
+} ServerData, *pServerData;
+
+ServerData serverData = { 0 };
+
+void
+ServerDataFree(pServerData data)
+{
+    SDL_DestroyMutex(data->mutex);
+    StreamListFree(&data->streams);
+}
+
+void
+copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
+{
+    const bool udp = MessageUsesUdp(message);
+
+    SDL_LockMutex(serverData.mutex);
+    if (!StreamListFindIf(&serverData.streams,
+                          (StreamListFindFunc)StreamGuidEquals,
+                          &message->id,
+                          NULL,
+                          NULL)) {
+#if _DEBUG
+        printf("Got stream message that doesn't belong to a stream\n");
+#endif
+        goto end;
+    }
+    for (size_t i = 0; i < serverData.clients.used; ++i) {
+        const Client* client = serverData.clients.buffer[i];
+        if (!GuidListFind(
+              &client->connectedStreams, &message->id, NULL, NULL)) {
+            continue;
+        }
+        if (udp) {
+            const size_t socklen = sizeof(client->addr);
+            if (sendto(serverData.udpSocket,
+                       bytes->buffer,
+                       bytes->used,
+                       0,
+                       (struct sockaddr*)&client->addr,
+                       socklen) != (ssize_t)bytes->used) {
+                perror("sendto");
+            }
+        } else {
+            if (send(client->sockfd, bytes->buffer, bytes->used, 0) !=
+                (ssize_t)bytes->used) {
+                perror("send");
+            }
+        }
+    }
+end:
+    SDL_UnlockMutex(serverData.mutex);
+}
 
 ServerConfiguration
 defaultServerConfiguration()
 {
-    return (ServerConfiguration){ .maxConsumers = 1024,
-                                  .maxProducers = 8,
-                                  .record = false };
+    return (ServerConfiguration){
+        .maxClients = 1024,
+        .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none }
+    };
 }
 
 bool
@@ -25,30 +79,17 @@ parseServerConfiguration(const int argc,
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
         const char* value = argv[i + 1];
-        STR_EQUALS(key, "-P", keyLen, { goto parseMaxProducers; });
-        STR_EQUALS(key, "--producers", keyLen, { goto parseMaxProducers; });
-        STR_EQUALS(key, "-C", keyLen, { goto parseMaxConsumers; });
-        STR_EQUALS(key, "--consumers", keyLen, { goto parseMaxConsumers; });
-        STR_EQUALS(key, "-R", keyLen, { goto parseRecord; });
-        STR_EQUALS(key, "--record", keyLen, { goto parseRecord; });
+        STR_EQUALS(key, "-C", keyLen, { goto parseMaxClients; });
+        STR_EQUALS(key, "--clients", keyLen, { goto parseMaxClients; });
         if (!parseCommonConfiguration(key, value, configuration)) {
-            parseFailure("Producer", key, value);
+            parseFailure("Server", key, value);
             return false;
         }
         continue;
 
-    parseMaxProducers : {
+    parseMaxClients : {
         char* end = NULL;
-        server->maxProducers = (uint32_t)strtoul(value, &end, 10);
-        continue;
-    }
-    parseMaxConsumers : {
-        char* end = NULL;
-        server->maxConsumers = (uint32_t)strtoul(value, &end, 10);
-        continue;
-    }
-    parseRecord : {
-        server->record = atoi(value);
+        server->maxClients = (uint32_t)strtoul(value, &end, 10);
         continue;
     }
     }
@@ -58,180 +99,167 @@ parseServerConfiguration(const int argc,
 int
 printServerConfiguration(const ServerConfiguration* configuration)
 {
-    return printf("Max consumers: %u; Max producers: %u; Recording: %d\n",
-                  configuration->maxConsumers,
-                  configuration->maxProducers,
-                  configuration->record);
-}
-
-bool
-handleServerMessage(pBytes bytes,
-                    const int fd,
-                    SendFunc sendMessage,
-                    struct sockaddr_storage* addr)
-{
-    bool result = false;
-    Message message = { 0 };
-    MessageDeserialize(&message, bytes, 0, true);
-    switch (message.tag) {
-        case MessageTag_getStreams: {
-            // Start Mutex
-            SDL_LockMutex(streamMutex);
-            message.tag = MessageTag_currentStreams;
-            message.currentStreams = streams;
-            bytes->used = 0;
-            MessageSerialize(&message, bytes, 0);
-            SDL_UnlockMutex(streamMutex);
-            // End Mutex
-
-            if (sendMessage(fd, bytes->buffer, bytes->used, addr) !=
-                (int)bytes->used) {
-                perror("send");
-                break;
-            }
-            result = true;
-        } break;
-        case MessageTag_createStream: {
-            // Start Mutex
-            SDL_LockMutex(streamMutex);
-            const bool exists = StreamInformationListFindIf(
-              &streams,
-              (StreamInformationListFindFunc)StreamInformationNameEqual,
-              &message.createStream.name,
-              NULL,
-              NULL);
-            char buffer[INET6_ADDRSTRLEN] = { 0 };
-            int port;
-            getAddrString(addr, buffer, &port);
-            if (exists) {
-                printf("Client '%s:%d' attempted to add a duplicate "
-                       "stream '%s'\n",
-                       buffer,
-                       port,
-                       message.createStream.name.buffer);
-            } else {
-                printf("Creating stream '%s' for producer '%s:%d'\n",
-                       message.createStream.name.buffer,
-                       buffer,
-                       port);
-                message.createStream.owner = fd;
-                StreamInformationListAppend(&streams, &message.createStream);
-            }
-            SDL_UnlockMutex(streamMutex);
-            // End Mutex
-
-            message.tag = MessageTag_createStreamAck;
-            message.createStreamAck = !exists;
-            bytes->used = 0;
-            MessageSerialize(&message, bytes, 0);
-            if (sendMessage(fd, bytes->buffer, bytes->used, addr) <= 0) {
-                perror("send");
-                break;
-            }
-            result = true;
-        } break;
-        case MessageTag_streamMessage: {
-            // Start Mutex
-            SDL_LockMutex(streamMutex);
-            for (size_t i = 0; i < streams.used; ++i) {
-                const StreamInformation* info = &streams.buffer[i];
-                if (!StreamTypeMatchStreamMessage(info->type,
-                                                  message.streamMessage.tag) ||
-                    info->owner != fd) {
-                    continue;
-                }
-                RandomState rs = makeRandomState();
-                const MarkedMessage newMessage = { .message = message,
-                                                   .guid = randomGuid(&rs) };
-                MarkedMessageListAppend(&pendingMessages, &newMessage);
-                SDL_CondBroadcast(streamCond);
-#if _DEBUG
-                printf("Sending message to '%d' consumers\n",
-                       SDL_AtomicGet(&consumerCount));
-#endif
-                break;
-            }
-            SDL_UnlockMutex(streamMutex);
-            // End Mutex
-            result = true;
-        } break;
-        default:
-            printf("Unexpected message: %s\n",
-                   MessageTagToCharString(message.tag));
-            break;
-    }
-    MessageFree(&message);
-    return result;
+    return printf("Max clients: %u\n", configuration->maxClients);
 }
 
 int
-handleTcpConnection(pConsumer consumer)
+handleTcpConnection(pClient client)
 {
-#if _DEBUG
+    int result = EXIT_FAILURE;
+
     char buffer[64];
-    int port;
-    getAddrString(&consumer->addr, buffer, &port);
-    printf("New connection: %s:%d (%d connections)\n",
-           buffer,
-           port,
-           SDL_AtomicGet(&consumerCount));
-#endif
+    getAddrString(&client->addr, buffer, NULL);
+    printf("New connection: %s\n", buffer);
+
     Bytes bytes = { .allocator = currentAllocator,
-                    .buffer = currentAllocator->allocate(UINT16_MAX),
-                    .size = UINT16_MAX,
+                    .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
+                    .size = MAX_PACKET_SIZE,
                     .used = 0 };
     struct pollfd pfds = { .events = POLLIN,
                            .revents = 0,
-                           .fd = consumer->sockfd };
-    socklen_t socklen = 0;
+                           .fd = client->sockfd };
+    Message message = { 0 };
+
+    switch (poll(&pfds, 1, 5000)) {
+        case -1:
+            perror("poll");
+            goto end;
+        case 0:
+            printf("Failed to get authentication from client '%s'\n", buffer);
+            goto end;
+        default:
+            break;
+    }
+    if ((pfds.revents & POLLIN) == 0) {
+        printf("Failed to get authentication from client '%s'\n", buffer);
+        goto end;
+    }
+
+    ssize_t size = recv(pfds.fd, bytes.buffer, bytes.size, 0);
+    if (size <= 0) {
+        goto end;
+    }
+
+    bytes.used = (uint32_t)size;
+    MessageDeserialize(&message, &bytes, 0, true);
+    if (message.tag == MessageTag_authenticate) {
+        client->authentication = message.authenticate;
+    } else {
+        printf("Expected authentication from client '%s'. Got '%s'\n",
+               buffer,
+               MessageTagToCharString(message.tag));
+        goto end;
+    }
+
     while (!appDone) {
         switch (poll(&pfds, 1, 1000)) {
-            case INVALID_SOCKET:
+            case -1:
                 perror("poll");
-                continue;
+                goto end;
             case 0:
                 continue;
             default:
                 break;
         }
-
-        const ssize_t size = recv(pfds.fd, bytes.buffer, UINT16_MAX, 0);
-        if (size <= 0) {
-            break;
+        if ((pfds.revents & POLLIN) == 0) {
+            continue;
         }
 
-        socklen = sizeof(struct sockaddr_storage);
-        if (getpeername(pfds.fd, (struct sockaddr*)&consumer->addr, &socklen) ==
-            INVALID_SOCKET) {
-            perror("getpeername");
-            break;
-        } else {
-#if _DEBUG
-            char buffer[64];
-            int port;
-            getAddrString(&consumer->addr, buffer, &port);
-            printf("Got %zd bytes from client '%s:%d'\n", size, buffer, port);
-#endif
+        size = recv(pfds.fd, bytes.buffer, bytes.size, 0);
+        if (size <= 0) {
+            goto end;
         }
 
         bytes.used = (uint32_t)size;
-        if (handleServerMessage(&bytes, pfds.fd, sendTcp, &consumer->addr)) {
-            continue;
+        MessageFree(&message);
+        MessageDeserialize(&message, &bytes, 0, true);
+        switch (message.tag) {
+            case MessageTag_streamMessage:
+                copyMessageToClients(&message.streamMessage, &bytes);
+                break;
+            case MessageTag_connectToStream:
+                fprintf(stderr, "MessageTag_connectToStream not implemented\n");
+                break;
+            case MessageTag_disconnectFromStream:
+                fprintf(stderr,
+                        "MessageTag_disconnectFromStream not implemented\n");
+                break;
+            case MessageTag_startStreaming:
+                fprintf(stderr, "MessageTag_startStreaming not implemented\n");
+                break;
+            case MessageTag_stopStreaming:
+                fprintf(stderr, "MessageTag_stopStreaming not implemented\n");
+                break;
+            case MessageTag_getStreams: {
+                // Start Mutex
+                SDL_LockMutex(serverData.mutex);
+                message.tag = MessageTag_currentStreams;
+                message.currentStreams.allocator = currentAllocator;
+                for (size_t i = 0; i < serverData.streams.used; ++i) {
+                    const Stream* stream = &serverData.streams.buffer[i];
+                    StreamInformation si = { .name = stream->name,
+                                             .type = stream->type };
+                    StreamInformationListAppend(&message.currentStreams, &si);
+                }
+                bytes.used = 0;
+                MessageSerialize(&message, &bytes, 0);
+                SDL_UnlockMutex(serverData.mutex);
+                // End Mutex
+
+                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
+                    (ssize_t)bytes.used) {
+                    perror("send");
+                    goto end;
+                }
+            } break;
+            case MessageTag_getClients: {
+                // Start Mutex
+                SDL_LockMutex(serverData.mutex);
+                message.tag = MessageTag_currentClients;
+                message.currentClients.allocator = currentAllocator;
+                for (size_t i = 0; i < serverData.clients.used; ++i) {
+                    const pClient* client = &serverData.clients.buffer[i];
+                    TemLangStringListAppend(&message.currentClients,
+                                            &(*client)->name);
+                }
+                bytes.used = 0;
+                MessageSerialize(&message, &bytes, 0);
+                SDL_UnlockMutex(serverData.mutex);
+                // End Mutex
+
+                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
+                    (ssize_t)bytes.used) {
+                    perror("send");
+                    goto end;
+                }
+            } break;
+            default:
+                printf("Got invalid message '%s' from client '%s'\n",
+                       MessageTagToCharString(message.tag),
+                       buffer);
+                goto end;
         }
-        break;
     }
+
+end:
+    SDL_LockMutex(serverData.mutex);
+    pClientListSwapRemoveValue(&serverData.clients, &client);
+    SDL_UnlockMutex(serverData.mutex);
+
+    printf("Closing connection: %s\n", buffer);
+    MessageFree(&message);
     uint8_tListFree(&bytes);
-    closeSocket(consumer->sockfd);
-    currentAllocator->free(consumer);
-    return EXIT_SUCCESS;
+    ClientFree(client);
+    currentAllocator->free(client);
+    return result;
 }
 
 int
 runTcpServer(const AllConfiguration* configuration)
 {
-    Bytes bytes = { .buffer = currentAllocator->allocate(UINT16_MAX),
+    Bytes bytes = { .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
                     .allocator = currentAllocator,
-                    .size = UINT16_MAX };
+                    .size = MAX_PACKET_SIZE };
 
     const int listener = openSocketFromAddress(
       &configuration->address, SocketOptions_Server | SocketOptions_Tcp);
@@ -246,6 +274,7 @@ runTcpServer(const AllConfiguration* configuration)
     printf("Tcp port: %d\n", listener);
 #endif
 
+    RandomState rs = makeRandomState();
     struct pollfd pfds = { .events = POLLIN, .revents = 0, .fd = listener };
     while (!appDone) {
         switch (poll(&pfds, 1, 1000)) {
@@ -271,16 +300,22 @@ runTcpServer(const AllConfiguration* configuration)
             continue;
         }
 
-        pConsumer consumer = currentAllocator->allocate(sizeof(Consumer));
-        consumer->sockfd = new_fd;
-        consumer->addr = addr;
+        pClient client = currentAllocator->allocate(sizeof(Client));
+        client->addr = addr;
+        client->guid = randomGuid(&rs);
+        // authentication will be set after parsing first message
+        client->sockfd = new_fd;
+
         SDL_Thread* thread = SDL_CreateThread(
-          (SDL_ThreadFunction)handleTcpConnection, "Tcp", consumer);
+          (SDL_ThreadFunction)handleTcpConnection, "Tcp", client);
         if (thread == NULL) {
             fprintf(stderr, "Failed to created thread: %s\n", SDL_GetError());
-            closeSocket(new_fd);
-            currentAllocator->free(consumer);
+            ClientFree(client);
+            currentAllocator->free(client);
         } else {
+            SDL_LockMutex(serverData.mutex);
+            pClientListAppend(&serverData.clients, &client);
+            SDL_UnlockMutex(serverData.mutex);
             SDL_DetachThread(thread);
         }
     }
@@ -294,13 +329,14 @@ end:
 int
 runUdpServer(const AllConfiguration* configuration)
 {
-    Bytes bytes = { .buffer = currentAllocator->allocate(UINT16_MAX),
+    Message message = { 0 };
+    Bytes bytes = { .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
                     .allocator = currentAllocator,
-                    .size = UINT16_MAX };
+                    .size = MAX_PACKET_SIZE };
 
-    udpSocket =
+    serverData.udpSocket =
       openSocketFromAddress(&configuration->address, SocketOptions_Server);
-    if (udpSocket == INVALID_SOCKET) {
+    if (serverData.udpSocket == INVALID_SOCKET) {
         goto end;
     }
 
@@ -308,10 +344,12 @@ runUdpServer(const AllConfiguration* configuration)
     socklen_t socklen = sizeof(addr);
     puts("Opened UDP port");
 #if _DEBUG
-    printf("Udp port: %d\n", udpSocket);
+    printf("Udp port: %d\n", serverData.udpSocket);
 #endif
 
-    struct pollfd pfds = { .fd = udpSocket, .events = POLLIN, .revents = 0 };
+    struct pollfd pfds = { .fd = serverData.udpSocket,
+                           .events = POLLIN,
+                           .revents = 0 };
     while (!appDone) {
         switch (poll(&pfds, 1, 1000)) {
             case INVALID_SOCKET:
@@ -328,9 +366,9 @@ runUdpServer(const AllConfiguration* configuration)
         }
 
         socklen = sizeof(addr);
-        const ssize_t size = recvfrom(udpSocket,
+        const ssize_t size = recvfrom(serverData.udpSocket,
                                       bytes.buffer,
-                                      UINT16_MAX,
+                                      bytes.size,
                                       0,
                                       (struct sockaddr*)&addr,
                                       &socklen);
@@ -339,46 +377,46 @@ runUdpServer(const AllConfiguration* configuration)
         }
 
         bytes.used = (uint32_t)size;
-
-        handleServerMessage(&bytes, udpSocket, sendUdp, &addr);
+        MessageFree(&message);
+        MessageDeserialize(&message, &bytes, 0, true);
+        if (message.tag == MessageTag_streamMessage) {
+            copyMessageToClients(&message.streamMessage, &bytes);
+        } else {
+#if _DEBUG
+            printf("Got invalid message on UDP port: %s\n",
+                   MessageTagToCharString(message.tag));
+#endif
+        }
     }
 
 end:
+    MessageFree(&message);
     uint8_tListFree(&bytes);
-    closeSocket(udpSocket);
-    udpSocket = INVALID_SOCKET;
+    closeSocket(serverData.udpSocket);
+    serverData.udpSocket = INVALID_SOCKET;
     return EXIT_SUCCESS;
 }
 
 uint32_t
 cleanupThread(uint32_t timeout)
 {
-    SDL_LockMutex(streamMutex);
-    struct sockaddr_storage addr = { 0 };
-    socklen_t socklen = 0;
+    SDL_LockMutex(serverData.mutex);
     size_t i = 0;
-    while (i < streams.used) {
-        socklen = sizeof(addr);
-        const StreamInformation* info = &streams.buffer[i];
-        if (getpeername(info->owner, (struct sockaddr*)&addr, &socklen) ==
-            INVALID_SOCKET) {
-            printf("Producer for stream '%s' was closed\n", info->name.buffer);
-            StreamInformationListSwapRemove(&streams, i);
-        } else {
+    while (i < serverData.streams.used) {
+        const Stream* stream = &serverData.streams.buffer[i];
+        if (pClientListFindIf(&serverData.clients,
+                              (pClientListFindFunc)ClientGuidEquals,
+                              &stream->owner,
+                              NULL,
+                              NULL)) {
             ++i;
+        } else {
+            printf("Owner of stream '%s' has disconnected\n",
+                   stream->name.buffer);
+            StreamListSwapRemove(&serverData.streams, i);
         }
     }
-    i = 0;
-    const int consumers = SDL_AtomicGet(&consumerCount);
-    while (i < pendingMessages.used) {
-        const MarkedMessage* message = &pendingMessages.buffer[i];
-        if (message->sent >= consumers) {
-            MarkedMessageListSwapRemove(&pendingMessages, i);
-        } else {
-            ++i;
-        }
-    }
-    SDL_UnlockMutex(streamMutex);
+    SDL_UnlockMutex(serverData.mutex);
     return timeout;
 }
 
@@ -390,20 +428,14 @@ runServer(const AllConfiguration* configuration)
         goto end;
     }
 
-    streamMutex = SDL_CreateMutex();
-    if (streamMutex == NULL) {
+    serverData.mutex = SDL_CreateMutex();
+    if (serverData.mutex == NULL) {
         fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
         goto end;
     }
 
-    streamCond = SDL_CreateCond();
-    if (streamCond == NULL) {
-        fprintf(stderr, "Failed to creat cond: %s\n", SDL_GetError());
-        goto end;
-    }
-
-    streams.allocator = currentAllocator;
-    pendingMessages.allocator = currentAllocator;
+    serverData.streams.allocator = currentAllocator;
+    serverData.clients.allocator = currentAllocator;
     puts("Running server");
     printAllConfiguration(configuration);
 
@@ -439,18 +471,19 @@ end:
                  configuration->address.domainSocket.buffer);
         unlink(ipstr);
     }
-    // Start Mutex
-    SDL_LockMutex(streamMutex);
-    StreamInformationListFree(&streams);
-    MarkedMessageListFree(&pendingMessages);
-    while (SDL_AtomicGet(&consumerCount) > 0) {
-        SDL_CondWaitTimeout(streamCond, streamMutex, 1000);
-    }
-    SDL_UnlockMutex(streamMutex);
-    // End Mutex
 
-    SDL_DestroyMutex(streamMutex);
-    SDL_DestroyCond(streamCond);
+    do {
+        SDL_LockMutex(serverData.mutex);
+        const bool done = pClientListIsEmpty(&serverData.clients);
+        SDL_UnlockMutex(serverData.mutex);
+        if (done) {
+            break;
+        } else {
+            SDL_Delay(1000U);
+        }
+    } while (true);
+
+    ServerDataFree(&serverData);
     SDL_Quit();
     return EXIT_SUCCESS;
 }
