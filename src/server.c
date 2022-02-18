@@ -423,6 +423,7 @@ cleanupThread(uint32_t timeout)
 int
 runServer(const AllConfiguration* configuration)
 {
+    int result = EXIT_FAILURE;
     if (SDL_Init(SDL_INIT_TIMER) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
         goto end;
@@ -456,6 +457,7 @@ runServer(const AllConfiguration* configuration)
         SDL_WaitThread(threads[i], NULL);
     }
     SDL_RemoveTimer(id);
+    result = EXIT_SUCCESS;
 
 end:
     if (configuration->address.tag == AddressTag_domainSocket) {
@@ -485,5 +487,5 @@ end:
 
     ServerDataFree(&serverData);
     SDL_Quit();
-    return EXIT_SUCCESS;
+    return result;
 }

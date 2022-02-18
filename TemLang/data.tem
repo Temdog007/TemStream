@@ -51,6 +51,7 @@ struct Socket {
 
 struct ClientConfiguration {
     string ttfFile
+    i32 fontSize
     i32 windowWidth
     i32 windowHeight
     bool fullscreen
