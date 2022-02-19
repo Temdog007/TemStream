@@ -216,8 +216,51 @@ MessageUsesUdp(const StreamMessage* message)
     return false;
 }
 
-extern bool
+bool
 StreamGuidEquals(const Stream* stream, const Guid* guid)
 {
-    return memcmp(&stream->id, guid, sizeof(Guid)) == 0;
+    return GuidEquals(&stream->id, guid);
+}
+
+bool
+StreamNameEquals(const Stream* stream, const TemLangString* name)
+{
+    return TemLangStringsAreEqual(&stream->name, name);
+}
+
+bool
+GetStreamFromName(const StreamList* streams,
+                  const TemLangString* name,
+                  const Stream** stream,
+                  size_t* index)
+{
+    return StreamListFindIf(
+      streams, (StreamListFindFunc)StreamNameEquals, name, stream, index);
+}
+
+bool
+GetStreamFromGuid(const StreamList* streams,
+                  const Guid* guid,
+                  const Stream** stream,
+                  size_t* index)
+{
+    return StreamListFindIf(
+      streams, (StreamListFindFunc)StreamGuidEquals, guid, stream, index);
+}
+
+TemLangString
+RandomClientName(pRandomState rs)
+{
+    const uint64_t len = 3ULL + (random64(rs) % 7ULL);
+    TemLangString name = { .allocator = currentAllocator };
+    for (size_t i = 0; i < len; ++i) {
+        do {
+            char c = (char)(random64(rs) % 128ULL);
+            if (isalnum(c)) {
+                TemLangStringAppendChar(&name, c);
+                break;
+            }
+        } while (true);
+    }
+    return name;
 }

@@ -97,26 +97,26 @@ struct Stream {
     bool record
 }
 
-struct StreamInformation {
-    string name
-    StreamType type
+inlineC "MAKE_DEFAULT_LIST(Stream);"
+
+variant OptionalGuid {
+    Guid guid
+    null none
 }
 
-inlineC "
-MAKE_DEFAULT_LIST(Stream);
-MAKE_DEFAULT_LIST(StreamInformation);
-"
-
 variant Message {
-    [0 StreamInformation] currentStreams
+    [0 Stream] currentStreams
     [0 string] currentClients
     StreamMessage streamMessage
     ClientAuthentication authenticate
     string connectToStream
+    bool connectToStreamAck
     string disconnectFromStream
-    string startStreaming
-    Guid streamAck
+    bool disconnectFromStreamAck
+    Stream startStreaming
+    OptionalGuid startStreamingAck
     Guid stopStreaming
+    bool stopStreamingAck
     null getStreams
     null getClients
 }

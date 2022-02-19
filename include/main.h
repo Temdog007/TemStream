@@ -20,7 +20,6 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 
 #include <DefaultExternalFunctions.h>
 
@@ -31,10 +30,10 @@
 typedef struct Client
 {
     struct sockaddr_storage addr;
-    Guid guid;
+    Guid id;
     TemLangString name;
-    ClientAuthentication authentication;
     GuidList connectedStreams;
+    const ServerAuthentication* serverAuthentication;
     int32_t sockfd;
 } Client, *pClient;
 
@@ -42,6 +41,8 @@ extern void ClientFree(pClient);
 
 extern bool
 ClientGuidEquals(const pClient*, const Guid*);
+
+extern TemLangString RandomClientName(pRandomState);
 
 MAKE_COPY_AND_FREE(pClient);
 MAKE_DEFAULT_LIST(pClient);
@@ -51,6 +52,9 @@ StreamTypeMatchStreamMessage(const StreamType, const StreamMessageDataTag);
 
 extern bool
 StreamGuidEquals(const Stream*, const Guid*);
+
+extern bool
+StreamNameEquals(const Stream*, const TemLangString*);
 
 extern bool
 MessageUsesUdp(const StreamMessage*);
@@ -74,6 +78,7 @@ signalHandler(int);
 extern const char*
 getAddrString(const struct sockaddr_storage*, char[64], int*);
 
+struct addrinfo;
 extern const char*
 getAddrInfoString(const struct addrinfo*, char[64], int*);
 
@@ -160,10 +165,32 @@ runClient(const AllConfiguration*);
 extern int
 runServer(const AllConfiguration*);
 
-extern int
-runProducer(const AllConfiguration*);
-
 // Parse failures
 
 extern void
 parseFailure(const char* type, const char* arg1, const char* arg2);
+
+// Searches
+
+extern bool
+GetStreamFromName(const StreamList*,
+                  const TemLangString*,
+                  const Stream**,
+                  size_t*);
+
+extern bool
+GetStreamFromGuid(const StreamList*, const Guid*, const Stream**, size_t*);
+
+// Misc
+
+#define IN_MUTEX(mutex, endLabel, f)                                           \
+    SDL_LockMutex(mutex);                                                      \
+    f;                                                                         \
+    goto endLabel;                                                             \
+    endLabel:                                                                  \
+    SDL_UnlockMutex(mutex);
+
+extern bool
+authenticateClient(pClient client,
+                   const ClientAuthentication* cAuth,
+                   pRandomState rs);

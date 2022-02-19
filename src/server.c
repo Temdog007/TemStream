@@ -2,9 +2,9 @@
 
 typedef struct ServerData
 {
-    SDL_mutex* mutex;
     StreamList streams;
     pClientList clients;
+    SDL_mutex* mutex;
     int32_t udpSocket;
 } ServerData, *pServerData;
 
@@ -14,7 +14,38 @@ void
 ServerDataFree(pServerData data)
 {
     SDL_DestroyMutex(data->mutex);
+    pClientListFree(&data->clients);
     StreamListFree(&data->streams);
+}
+
+// Assigns client a name also
+bool
+authenticateClient(pClient client,
+                   const ClientAuthentication* cAuth,
+                   pRandomState rs)
+{
+    const ServerAuthentication* sAuth = client->serverAuthentication;
+    switch (sAuth->tag) {
+        case ServerAuthenticationTag_file:
+            fprintf(stderr, "Failed authentication is not implemented\n");
+            return false;
+        default:
+            switch (cAuth->tag) {
+                case ClientAuthenticationTag_credentials:
+                    return TemLangStringCopy(&client->name,
+                                             &cAuth->credentials.username,
+                                             currentAllocator);
+                case ClientAuthenticationTag_token:
+                    fprintf(stderr,
+                            "Token authentication is not implemented\n");
+                    return false;
+                default:
+                    // Give client random name
+                    client->name = RandomClientName(rs);
+                    break;
+            }
+            return true;
+    }
 }
 
 void
@@ -22,42 +53,41 @@ copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
 {
     const bool udp = MessageUsesUdp(message);
 
-    SDL_LockMutex(serverData.mutex);
-    if (!StreamListFindIf(&serverData.streams,
-                          (StreamListFindFunc)StreamGuidEquals,
-                          &message->id,
-                          NULL,
-                          NULL)) {
+    IN_MUTEX(serverData.mutex, endMutex, {
+        if (!StreamListFindIf(&serverData.streams,
+                              (StreamListFindFunc)StreamGuidEquals,
+                              &message->id,
+                              NULL,
+                              NULL)) {
 #if _DEBUG
-        printf("Got stream message that doesn't belong to a stream\n");
+            printf("Got stream message that doesn't belong to a stream\n");
 #endif
-        goto end;
-    }
-    for (size_t i = 0; i < serverData.clients.used; ++i) {
-        const Client* client = serverData.clients.buffer[i];
-        if (!GuidListFind(
-              &client->connectedStreams, &message->id, NULL, NULL)) {
-            continue;
+            goto endMutex;
         }
-        if (udp) {
-            const size_t socklen = sizeof(client->addr);
-            if (sendto(serverData.udpSocket,
-                       bytes->buffer,
-                       bytes->used,
-                       0,
-                       (struct sockaddr*)&client->addr,
-                       socklen) != (ssize_t)bytes->used) {
-                perror("sendto");
+        for (size_t i = 0; i < serverData.clients.used; ++i) {
+            const Client* client = serverData.clients.buffer[i];
+            if (!GuidListFind(
+                  &client->connectedStreams, &message->id, NULL, NULL)) {
+                continue;
             }
-        } else {
-            if (send(client->sockfd, bytes->buffer, bytes->used, 0) !=
-                (ssize_t)bytes->used) {
-                perror("send");
+            if (udp) {
+                const size_t socklen = sizeof(client->addr);
+                if (sendto(serverData.udpSocket,
+                           bytes->buffer,
+                           bytes->used,
+                           0,
+                           (struct sockaddr*)&client->addr,
+                           socklen) != (ssize_t)bytes->used) {
+                    perror("sendto");
+                }
+            } else {
+                if (send(client->sockfd, bytes->buffer, bytes->used, 0) !=
+                    (ssize_t)bytes->used) {
+                    perror("send");
+                }
             }
         }
-    }
-end:
-    SDL_UnlockMutex(serverData.mutex);
+    })
 }
 
 ServerConfiguration
@@ -140,10 +170,14 @@ handleTcpConnection(pClient client)
         goto end;
     }
 
+    RandomState rs = makeRandomState();
     bytes.used = (uint32_t)size;
     MessageDeserialize(&message, &bytes, 0, true);
     if (message.tag == MessageTag_authenticate) {
-        client->authentication = message.authenticate;
+        if (!authenticateClient(client, &message.authenticate, &rs)) {
+            printf("Client '%s' failed authentication\n", buffer);
+            goto end;
+        }
     } else {
         printf("Expected authentication from client '%s'. Got '%s'\n",
                buffer,
@@ -177,34 +211,129 @@ handleTcpConnection(pClient client)
             case MessageTag_streamMessage:
                 copyMessageToClients(&message.streamMessage, &bytes);
                 break;
-            case MessageTag_connectToStream:
-                fprintf(stderr, "MessageTag_connectToStream not implemented\n");
-                break;
-            case MessageTag_disconnectFromStream:
-                fprintf(stderr,
-                        "MessageTag_disconnectFromStream not implemented\n");
-                break;
-            case MessageTag_startStreaming:
-                fprintf(stderr, "MessageTag_startStreaming not implemented\n");
-                break;
-            case MessageTag_stopStreaming:
-                fprintf(stderr, "MessageTag_stopStreaming not implemented\n");
-                break;
-            case MessageTag_getStreams: {
-                // Start Mutex
-                SDL_LockMutex(serverData.mutex);
-                message.tag = MessageTag_currentStreams;
-                message.currentStreams.allocator = currentAllocator;
-                for (size_t i = 0; i < serverData.streams.used; ++i) {
-                    const Stream* stream = &serverData.streams.buffer[i];
-                    StreamInformation si = { .name = stream->name,
-                                             .type = stream->type };
-                    StreamInformationListAppend(&message.currentStreams, &si);
+            case MessageTag_connectToStream: {
+                bool success;
+                IN_MUTEX(serverData.mutex, cts, {
+                    const Stream* stream = NULL;
+                    success = GetStreamFromName(&serverData.streams,
+                                                &message.connectToStream,
+                                                &stream,
+                                                NULL);
+                    if (success) {
+                        if (!GuidListFind(&client->connectedStreams,
+                                          &stream->id,
+                                          NULL,
+                                          NULL)) {
+                            GuidListAppend(&client->connectedStreams,
+                                           &stream->id);
+                        }
+                    }
+                });
+
+                MessageFree(&message);
+                message.tag = MessageTag_connectToStreamAck;
+                message.connectToStreamAck = success;
+                bytes.used = 0;
+                MessageSerialize(&message, &bytes, true);
+                if (send(pfds.fd, bytes.buffer, bytes.used, 0) !=
+                    (ssize_t)bytes.used) {
+                    perror("send");
                 }
+            } break;
+            case MessageTag_disconnectFromStream: {
+                bool success;
+                IN_MUTEX(serverData.mutex, dfs, {
+                    const Stream* stream = NULL;
+                    success = GetStreamFromName(&serverData.streams,
+                                                &message.disconnectFromStream,
+                                                &stream,
+                                                NULL);
+                    if (success) {
+                        while (GuidListSwapRemoveValue(
+                          &client->connectedStreams, &stream->id))
+                            ;
+                    }
+                })
+
+                MessageFree(&message);
+                message.tag = MessageTag_disconnectFromStreamAck;
+                message.disconnectFromStreamAck = success;
+                bytes.used = 0;
+                MessageSerialize(&message, &bytes, true);
+                if (send(pfds.fd, bytes.buffer, bytes.used, 0) !=
+                    (ssize_t)bytes.used) {
+                    perror("send");
+                }
+            } break;
+            case MessageTag_startStreaming: {
+                const Stream* stream = NULL;
+                IN_MUTEX(serverData.mutex, start1, {
+                    GetStreamFromName(&serverData.streams,
+                                      &message.startStreaming.name,
+                                      &stream,
+                                      NULL);
+                });
+
+                if (stream == NULL) {
+                    Stream newStream = message.startStreaming;
+                    newStream.owner = client->id;
+                    newStream.id = randomGuid(&rs);
+                    IN_MUTEX(serverData.mutex, ss2, {
+                        StreamListAppend(&serverData.streams, &newStream);
+                    })
+                    MessageFree(&message);
+                    message.tag = MessageTag_startStreamingAck;
+                    message.startStreamingAck.guid = newStream.id;
+                    message.startStreamingAck.tag = OptionalGuidTag_guid;
+                } else {
+#if _DEBUG
+                    printf("Client '%s' tried to add duplicate stream '%s'\n",
+                           buffer,
+                           stream->name.buffer);
+#endif
+                    MessageFree(&message);
+                    message.tag = MessageTag_startStreamingAck;
+                    message.startStreamingAck.none = NULL;
+                    message.startStreamingAck.tag = OptionalGuidTag_none;
+                }
+
                 bytes.used = 0;
                 MessageSerialize(&message, &bytes, 0);
-                SDL_UnlockMutex(serverData.mutex);
-                // End Mutex
+                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
+                    (ssize_t)bytes.used) {
+                    perror("send");
+                }
+            } break;
+            case MessageTag_stopStreaming: {
+                const Stream* stream = NULL;
+                IN_MUTEX(serverData.mutex, stop1, {
+                    size_t i = 0;
+                    GetStreamFromGuid(
+                      &serverData.streams, &message.stopStreaming, &stream, &i);
+                    if (stream != NULL &&
+                        GuidEquals(&stream->owner, &client->id)) {
+                        StreamListSwapRemove(&serverData.streams, i);
+                    }
+                });
+
+                MessageFree(&message);
+                message.tag = MessageTag_stopStreamingAck;
+                message.stopStreamingAck = stream != NULL;
+                bytes.used = 0;
+                MessageSerialize(&message, &bytes, 0);
+                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
+                    (ssize_t)bytes.used) {
+                    perror("send");
+                }
+            } break;
+            case MessageTag_getStreams: {
+                IN_MUTEX(serverData.mutex, get1, {
+                    Message newMessage = { 0 };
+                    newMessage.tag = MessageTag_currentStreams;
+                    newMessage.currentStreams = serverData.streams;
+                    bytes.used = 0;
+                    MessageSerialize(&newMessage, &bytes, 0);
+                });
 
                 if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
                     (ssize_t)bytes.used) {
@@ -213,19 +342,18 @@ handleTcpConnection(pClient client)
                 }
             } break;
             case MessageTag_getClients: {
-                // Start Mutex
-                SDL_LockMutex(serverData.mutex);
-                message.tag = MessageTag_currentClients;
-                message.currentClients.allocator = currentAllocator;
-                for (size_t i = 0; i < serverData.clients.used; ++i) {
-                    const pClient* client = &serverData.clients.buffer[i];
-                    TemLangStringListAppend(&message.currentClients,
-                                            &(*client)->name);
-                }
-                bytes.used = 0;
-                MessageSerialize(&message, &bytes, 0);
-                SDL_UnlockMutex(serverData.mutex);
-                // End Mutex
+                IN_MUTEX(serverData.mutex, get2, {
+                    message.tag = MessageTag_currentClients;
+                    message.currentClients.allocator = currentAllocator;
+                    for (size_t i = 0; i < serverData.clients.used; ++i) {
+                        const pClient* client = &serverData.clients.buffer[i];
+                        TemLangStringListAppend(&message.currentClients,
+                                                &(*client)->name);
+                    }
+                    bytes.used = 0;
+                    MessageSerialize(&message, &bytes, 0);
+                    MessageFree(&message);
+                });
 
                 if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
                     (ssize_t)bytes.used) {
@@ -242,9 +370,9 @@ handleTcpConnection(pClient client)
     }
 
 end:
-    SDL_LockMutex(serverData.mutex);
-    pClientListSwapRemoveValue(&serverData.clients, &client);
-    SDL_UnlockMutex(serverData.mutex);
+    IN_MUTEX(serverData.mutex, fend, {
+        pClientListSwapRemoveValue(&serverData.clients, &client);
+    });
 
     printf("Closing connection: %s\n", buffer);
     MessageFree(&message);
@@ -266,6 +394,8 @@ runTcpServer(const AllConfiguration* configuration)
     if (listener == INVALID_SOCKET) {
         goto end;
     }
+
+    const ServerConfiguration* config = &configuration->configuration.server;
 
     struct sockaddr_storage addr = { 0 };
     socklen_t socklen = sizeof(addr);
@@ -300,23 +430,45 @@ runTcpServer(const AllConfiguration* configuration)
             continue;
         }
 
-        pClient client = currentAllocator->allocate(sizeof(Client));
+        pClient client = NULL;
+        {
+            bool atMax;
+            IN_MUTEX(serverData.mutex, fend, {
+                atMax = serverData.clients.used >= config->maxClients;
+            });
+            if (atMax) {
+#if _DEBUG
+                printf("Max clients (%u) has been reached\n",
+                       config->maxClients);
+#endif
+                goto closeNewFd;
+            }
+        }
+
+        client = currentAllocator->allocate(sizeof(Client));
         client->addr = addr;
-        client->guid = randomGuid(&rs);
-        // authentication will be set after parsing first message
+        client->serverAuthentication = &config->authentication;
+        client->id = randomGuid(&rs);
+        // name and authentication will be set after parsing first message
         client->sockfd = new_fd;
 
         SDL_Thread* thread = SDL_CreateThread(
           (SDL_ThreadFunction)handleTcpConnection, "Tcp", client);
         if (thread == NULL) {
             fprintf(stderr, "Failed to created thread: %s\n", SDL_GetError());
+            goto closeNewFd;
+        }
+
+        IN_MUTEX(serverData.mutex, fend2, {
+            pClientListAppend(&serverData.clients, &client);
+        });
+        SDL_DetachThread(thread);
+        continue;
+
+    closeNewFd:
+        if (client != NULL) {
             ClientFree(client);
             currentAllocator->free(client);
-        } else {
-            SDL_LockMutex(serverData.mutex);
-            pClientListAppend(&serverData.clients, &client);
-            SDL_UnlockMutex(serverData.mutex);
-            SDL_DetachThread(thread);
         }
     }
 
@@ -400,23 +552,23 @@ end:
 uint32_t
 cleanupThread(uint32_t timeout)
 {
-    SDL_LockMutex(serverData.mutex);
-    size_t i = 0;
-    while (i < serverData.streams.used) {
-        const Stream* stream = &serverData.streams.buffer[i];
-        if (pClientListFindIf(&serverData.clients,
-                              (pClientListFindFunc)ClientGuidEquals,
-                              &stream->owner,
-                              NULL,
-                              NULL)) {
-            ++i;
-        } else {
-            printf("Owner of stream '%s' has disconnected\n",
-                   stream->name.buffer);
-            StreamListSwapRemove(&serverData.streams, i);
+    IN_MUTEX(serverData.mutex, end, {
+        size_t i = 0;
+        while (i < serverData.streams.used) {
+            const Stream* stream = &serverData.streams.buffer[i];
+            if (pClientListFindIf(&serverData.clients,
+                                  (pClientListFindFunc)ClientGuidEquals,
+                                  &stream->owner,
+                                  NULL,
+                                  NULL)) {
+                ++i;
+            } else {
+                printf("Owner of stream '%s' has disconnected\n",
+                       stream->name.buffer);
+                StreamListSwapRemove(&serverData.streams, i);
+            }
         }
-    }
-    SDL_UnlockMutex(serverData.mutex);
+    });
     return timeout;
 }
 
@@ -475,14 +627,14 @@ end:
     }
 
     do {
-        SDL_LockMutex(serverData.mutex);
-        const bool done = pClientListIsEmpty(&serverData.clients);
-        SDL_UnlockMutex(serverData.mutex);
+        bool done;
+        IN_MUTEX(serverData.mutex, fend, {
+            done = pClientListIsEmpty(&serverData.clients);
+        });
         if (done) {
             break;
-        } else {
-            SDL_Delay(1000U);
         }
+        SDL_Delay(1000U);
     } while (true);
 
     ServerDataFree(&serverData);

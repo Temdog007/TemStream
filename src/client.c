@@ -7,6 +7,7 @@ defaultClientConfiguration()
         .fullscreen = false,
         .windowWidth = 800,
         .windowHeight = 600,
+        .fontSize = 24,
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu//Ubuntu-M.ttf", currentAllocator)
     };
@@ -93,8 +94,10 @@ printClientConfiguration(const ClientConfiguration* configuration)
 bool
 ClientGuidEquals(const pClient* client, const Guid* guid)
 {
-    return memcmp(&(*client)->guid, guid, sizeof(Guid)) == 0;
+    return GuidEquals(&(*client)->id, guid);
 }
+
+#define EVENT_RENDER 0x31ab
 
 int
 runClient(const AllConfiguration* configuration)
@@ -105,13 +108,14 @@ runClient(const AllConfiguration* configuration)
 
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
-    TTF_Font* font = NULL;
     if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
         goto end;
     }
 
     {
+        // const uint32_t flags =
+        //   IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_TIF | IMG_INIT_WEBP;
         const uint32_t flags = IMG_INIT_PNG;
         if (IMG_Init(flags) != flags) {
             fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
@@ -119,24 +123,10 @@ runClient(const AllConfiguration* configuration)
         }
     }
 
-    if (TTF_Init() == -1) {
-        fprintf(stderr, "Failed to init SDL_ttf: %s\n", TTF_GetError());
-        goto end;
-    }
-
     const ClientConfiguration* config = &configuration->configuration.client;
 
-    font = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
-    if (font == NULL) {
-        fprintf(stderr,
-                "Failed to load font '%s': %s\n",
-                config->ttfFile.buffer,
-                TTF_GetError());
-        goto end;
-    }
-
     window =
-      SDL_CreateWindow("TemStream",
+      SDL_CreateWindow("TemStream Client",
                        SDL_WINDOWPOS_UNDEFINED,
                        SDL_WINDOWPOS_UNDEFINED,
                        config->windowWidth,
@@ -147,8 +137,7 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
-    renderer = SDL_CreateRenderer(
-      window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer == NULL) {
         fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
         goto end;
@@ -158,26 +147,34 @@ runClient(const AllConfiguration* configuration)
 
     SDL_Event e = { 0 };
     while (!appDone) {
-        while (SDL_PollEvent(&e)) {
-            switch (e.type) {
-                case SDL_QUIT:
-                    appDone = true;
-                    break;
-                default:
-                    break;
-            }
+        if (SDL_WaitEvent(&e) != 0) {
+            fprintf(
+              stderr, "Failed to wait for an event: %s\n", SDL_GetError());
+            goto end;
         }
-
-        SDL_RenderClear(renderer);
-        SDL_RenderPresent(renderer);
+        switch (e.type) {
+            case SDL_QUIT:
+                appDone = true;
+                break;
+            case SDL_USEREVENT:
+                switch (e.user.code) {
+                    case EVENT_RENDER: {
+                        SDL_RenderClear(renderer);
+                        SDL_RenderPresent(renderer);
+                    } break;
+                    default:
+                        break;
+                }
+                break;
+            default:
+                break;
+        }
     }
 
     result = EXIT_SUCCESS;
 end:
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
-    TTF_CloseFont(font);
-    TTF_Quit();
     IMG_Quit();
     SDL_Quit();
     return result;

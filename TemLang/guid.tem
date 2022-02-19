@@ -6,6 +6,10 @@ struct Guid {
 inlineC "MAKE_DEFAULT_LIST(Guid);"
 
 inlineC "
+
+static inline bool GuidEquals(const Guid* a, const Guid* b){
+    return memcmp(a,b,sizeof(Guid)) == 0;
+}
 static inline Guid
 randomGuid(pRandomState rs)
 {
