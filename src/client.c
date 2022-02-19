@@ -2,6 +2,20 @@
 
 ClientData clientData = { 0 };
 
+void
+askQuestion(const char* string)
+{
+    const size_t size = strlen(string);
+    for (size_t i = 0; i < size; ++i) {
+        putchar('-');
+    }
+    printf("\n%s|\n", string);
+    for (size_t i = 0; i < size; ++i) {
+        putchar('-');
+    }
+    puts("");
+}
+
 ClientConfiguration
 defaultClientConfiguration()
 {
@@ -107,72 +121,98 @@ camelCaseToNormal(pTemLangString str)
     for (size_t i = 1; i < str->used; ++i) {
         const char c = str->buffer[i];
         if (isupper(c) && islower(str->buffer[i - 1])) {
-            TemLangStringInsertChar(str, ' ', c);
+            TemLangStringInsertChar(str, ' ', i);
         }
     }
+}
+
+bool
+getUserInput(struct pollfd inputfd, pBytes bytes, ssize_t* output)
+{
+    while (!appDone) {
+        switch (poll(&inputfd, 1, 1000)) {
+            case -1:
+                perror("poll");
+                return false;
+            case 0:
+                continue;
+            default:
+                goto readInput;
+        }
+    }
+
+readInput:
+    if ((inputfd.revents & POLLIN) == 0) {
+        return false;
+    }
+
+    const size_t size = read(STDIN_FILENO, bytes->buffer, bytes->size) - 1;
+    if (size <= 0) {
+        return false;
+    }
+    // Remove new line character
+    bytes->buffer[size] = '\0';
+    if (output != NULL) {
+        *output = size;
+    }
+    return true;
+}
+
+bool
+userIndexFromUser(struct pollfd inputfd,
+                  pBytes bytes,
+                  const uint32_t max,
+                  uint32_t* index)
+{
+    ssize_t size = 0;
+    if (!getUserInput(inputfd, bytes, &size)) {
+        return false;
+    }
+    char* end = NULL;
+    *index = (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
+    if (end != (char*)&bytes->buffer[size] || *index >= max) {
+        printf("Enter a number between 1 and %u\n", max);
+        return false;
+    }
+    return true;
 }
 
 void
 selectAStreamToConnectTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
 {
-    while (!appDone) {
-        uint32_t streamNum;
-        IN_MUTEX(clientData.mutex, end0, {
-            streamNum = clientData.allStreams.used;
-            puts("Select a stream");
+    IN_MUTEX(clientData.mutex, end0, {
+        while (!appDone) {
+            const uint32_t streamNum = clientData.allStreams.used;
+            askQuestion("Select a stream to connect to");
             for (uint32_t i = 0; i < streamNum; ++i) {
                 const Stream* stream = &clientData.allStreams.buffer[i];
-                printf("%u) %s\n", i + 1U, stream->name.buffer);
+                printf("%u) %s (%s)\n",
+                       i + 1U,
+                       stream->name.buffer,
+                       StreamTypeToCharString(stream->type));
             }
-        });
-        if (streamNum == 0) {
-            puts("No streams to connect to");
+            puts("");
+
+            if (streamNum == 0) {
+                puts("No streams to connect to");
+                break;
+            }
+
+            uint32_t i;
+            if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
+                continue;
+            }
+
+            Message message = { 0 };
+            message.tag = MessageTag_connectToStream;
+            message.connectToStream = clientData.allStreams.buffer[i].id;
+            bytes->used = 0;
+            MessageSerialize(&message, bytes, true);
+            socketSend(sockfd, bytes);
+            MessageFree(&message);
             break;
         }
-        while (!appDone) {
-            switch (poll(&inputfd, 1, 1000)) {
-                case -1:
-                    perror("poll");
-                    return;
-                case 0:
-                    continue;
-                default:
-                    goto readInput;
-            }
-        }
-
-    readInput:
-        if ((inputfd.revents & POLLIN) == 0) {
-            continue;
-        }
-
-        const ssize_t size = read(STDIN_FILENO, bytes->buffer, bytes->size);
-        if (size <= 0) {
-            continue;
-        }
-        bytes->buffer[size] = '\0';
-        char* end = NULL;
-        const uint32_t index =
-          (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
-        if (end != (char*)&bytes->buffer[size] || index >= streamNum) {
-            printf("Enter a number between 1 and %u\n", streamNum);
-            continue;
-        }
-
-        Message message = { 0 };
-        message.tag = MessageTag_connectToStream;
-        IN_MUTEX(clientData.mutex, end1, {
-            message.connectToStream = clientData.allStreams.buffer[index].id;
-        });
-        bytes->used = 0;
-        MessageSerialize(&message, bytes, true);
-        if (send(sockfd, bytes->buffer, bytes->used, 0) !=
-            (ssize_t)bytes->used) {
-            perror("send");
-        }
-        MessageFree(&message);
-        break;
-    }
+    });
 }
 
 void
@@ -180,66 +220,145 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
                               const int sockfd,
                               pBytes bytes)
 {
-    while (!appDone) {
-        uint32_t streamNum;
-        IN_MUTEX(clientData.mutex, end0, {
-            streamNum = clientData.ownStreams.used;
-            puts("Select a stream");
+    IN_MUTEX(clientData.mutex, end0, {
+        while (!appDone) {
+            const uint32_t streamNum = clientData.ownStreams.used;
+            askQuestion("Select a stream to disconnect from");
             const Stream* stream = NULL;
+            uint32_t streamsFound = 0;
             for (uint32_t i = 0; i < streamNum; ++i) {
                 const Guid guid = clientData.ownStreams.buffer[i];
-                GetStreamFromGuid(&clientData.allStreams, &guid, &stream, NULL);
-                printf("%u) %s\n", i + 1U, stream->name.buffer);
+                if (GetStreamFromGuid(
+                      &clientData.allStreams, &guid, &stream, NULL)) {
+                    printf("%u) %s\n", i + 1U, stream->name.buffer);
+                    ++streamsFound;
+                }
             }
-        });
-        if (streamNum == 0) {
-            puts("Not connected to any streams");
+            puts("");
+
+            if (streamNum == 0 || streamsFound == 0) {
+                puts("Not connected to any streams");
+                break;
+            }
+            uint32_t i;
+            if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
+                continue;
+            }
+
+            Message message = { 0 };
+            message.tag = MessageTag_disconnectFromStream;
+            message.disconnectFromStream = clientData.ownStreams.buffer[i];
+
+            bytes->used = 0;
+            MessageSerialize(&message, bytes, true);
+            socketSend(sockfd, bytes);
+            MessageFree(&message);
             break;
         }
-        while (!appDone) {
-            switch (poll(&inputfd, 1, 1000)) {
-                case -1:
-                    perror("poll");
-                    return;
-                case 0:
-                    continue;
-                default:
-                    goto readInput;
-            }
-        }
+    });
+}
 
-    readInput:
-        if ((inputfd.revents & POLLIN) == 0) {
-            continue;
+void
+selectStreamToStart(struct pollfd inputfd, const int sockfd, pBytes bytes)
+{
+    while (!appDone) {
+        askQuestion("Select the type of stream to create");
+        for (uint32_t i = 0; i < StreamType_Length; ++i) {
+            printf("%u) %s\n", i + 1U, StreamTypeToCharString(i));
         }
+        puts("");
 
-        const ssize_t size = read(STDIN_FILENO, bytes->buffer, bytes->size);
-        if (size <= 0) {
-            continue;
-        }
-        bytes->buffer[size] = '\0';
-        char* end = NULL;
-        const uint32_t index =
-          (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
-        if (end != (char*)&bytes->buffer[size] || index >= streamNum) {
-            printf("Enter a number between 1 and %u\n", streamNum);
+        uint32_t index;
+        if (!userIndexFromUser(inputfd, bytes, StreamType_Length, &index)) {
             continue;
         }
 
         Message message = { 0 };
-        message.tag = MessageTag_disconnectFromStream;
-        IN_MUTEX(clientData.mutex, end1, {
-            message.disconnectFromStream = clientData.ownStreams.buffer[index];
-        });
+        message.tag = MessageTag_startStreaming;
+        message.startStreaming.type = (StreamType)index;
+
+        askQuestion("What's the name of the stream?");
+        if (!getUserInput(inputfd, bytes, NULL)) {
+            continue;
+        }
+        puts("");
+
+        message.startStreaming.name =
+          TemLangStringCreate((char*)bytes->buffer, currentAllocator);
+
+        askQuestion(
+          "Do want the stream to be recorded on the server (y or n)?");
+        while (!appDone) {
+            if (!getUserInput(inputfd, bytes, NULL)) {
+                goto write_Y_N_error;
+            }
+            switch ((char)bytes->buffer[0]) {
+                case 'y':
+                    message.startStreaming.record = true;
+                    break;
+                case 'n':
+                    message.startStreaming.record = false;
+                    break;
+                default:
+                    goto write_Y_N_error;
+            }
+            break;
+        write_Y_N_error:
+            puts("Enter y or n");
+        }
+        puts("");
+
+        // TODO: Allow readers and writers to be set
+
         bytes->used = 0;
         MessageSerialize(&message, bytes, true);
-        if (send(sockfd, bytes->buffer, bytes->used, 0) !=
-            (ssize_t)bytes->used) {
-            perror("send");
-        }
         MessageFree(&message);
+        socketSend(sockfd, bytes);
         break;
     }
+}
+
+void
+selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
+{
+    IN_MUTEX(clientData.mutex, end0, {
+        while (!appDone) {
+            const Stream* stream = NULL;
+            const uint32_t streamNum = clientData.connectedStreams.used;
+            uint32_t streamsFound = 0;
+            askQuestion("Select a stream to stop");
+            for (uint32_t i = 0; i < streamNum; ++i) {
+                const Guid guid = clientData.connectedStreams.buffer[i];
+                if (GetStreamFromGuid(
+                      &clientData.allStreams, &guid, &stream, NULL)) {
+                    printf("%u) %s\n", i + 1U, stream->name.buffer);
+                    ++streamsFound;
+                }
+            }
+            puts("");
+
+            if (streamNum == 0 || streamsFound == 0) {
+                puts("No streams stop");
+                break;
+            }
+
+            uint32_t index;
+            if (!userIndexFromUser(inputfd, bytes, streamNum, &index)) {
+                continue;
+            }
+
+            Message message = { 0 };
+            message.tag = MessageTag_stopStreaming;
+            message.stopStreaming = clientData.connectedStreams.buffer[index];
+
+            bytes->used = 0;
+            MessageSerialize(&message, bytes, true);
+            MessageFree(&message);
+
+            socketSend(sockfd, bytes);
+            break;
+        }
+    });
 }
 
 int
@@ -255,68 +374,56 @@ handleUserInput(const int* sockfdPtr)
                     .used = 0 };
     Message message = { 0 };
     while (!appDone) {
-        puts("Choose an option");
-        for (size_t i = 0; i < MainMenu_Length; ++i) {
-            TemLangString s = MainMenuToString(i);
+        askQuestion("Choose an option");
+        for (size_t i = 0; i < ClientCommand_Length; ++i) {
+            TemLangString s = ClientCommandToString(i);
             camelCaseToNormal(&s);
             printf("%zu) %s\n", i + 1UL, s.buffer);
             TemLangStringFree(&s);
         }
-        while (!appDone) {
-            switch (poll(&inputfd, 1, 1000)) {
-                case -1:
-                    perror("poll");
-                    return EXIT_FAILURE;
-                case 0:
-                    continue;
-                default:
-                    goto readInput;
-            }
-        }
+        puts("");
 
-    readInput:
-        if ((inputfd.revents & POLLIN) == 0) {
-            continue;
-        }
-
-        const ssize_t size = read(STDIN_FILENO, bytes.buffer, bytes.size);
-        if (size <= 0) {
-            continue;
-        }
-        bytes.buffer[size] = '\0';
-        char* end = NULL;
-        const uint32_t index =
-          (uint32_t)strtoul((const char*)bytes.buffer, &end, 10) - 1UL;
-        if (end != (char*)&bytes.buffer[size - 1] || index >= MainMenu_Length) {
-            printf("Enter a number between 1 and %d\n", MainMenu_Length);
+        uint32_t index;
+        if (!userIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
             continue;
         }
 
         MessageFree(&message);
         switch (index) {
-            case MainMenu_ConnectToStream: {
+            case ClientCommand_PrintName:
+                IN_MUTEX(clientData.mutex, printName, {
+                    printf("Client name: %s\n", clientData.name.buffer);
+                });
+                continue;
+            case ClientCommand_GetClients:
+                message.tag = MessageTag_getClients;
+                message.getClients = NULL;
+                break;
+            case ClientCommand_Quit:
+                appDone = true;
+                continue;
+            case ClientCommand_ConnectToStream:
                 message.tag = MessageTag_getAllStreams;
                 message.getAllStreams = NULL;
-            } break;
-            case MainMenu_DisconnectFromStream: {
+                break;
+            case ClientCommand_DisconnectFromStream:
                 message.tag = MessageTag_getConnectedStreams;
-                message.getAllStreams = NULL;
-            } break;
-            case MainMenu_StartStreaming: {
-                fprintf(stderr, "Streaming not implemented\n");
+                message.getConnectedStreams = NULL;
+                break;
+            case ClientCommand_StartStreaming: {
+                selectStreamToStart(inputfd, sockfd, &bytes);
                 continue;
             } break;
-            case MainMenu_StopStreaming: {
-                fprintf(stderr, "Streaming not implemented\n");
-                continue;
-            } break;
+            case ClientCommand_StopStreaming:
+                message.tag = MessageTag_getClientStreams;
+                message.getClientStreams = NULL;
+                break;
             default:
                 continue;
         }
         bytes.used = 0;
         MessageSerialize(&message, &bytes, true);
-        if (send(sockfd, bytes.buffer, bytes.used, 0) != (ssize_t)bytes.used) {
-            perror("send");
+        if (!socketSend(sockfd, &bytes)) {
             continue;
         }
 
@@ -334,11 +441,25 @@ handleUserInput(const int* sockfdPtr)
         });
 
         switch (index) {
-            case MainMenu_ConnectToStream:
+            case ClientCommand_GetClients:
+                IN_MUTEX(clientData.mutex, endClients, {
+                    askQuestion("Clients");
+                    for (size_t i = 0; i < clientData.otherClients.used; ++i) {
+                        printf("%zu) %s\n",
+                               i + 1,
+                               clientData.otherClients.buffer[i].buffer);
+                    }
+                    puts("");
+                });
+                break;
+            case ClientCommand_ConnectToStream:
                 selectAStreamToConnectTo(inputfd, sockfd, &bytes);
                 break;
-            case MainMenu_DisconnectFromStream:
+            case ClientCommand_DisconnectFromStream:
                 selectAStreamToDisconnectFrom(inputfd, sockfd, &bytes);
+                break;
+            case ClientCommand_StopStreaming:
+                selectStreamToStop(inputfd, sockfd, &bytes);
                 break;
             default:
                 continue;
@@ -373,7 +494,19 @@ readSocket(const int sockfd, pBytes bytes)
                 clientData.id = message.authenticateAck.id;
                 doSignal = true;
                 break;
+            case MessageTag_getClientsAck:
+                TemLangStringListCopy(&clientData.otherClients,
+                                      &message.getClientsAck,
+                                      currentAllocator);
+                doSignal = true;
+                break;
             case MessageTag_getConnectedStreamsAck:
+                GuidListCopy(&clientData.connectedStreams,
+                             &message.getConnectedStreamsAck,
+                             currentAllocator);
+                doSignal = true;
+                break;
+            case MessageTag_getClientStreamsAck:
                 GuidListCopy(&clientData.ownStreams,
                              &message.getClientStreamsAck,
                              currentAllocator);
@@ -384,6 +517,48 @@ readSocket(const int sockfd, pBytes bytes)
                                &message.getAllStreamsAck,
                                currentAllocator);
                 doSignal = true;
+                break;
+            case MessageTag_startStreamingAck:
+                switch (message.startStreamingAck.tag) {
+                    case OptionalGuidTag_none:
+                        puts("Server failed to create stream");
+                        break;
+                    default:
+                        message.tag = MessageTag_getClientStreams;
+                        message.getClientStreams = NULL;
+                        bytes->used = 0;
+                        MessageSerialize(&message, bytes, true);
+                        socketSend(sockfd, bytes);
+                        break;
+                }
+                break;
+            case MessageTag_stopStreamingAck:
+                switch (message.stopStreamingAck.tag) {
+                    case OptionalGuidTag_none:
+                        puts("Server failed to create stream");
+                        break;
+                    default:
+                        message.tag = MessageTag_getClientStreams;
+                        message.getClientStreams = NULL;
+                        bytes->used = 0;
+                        MessageSerialize(&message, bytes, true);
+                        socketSend(sockfd, bytes);
+                        break;
+                }
+                break;
+            case MessageTag_connectToStreamAck:
+                if (message.connectToStreamAck) {
+                    puts("Connected to stream");
+                } else {
+                    puts("Failed to connect to stream");
+                }
+                break;
+            case MessageTag_disconnectFromStreamAck:
+                if (message.disconnectFromStreamAck) {
+                    puts("Disconnected from stream");
+                } else {
+                    puts("Failed to disconnect from stream");
+                }
                 break;
             default:
                 printf("Unexpected message: %s\n",
@@ -427,9 +602,7 @@ runClient(const AllConfiguration* configuration)
         message.authenticate = config->authentication;
         bytes.used = 0;
         MessageSerialize(&message, &bytes, true);
-        if (send(tcpListener, bytes.buffer, bytes.used, 0) !=
-            (ssize_t)bytes.used) {
-            perror("send");
+        if (!socketSend(tcpListener, &bytes)) {
             goto end;
         }
     }

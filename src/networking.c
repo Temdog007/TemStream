@@ -194,25 +194,6 @@ getAddrInfoString(const struct addrinfo* addr, char ipstr[64], int* port)
 }
 
 int
-sendTcp(const int fd,
-        const void* buf,
-        const size_t size,
-        const struct sockaddr_storage* addr)
-{
-    (void)addr;
-    return send(fd, buf, size, 0);
-}
-
-int
-sendUdp(const int fd,
-        const void* buf,
-        const size_t size,
-        const struct sockaddr_storage* addr)
-{
-    return sendto(fd, buf, size, 0, (struct sockaddr*)addr, sizeof(*addr));
-}
-
-int
 openSocketFromAddress(const Address* address, const SocketOptions options)
 {
     switch (address->tag) {
@@ -227,4 +208,20 @@ openSocketFromAddress(const Address* address, const SocketOptions options)
             break;
     }
     return INVALID_SOCKET;
+}
+
+bool
+clientSend(const Client* client, const Bytes* bytes)
+{
+    return socketSend(client->sockfd, bytes);
+}
+
+bool
+socketSend(const int sockfd, const Bytes* bytes)
+{
+    if (send(sockfd, bytes->buffer, bytes->used, 0) != (ssize_t)bytes->used) {
+        perror("send");
+        return false;
+    }
+    return true;
 }

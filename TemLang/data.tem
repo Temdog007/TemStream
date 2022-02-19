@@ -145,6 +145,8 @@ inlineFile "TemLang/clientUi.tem"
 resource ClientData {
     [0 Stream] allStreams
     [0 Guid] ownStreams
+    [0 Guid] connectedStreams
+    [0 string] otherClients
     string name
     Guid id
     null mutex

@@ -1,6 +1,10 @@
-enum MainMenu {
+enum ClientCommand {
+    PrintName
+    GetClients
     ConnectToStream
     DisconnectFromStream
     StartStreaming
+    SendStreamData
     StopStreaming
+    Quit
 }

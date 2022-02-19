@@ -132,17 +132,6 @@ printServerConfiguration(const ServerConfiguration* configuration)
     return printf("Max clients: %u\n", configuration->maxClients);
 }
 
-bool
-clientSend(const Client* client, const Bytes* bytes)
-{
-    if (send(client->sockfd, bytes->buffer, bytes->used, 0) !=
-        (ssize_t)bytes->used) {
-        perror("send");
-        return false;
-    }
-    return true;
-}
-
 int
 handleTcpConnection(pClient client)
 {
@@ -191,6 +180,7 @@ handleTcpConnection(pClient client)
             TemLangStringCopy(
               &message.authenticateAck.name, &client->name, currentAllocator);
             message.authenticateAck.id = client->id;
+            bytes.used = 0;
             MessageSerialize(&message, &bytes, true);
             clientSend(client, &bytes);
         } else {
@@ -291,6 +281,10 @@ handleTcpConnection(pClient client)
                     Stream newStream = message.startStreaming;
                     newStream.owner = client->id;
                     newStream.id = randomGuid(&rs);
+                    printf("Client '%s' started a '%s' stream named '%s'\n",
+                           buffer,
+                           StreamTypeToCharString(newStream.type),
+                           newStream.name.buffer);
                     IN_MUTEX(serverData.mutex, ss2, {
                         StreamListAppend(&serverData.streams, &newStream);
                     })
@@ -355,6 +349,23 @@ handleTcpConnection(pClient client)
                       client->connectedStreams;
                     bytes.used = 0;
                     MessageSerialize(&newMessage, &bytes, 0);
+                });
+
+                clientSend(client, &bytes);
+            } break;
+            case MessageTag_getClientStreams: {
+                IN_MUTEX(serverData.mutex, gcs2, {
+                    message.tag = MessageTag_getClientStreamsAck;
+                    message.getClientStreamsAck.allocator = currentAllocator;
+                    for (size_t i = 0; i < serverData.streams.used; ++i) {
+                        const Stream* stream = &serverData.streams.buffer[i];
+                        if (GuidEquals(&stream->owner, &client->id)) {
+                            GuidListAppend(&message.getClientStreamsAck,
+                                           &stream->id);
+                        }
+                    }
+                    bytes.used = 0;
+                    MessageSerialize(&message, &bytes, 0);
                 });
 
                 clientSend(client, &bytes);

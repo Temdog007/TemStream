@@ -97,11 +97,11 @@ openUnixSocket(const char* filename, SocketOptions);
 extern int
 openSocketFromAddress(const Address*, SocketOptions);
 
-extern int
-sendTcp(const int, const void*, const size_t, const struct sockaddr_storage*);
+bool
+clientSend(const Client*, const Bytes*);
 
-extern int
-sendUdp(const int, const void*, const size_t, const struct sockaddr_storage*);
+bool
+socketSend(const int, const Bytes*);
 
 // Defaults
 
