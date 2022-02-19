@@ -104,21 +104,54 @@ variant OptionalGuid {
     null none
 }
 
+variant OptionalStream {
+    Stream stream
+    null none
+}
+
+struct ClientInfo {
+    string name
+    Guid id
+}
+
 variant Message {
-    [0 Stream] currentStreams
-    [0 string] currentClients
     StreamMessage streamMessage
     ClientAuthentication authenticate
-    string connectToStream
+    ClientInfo authenticateAck
+    Guid connectToStream
     bool connectToStreamAck
-    string disconnectFromStream
+    Guid disconnectFromStream
     bool disconnectFromStreamAck
     Stream startStreaming
     OptionalGuid startStreamingAck
     Guid stopStreaming
-    bool stopStreamingAck
-    null getStreams
+    OptionalGuid stopStreamingAck
+    null getAllStreams
+    [0 Stream] getAllStreamsAck
+    null getConnectedStreams
+    [0 Guid] getConnectedStreamsAck
+    null getClientStreams
+    [0 Guid] getClientStreamsAck
+    Guid getStream
+    OptionalStream getStreamAck
     null getClients
+    [0 string] getClientsAck
 }
 
 inlineC "MAKE_DEFAULT_LIST(Message);"
+
+inlineFile "TemLang/clientUi.tem"
+
+resource ClientData {
+    [0 Stream] allStreams
+    [0 Guid] ownStreams
+    string name
+    Guid id
+    null mutex
+    null cond
+} cd {
+    inlineC "
+        SDL_DestroyCond(cd.cond);
+        SDL_DestroyMutex(cd.mutex);
+    "
+}

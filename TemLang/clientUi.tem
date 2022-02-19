@@ -1,0 +1,6 @@
+enum MainMenu {
+    ConnectToStream
+    DisconnectFromStream
+    StartStreaming
+    StopStreaming
+}

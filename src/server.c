@@ -1,5 +1,8 @@
 #include <include/main.h>
 
+bool
+clientSend(const Client* client, const Bytes* bytes);
+
 typedef struct ServerData
 {
     StreamList streams;
@@ -81,10 +84,7 @@ copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
                     perror("sendto");
                 }
             } else {
-                if (send(client->sockfd, bytes->buffer, bytes->used, 0) !=
-                    (ssize_t)bytes->used) {
-                    perror("send");
-                }
+                clientSend(client, bytes);
             }
         }
     })
@@ -132,6 +132,17 @@ printServerConfiguration(const ServerConfiguration* configuration)
     return printf("Max clients: %u\n", configuration->maxClients);
 }
 
+bool
+clientSend(const Client* client, const Bytes* bytes)
+{
+    if (send(client->sockfd, bytes->buffer, bytes->used, 0) !=
+        (ssize_t)bytes->used) {
+        perror("send");
+        return false;
+    }
+    return true;
+}
+
 int
 handleTcpConnection(pClient client)
 {
@@ -174,7 +185,15 @@ handleTcpConnection(pClient client)
     bytes.used = (uint32_t)size;
     MessageDeserialize(&message, &bytes, 0, true);
     if (message.tag == MessageTag_authenticate) {
-        if (!authenticateClient(client, &message.authenticate, &rs)) {
+        if (authenticateClient(client, &message.authenticate, &rs)) {
+            MessageFree(&message);
+            message.tag = MessageTag_authenticateAck;
+            TemLangStringCopy(
+              &message.authenticateAck.name, &client->name, currentAllocator);
+            message.authenticateAck.id = client->id;
+            MessageSerialize(&message, &bytes, true);
+            clientSend(client, &bytes);
+        } else {
             printf("Client '%s' failed authentication\n", buffer);
             goto end;
         }
@@ -215,7 +234,7 @@ handleTcpConnection(pClient client)
                 bool success;
                 IN_MUTEX(serverData.mutex, cts, {
                     const Stream* stream = NULL;
-                    success = GetStreamFromName(&serverData.streams,
+                    success = GetStreamFromGuid(&serverData.streams,
                                                 &message.connectToStream,
                                                 &stream,
                                                 NULL);
@@ -235,16 +254,13 @@ handleTcpConnection(pClient client)
                 message.connectToStreamAck = success;
                 bytes.used = 0;
                 MessageSerialize(&message, &bytes, true);
-                if (send(pfds.fd, bytes.buffer, bytes.used, 0) !=
-                    (ssize_t)bytes.used) {
-                    perror("send");
-                }
+                clientSend(client, &bytes);
             } break;
             case MessageTag_disconnectFromStream: {
                 bool success;
                 IN_MUTEX(serverData.mutex, dfs, {
                     const Stream* stream = NULL;
-                    success = GetStreamFromName(&serverData.streams,
+                    success = GetStreamFromGuid(&serverData.streams,
                                                 &message.disconnectFromStream,
                                                 &stream,
                                                 NULL);
@@ -260,10 +276,7 @@ handleTcpConnection(pClient client)
                 message.disconnectFromStreamAck = success;
                 bytes.used = 0;
                 MessageSerialize(&message, &bytes, true);
-                if (send(pfds.fd, bytes.buffer, bytes.used, 0) !=
-                    (ssize_t)bytes.used) {
-                    perror("send");
-                }
+                clientSend(client, &bytes);
             } break;
             case MessageTag_startStreaming: {
                 const Stream* stream = NULL;
@@ -299,55 +312,81 @@ handleTcpConnection(pClient client)
 
                 bytes.used = 0;
                 MessageSerialize(&message, &bytes, 0);
-                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
-                    (ssize_t)bytes.used) {
-                    perror("send");
-                }
+                clientSend(client, &bytes);
             } break;
             case MessageTag_stopStreaming: {
-                const Stream* stream = NULL;
                 IN_MUTEX(serverData.mutex, stop1, {
+                    const Stream* stream = NULL;
                     size_t i = 0;
                     GetStreamFromGuid(
                       &serverData.streams, &message.stopStreaming, &stream, &i);
+                    MessageFree(&message);
+                    message.tag = MessageTag_stopStreamingAck;
+                    message.stopStreamingAck.tag = OptionalGuidTag_none;
+                    message.stopStreamingAck.none = NULL;
                     if (stream != NULL &&
                         GuidEquals(&stream->owner, &client->id)) {
                         StreamListSwapRemove(&serverData.streams, i);
+                        message.stopStreamingAck.tag = OptionalGuidTag_guid;
+                        message.stopStreamingAck.guid = stream->id;
                     }
+                    bytes.used = 0;
+                    MessageSerialize(&message, &bytes, 0);
                 });
 
-                MessageFree(&message);
-                message.tag = MessageTag_stopStreamingAck;
-                message.stopStreamingAck = stream != NULL;
-                bytes.used = 0;
-                MessageSerialize(&message, &bytes, 0);
-                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
-                    (ssize_t)bytes.used) {
-                    perror("send");
-                }
+                clientSend(client, &bytes);
             } break;
-            case MessageTag_getStreams: {
-                IN_MUTEX(serverData.mutex, get1, {
+            case MessageTag_getAllStreams: {
+                IN_MUTEX(serverData.mutex, gas, {
                     Message newMessage = { 0 };
-                    newMessage.tag = MessageTag_currentStreams;
-                    newMessage.currentStreams = serverData.streams;
+                    newMessage.tag = MessageTag_getAllStreamsAck;
+                    newMessage.getAllStreamsAck = serverData.streams;
                     bytes.used = 0;
                     MessageSerialize(&newMessage, &bytes, 0);
                 });
 
-                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
-                    (ssize_t)bytes.used) {
-                    perror("send");
-                    goto end;
-                }
+                clientSend(client, &bytes);
+            } break;
+            case MessageTag_getConnectedStreams: {
+                IN_MUTEX(serverData.mutex, gcs, {
+                    Message newMessage = { 0 };
+                    newMessage.tag = MessageTag_getConnectedStreamsAck;
+                    newMessage.getConnectedStreamsAck =
+                      client->connectedStreams;
+                    bytes.used = 0;
+                    MessageSerialize(&newMessage, &bytes, 0);
+                });
+
+                clientSend(client, &bytes);
+            } break;
+            case MessageTag_getStream: {
+                IN_MUTEX(serverData.mutex, gs, {
+                    const Stream* stream = NULL;
+                    GetStreamFromGuid(
+                      &serverData.streams, &message.getStream, &stream, NULL);
+                    Message newMessage = { 0 };
+                    newMessage.tag = MessageTag_getStreamAck;
+                    if (stream == NULL) {
+                        newMessage.getStreamAck.tag = OptionalStreamTag_none;
+                        newMessage.getStreamAck.none = NULL;
+                    } else {
+                        newMessage.getStreamAck.tag = OptionalStreamTag_stream;
+                        newMessage.getStreamAck.stream = *stream;
+                    }
+
+                    bytes.used = 0;
+                    MessageSerialize(&newMessage, &bytes, 0);
+                });
+
+                clientSend(client, &bytes);
             } break;
             case MessageTag_getClients: {
                 IN_MUTEX(serverData.mutex, get2, {
-                    message.tag = MessageTag_currentClients;
-                    message.currentClients.allocator = currentAllocator;
+                    message.tag = MessageTag_getClientsAck;
+                    message.getClientsAck.allocator = currentAllocator;
                     for (size_t i = 0; i < serverData.clients.used; ++i) {
                         const pClient* client = &serverData.clients.buffer[i];
-                        TemLangStringListAppend(&message.currentClients,
+                        TemLangStringListAppend(&message.getClientsAck,
                                                 &(*client)->name);
                     }
                     bytes.used = 0;
@@ -355,11 +394,7 @@ handleTcpConnection(pClient client)
                     MessageFree(&message);
                 });
 
-                if (send(client->sockfd, bytes.buffer, bytes.used, 0) !=
-                    (ssize_t)bytes.used) {
-                    perror("send");
-                    goto end;
-                }
+                clientSend(client, &bytes);
             } break;
             default:
                 printf("Got invalid message '%s' from client '%s'\n",
@@ -399,7 +434,6 @@ runTcpServer(const AllConfiguration* configuration)
 
     struct sockaddr_storage addr = { 0 };
     socklen_t socklen = sizeof(addr);
-    puts("Opened TCP port");
 #if _DEBUG
     printf("Tcp port: %d\n", listener);
 #endif
@@ -494,7 +528,6 @@ runUdpServer(const AllConfiguration* configuration)
 
     struct sockaddr_storage addr = { 0 };
     socklen_t socklen = sizeof(addr);
-    puts("Opened UDP port");
 #if _DEBUG
     printf("Udp port: %d\n", serverData.udpSocket);
 #endif
@@ -598,6 +631,8 @@ runServer(const AllConfiguration* configuration)
         fprintf(stderr, "Failed to start timer: %s\n", SDL_GetError());
         goto end;
     }
+
+    appDone = false;
 
     SDL_Thread* threads[] = {
         SDL_CreateThread(

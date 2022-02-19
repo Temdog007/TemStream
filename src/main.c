@@ -5,7 +5,7 @@
 #include "server.c"
 
 const Allocator* currentAllocator = NULL;
-bool appDone = false;
+bool appDone = true;
 
 int
 main(const int argc, const char** argv)
