@@ -281,10 +281,12 @@ handleTcpConnection(pClient client)
                     Stream newStream = message.startStreaming;
                     newStream.owner = client->id;
                     newStream.id = randomGuid(&rs);
-                    printf("Client '%s' started a '%s' stream named '%s'\n",
+                    printf("Client '%s' started a '%s' stream named '%s' "
+                           "(record=%d)\n",
                            buffer,
                            StreamTypeToCharString(newStream.type),
-                           newStream.name.buffer);
+                           newStream.name.buffer,
+                           newStream.record);
                     IN_MUTEX(serverData.mutex, ss2, {
                         StreamListAppend(&serverData.streams, &newStream);
                     })
