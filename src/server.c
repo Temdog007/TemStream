@@ -6,6 +6,7 @@ typedef struct ServerData
     pClientList clients;
     SDL_mutex* mutex;
     int32_t udpSocket;
+    StreamStorageList storage;
 } ServerData, *pServerData;
 
 ServerData serverData = { 0 };
@@ -16,6 +17,7 @@ ServerDataFree(pServerData data)
     SDL_DestroyMutex(data->mutex);
     pClientListFree(&data->clients);
     StreamListFree(&data->streams);
+    StreamStorageListFree(&data->storage);
 }
 
 // Assigns client a name also
@@ -60,9 +62,50 @@ copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
                               NULL,
                               NULL)) {
 #if _DEBUG
-            printf("Got stream message that doesn't belong to a stream\n");
+            puts("Got stream message that doesn't belong to a stream");
 #endif
             goto endMutex;
+        }
+        {
+            pStreamStorage storage = NULL;
+            size_t sIndex = 0;
+            if (StreamStorageListFindIf(
+                  &serverData.storage, NULL, &message->id, NULL, &sIndex)) {
+                storage = &serverData.storage.buffer[sIndex];
+            } else {
+                StreamStorage s = { 0 };
+                s.id = message->id;
+                switch (message->data.tag) {
+                    case StreamMessageDataTag_chatMessage:
+                        s.data.tag = StreamStorageDataTag_chatLogs;
+                        s.data.chatLogs.allocator = currentAllocator;
+                        break;
+                    case StreamMessageDataTag_text:
+                        s.data.tag = StreamStorageDataTag_text;
+                        s.data.text.allocator = currentAllocator;
+                        break;
+                    default:
+                        s.data.tag = StreamStorageDataTag_none;
+                        s.data.none = NULL;
+                        break;
+                }
+                StreamStorageListAppend(&serverData.storage, &s);
+                storage =
+                  &serverData.storage.buffer[serverData.storage.used - 1U];
+            }
+            switch (message->data.tag) {
+                case StreamMessageDataTag_chatMessage:
+                    TemLangStringListAppend(&storage->data.chatLogs,
+                                            &message->data.chatMessage);
+                    break;
+                case StreamMessageDataTag_text:
+                    TemLangStringCopy(&storage->data.text,
+                                      &message->data.text,
+                                      currentAllocator);
+                    break;
+                default:
+                    break;
+            }
         }
         for (size_t i = 0; i < serverData.clients.used; ++i) {
             const Client* client = serverData.clients.buffer[i];
@@ -232,13 +275,18 @@ handleTcpConnection(pClient client)
                 copyMessageToClients(&message.streamMessage, &bytes);
                 break;
             case MessageTag_connectToStream: {
-                bool success;
                 IN_MUTEX(serverData.mutex, cts, {
                     const Stream* stream = NULL;
-                    success = GetStreamFromGuid(&serverData.streams,
-                                                &message.connectToStream,
-                                                &stream,
-                                                NULL);
+                    const StreamStorage* storage = NULL;
+                    const bool success =
+                      GetStreamFromGuid(&serverData.streams,
+                                        &message.connectToStream,
+                                        &stream,
+                                        NULL) &&
+                      GetStreamStorageFromGuid(&serverData.storage,
+                                               &message.connectToStream,
+                                               &storage,
+                                               NULL);
                     if (success) {
                         if (!GuidListFind(&client->connectedStreams,
                                           &stream->id,
@@ -251,11 +299,22 @@ handleTcpConnection(pClient client)
                                    stream->name.buffer);
                         }
                     }
-                });
 
-                MessageFree(&message);
-                message.tag = MessageTag_connectToStreamAck;
-                message.connectToStreamAck = success;
+                    MessageFree(&message);
+                    message.tag = MessageTag_connectToStreamAck;
+                    if (success) {
+                        message.connectToStreamAck.tag =
+                          OptionalStreamStorageTag_streamStorage;
+                        StreamStorageCopy(
+                          &message.connectToStreamAck.streamStorage,
+                          storage,
+                          currentAllocator);
+                    } else {
+                        message.connectToStreamAck.none = NULL;
+                        message.connectToStreamAck.tag =
+                          OptionalStreamStorageTag_none;
+                    }
+                });
                 MESSAGE_SERIALIZE(message, bytes);
                 clientSend(client, &bytes);
             } break;
@@ -656,6 +715,7 @@ runServer(const AllConfiguration* configuration)
 
     serverData.streams.allocator = currentAllocator;
     serverData.clients.allocator = currentAllocator;
+    serverData.storage.allocator = currentAllocator;
     puts("Running server");
     printAllConfiguration(configuration);
 

@@ -79,6 +79,7 @@ variant StreamMessageData {
     null none
     string text
     string chatMessage
+    string chatLogs
 }
 
 struct StreamMessage {
@@ -87,6 +88,24 @@ struct StreamMessage {
 }
 
 inlineC "MAKE_DEFAULT_LIST(StreamMessage);"
+
+variant StreamStorageData {
+    null none
+    string text
+    [0 string] chatLogs
+}
+
+struct StreamStorage {
+    Guid id
+    StreamStorageData data
+}
+
+variant OptionalStreamStorage {
+    null none
+    StreamStorage streamStorage
+}
+
+inlineC "MAKE_DEFAULT_LIST(StreamStorage);"
 
 struct Stream {
     [ 0 string ] readers
@@ -128,7 +147,7 @@ variant Message {
     ClientAuthentication authenticate
     ClientInfo authenticateAck
     Guid connectToStream
-    bool connectToStreamAck
+    OptionalStreamStorage connectToStreamAck
     Guid disconnectFromStream
     bool disconnectFromStreamAck
     Stream startStreaming

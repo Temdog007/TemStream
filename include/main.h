@@ -57,6 +57,9 @@ extern bool
 StreamNameEquals(const Stream*, const TemLangString*);
 
 extern bool
+StreamStorageGuidEquals(const StreamStorage*, const Guid*);
+
+extern bool
 MessageUsesUdp(const StreamMessage*);
 
 #define VERSION_MAJOR 0
@@ -180,6 +183,18 @@ GetStreamFromName(const StreamList*,
 
 extern bool
 GetStreamFromGuid(const StreamList*, const Guid*, const Stream**, size_t*);
+
+extern bool
+GetStreamStorageFromName(const StreamStorageList*,
+                         const TemLangString*,
+                         const StreamStorage**,
+                         size_t*);
+
+extern bool
+GetStreamStorageFromGuid(const StreamStorageList*,
+                         const Guid*,
+                         const StreamStorage**,
+                         size_t*);
 
 // Misc
 

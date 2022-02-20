@@ -587,10 +587,17 @@ readSocket(const int sockfd, pBytes bytes)
                 }
                 break;
             case MessageTag_connectToStreamAck:
-                if (message.connectToStreamAck) {
-                    puts("Connected to stream");
-                } else {
-                    puts("Failed to connect to stream");
+                switch (message.connectToStreamAck.tag) {
+                    case OptionalStreamStorageTag_streamStorage:
+                        puts("Connected to stream");
+                        switch (
+                          message.connectToStreamAck.streamStorage.data.tag) {
+                            default:
+                                break;
+                        }
+                    default:
+                        puts("Failed to connect to stream");
+                        break;
                 }
                 break;
             case MessageTag_disconnectFromStreamAck:
