@@ -101,7 +101,7 @@ bool
 clientSend(const Client*, const Bytes*);
 
 bool
-socketSend(const int, const Bytes*);
+socketSend(const int, const Bytes*, bool);
 
 // Defaults
 
@@ -194,3 +194,12 @@ extern bool
 authenticateClient(pClient client,
                    const ClientAuthentication* cAuth,
                    pRandomState rs);
+
+#define MESSAGE_SERIALIZE(message, bytes)                                      \
+    bytes.used = 0;                                                            \
+    MessageSerialize(&message, &bytes, true)
+
+#define MESSAGE_DESERIALIZE(message, bytes)                                    \
+    MessageDeserialize(&message, &bytes, 0, true)
+
+#define POLL_WAIT 100

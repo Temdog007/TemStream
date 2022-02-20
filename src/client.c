@@ -2,6 +2,9 @@
 
 ClientData clientData = { 0 };
 
+bool
+refreshStreams(const int, pBytes);
+
 void
 askQuestion(const char* string)
 {
@@ -130,7 +133,7 @@ bool
 getUserInput(struct pollfd inputfd, pBytes bytes, ssize_t* output)
 {
     while (!appDone) {
-        switch (poll(&inputfd, 1, 1000)) {
+        switch (poll(&inputfd, 1, POLL_WAIT)) {
             case -1:
                 perror("poll");
                 return false;
@@ -177,6 +180,18 @@ userIndexFromUser(struct pollfd inputfd,
     return true;
 }
 
+bool
+refreshStreams(const int sockfd, pBytes bytes)
+{
+    puts("Requesting stream information from server...");
+    Message message = { 0 };
+
+    message.tag = MessageTag_getAllData;
+    message.getAllData = NULL;
+    MESSAGE_SERIALIZE(message, (*bytes));
+    return socketSend(sockfd, bytes, true);
+}
+
 void
 selectAStreamToConnectTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
 {
@@ -206,9 +221,8 @@ selectAStreamToConnectTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
             Message message = { 0 };
             message.tag = MessageTag_connectToStream;
             message.connectToStream = clientData.allStreams.buffer[i].id;
-            bytes->used = 0;
-            MessageSerialize(&message, bytes, true);
-            socketSend(sockfd, bytes);
+            MESSAGE_SERIALIZE(message, (*bytes));
+            socketSend(sockfd, bytes, true);
             MessageFree(&message);
             break;
         }
@@ -222,12 +236,12 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
 {
     IN_MUTEX(clientData.mutex, end0, {
         while (!appDone) {
-            const uint32_t streamNum = clientData.ownStreams.used;
+            const uint32_t streamNum = clientData.connectedStreams.used;
             askQuestion("Select a stream to disconnect from");
             const Stream* stream = NULL;
             uint32_t streamsFound = 0;
             for (uint32_t i = 0; i < streamNum; ++i) {
-                const Guid guid = clientData.ownStreams.buffer[i];
+                const Guid guid = clientData.connectedStreams.buffer[i];
                 if (GetStreamFromGuid(
                       &clientData.allStreams, &guid, &stream, NULL)) {
                     printf("%u) %s\n", i + 1U, stream->name.buffer);
@@ -247,11 +261,11 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
 
             Message message = { 0 };
             message.tag = MessageTag_disconnectFromStream;
-            message.disconnectFromStream = clientData.ownStreams.buffer[i];
+            message.disconnectFromStream =
+              clientData.connectedStreams.buffer[i];
 
-            bytes->used = 0;
-            MessageSerialize(&message, bytes, true);
-            socketSend(sockfd, bytes);
+            MESSAGE_SERIALIZE(message, (*bytes));
+            socketSend(sockfd, bytes, true);
             MessageFree(&message);
             break;
         }
@@ -310,10 +324,9 @@ selectStreamToStart(struct pollfd inputfd, const int sockfd, pBytes bytes)
 
         // TODO: Allow readers and writers to be set
 
-        bytes->used = 0;
-        MessageSerialize(&message, bytes, true);
+        MESSAGE_SERIALIZE(message, (*bytes));
         MessageFree(&message);
-        socketSend(sockfd, bytes);
+        socketSend(sockfd, bytes, true);
         break;
     }
 }
@@ -324,11 +337,11 @@ selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
     IN_MUTEX(clientData.mutex, end0, {
         while (!appDone) {
             const Stream* stream = NULL;
-            const uint32_t streamNum = clientData.connectedStreams.used;
+            const uint32_t streamNum = clientData.ownStreams.used;
             uint32_t streamsFound = 0;
             askQuestion("Select a stream to stop");
             for (uint32_t i = 0; i < streamNum; ++i) {
-                const Guid guid = clientData.connectedStreams.buffer[i];
+                const Guid guid = clientData.ownStreams.buffer[i];
                 if (GetStreamFromGuid(
                       &clientData.allStreams, &guid, &stream, NULL)) {
                     printf("%u) %s\n", i + 1U, stream->name.buffer);
@@ -349,13 +362,12 @@ selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
 
             Message message = { 0 };
             message.tag = MessageTag_stopStreaming;
-            message.stopStreaming = clientData.connectedStreams.buffer[index];
+            message.stopStreaming = clientData.ownStreams.buffer[index];
 
-            bytes->used = 0;
-            MessageSerialize(&message, bytes, true);
+            MESSAGE_SERIALIZE(message, (*bytes));
             MessageFree(&message);
 
-            socketSend(sockfd, bytes);
+            socketSend(sockfd, bytes, true);
             break;
         }
     });
@@ -396,49 +408,63 @@ handleUserInput(const int* sockfdPtr)
                 });
                 continue;
             case ClientCommand_GetClients:
-                message.tag = MessageTag_getClients;
-                message.getClients = NULL;
+                MESSAGE_SERIALIZE(message, bytes);
+                if (!socketSend(sockfd, &bytes, true)) {
+                    continue;
+                }
                 break;
             case ClientCommand_Quit:
                 appDone = true;
                 continue;
             case ClientCommand_ConnectToStream:
-                message.tag = MessageTag_getAllStreams;
-                message.getAllStreams = NULL;
+                if (!refreshStreams(sockfd, &bytes)) {
+                    appDone = true;
+                    continue;
+                }
                 break;
             case ClientCommand_DisconnectFromStream:
-                message.tag = MessageTag_getConnectedStreams;
-                message.getConnectedStreams = NULL;
+                if (!refreshStreams(sockfd, &bytes)) {
+                    continue;
+                }
                 break;
             case ClientCommand_StartStreaming: {
                 selectStreamToStart(inputfd, sockfd, &bytes);
                 continue;
             } break;
             case ClientCommand_StopStreaming:
-                message.tag = MessageTag_getClientStreams;
-                message.getClientStreams = NULL;
+                if (!refreshStreams(sockfd, &bytes)) {
+                    continue;
+                }
                 break;
             default:
+                fprintf(stderr,
+                        "Command '%s' is not implemented\n",
+                        ClientCommandToCharString(index));
                 continue;
         }
-        bytes.used = 0;
-        MessageSerialize(&message, &bytes, true);
-        if (!socketSend(sockfd, &bytes)) {
-            continue;
-        }
 
+        puts("Waiting for stream information from server...");
+        bool gotData = false;
         IN_MUTEX(clientData.mutex, end, {
             while (!appDone) {
                 const int result =
-                  SDL_CondWaitTimeout(clientData.cond, clientData.mutex, 1000U);
+                  SDL_CondWaitTimeout(clientData.cond, clientData.mutex, 5000U);
                 if (result < 0) {
                     fprintf(stderr, "Cond error: %s\n", SDL_GetError());
                     break;
                 } else if (result == 0) {
+                    gotData = true;
+                    break;
+                } else {
+                    puts("Failed to get information from server");
                     break;
                 }
             }
         });
+        if (!gotData) {
+            continue;
+        }
+        puts("Got stream information from server");
 
         switch (index) {
             case ClientCommand_GetClients:
@@ -481,7 +507,7 @@ readSocket(const int sockfd, pBytes bytes)
 
     bytes->used = (uint32_t)size;
     Message message = { 0 };
-    MessageDeserialize(&message, bytes, 0, true);
+    MESSAGE_DESERIALIZE(message, (*bytes));
     IN_MUTEX(clientData.mutex, end, {
         bool doSignal = false;
         switch (message.tag) {
@@ -492,57 +518,71 @@ readSocket(const int sockfd, pBytes bytes)
                                   &message.authenticateAck.name,
                                   currentAllocator);
                 clientData.id = message.authenticateAck.id;
+                break;
+            case MessageTag_getAllDataAck:
+                GuidListCopy(&clientData.connectedStreams,
+                             &message.getAllDataAck.connectedStreams,
+                             currentAllocator);
+                GuidListCopy(&clientData.ownStreams,
+                             &message.getAllDataAck.clientStreams,
+                             currentAllocator);
+                StreamListCopy(&clientData.allStreams,
+                               &message.getAllDataAck.allStreams,
+                               currentAllocator);
                 doSignal = true;
+                puts("Updated server data");
                 break;
             case MessageTag_getClientsAck:
                 TemLangStringListCopy(&clientData.otherClients,
                                       &message.getClientsAck,
                                       currentAllocator);
                 doSignal = true;
+                puts("Updated client list");
                 break;
             case MessageTag_getConnectedStreamsAck:
                 GuidListCopy(&clientData.connectedStreams,
                              &message.getConnectedStreamsAck,
                              currentAllocator);
                 doSignal = true;
+                puts("Updated connected streams");
                 break;
             case MessageTag_getClientStreamsAck:
                 GuidListCopy(&clientData.ownStreams,
                              &message.getClientStreamsAck,
                              currentAllocator);
                 doSignal = true;
+                puts("Updated client's streams");
                 break;
             case MessageTag_getAllStreamsAck:
                 StreamListCopy(&clientData.allStreams,
                                &message.getAllStreamsAck,
                                currentAllocator);
                 doSignal = true;
+                puts("Updated stream list");
                 break;
             case MessageTag_startStreamingAck:
                 switch (message.startStreamingAck.tag) {
                     case OptionalGuidTag_none:
-                        puts("Server failed to create stream");
+                        puts("Server failed to start stream");
                         break;
                     default:
                         message.tag = MessageTag_getClientStreams;
                         message.getClientStreams = NULL;
-                        bytes->used = 0;
-                        MessageSerialize(&message, bytes, true);
-                        socketSend(sockfd, bytes);
+                        MESSAGE_SERIALIZE(message, (*bytes));
+                        socketSend(sockfd, bytes, true);
                         break;
                 }
                 break;
             case MessageTag_stopStreamingAck:
                 switch (message.stopStreamingAck.tag) {
                     case OptionalGuidTag_none:
-                        puts("Server failed to create stream");
+                        puts("Server failed to stop stream");
                         break;
                     default:
                         message.tag = MessageTag_getClientStreams;
                         message.getClientStreams = NULL;
-                        bytes->used = 0;
-                        MessageSerialize(&message, bytes, true);
-                        socketSend(sockfd, bytes);
+                        MESSAGE_SERIALIZE(message, (*bytes));
+                        socketSend(sockfd, bytes, true);
                         break;
                 }
                 break;
@@ -573,6 +613,104 @@ readSocket(const int sockfd, pBytes bytes)
 }
 
 int
+readFromServer(struct AllConfiguration* configuration)
+{
+    puts("Connecting to server...");
+
+    int result = EXIT_FAILURE;
+    SDL_Thread* thread = NULL;
+    const ClientConfiguration* config = &configuration->configuration.client;
+    Bytes bytes = { .allocator = currentAllocator,
+                    .size = MAX_PACKET_SIZE,
+                    .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
+                    .used = 0 };
+    const int tcpListener =
+      openSocketFromAddress(&configuration->address, SocketOptions_Tcp);
+    const int udpListener = openSocketFromAddress(&configuration->address, 0);
+    if (tcpListener == INVALID_SOCKET || udpListener == INVALID_SOCKET) {
+        goto end;
+    }
+
+    struct pollfd pfdsList[] = { { .events = POLLIN | POLLERR | POLLHUP,
+                                   .revents = 0,
+                                   .fd = tcpListener },
+                                 { .events = POLLIN | POLLERR | POLLHUP,
+                                   .revents = 0,
+                                   .fd = udpListener } };
+    const size_t len = sizeof(pfdsList) / sizeof(struct pollfd);
+
+    {
+        Message message = { 0 };
+        message.tag = MessageTag_authenticate;
+        message.authenticate = config->authentication;
+        MESSAGE_SERIALIZE(message, bytes);
+        if (!socketSend(tcpListener, &bytes, true)) {
+            goto end;
+        }
+        puts("Waiting for server authorization...");
+        switch (poll(pfdsList, 1, 5000U)) {
+            case -1:
+                perror("poll");
+                appDone = true;
+                goto end;
+            case 0:
+                puts("Server failed to authorize!");
+                appDone = true;
+                goto end;
+            default:
+                puts("Server has authorized");
+                break;
+        }
+    }
+
+    thread = SDL_CreateThread(
+      (SDL_ThreadFunction)handleUserInput, "Input", (void*)&tcpListener);
+    if (thread == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    while (!appDone) {
+        switch (poll(pfdsList, len, POLL_WAIT)) {
+            case -1:
+                perror("poll");
+                appDone = true;
+                continue;
+            case 0:
+                break;
+            default:
+                for (size_t i = 0; i < len; ++i) {
+                    struct pollfd pfds = pfdsList[i];
+                    if ((pfds.revents & (POLLERR | POLLHUP)) != 0) {
+                        puts("Connection to server lost!");
+                        IN_MUTEX(clientData.mutex, dfsa, {
+                            SDL_CondSignal(clientData.cond);
+                        });
+                        appDone = true;
+                        break;
+                    }
+                    if ((pfds.revents & POLLIN) != 0) {
+                        readSocket(pfds.fd, &bytes);
+                    }
+                }
+                break;
+        }
+    }
+    result = EXIT_SUCCESS;
+
+end:
+    appDone = true;
+    puts("Closing server connection...");
+    IN_MUTEX(clientData.mutex, dfsa2, { SDL_CondSignal(clientData.cond); });
+    SDL_WaitThread(thread, &result);
+    uint8_tListFree(&bytes);
+    closeSocket(udpListener);
+    closeSocket(tcpListener);
+    puts("Closed server connection");
+    return result;
+}
+
+int
 runClient(const AllConfiguration* configuration)
 {
     int result = EXIT_FAILURE;
@@ -584,34 +722,6 @@ runClient(const AllConfiguration* configuration)
     SDL_Thread* thread = NULL;
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
-    Bytes bytes = { .allocator = currentAllocator,
-                    .size = MAX_PACKET_SIZE,
-                    .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
-                    .used = 0 };
-
-    const int tcpListener =
-      openSocketFromAddress(&configuration->address, SocketOptions_Tcp);
-    const int udpListener = openSocketFromAddress(&configuration->address, 0);
-    if (tcpListener == INVALID_SOCKET || udpListener == INVALID_SOCKET) {
-        goto end;
-    }
-
-    {
-        Message message = { 0 };
-        message.tag = MessageTag_authenticate;
-        message.authenticate = config->authentication;
-        bytes.used = 0;
-        MessageSerialize(&message, &bytes, true);
-        if (!socketSend(tcpListener, &bytes)) {
-            goto end;
-        }
-    }
-
-    struct pollfd pfdsList[] = {
-        { .events = POLLIN, .revents = 0, .fd = tcpListener },
-        { .events = POLLIN, .revents = 0, .fd = udpListener }
-    };
-    const size_t len = sizeof(pfdsList) / sizeof(struct pollfd);
 
     if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
@@ -628,13 +738,14 @@ runClient(const AllConfiguration* configuration)
         }
     }
 
-    window =
-      SDL_CreateWindow("TemStream Client",
-                       SDL_WINDOWPOS_UNDEFINED,
-                       SDL_WINDOWPOS_UNDEFINED,
-                       config->windowWidth,
-                       config->windowHeight,
-                       config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+    window = SDL_CreateWindow(
+      "TemStream Client",
+      SDL_WINDOWPOS_UNDEFINED,
+      SDL_WINDOWPOS_UNDEFINED,
+      config->windowWidth,
+      config->windowHeight,
+      SDL_WINDOW_RESIZABLE |
+        (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (window == NULL) {
         fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
         goto end;
@@ -661,7 +772,7 @@ runClient(const AllConfiguration* configuration)
     SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
 
     thread = SDL_CreateThread(
-      (SDL_ThreadFunction)handleUserInput, "Input", (void*)&tcpListener);
+      (SDL_ThreadFunction)readFromServer, "Read", (void*)configuration);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
         goto end;
@@ -670,51 +781,29 @@ runClient(const AllConfiguration* configuration)
     SDL_Event e = { 0 };
     appDone = false;
     while (!appDone) {
-        switch (poll(pfdsList, len, 16)) {
-            case -1:
-                perror("poll");
-                appDone = true;
-                continue;
-            case 0:
-                break;
-            default:
-                for (size_t i = 0; i < len; ++i) {
-                    struct pollfd pfds = pfdsList[i];
-                    if ((pfds.revents & POLLIN) != 0) {
-                        readSocket(pfds.fd, &bytes);
+        while (!appDone && SDL_WaitEventTimeout(&e, POLL_WAIT)) {
+            switch (e.type) {
+                case SDL_QUIT:
+                    appDone = true;
+                    break;
+                case SDL_USEREVENT:
+                    switch (e.user.code) {
+                        case EVENT_RENDER: {
+                            SDL_RenderClear(renderer);
+                            SDL_RenderPresent(renderer);
+                        } break;
+                        default:
+                            break;
                     }
-                }
-                break;
-        }
-        if (SDL_PollEvent(&e) == 0) {
-            continue;
-        }
-        switch (e.type) {
-            case SDL_QUIT:
-                appDone = true;
-                break;
-            case SDL_USEREVENT:
-                switch (e.user.code) {
-                    case EVENT_RENDER: {
-                        SDL_RenderClear(renderer);
-                        SDL_RenderPresent(renderer);
-                    } break;
-                    default:
-                        break;
-                }
-                break;
-            default:
-                break;
+                    break;
+                default:
+                    break;
+            }
         }
     }
 
 end:
-    if (thread != NULL) {
-        SDL_WaitThread(thread, &result);
-    }
-    uint8_tListFree(&bytes);
-    closeSocket(udpListener);
-    closeSocket(tcpListener);
+    SDL_WaitThread(thread, &result);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();

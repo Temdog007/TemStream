@@ -1,8 +1,5 @@
 #include <include/main.h>
 
-bool
-clientSend(const Client* client, const Bytes* bytes);
-
 typedef struct ServerData
 {
     StreamList streams;
@@ -132,6 +129,20 @@ printServerConfiguration(const ServerConfiguration* configuration)
     return printf("Max clients: %u\n", configuration->maxClients);
 }
 
+void
+getClientsStreams(pClient client, pGuidList guids)
+{
+    if (guids->allocator == NULL) {
+        guids->allocator = currentAllocator;
+    }
+    for (size_t i = 0; i < serverData.streams.used; ++i) {
+        const Stream* stream = &serverData.streams.buffer[i];
+        if (GuidEquals(&stream->owner, &client->id)) {
+            GuidListAppend(guids, &stream->id);
+        }
+    }
+}
+
 int
 handleTcpConnection(pClient client)
 {
@@ -172,7 +183,7 @@ handleTcpConnection(pClient client)
 
     RandomState rs = makeRandomState();
     bytes.used = (uint32_t)size;
-    MessageDeserialize(&message, &bytes, 0, true);
+    MESSAGE_DESERIALIZE(message, bytes);
     if (message.tag == MessageTag_authenticate) {
         if (authenticateClient(client, &message.authenticate, &rs)) {
             MessageFree(&message);
@@ -180,9 +191,9 @@ handleTcpConnection(pClient client)
             TemLangStringCopy(
               &message.authenticateAck.name, &client->name, currentAllocator);
             message.authenticateAck.id = client->id;
-            bytes.used = 0;
-            MessageSerialize(&message, &bytes, true);
+            MESSAGE_SERIALIZE(message, bytes);
             clientSend(client, &bytes);
+            printf("Client '%s' is named '%s'\n", buffer, client->name.buffer);
         } else {
             printf("Client '%s' failed authentication\n", buffer);
             goto end;
@@ -215,7 +226,7 @@ handleTcpConnection(pClient client)
 
         bytes.used = (uint32_t)size;
         MessageFree(&message);
-        MessageDeserialize(&message, &bytes, 0, true);
+        MESSAGE_DESERIALIZE(message, bytes);
         switch (message.tag) {
             case MessageTag_streamMessage:
                 copyMessageToClients(&message.streamMessage, &bytes);
@@ -235,6 +246,9 @@ handleTcpConnection(pClient client)
                                           NULL)) {
                             GuidListAppend(&client->connectedStreams,
                                            &stream->id);
+                            printf("Client '%s' connected to stream '%s'\n",
+                                   client->name.buffer,
+                                   stream->name.buffer);
                         }
                     }
                 });
@@ -242,8 +256,7 @@ handleTcpConnection(pClient client)
                 MessageFree(&message);
                 message.tag = MessageTag_connectToStreamAck;
                 message.connectToStreamAck = success;
-                bytes.used = 0;
-                MessageSerialize(&message, &bytes, true);
+                MESSAGE_SERIALIZE(message, bytes);
                 clientSend(client, &bytes);
             } break;
             case MessageTag_disconnectFromStream: {
@@ -258,14 +271,16 @@ handleTcpConnection(pClient client)
                         while (GuidListSwapRemoveValue(
                           &client->connectedStreams, &stream->id))
                             ;
+                        printf("Client '%s' disconnected to stream '%s'\n",
+                               client->name.buffer,
+                               stream->name.buffer);
                     }
                 })
 
                 MessageFree(&message);
                 message.tag = MessageTag_disconnectFromStreamAck;
                 message.disconnectFromStreamAck = success;
-                bytes.used = 0;
-                MessageSerialize(&message, &bytes, true);
+                MESSAGE_SERIALIZE(message, bytes);
                 clientSend(client, &bytes);
             } break;
             case MessageTag_startStreaming: {
@@ -283,7 +298,7 @@ handleTcpConnection(pClient client)
                     newStream.id = randomGuid(&rs);
                     printf("Client '%s' started a '%s' stream named '%s' "
                            "(record=%d)\n",
-                           buffer,
+                           client->name.buffer,
                            StreamTypeToCharString(newStream.type),
                            newStream.name.buffer,
                            newStream.record);
@@ -306,8 +321,7 @@ handleTcpConnection(pClient client)
                     message.startStreamingAck.tag = OptionalGuidTag_none;
                 }
 
-                bytes.used = 0;
-                MessageSerialize(&message, &bytes, 0);
+                MESSAGE_SERIALIZE(message, bytes);
                 clientSend(client, &bytes);
             } break;
             case MessageTag_stopStreaming: {
@@ -322,12 +336,14 @@ handleTcpConnection(pClient client)
                     message.stopStreamingAck.none = NULL;
                     if (stream != NULL &&
                         GuidEquals(&stream->owner, &client->id)) {
+                        printf("Client '%s' ended stream '%s'\n",
+                               client->name.buffer,
+                               stream->name.buffer);
                         StreamListSwapRemove(&serverData.streams, i);
                         message.stopStreamingAck.tag = OptionalGuidTag_guid;
                         message.stopStreamingAck.guid = stream->id;
                     }
-                    bytes.used = 0;
-                    MessageSerialize(&message, &bytes, 0);
+                    MESSAGE_SERIALIZE(message, bytes);
                 });
 
                 clientSend(client, &bytes);
@@ -337,8 +353,7 @@ handleTcpConnection(pClient client)
                     Message newMessage = { 0 };
                     newMessage.tag = MessageTag_getAllStreamsAck;
                     newMessage.getAllStreamsAck = serverData.streams;
-                    bytes.used = 0;
-                    MessageSerialize(&newMessage, &bytes, 0);
+                    MESSAGE_SERIALIZE(newMessage, bytes);
                 });
 
                 clientSend(client, &bytes);
@@ -349,8 +364,7 @@ handleTcpConnection(pClient client)
                     newMessage.tag = MessageTag_getConnectedStreamsAck;
                     newMessage.getConnectedStreamsAck =
                       client->connectedStreams;
-                    bytes.used = 0;
-                    MessageSerialize(&newMessage, &bytes, 0);
+                    MESSAGE_SERIALIZE(newMessage, bytes);
                 });
 
                 clientSend(client, &bytes);
@@ -359,15 +373,8 @@ handleTcpConnection(pClient client)
                 IN_MUTEX(serverData.mutex, gcs2, {
                     message.tag = MessageTag_getClientStreamsAck;
                     message.getClientStreamsAck.allocator = currentAllocator;
-                    for (size_t i = 0; i < serverData.streams.used; ++i) {
-                        const Stream* stream = &serverData.streams.buffer[i];
-                        if (GuidEquals(&stream->owner, &client->id)) {
-                            GuidListAppend(&message.getClientStreamsAck,
-                                           &stream->id);
-                        }
-                    }
-                    bytes.used = 0;
-                    MessageSerialize(&message, &bytes, 0);
+                    getClientsStreams(client, &message.getClientStreamsAck);
+                    MESSAGE_SERIALIZE(message, bytes);
                 });
 
                 clientSend(client, &bytes);
@@ -387,8 +394,7 @@ handleTcpConnection(pClient client)
                         newMessage.getStreamAck.stream = *stream;
                     }
 
-                    bytes.used = 0;
-                    MessageSerialize(&newMessage, &bytes, 0);
+                    MESSAGE_SERIALIZE(newMessage, bytes);
                 });
 
                 clientSend(client, &bytes);
@@ -402,9 +408,22 @@ handleTcpConnection(pClient client)
                         TemLangStringListAppend(&message.getClientsAck,
                                                 &(*client)->name);
                     }
-                    bytes.used = 0;
-                    MessageSerialize(&message, &bytes, 0);
-                    MessageFree(&message);
+                    MESSAGE_SERIALIZE(message, bytes);
+                });
+
+                clientSend(client, &bytes);
+            } break;
+            case MessageTag_getAllData: {
+                IN_MUTEX(serverData.mutex, get5641, {
+                    Message newMessage = { 0 };
+                    newMessage.tag = MessageTag_getAllDataAck;
+                    newMessage.getAllDataAck.allStreams = serverData.streams;
+                    newMessage.getAllDataAck.connectedStreams =
+                      client->connectedStreams;
+                    getClientsStreams(client,
+                                      &newMessage.getAllDataAck.clientStreams);
+                    MESSAGE_SERIALIZE(newMessage, bytes);
+                    GuidListFree(&newMessage.getAllDataAck.clientStreams);
                 });
 
                 clientSend(client, &bytes);
@@ -499,6 +518,8 @@ runTcpServer(const AllConfiguration* configuration)
         // name and authentication will be set after parsing first message
         client->sockfd = new_fd;
 
+        client->connectedStreams.allocator = currentAllocator;
+
         SDL_Thread* thread = SDL_CreateThread(
           (SDL_ThreadFunction)handleTcpConnection, "Tcp", client);
         if (thread == NULL) {
@@ -576,7 +597,7 @@ runUdpServer(const AllConfiguration* configuration)
 
         bytes.used = (uint32_t)size;
         MessageFree(&message);
-        MessageDeserialize(&message, &bytes, 0, true);
+        MESSAGE_DESERIALIZE(message, bytes);
         if (message.tag == MessageTag_streamMessage) {
             copyMessageToClients(&message.streamMessage, &bytes);
         } else {

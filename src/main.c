@@ -252,10 +252,14 @@ TemLangString
 RandomClientName(pRandomState rs)
 {
     const uint64_t len = 3ULL + (random64(rs) % 7ULL);
-    TemLangString name = { .allocator = currentAllocator };
+    TemLangString name = { .allocator = currentAllocator,
+                           .buffer = currentAllocator->allocate(len),
+                           .size = len,
+                           .used = 0 };
+    TemLangStringAppendChar(&name, '@');
     for (size_t i = 0; i < len; ++i) {
         do {
-            char c = (char)(random64(rs) % 128ULL);
+            const char c = (char)(random64(rs) % 128ULL);
             if (isalnum(c)) {
                 TemLangStringAppendChar(&name, c);
                 break;

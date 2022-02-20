@@ -213,14 +213,17 @@ openSocketFromAddress(const Address* address, const SocketOptions options)
 bool
 clientSend(const Client* client, const Bytes* bytes)
 {
-    return socketSend(client->sockfd, bytes);
+    return socketSend(client->sockfd, bytes, false);
 }
 
 bool
-socketSend(const int sockfd, const Bytes* bytes)
+socketSend(const int sockfd, const Bytes* bytes, const bool exitOnError)
 {
     if (send(sockfd, bytes->buffer, bytes->used, 0) != (ssize_t)bytes->used) {
         perror("send");
+        if (exitOnError) {
+            appDone = true;
+        }
         return false;
     }
     return true;

@@ -115,6 +115,14 @@ struct ClientInfo {
     Guid id
 }
 
+struct AllServerStreams {
+    [0 Guid] clientStreams
+    [0 Guid] connectedStreams
+    [0 Stream] allStreams
+}
+
+inlineC "MAKE_DEFAULT_LIST(AllServerStreams);"
+
 variant Message {
     StreamMessage streamMessage
     ClientAuthentication authenticate
@@ -137,6 +145,8 @@ variant Message {
     OptionalStream getStreamAck
     null getClients
     [0 string] getClientsAck
+    null getAllData
+    AllServerStreams getAllDataAck
 }
 
 inlineC "MAKE_DEFAULT_LIST(Message);"
