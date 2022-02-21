@@ -16,6 +16,12 @@ struct Rect {
     f32 h
 }
 
+enum MoveMode {
+    None
+    Position
+    Size
+}
+
 resource StreamDisplay {
     Rect rect
     null texture

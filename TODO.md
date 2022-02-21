@@ -3,4 +3,6 @@
 - [ ] Image stream
 - [ ] Video stream
 - [ ] Audio stream
+- [ ] Make save configuration file based on current connected streams
+- [ ] Make configuration files that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls)

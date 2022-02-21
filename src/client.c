@@ -766,8 +766,6 @@ readSocket(const int sockfd, pBytes bytes)
 
 void
 updateTextDisplay(SDL_Renderer* renderer,
-                  const uint32_t width,
-                  const uint32_t height,
                   TTF_Font* ttfFont,
                   const Guid* id,
                   const TemLangString* string)
@@ -785,18 +783,17 @@ updateTextDisplay(SDL_Renderer* renderer,
             SDL_DestroyTexture(display->texture);
         }
 
-        display->rect.w = SDL_min(display->rect.w, width);
-        display->rect.h = SDL_min(display->rect.h, height);
-
         SDL_Color color = { 0 };
         color.r = color.g = color.b = color.a = 0xffu;
-        surface =
-          TTF_RenderText_Solid_Wrapped(ttfFont, string->buffer, color, width);
+        surface = TTF_RenderText_Solid(ttfFont, string->buffer, color);
         if (surface == NULL) {
             fprintf(
               stderr, "Failed to create text surface: %s\n", TTF_GetError());
             goto end;
         }
+
+        display->rect.w = surface->w;
+        display->rect.h = surface->h;
 
         display->texture = SDL_CreateTextureFromSurface(renderer, surface);
         if (display->texture == NULL) {
@@ -804,14 +801,6 @@ updateTextDisplay(SDL_Renderer* renderer,
                     "Failed to update text display texture: %s\n",
                     SDL_GetError());
         }
-#if _DEBUG
-        printf("Update text stream with '%s' [%f,%f,%f,%f]\n",
-               string->buffer,
-               display->rect.x,
-               display->rect.y,
-               display->rect.w,
-               display->rect.h);
-#endif
 
     end:
         SDL_FreeSurface(surface);
@@ -917,7 +906,7 @@ end:
 }
 
 void
-drawTextures(SDL_Renderer* renderer)
+drawTextures(SDL_Renderer* renderer, const size_t target)
 {
     SDL_SetRenderTarget(renderer, NULL);
 
@@ -925,13 +914,22 @@ drawTextures(SDL_Renderer* renderer)
     SDL_RenderClear(renderer);
 
     IN_MUTEX(clientData.mutex, end, {
+        if (target < clientData.displays.used) {
+            const StreamDisplay* display = &clientData.displays.buffer[target];
+            SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
+            SDL_RenderFillRectF(renderer, (const SDL_FRect*)&display->rect);
+        }
         for (size_t i = 0; i < clientData.displays.used; ++i) {
             const StreamDisplay* display = &clientData.displays.buffer[i];
             SDL_Texture* texture = display->texture;
             if (texture == NULL) {
                 continue;
             }
-            SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
+            if (target == i) {
+                SDL_SetTextureColorMod(texture, 0x0u, 0x0u, 0x0u);
+            } else {
+                SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
+            }
             SDL_SetTextureAlphaMod(texture, 0xffu);
             SDL_RenderCopyF(
               renderer, texture, NULL, (const SDL_FRect*)&display->rect);
@@ -1054,6 +1052,8 @@ runClient(const AllConfiguration* configuration)
     }
 
     SDL_Event e = { 0 };
+    size_t targetDisplay = UINT32_MAX;
+    MoveMode moveMode = MoveMode_None;
     appDone = false;
     while (!appDone) {
         if (appDone || SDL_WaitEventTimeout(&e, POLL_WAIT) == 0) {
@@ -1066,19 +1066,74 @@ runClient(const AllConfiguration* configuration)
             case SDL_WINDOWEVENT:
                 renderDisplays();
                 break;
-            case SDL_KEYDOWN:
-                switch (e.key.keysym.sym) {
-                    case SDLK_F1:
-                        renderDisplays();
+            case SDL_MOUSEBUTTONDOWN: {
+                switch (e.button.button) {
+                    case SDL_BUTTON_LEFT:
+                        moveMode = MoveMode_Position;
+                        break;
+                    case SDL_BUTTON_RIGHT:
+                    case SDL_BUTTON_MIDDLE:
+                        moveMode = MoveMode_Size;
                         break;
                     default:
+                        moveMode = MoveMode_None;
                         break;
                 }
-                break;
+                IN_MUTEX(clientData.mutex, endMouseButton, {
+                    SDL_FPoint point = { 0 };
+                    point.x = e.button.x;
+                    point.y = e.button.y;
+                    for (size_t i = 0; i < clientData.displays.used; ++i) {
+                        pStreamDisplay display = &clientData.displays.buffer[i];
+                        if (!SDL_PointInFRect(
+                              &point, (const SDL_FRect*)&display->rect)) {
+                            continue;
+                        }
+                        targetDisplay = i;
+                        SDL_SetWindowGrab(window, true);
+                        renderDisplays();
+                        goto endMouseButton;
+                    }
+                });
+            } break;
+            case SDL_MOUSEBUTTONUP: {
+                targetDisplay = UINT32_MAX;
+                SDL_SetWindowGrab(window, false);
+                renderDisplays();
+            } break;
+            case SDL_MOUSEMOTION: {
+                IN_MUTEX(clientData.mutex, endMotion, {
+                    if (targetDisplay >= clientData.displays.used) {
+                        goto endMotion;
+                    }
+                    pStreamDisplay display =
+                      &clientData.displays.buffer[targetDisplay];
+                    int w;
+                    int h;
+                    SDL_GetWindowSize(window, &w, &h);
+                    switch (moveMode) {
+                        case MoveMode_Position:
+                            display->rect.x = SDL_clamp(
+                              display->rect.x + e.motion.xrel, 0, w * 0.99f);
+                            display->rect.y = SDL_clamp(
+                              display->rect.y + e.motion.yrel, 0, h * 0.99f);
+                            break;
+                        case MoveMode_Size:
+                            display->rect.w = SDL_clamp(
+                              display->rect.w + e.motion.xrel, 100, w);
+                            display->rect.h = SDL_clamp(
+                              display->rect.h + e.motion.yrel, 100, h);
+                            break;
+                        default:
+                            break;
+                    }
+                    renderDisplays();
+                });
+            } break;
             case SDL_USEREVENT:
                 switch (e.user.code) {
                     case CustomEvent_Render:
-                        drawTextures(renderer);
+                        drawTextures(renderer, targetDisplay);
                         break;
                     case CustomEvent_AddTexture: {
                         int w;
@@ -1091,7 +1146,9 @@ runClient(const AllConfiguration* configuration)
                         s.rect.h = (float)h;
                         s.id = *(Guid*)e.user.data1;
                         // Create texture once data is received
-                        StreamDisplayListAppend(&clientData.displays, &s);
+                        IN_MUTEX(clientData.mutex, addTextureEnd, {
+                            StreamDisplayListAppend(&clientData.displays, &s);
+                        });
                         currentAllocator->free(e.user.data1);
                         renderDisplays();
                     } break;
@@ -1101,14 +1158,8 @@ runClient(const AllConfiguration* configuration)
                             case StreamMessageDataTag_text: {
                                 printf("Updating text stream with '%s'\n",
                                        m->data.text.buffer);
-                                int w, h;
-                                SDL_GetWindowSize(window, &w, &h);
-                                updateTextDisplay(renderer,
-                                                  (uint32_t)w,
-                                                  (uint32_t)h,
-                                                  ttfFont,
-                                                  &m->id,
-                                                  &m->data.text);
+                                updateTextDisplay(
+                                  renderer, ttfFont, &m->id, &m->data.text);
                                 renderDisplays();
                             } break;
                             default:
