@@ -1,0 +1,6 @@
+- [ ] Verify read/write access for streams
+- [ ] Chat stream
+- [ ] Image stream
+- [ ] Video stream
+- [ ] Audio stream
+- [ ] SSL encryption (dtls)

@@ -23,6 +23,7 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 
 #include <DefaultExternalFunctions.h>
 
@@ -61,6 +62,9 @@ StreamNameEquals(const Stream*, const TemLangString*);
 
 extern bool
 StreamStorageGuidEquals(const StreamStorage*, const Guid*);
+
+extern bool
+StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
 
 extern bool
 MessageUsesUdp(const StreamMessage*);
@@ -199,6 +203,12 @@ GetStreamStorageFromGuid(const StreamStorageList*,
                          const StreamStorage**,
                          size_t*);
 
+extern bool
+GetStreamDisplayFromGuid(const StreamDisplayList*,
+                         const Guid*,
+                         const StreamDisplay**,
+                         size_t*);
+
 // Misc
 
 #define IN_MUTEX(mutex, endLabel, f)                                           \
@@ -257,3 +267,13 @@ renderFont(SDL_Renderer* renderer,
            const float scale,
            uint8_t foreground[4],
            uint8_t background[4]);
+
+// Custom Events
+
+typedef enum CustomEvent
+{
+    CustomEvent_Render = 0x31ab,
+    CustomEvent_AddTexture,
+    CustomEvent_UpdateStreamDisplay,
+} CustomEvent,
+  *pCustomEvent;

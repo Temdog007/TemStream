@@ -16,7 +16,14 @@ struct Rect {
     f32 h
 }
 
-struct StreamDisplay {
+resource StreamDisplay {
     Rect rect
     null texture
+    Guid id
+} r {
+    inlineC "
+        SDL_DestroyTexture(r.texture);
+    "
 }
+
+inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"

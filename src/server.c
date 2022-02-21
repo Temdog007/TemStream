@@ -70,7 +70,11 @@ copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
             pStreamStorage storage = NULL;
             size_t sIndex = 0;
             if (StreamStorageListFindIf(
-                  &serverData.storage, NULL, &message->id, NULL, &sIndex)) {
+                  &serverData.storage,
+                  (StreamStorageListFindFunc)StreamStorageGuidEquals,
+                  &message->id,
+                  NULL,
+                  &sIndex)) {
                 storage = &serverData.storage.buffer[sIndex];
             } else {
                 StreamStorage s = { 0 };
@@ -282,11 +286,11 @@ handleTcpConnection(pClient client)
                       GetStreamFromGuid(&serverData.streams,
                                         &message.connectToStream,
                                         &stream,
-                                        NULL) &&
-                      GetStreamStorageFromGuid(&serverData.storage,
-                                               &message.connectToStream,
-                                               &storage,
-                                               NULL);
+                                        NULL);
+                    GetStreamStorageFromGuid(&serverData.storage,
+                                             &message.connectToStream,
+                                             &storage,
+                                             NULL);
                     if (success) {
                         if (!GuidListFind(&client->connectedStreams,
                                           &stream->id,
@@ -305,10 +309,19 @@ handleTcpConnection(pClient client)
                     if (success) {
                         message.connectToStreamAck.tag =
                           OptionalStreamStorageTag_streamStorage;
-                        StreamStorageCopy(
-                          &message.connectToStreamAck.streamStorage,
-                          storage,
-                          currentAllocator);
+                        if (storage == NULL) {
+                            message.connectToStreamAck.streamStorage.id =
+                              stream->id;
+                            message.connectToStreamAck.streamStorage.data.tag =
+                              StreamMessageDataTag_none;
+                            message.connectToStreamAck.streamStorage.data.none =
+                              NULL;
+                        } else {
+                            StreamStorageCopy(
+                              &message.connectToStreamAck.streamStorage,
+                              storage,
+                              currentAllocator);
+                        }
                     } else {
                         message.connectToStreamAck.none = NULL;
                         message.connectToStreamAck.tag =

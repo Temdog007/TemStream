@@ -6,6 +6,15 @@ bool
 refreshStreams(const int, pBytes);
 
 void
+renderDisplays()
+{
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_Render;
+    SDL_PushEvent(&e);
+}
+
+void
 askQuestion(const char* string)
 {
     const size_t size = strlen(string);
@@ -116,8 +125,6 @@ ClientGuidEquals(const pClient* client, const Guid* guid)
     return GuidEquals(&(*client)->id, guid);
 }
 
-#define EVENT_RENDER 0x31ab
-
 void
 camelCaseToNormal(pTemLangString str)
 {
@@ -213,8 +220,10 @@ selectAStreamToConnectTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
                 break;
             }
 
-            uint32_t i;
-            if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
+            uint32_t i = 0;
+            if (streamNum == 1) {
+                puts("Connecting to only stream available");
+            } else if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
                 continue;
             }
 
@@ -234,18 +243,22 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
                               const int sockfd,
                               pBytes bytes)
 {
+    StreamList streams = { 0 };
     IN_MUTEX(clientData.mutex, end0, {
         while (!appDone) {
             const uint32_t streamNum = clientData.connectedStreams.used;
             askQuestion("Select a stream to disconnect from");
             const Stream* stream = NULL;
             uint32_t streamsFound = 0;
+            StreamListFree(&streams);
+            streams.allocator = currentAllocator;
             for (uint32_t i = 0; i < streamNum; ++i) {
                 const Guid guid = clientData.connectedStreams.buffer[i];
                 if (GetStreamFromGuid(
                       &clientData.allStreams, &guid, &stream, NULL)) {
                     printf("%u) %s\n", i + 1U, stream->name.buffer);
                     ++streamsFound;
+                    StreamListAppend(&streams, stream);
                 }
             }
             puts("");
@@ -254,15 +267,16 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
                 puts("Not connected to any streams");
                 break;
             }
-            uint32_t i;
-            if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
+            uint32_t i = 0;
+            if (streamsFound == 1) {
+                puts("Disconnecting from only stream available");
+            } else if (!userIndexFromUser(inputfd, bytes, streamsFound, &i)) {
                 continue;
             }
 
             Message message = { 0 };
             message.tag = MessageTag_disconnectFromStream;
-            message.disconnectFromStream =
-              clientData.connectedStreams.buffer[i];
+            message.disconnectFromStream = streams.buffer[i].id;
 
             MESSAGE_SERIALIZE(message, (*bytes));
             socketSend(sockfd, bytes, true);
@@ -270,6 +284,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
             break;
         }
     });
+    StreamListFree(&streams);
 }
 
 void
@@ -334,18 +349,22 @@ selectStreamToStart(struct pollfd inputfd, const int sockfd, pBytes bytes)
 void
 selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
 {
+    StreamList streams = { 0 };
     IN_MUTEX(clientData.mutex, end0, {
         while (!appDone) {
             const Stream* stream = NULL;
             const uint32_t streamNum = clientData.ownStreams.used;
             uint32_t streamsFound = 0;
             askQuestion("Select a stream to stop");
+            StreamListFree(&streams);
+            streams.allocator = currentAllocator;
             for (uint32_t i = 0; i < streamNum; ++i) {
                 const Guid guid = clientData.ownStreams.buffer[i];
                 if (GetStreamFromGuid(
                       &clientData.allStreams, &guid, &stream, NULL)) {
                     printf("%u) %s\n", i + 1U, stream->name.buffer);
                     ++streamsFound;
+                    StreamListAppend(&streams, stream);
                 }
             }
             puts("");
@@ -355,14 +374,16 @@ selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
                 break;
             }
 
-            uint32_t index;
-            if (!userIndexFromUser(inputfd, bytes, streamNum, &index)) {
+            uint32_t i = 0;
+            if (streamsFound == 1) {
+                puts("Stopping to only stream available");
+            } else if (!userIndexFromUser(inputfd, bytes, streamsFound, &i)) {
                 continue;
             }
 
             Message message = { 0 };
             message.tag = MessageTag_stopStreaming;
-            message.stopStreaming = clientData.ownStreams.buffer[index];
+            message.stopStreaming = streams.buffer[i].id;
 
             MESSAGE_SERIALIZE(message, (*bytes));
             MessageFree(&message);
@@ -371,6 +392,74 @@ selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
             break;
         }
     });
+    StreamListFree(&streams);
+}
+
+void
+selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
+{
+    StreamList streams = { 0 };
+    IN_MUTEX(clientData.mutex, end0, {
+        while (!appDone) {
+            const Stream* stream = NULL;
+            const uint32_t streamNum = clientData.connectedStreams.used;
+            uint32_t streamsFound = 0;
+            askQuestion("Send data to which stream?");
+            StreamListFree(&streams);
+            streams.allocator = currentAllocator;
+            for (uint32_t i = 0; i < streamNum; ++i) {
+                const Guid guid = clientData.connectedStreams.buffer[i];
+                if (GetStreamFromGuid(
+                      &clientData.allStreams, &guid, &stream, NULL)) {
+                    printf("%u) %s\n", i + 1U, stream->name.buffer);
+                    ++streamsFound;
+                    StreamListAppend(&streams, stream);
+                }
+            }
+            puts("");
+
+            if (streamNum == 0 || streamsFound == 0) {
+                puts("No streams to send data");
+                break;
+            }
+
+            uint32_t i = 0;
+            if (streamsFound == 1) {
+                puts("Sending data to only stream available");
+            } else if (!userIndexFromUser(inputfd, bytes, streamsFound, &i)) {
+                continue;
+            }
+
+            stream = &streams.buffer[i];
+
+            Message message = { 0 };
+            switch (stream->type) {
+                case StreamType_Text:
+                    printf("Enter text to update text stream '%s'\n",
+                           stream->name.buffer);
+                    if (!getUserInput(inputfd, bytes, NULL)) {
+                        continue;
+                    }
+                    message.streamMessage.data.tag = StreamMessageDataTag_text;
+                    message.streamMessage.data.text = TemLangStringCreate(
+                      (char*)bytes->buffer, currentAllocator);
+                    break;
+                default:
+                    printf("Cannot manually send data to stream type '%s'\n",
+                           StreamTypeToCharString(stream->type));
+                    continue;
+            }
+
+            message.streamMessage.id = stream->id;
+            message.tag = MessageTag_streamMessage;
+            MESSAGE_SERIALIZE(message, (*bytes));
+            MessageFree(&message);
+
+            socketSend(sockfd, bytes, true);
+            break;
+        }
+    });
+    StreamListFree(&streams);
 }
 
 int
@@ -408,6 +497,8 @@ handleUserInput(const int* sockfdPtr)
                 });
                 continue;
             case ClientCommand_GetClients:
+                message.tag = MessageTag_getClients;
+                message.getClients = NULL;
                 MESSAGE_SERIALIZE(message, bytes);
                 if (!socketSend(sockfd, &bytes, true)) {
                     continue;
@@ -432,6 +523,11 @@ handleUserInput(const int* sockfdPtr)
                 continue;
             } break;
             case ClientCommand_StopStreaming:
+                if (!refreshStreams(sockfd, &bytes)) {
+                    continue;
+                }
+                break;
+            case ClientCommand_SendStreamData:
                 if (!refreshStreams(sockfd, &bytes)) {
                     continue;
                 }
@@ -486,6 +582,9 @@ handleUserInput(const int* sockfdPtr)
                 break;
             case ClientCommand_StopStreaming:
                 selectStreamToStop(inputfd, sockfd, &bytes);
+                break;
+            case ClientCommand_SendStreamData:
+                selectStreamToSendDataTo(inputfd, sockfd, &bytes);
                 break;
             default:
                 continue;
@@ -588,13 +687,38 @@ readSocket(const int sockfd, pBytes bytes)
                 break;
             case MessageTag_connectToStreamAck:
                 switch (message.connectToStreamAck.tag) {
-                    case OptionalStreamStorageTag_streamStorage:
+                    case OptionalStreamStorageTag_streamStorage: {
                         puts("Connected to stream");
-                        switch (
-                          message.connectToStreamAck.streamStorage.data.tag) {
+                        const StreamStorage* storage =
+                          &message.connectToStreamAck.streamStorage;
+
+                        SDL_Event e = { 0 };
+                        e.type = SDL_USEREVENT;
+                        e.user.code = CustomEvent_AddTexture;
+                        Guid* guid = currentAllocator->allocate(sizeof(Guid));
+                        *guid = storage->id;
+                        e.user.data1 = guid;
+                        SDL_PushEvent(&e);
+
+                        switch (storage->data.tag) {
+                            case StreamMessageDataTag_text: {
+                                printf("Got text stream update: %s\n",
+                                       storage->data.text.buffer);
+                                e.user.code = CustomEvent_UpdateStreamDisplay;
+                                pStreamMessage m = currentAllocator->allocate(
+                                  sizeof(StreamMessage));
+                                m->id = storage->id;
+                                m->data.tag = StreamMessageDataTag_text;
+                                TemLangStringCopy(&m->data.text,
+                                                  &storage->data.text,
+                                                  currentAllocator);
+                                e.user.data1 = m;
+                                SDL_PushEvent(&e);
+                            } break;
                             default:
                                 break;
                         }
+                    } break;
                     default:
                         puts("Failed to connect to stream");
                         break;
@@ -607,6 +731,27 @@ readSocket(const int sockfd, pBytes bytes)
                     puts("Failed to disconnect from stream");
                 }
                 break;
+            case MessageTag_streamMessage:
+                switch (message.streamMessage.data.tag) {
+                    case StreamMessageDataTag_text: {
+                        SDL_Event e = { 0 };
+                        e.type = SDL_USEREVENT;
+                        e.user.code = CustomEvent_UpdateStreamDisplay;
+                        pStreamMessage m =
+                          currentAllocator->allocate(sizeof(StreamMessage));
+                        StreamMessageCopy(
+                          m, &message.streamMessage, currentAllocator);
+                        e.user.data1 = m;
+                        SDL_PushEvent(&e);
+                    } break;
+                    default:
+                        fprintf(stderr,
+                                "Unexpected '%s' stream message\n",
+                                StreamMessageDataTagToCharString(
+                                  message.streamMessage.data.tag));
+                        break;
+                }
+                break;
             default:
                 printf("Unexpected message: %s\n",
                        MessageTagToCharString(message.tag));
@@ -617,6 +762,60 @@ readSocket(const int sockfd, pBytes bytes)
         }
     });
     MessageFree(&message);
+}
+
+void
+updateTextDisplay(SDL_Renderer* renderer,
+                  const uint32_t width,
+                  const uint32_t height,
+                  TTF_Font* ttfFont,
+                  const Guid* id,
+                  const TemLangString* string)
+{
+    IN_MUTEX(clientData.mutex, endMutex, {
+        size_t i = 0;
+        SDL_Surface* surface = NULL;
+        if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
+            puts("Missing stream display for text stream");
+            goto end;
+        }
+
+        pStreamDisplay display = &clientData.displays.buffer[i];
+        if (display->texture != NULL) {
+            SDL_DestroyTexture(display->texture);
+        }
+
+        display->rect.w = SDL_min(display->rect.w, width);
+        display->rect.h = SDL_min(display->rect.h, height);
+
+        SDL_Color color = { 0 };
+        color.r = color.g = color.b = color.a = 0xffu;
+        surface =
+          TTF_RenderText_Solid_Wrapped(ttfFont, string->buffer, color, width);
+        if (surface == NULL) {
+            fprintf(
+              stderr, "Failed to create text surface: %s\n", TTF_GetError());
+            goto end;
+        }
+
+        display->texture = SDL_CreateTextureFromSurface(renderer, surface);
+        if (display->texture == NULL) {
+            fprintf(stderr,
+                    "Failed to update text display texture: %s\n",
+                    SDL_GetError());
+        }
+#if _DEBUG
+        printf("Update text stream with '%s' [%f,%f,%f,%f]\n",
+               string->buffer,
+               display->rect.x,
+               display->rect.y,
+               display->rect.w,
+               display->rect.h);
+#endif
+
+    end:
+        SDL_FreeSurface(surface);
+    });
 }
 
 int
@@ -718,25 +917,40 @@ end:
 }
 
 void
-drawTextures(SDL_Renderer* renderer, pFont font)
+drawTextures(SDL_Renderer* renderer)
 {
-#if _DEBUG
-    int w, h;
-    if (SDL_GetRendererOutputSize(renderer, &w, &h) == 0) {
-        printf("Renderer size: %dx%d\n", w, h);
-    } else {
-        fprintf(stderr, "Failed to get output size: %s\n", SDL_GetError());
-    }
-#endif
+    SDL_SetRenderTarget(renderer, NULL);
+
     SDL_SetRenderDrawColor(renderer, 0x0u, 0x0u, 0x0u, 0xffu);
     SDL_RenderClear(renderer);
 
-    // SDL_RenderCopy(renderer, font.texture, NULL,
-    // NULL);
-    SDL_SetTextureColorMod(font->texture, 0xFFu, 0, 0);
-    uint8_t background[4] = { 0xff, 0xffu, 0x0u, 0xffu };
-    renderFont(renderer, font, "Hello World", 0, 0, 5.f, NULL, background);
+    IN_MUTEX(clientData.mutex, end, {
+        for (size_t i = 0; i < clientData.displays.used; ++i) {
+            const StreamDisplay* display = &clientData.displays.buffer[i];
+            SDL_Texture* texture = display->texture;
+            if (texture == NULL) {
+                continue;
+            }
+            SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
+            SDL_SetTextureAlphaMod(texture, 0xffu);
+            SDL_RenderCopyF(
+              renderer, texture, NULL, (const SDL_FRect*)&display->rect);
+        }
+    });
+
+    // uint8_t background[4] = { 0xff, 0xffu, 0x0u, 0xffu };
+    // renderFont(renderer, font, "Hello World", 0, 0, 5.f, NULL, background);
     SDL_RenderPresent(renderer);
+}
+
+void
+printRenderInfo(const SDL_RendererInfo* info)
+{
+    puts(info->name);
+    for (size_t i = 0; i < info->num_texture_formats; ++i) {
+        printf(
+          "%zu) %s\n", i + 1, SDL_GetPixelFormatName(info->texture_formats[i]));
+    }
 }
 
 int
@@ -752,6 +966,9 @@ runClient(const AllConfiguration* configuration)
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
     Font font = { 0 };
+    TTF_Font* ttfFont = NULL;
+
+    clientData.displays.allocator = currentAllocator;
 
     if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
@@ -768,6 +985,11 @@ runClient(const AllConfiguration* configuration)
         }
     }
 
+    if (TTF_Init() == -1) {
+        fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
+        goto end;
+    }
+
     window = SDL_CreateWindow(
       "TemStream Client",
       SDL_WINDOWPOS_UNDEFINED,
@@ -781,24 +1003,24 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (renderer == NULL) {
-        fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
-        goto end;
-    }
     {
         SDL_RendererInfo info = { 0 };
-        SDL_GetRendererInfo(renderer, &info);
 #if _DEBUG
-        printf("Renderer '%s'\nPixel Formats\n", info.name);
-        for (size_t i = 0; i < info.num_texture_formats; ++i) {
-            printf("%zu) %s\n",
-                   i + 1,
-                   SDL_GetPixelFormatName(info.texture_formats[i]));
+        int drivers = SDL_GetNumRenderDrivers();
+        for (int i = 0; i < drivers; ++i) {
+            SDL_GetRenderDriverInfo(i, &info);
+            printRenderInfo(&info);
         }
-#else
-        printf("Renderer '%s'\n", info.name);
 #endif
+
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        if (renderer == NULL) {
+            fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
+            goto end;
+        }
+
+        SDL_GetRendererInfo(renderer, &info);
+        printf("Current renderer: %s\n", info.name);
     }
 
     clientData.cond = SDL_CreateCond();
@@ -818,6 +1040,12 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
+    ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
+    if (ttfFont == NULL) {
+        fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
+        goto end;
+    }
+
     thread = SDL_CreateThread(
       (SDL_ThreadFunction)readFromServer, "Read", (void*)configuration);
     if (thread == NULL) {
@@ -828,19 +1056,20 @@ runClient(const AllConfiguration* configuration)
     SDL_Event e = { 0 };
     appDone = false;
     while (!appDone) {
-        while (appDone || SDL_WaitEventTimeout(&e, POLL_WAIT) == 0) {
+        if (appDone || SDL_WaitEventTimeout(&e, POLL_WAIT) == 0) {
             continue;
         }
         switch (e.type) {
             case SDL_QUIT:
                 appDone = true;
                 break;
+            case SDL_WINDOWEVENT:
+                renderDisplays();
+                break;
             case SDL_KEYDOWN:
                 switch (e.key.keysym.sym) {
                     case SDLK_F1:
-                        e.type = SDL_USEREVENT;
-                        e.user.code = EVENT_RENDER;
-                        SDL_PushEvent(&e);
+                        renderDisplays();
                         break;
                     default:
                         break;
@@ -848,9 +1077,48 @@ runClient(const AllConfiguration* configuration)
                 break;
             case SDL_USEREVENT:
                 switch (e.user.code) {
-                    case EVENT_RENDER:
-                        drawTextures(renderer, &font);
+                    case CustomEvent_Render:
+                        drawTextures(renderer);
                         break;
+                    case CustomEvent_AddTexture: {
+                        int w;
+                        int h;
+                        SDL_GetWindowSize(window, &w, &h);
+                        StreamDisplay s = { 0 };
+                        s.rect.x = 0.f;
+                        s.rect.y = 0.f;
+                        s.rect.w = (float)w;
+                        s.rect.h = (float)h;
+                        s.id = *(Guid*)e.user.data1;
+                        // Create texture once data is received
+                        StreamDisplayListAppend(&clientData.displays, &s);
+                        currentAllocator->free(e.user.data1);
+                        renderDisplays();
+                    } break;
+                    case CustomEvent_UpdateStreamDisplay: {
+                        pStreamMessage m = e.user.data1;
+                        switch (m->data.tag) {
+                            case StreamMessageDataTag_text: {
+                                printf("Updating text stream with '%s'\n",
+                                       m->data.text.buffer);
+                                int w, h;
+                                SDL_GetWindowSize(window, &w, &h);
+                                updateTextDisplay(renderer,
+                                                  (uint32_t)w,
+                                                  (uint32_t)h,
+                                                  ttfFont,
+                                                  &m->id,
+                                                  &m->data.text);
+                                renderDisplays();
+                            } break;
+                            default:
+                                printf("Cannot update display of stream '%s'\n",
+                                       StreamMessageDataTagToCharString(
+                                         m->data.tag));
+                                break;
+                        }
+                        currentAllocator->free(m);
+                    } break;
                     default:
                         break;
                 }
@@ -862,6 +1130,8 @@ runClient(const AllConfiguration* configuration)
 
 end:
     FontFree(&font);
+    TTF_CloseFont(ttfFont);
+    TTF_Quit();
     SDL_WaitThread(thread, &result);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

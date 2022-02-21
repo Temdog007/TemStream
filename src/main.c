@@ -236,6 +236,12 @@ StreamStorageGuidEquals(const StreamStorage* stream, const Guid* guid)
 }
 
 bool
+StreamDisplayGuidEquals(const StreamDisplay* display, const Guid* guid)
+{
+    return GuidEquals(&display->id, guid);
+}
+
+bool
 GetStreamFromName(const StreamList* streams,
                   const TemLangString* name,
                   const Stream** stream,
@@ -266,6 +272,20 @@ GetStreamStorageFromGuid(const StreamStorageList* streams,
       (StreamStorageListFindFunc)StreamStorageGuidEquals,
       guid,
       stream,
+      index);
+}
+
+bool
+GetStreamDisplayFromGuid(const StreamDisplayList* displays,
+                         const Guid* guid,
+                         const StreamDisplay** display,
+                         size_t* index)
+{
+    return StreamDisplayListFindIf(
+      displays,
+      (StreamDisplayListFindFunc)StreamDisplayGuidEquals,
+      guid,
+      display,
       index);
 }
 
