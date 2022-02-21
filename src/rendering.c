@@ -33,6 +33,8 @@ loadFont(const char* filename,
                                       SDL_TEXTUREACCESS_STATIC,
                                       FONT_TEXTURE_WIDTH,
                                       FONT_TEXTURE_HEIGHT);
+    SDL_SetTextureBlendMode(font->texture, SDL_BLENDMODE_BLEND);
+
     if (font->texture == NULL) {
         fprintf(stderr, "Failed to create texture: %s\n", SDL_GetError());
         goto cleanup;
@@ -111,4 +113,52 @@ cleanup:
         FT_Done_FreeType(ft);
     }
     return true;
+}
+
+SDL_FRect
+renderFont(SDL_Renderer* renderer,
+           pFont font,
+           const char* text,
+           float x,
+           const float y,
+           const float scale,
+           uint8_t foreground[4],
+           uint8_t background[4])
+{
+    SDL_FRect totalRect = { .x = x, .y = 0, .w = 0, .h = 0 };
+    if (background != NULL) {
+        const char* copy = text;
+        while (*copy != '\0') {
+            const Character c = font->characters.buffer[(int)*copy];
+            totalRect.h = SDL_max(totalRect.h, c.size[1] * scale);
+            totalRect.w += (c.advance >> 6) * scale;
+            ++copy;
+        }
+        SDL_SetRenderDrawColor(
+          renderer, background[0], background[1], background[2], background[3]);
+        SDL_RenderFillRectF(renderer, &totalRect);
+    }
+    if (foreground) {
+        SDL_SetTextureColorMod(
+          font->texture, foreground[0], foreground[1], foreground[2]);
+        SDL_SetTextureAlphaMod(font->texture, foreground[3]);
+    } else {
+        SDL_SetTextureColorMod(font->texture, 0xffu, 0xffu, 0xffu);
+        SDL_SetTextureAlphaMod(font->texture, 0xffu);
+    }
+    while (*text != '\0') {
+        const Character c = font->characters.buffer[(int)*text];
+        const SDL_FRect rect = { .x = x + c.bearing[0] * scale,
+                                 .y = y - (c.size[1] - c.bearing[1]) * scale,
+                                 .w = c.size[0] * scale,
+                                 .h = c.size[1] * scale };
+        if (SDL_RenderCopyF(renderer, font->texture, &c.rect, &rect) != 0) {
+            fprintf(
+              stderr, "Failed to render text character: %s\n", SDL_GetError());
+            break;
+        }
+        x += (c.advance >> 6) * scale;
+        ++text;
+    }
+    return totalRect;
 }

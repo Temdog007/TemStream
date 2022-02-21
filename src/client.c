@@ -717,6 +717,28 @@ end:
     return result;
 }
 
+void
+drawTextures(SDL_Renderer* renderer, pFont font)
+{
+#if _DEBUG
+    int w, h;
+    if (SDL_GetRendererOutputSize(renderer, &w, &h) == 0) {
+        printf("Renderer size: %dx%d\n", w, h);
+    } else {
+        fprintf(stderr, "Failed to get output size: %s\n", SDL_GetError());
+    }
+#endif
+    SDL_SetRenderDrawColor(renderer, 0x0u, 0x0u, 0x0u, 0xffu);
+    SDL_RenderClear(renderer);
+
+    // SDL_RenderCopy(renderer, font.texture, NULL,
+    // NULL);
+    SDL_SetTextureColorMod(font->texture, 0xFFu, 0, 0);
+    uint8_t background[4] = { 0xff, 0xffu, 0x0u, 0xffu };
+    renderFont(renderer, font, "Hello World", 0, 0, 5.f, NULL, background);
+    SDL_RenderPresent(renderer);
+}
+
 int
 runClient(const AllConfiguration* configuration)
 {
@@ -796,8 +818,6 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
-    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
-
     thread = SDL_CreateThread(
       (SDL_ThreadFunction)readFromServer, "Read", (void*)configuration);
     if (thread == NULL) {
@@ -808,36 +828,35 @@ runClient(const AllConfiguration* configuration)
     SDL_Event e = { 0 };
     appDone = false;
     while (!appDone) {
-        while (!appDone && SDL_WaitEventTimeout(&e, POLL_WAIT)) {
-            switch (e.type) {
-                case SDL_QUIT:
-                    appDone = true;
-                    break;
-                case SDL_KEYDOWN:
-                    switch (e.key.keysym.sym) {
-                        case SDLK_F1:
-                            e.type = SDL_USEREVENT;
-                            e.user.code = EVENT_RENDER;
-                            SDL_PushEvent(&e);
-                            break;
-                        default:
-                            break;
-                    }
-                    break;
-                case SDL_USEREVENT:
-                    switch (e.user.code) {
-                        case EVENT_RENDER:
-                            SDL_RenderClear(renderer);
-                            SDL_RenderCopy(renderer, font.texture, NULL, NULL);
-                            SDL_RenderPresent(renderer);
-                            break;
-                        default:
-                            break;
-                    }
-                    break;
-                default:
-                    break;
-            }
+        while (appDone || SDL_WaitEventTimeout(&e, POLL_WAIT) == 0) {
+            continue;
+        }
+        switch (e.type) {
+            case SDL_QUIT:
+                appDone = true;
+                break;
+            case SDL_KEYDOWN:
+                switch (e.key.keysym.sym) {
+                    case SDLK_F1:
+                        e.type = SDL_USEREVENT;
+                        e.user.code = EVENT_RENDER;
+                        SDL_PushEvent(&e);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case SDL_USEREVENT:
+                switch (e.user.code) {
+                    case EVENT_RENDER:
+                        drawTextures(renderer, &font);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            default:
+                break;
         }
     }
 

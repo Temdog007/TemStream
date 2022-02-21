@@ -247,3 +247,13 @@ loadFont(const char* filename,
          const FT_UInt fontSize,
          SDL_Renderer* renderer,
          pFont font);
+
+extern SDL_FRect
+renderFont(SDL_Renderer* renderer,
+           pFont font,
+           const char* text,
+           const float x,
+           const float y,
+           const float scale,
+           uint8_t foreground[4],
+           uint8_t background[4]);
