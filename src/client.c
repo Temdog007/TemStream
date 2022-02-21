@@ -729,6 +729,7 @@ runClient(const AllConfiguration* configuration)
     SDL_Thread* thread = NULL;
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
+    Font font = { 0 };
 
     if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
@@ -763,6 +764,20 @@ runClient(const AllConfiguration* configuration)
         fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
         goto end;
     }
+    {
+        SDL_RendererInfo info = { 0 };
+        SDL_GetRendererInfo(renderer, &info);
+#if _DEBUG
+        printf("Renderer '%s'\nPixel Formats\n", info.name);
+        for (size_t i = 0; i < info.num_texture_formats; ++i) {
+            printf("%zu) %s\n",
+                   i + 1,
+                   SDL_GetPixelFormatName(info.texture_formats[i]));
+        }
+#else
+        printf("Renderer '%s'\n", info.name);
+#endif
+    }
 
     clientData.cond = SDL_CreateCond();
     if (clientData.cond == NULL) {
@@ -773,6 +788,11 @@ runClient(const AllConfiguration* configuration)
     clientData.mutex = SDL_CreateMutex();
     if (clientData.mutex == NULL) {
         fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer, &font)) {
+        fprintf(stderr, "Failed to load font\n");
         goto end;
     }
 
@@ -793,12 +813,24 @@ runClient(const AllConfiguration* configuration)
                 case SDL_QUIT:
                     appDone = true;
                     break;
+                case SDL_KEYDOWN:
+                    switch (e.key.keysym.sym) {
+                        case SDLK_F1:
+                            e.type = SDL_USEREVENT;
+                            e.user.code = EVENT_RENDER;
+                            SDL_PushEvent(&e);
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
                 case SDL_USEREVENT:
                     switch (e.user.code) {
-                        case EVENT_RENDER: {
+                        case EVENT_RENDER:
                             SDL_RenderClear(renderer);
+                            SDL_RenderCopy(renderer, font.texture, NULL, NULL);
                             SDL_RenderPresent(renderer);
-                        } break;
+                            break;
                         default:
                             break;
                     }
@@ -810,6 +842,7 @@ runClient(const AllConfiguration* configuration)
     }
 
 end:
+    FontFree(&font);
     SDL_WaitThread(thread, &result);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

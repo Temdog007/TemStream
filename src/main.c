@@ -2,6 +2,7 @@
 
 #include "client.c"
 #include "networking.c"
+#include "rendering.c"
 #include "server.c"
 
 const Allocator* currentAllocator = NULL;

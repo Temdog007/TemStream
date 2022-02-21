@@ -1,5 +1,8 @@
 #pragma once
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 #if __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -218,3 +221,29 @@ authenticateClient(pClient client,
     MessageDeserialize(&message, &bytes, 0, true)
 
 #define POLL_WAIT 100
+
+// Font
+typedef struct Character
+{
+    vec2 size;
+    vec2 bearing;
+    SDL_Rect rect;
+    FT_Pos advance;
+} Character, *pCharacter;
+
+MAKE_COPY_AND_FREE(Character);
+MAKE_DEFAULT_LIST(Character);
+
+typedef struct Font
+{
+    SDL_Texture* texture;
+    CharacterList characters;
+} Font, *pFont;
+
+extern void FontFree(pFont);
+
+extern bool
+loadFont(const char* filename,
+         const FT_UInt fontSize,
+         SDL_Renderer* renderer,
+         pFont font);
