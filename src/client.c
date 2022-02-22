@@ -823,7 +823,7 @@ updateTextDisplay(SDL_Renderer* renderer,
         SDL_Color fg = { 0 };
         fg.r = fg.g = fg.b = fg.a = 0xffu;
         SDL_Color bg = { 0 };
-        bg.a = 128;
+        bg.a = 128u;
         surface =
           TTF_RenderUTF8_Shaded_Wrapped(ttfFont, string->buffer, fg, bg, 0);
         if (surface == NULL) {
@@ -832,8 +832,13 @@ updateTextDisplay(SDL_Renderer* renderer,
             goto end;
         }
 
-        display->rect.w = surface->w;
-        display->rect.h = surface->h;
+        display->srcRect.tag = OptionalRectTag_none;
+        display->srcRect.none = NULL;
+
+        display->dstRect.x = 0.f;
+        display->dstRect.y = 0.f;
+        display->dstRect.w = surface->w;
+        display->dstRect.h = surface->h;
 
         display->texture = SDL_CreateTextureFromSurface(renderer, surface);
         if (display->texture == NULL) {
@@ -847,9 +852,53 @@ updateTextDisplay(SDL_Renderer* renderer,
     });
 }
 
+SDL_Rect
+renderText(SDL_Renderer* renderer,
+           TTF_Font* ttfFont,
+           const char* text,
+           const int x,
+           const int y,
+           const SDL_Color fg,
+           const SDL_Color bg,
+           const uint32_t wrapped)
+{
+    SDL_Surface* surface = NULL;
+    SDL_Texture* texture = NULL;
+    SDL_Rect rect = { 0 };
+
+    surface = TTF_RenderUTF8_Shaded_Wrapped(ttfFont, text, fg, bg, wrapped);
+    if (surface == NULL) {
+        fprintf(stderr, "Failed to create text surface: %s\n", TTF_GetError());
+        goto end;
+    }
+
+    texture = SDL_CreateTextureFromSurface(renderer, surface);
+    if (texture == NULL) {
+        fprintf(stderr,
+                "Failed to update text display texture: %s\n",
+                SDL_GetError());
+        goto end;
+    }
+    SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
+    SDL_SetTextureAlphaMod(texture, 0xffu);
+
+    rect = (SDL_Rect){ .x = x, .y = y, .w = surface->w, .h = surface->h };
+    if (SDL_RenderCopy(renderer, texture, NULL, &rect) != 0) {
+        fprintf(stderr, "Failed to render text surface: %s\n", SDL_GetError());
+        goto end;
+    }
+
+end:
+    SDL_DestroyTexture(texture);
+    SDL_FreeSurface(surface);
+    return rect;
+}
+
 void
 updateChatDisplay(SDL_Renderer* renderer,
                   TTF_Font* ttfFont,
+                  const uint32_t w,
+                  const uint32_t h,
                   pStreamDisplay display)
 {
     if (display->texture != NULL) {
@@ -861,47 +910,71 @@ updateChatDisplay(SDL_Renderer* renderer,
         return;
     }
 
-    TemLangString string = { .allocator = currentAllocator };
-    display->data.tag = StreamDisplayDataTag_chat;
-    char buffer[128] = { 0 };
-    for (uint32_t j = chat->offset; j < chat->logs.used; ++j) {
-        const ChatMessage* cm = &chat->logs.buffer[j];
-        const time_t t = (time_t)cm->timeStamp;
-        strftime(buffer, sizeof(buffer), "%c", localtime(&t));
-        TemLangStringAppendFormat(string,
-                                  "|%s| %s: %s\n",
-                                  buffer,
-                                  cm->author.buffer,
-                                  cm->message.buffer);
-    }
-
-    const SDL_Color fg = { .r = 0xffu, .g = 0xffu, .b = 0xffu, .a = 0xffu };
-    const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 128u };
-    SDL_Surface* surface =
-      TTF_RenderUTF8_Shaded_Wrapped(ttfFont, string.buffer, fg, bg, 0);
-    if (surface == NULL) {
-        fprintf(stderr, "Failed to create text surface: %s\n", TTF_GetError());
-        goto end;
-    }
-
-    display->rect.w = surface->w;
-    display->rect.h = surface->h;
-
-    display->texture = SDL_CreateTextureFromSurface(renderer, surface);
+    display->texture = SDL_CreateTexture(
+      renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
     if (display->texture == NULL) {
         fprintf(stderr,
                 "Failed to update text display texture: %s\n",
                 SDL_GetError());
+        return;
+    }
+    SDL_SetTextureBlendMode(display->texture, SDL_BLENDMODE_BLEND);
+
+    SDL_SetRenderTarget(renderer, display->texture);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
+    SDL_RenderClear(renderer);
+
+    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
+
+    display->data.tag = StreamDisplayDataTag_chat;
+    char buffer[128] = { 0 };
+
+    const SDL_Color white = { .r = 0xffu, .g = 0xffu, .b = 0xffu, .a = 0xffu };
+    const SDL_Color purple = { .r = 0xffu, .g = 0x0u, .b = 0xffu, .a = 0xffu };
+    const SDL_Color yellow = { .r = 0xffu, .g = 0xffu, .b = 0x0u, .a = 0xffu };
+    const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 128u };
+    const SDL_Color black = { .r = 0u, .g = 0u, .b = 0u, .a = 0xff };
+
+    SDL_Rect rect = { 0 };
+    float maxW = 0.f;
+    uint32_t y = 0;
+    for (uint32_t j = chat->offset; y < h && j < chat->logs.used; ++j) {
+        const ChatMessage* cm = &chat->logs.buffer[j];
+        const time_t t = (time_t)cm->timeStamp;
+
+        strftime(buffer, sizeof(buffer), "%c", localtime(&t));
+        rect = renderText(renderer, ttfFont, buffer, 0, y, purple, black, w);
+        maxW = SDL_max(maxW, rect.w);
+
+        const float w = rect.w;
+        rect = renderText(
+          renderer, ttfFont, cm->author.buffer, rect.w, y, yellow, black, w);
+        maxW = SDL_max(maxW, w + rect.w);
+        y += rect.h;
+
+        rect =
+          renderText(renderer, ttfFont, cm->message.buffer, 0, y, white, bg, w);
+        maxW = SDL_max(maxW, rect.w);
+        y += rect.h;
     }
 
-end:
-    TemLangStringFree(&string);
-    SDL_FreeSurface(surface);
+    display->srcRect.tag = OptionalRectTag_rect;
+    display->srcRect.rect.x = 0;
+    display->srcRect.rect.y = 0;
+    display->srcRect.rect.w = maxW;
+    display->srcRect.rect.h = y;
+
+    display->dstRect.w = maxW;
+    display->dstRect.h = y;
 }
 
 void
 updateChatDisplayFromList(SDL_Renderer* renderer,
                           TTF_Font* ttfFont,
+                          const uint32_t w,
+                          const uint32_t h,
                           const Guid* id,
                           const ChatMessageList* list)
 {
@@ -914,13 +987,15 @@ updateChatDisplayFromList(SDL_Renderer* renderer,
 
         pStreamDisplay display = &clientData.displays.buffer[i];
         ChatMessageListCopy(&display->data.chat.logs, list, currentAllocator);
-        updateChatDisplay(renderer, ttfFont, display);
+        updateChatDisplay(renderer, ttfFont, w, h, display);
     });
 }
 
 void
 updateChatDisplayFromMessage(SDL_Renderer* renderer,
                              TTF_Font* ttfFont,
+                             const uint32_t w,
+                             const uint32_t h,
                              const Guid* id,
                              const ChatMessage* message)
 {
@@ -936,7 +1011,7 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
             display->data.chat.logs.allocator = currentAllocator;
         }
         ChatMessageListAppend(&display->data.chat.logs, message);
-        updateChatDisplay(renderer, ttfFont, display);
+        updateChatDisplay(renderer, ttfFont, w, h, display);
     });
 }
 
@@ -1045,8 +1120,9 @@ drawTextures(SDL_Renderer* renderer,
              const float maxY)
 {
     SDL_SetRenderTarget(renderer, NULL);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    SDL_SetRenderDrawColor(renderer, 0x0u, 0x0u, 0x0u, 0xffu);
+    SDL_SetRenderDrawColor(renderer, 0x33u, 0x33u, 0x33u, 0xffu);
     SDL_RenderClear(renderer);
 
     IN_MUTEX(clientData.mutex, end, {
@@ -1054,7 +1130,9 @@ drawTextures(SDL_Renderer* renderer,
             const StreamDisplay* display = &clientData.displays.buffer[target];
             if (display->texture != NULL) {
                 SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
-                SDL_RenderFillRectF(renderer, (const SDL_FRect*)&display->rect);
+                const SDL_FRect rect = expandRect(
+                  (const SDL_FRect*)&display->dstRect, 1.025f, 1.025f);
+                SDL_RenderFillRectF(renderer, &rect);
             }
         }
         for (size_t i = 0; i < clientData.displays.used; ++i) {
@@ -1063,16 +1141,32 @@ drawTextures(SDL_Renderer* renderer,
             if (texture == NULL) {
                 continue;
             }
-            SDL_FRect* rect = (SDL_FRect*)&display->rect;
+            SDL_FRect* rect = (SDL_FRect*)&display->dstRect;
             rect->x = SDL_clamp(rect->x, 0, maxX);
             rect->y = SDL_clamp(rect->y, 0, maxY);
-            if (target == i) {
-                SDL_SetTextureColorMod(texture, 0x0u, 0x0u, 0x0u);
-            } else {
-                SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
-            }
+            SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
             SDL_SetTextureAlphaMod(texture, 0xffu);
-            SDL_RenderCopyF(renderer, texture, NULL, rect);
+            int result;
+            switch (display->srcRect.tag) {
+                case OptionalRectTag_rect: {
+                    SDL_Rect r = { 0 };
+                    r.x = display->srcRect.rect.x;
+                    r.y = display->srcRect.rect.y;
+                    r.w = display->srcRect.rect.w;
+                    r.h = display->srcRect.rect.h;
+                    result = SDL_RenderCopyF(renderer,
+                                             texture,
+                                             &r,
+                                             //   NULL,
+                                             rect);
+                } break;
+                default:
+                    result = SDL_RenderCopyF(renderer, texture, NULL, rect);
+                    break;
+            }
+            if (result != 0) {
+                fprintf(stderr, "Failed to render: %s\n", SDL_GetError());
+            }
         }
     });
 
@@ -1227,7 +1321,7 @@ runClient(const AllConfiguration* configuration)
                     for (size_t i = 0; i < clientData.displays.used; ++i) {
                         pStreamDisplay display = &clientData.displays.buffer[i];
                         if (!SDL_PointInFRect(
-                              &point, (const SDL_FRect*)&display->rect)) {
+                              &point, (const SDL_FRect*)&display->dstRect)) {
                             continue;
                         }
                         targetDisplay = i;
@@ -1257,16 +1351,18 @@ runClient(const AllConfiguration* configuration)
                     SDL_GetWindowSize(window, &w, &h);
                     switch (moveMode) {
                         case MoveMode_Position:
-                            display->rect.x = SDL_clamp(
-                              display->rect.x + e.motion.xrel, 0, w - 32);
-                            display->rect.y = SDL_clamp(
-                              display->rect.y + e.motion.yrel, 0, h - 32);
+                            display->dstRect.x = SDL_clamp(
+                              display->dstRect.x + e.motion.xrel, 0, w - 32);
+                            display->dstRect.y = SDL_clamp(
+                              display->dstRect.y + e.motion.yrel, 0, h - 32);
                             break;
                         case MoveMode_Size:
-                            display->rect.w = SDL_clamp(
-                              display->rect.w + e.motion.xrel, MIN_WIDTH, w);
-                            display->rect.h = SDL_clamp(
-                              display->rect.h + e.motion.yrel, MIN_HEIGHT, h);
+                            display->dstRect.w = SDL_clamp(
+                              display->dstRect.w + e.motion.xrel, MIN_WIDTH, w);
+                            display->dstRect.h =
+                              SDL_clamp(display->dstRect.h + e.motion.yrel,
+                                        MIN_HEIGHT,
+                                        h);
                             break;
                         default:
                             break;
@@ -1279,6 +1375,9 @@ runClient(const AllConfiguration* configuration)
                     if (targetDisplay >= clientData.displays.used) {
                         goto endWheel;
                     }
+                    int w;
+                    int h;
+                    SDL_GetWindowSize(window, &w, &h);
                     pStreamDisplay display =
                       &clientData.displays.buffer[targetDisplay];
                     switch (display->data.tag) {
@@ -1288,7 +1387,9 @@ runClient(const AllConfiguration* configuration)
                               offset + (e.wheel.y > 0 ? 1LL : -1LL),
                               0LL,
                               display->data.chat.logs.used - 1LL);
-                            updateChatDisplay(renderer, ttfFont, display);
+                            const float width = display->dstRect.w;
+                            updateChatDisplay(renderer, ttfFont, w, h, display);
+                            display->dstRect.w = width;
                         } break;
                         default:
                             break;
@@ -1296,26 +1397,23 @@ runClient(const AllConfiguration* configuration)
                     renderDisplays();
                 });
             } break;
-            case SDL_USEREVENT:
+            case SDL_USEREVENT: {
+                int w;
+                int h;
+                SDL_GetWindowSize(window, &w, &h);
                 switch (e.user.code) {
-                    case CustomEvent_Render: {
-                        int w;
-                        int h;
-                        SDL_GetWindowSize(window, &w, &h);
+                    case CustomEvent_Render:
                         drawTextures(renderer,
                                      targetDisplay,
                                      (float)w - 32.f,
                                      (float)h - 32.f);
-                    } break;
+                        break;
                     case CustomEvent_AddTexture: {
-                        int w;
-                        int h;
-                        SDL_GetWindowSize(window, &w, &h);
                         StreamDisplay s = { 0 };
-                        s.rect.x = 0.f;
-                        s.rect.y = 0.f;
-                        s.rect.w = (float)w;
-                        s.rect.h = (float)h;
+                        s.dstRect.x = 0.f;
+                        s.dstRect.y = 0.f;
+                        s.dstRect.w = (float)w;
+                        s.dstRect.h = (float)h;
                         s.id = *(Guid*)e.user.data1;
                         // Create texture once data is received
                         IN_MUTEX(clientData.mutex, addTextureEnd, {
@@ -1335,12 +1433,18 @@ runClient(const AllConfiguration* configuration)
                                 updateChatDisplayFromMessage(
                                   renderer,
                                   ttfFont,
+                                  w,
+                                  h,
                                   &m->id,
                                   &m->data.chatMessage);
                                 break;
                             case StreamMessageDataTag_chatLogs:
-                                updateChatDisplayFromList(
-                                  renderer, ttfFont, &m->id, &m->data.chatLogs);
+                                updateChatDisplayFromList(renderer,
+                                                          ttfFont,
+                                                          w,
+                                                          h,
+                                                          &m->id,
+                                                          &m->data.chatLogs);
                                 break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
@@ -1354,7 +1458,7 @@ runClient(const AllConfiguration* configuration)
                     default:
                         break;
                 }
-                break;
+            } break;
             default:
                 break;
         }

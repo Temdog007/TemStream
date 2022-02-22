@@ -10,6 +10,18 @@ enum ClientCommand {
 }
 
 struct Rect {
+    i32 x
+    i32 y
+    i32 w
+    i32 h
+}
+
+variant OptionalRect {
+    null none
+    Rect rect
+}
+
+struct FRect {
     f32 x
     f32 y
     f32 w
@@ -34,7 +46,8 @@ variant StreamDisplayData {
 
 resource StreamDisplay {
     StreamDisplayData data
-    Rect rect
+    FRect dstRect
+    OptionalRect srcRect
     null texture
     Guid id
 } r {

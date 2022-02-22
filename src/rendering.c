@@ -122,8 +122,8 @@ renderFont(SDL_Renderer* renderer,
            float x,
            const float y,
            const float scale,
-           uint8_t foreground[4],
-           uint8_t background[4])
+           const uint8_t foreground[4],
+           const uint8_t background[4])
 {
     SDL_FRect totalRect = { .x = x, .y = 0, .w = 0, .h = 0 };
     if (background != NULL) {

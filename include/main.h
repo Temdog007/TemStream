@@ -263,8 +263,8 @@ renderFont(SDL_Renderer* renderer,
            const float x,
            const float y,
            const float scale,
-           uint8_t foreground[4],
-           uint8_t background[4]);
+           const uint8_t foreground[4],
+           const uint8_t background[4]);
 
 // Custom Events
 
@@ -291,4 +291,17 @@ SDL_FORCE_INLINE SDL_Rect
 FRect_to_Rect(const SDL_FRect* r)
 {
     return (SDL_Rect){ .x = r->x, .y = r->y, .w = r->w, .h = r->h };
+}
+
+SDL_FORCE_INLINE SDL_FRect
+expandRect(const SDL_FRect* rect, const float sw, const float sh)
+{
+    const float centerX = (rect->x + (rect->x + rect->w)) * 0.5f;
+    const float centerY = (rect->y + (rect->y + rect->h)) * 0.5f;
+    const float newWidth = rect->w * sw;
+    const float newHeight = rect->h * sh;
+    return (SDL_FRect){ .x = centerX - newWidth * 0.5f,
+                        .y = centerY - newHeight * 0.5f,
+                        .w = newWidth,
+                        .h = newHeight };
 }

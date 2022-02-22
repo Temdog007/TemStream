@@ -1,9 +1,10 @@
 - [x] Verify read/write access for streams
 - [x] Chat stream
     - [x] Move chat index
-    - [ ] Color time, username, and message differently
-    - [ ] Fix packet loss
+    - [x] Color time, username, and message differently
     - [x] Shaded background
+- [ ] Fix packet loss
+- [ ] Show last N number of chat messages
 - [ ] Image stream
 - [ ] Video stream
 - [ ] Audio stream
