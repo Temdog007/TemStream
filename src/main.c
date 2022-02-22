@@ -289,6 +289,16 @@ GetStreamDisplayFromGuid(const StreamDisplayList* displays,
       index);
 }
 
+bool
+GetClientFromGuid(const pClientList* list,
+                  const Guid* guid,
+                  const pClient** client,
+                  size_t* index)
+{
+    return pClientListFindIf(
+      list, (pClientListFindFunc)ClientGuidEquals, guid, client, index);
+}
+
 TemLangString
 RandomClientName(pRandomState rs)
 {

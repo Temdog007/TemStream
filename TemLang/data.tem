@@ -107,9 +107,14 @@ variant OptionalStreamStorage {
 
 inlineC "MAKE_DEFAULT_LIST(StreamStorage);"
 
+variant Access {
+    null anyone
+    [ 0 string ] list
+}
+
 struct Stream {
-    [ 0 string ] readers
-    [ 0 string ] writers
+    Access readers
+    Access writers
     string name
     Guid owner
     Guid id

@@ -209,6 +209,9 @@ GetStreamDisplayFromGuid(const StreamDisplayList*,
                          const StreamDisplay**,
                          size_t*);
 
+extern bool
+GetClientFromGuid(const pClientList*, const Guid*, const pClient**, size_t*);
+
 // Misc
 
 #define IN_MUTEX(mutex, endLabel, f)                                           \
@@ -287,4 +290,10 @@ SDL_PointInFRect(const SDL_FPoint* p, const SDL_FRect* r)
             (p->y < (r->y + r->h)))
              ? SDL_TRUE
              : SDL_FALSE;
+}
+
+SDL_FORCE_INLINE SDL_Rect
+FRect_to_Rect(const SDL_FRect* r)
+{
+    return (SDL_Rect){ .x = r->x, .y = r->y, .w = r->w, .h = r->h };
 }

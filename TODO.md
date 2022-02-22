@@ -1,4 +1,4 @@
-- [ ] Verify read/write access for streams
+- [x] Verify read/write access for streams
 - [ ] Chat stream
 - [ ] Image stream
 - [ ] Video stream

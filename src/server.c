@@ -50,20 +50,63 @@ authenticateClient(pClient client,
     }
 }
 
+bool
+clientHasAccess(const Client* client,
+                const Access* access,
+                const Stream* stream)
+{
+    if (GuidEquals(&client->id, &stream->owner)) {
+        return true;
+    }
+
+    switch (access->tag) {
+        case AccessTag_anyone:
+            return true;
+        case AccessTag_list:
+            return TemLangStringListFindIf(
+              &access->list,
+              (TemLangStringListFindFunc)TemLangStringsAreEqual,
+              &client->name,
+              NULL,
+              NULL);
+        default:
+            break;
+    }
+    return false;
+}
+
+bool
+clientHasReadAccess(const Client* client, const Stream* stream)
+{
+    return clientHasAccess(client, &stream->readers, stream);
+}
+
+bool
+clientHasWriteAccess(const Client* client, const Stream* stream)
+{
+    return clientHasAccess(client, &stream->writers, stream);
+}
+
 void
-copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
+copyMessageToClients(const Client* writer,
+                     const StreamMessage* message,
+                     const Bytes* bytes)
 {
     const bool udp = MessageUsesUdp(message);
 
     IN_MUTEX(serverData.mutex, endMutex, {
+        const Stream* stream = NULL;
         if (!StreamListFindIf(&serverData.streams,
                               (StreamListFindFunc)StreamGuidEquals,
                               &message->id,
-                              NULL,
+                              &stream,
                               NULL)) {
 #if _DEBUG
             puts("Got stream message that doesn't belong to a stream");
 #endif
+            goto endMutex;
+        }
+        if (!clientHasWriteAccess(writer, stream)) {
             goto endMutex;
         }
         {
@@ -114,7 +157,8 @@ copyMessageToClients(const StreamMessage* message, const Bytes* bytes)
         for (size_t i = 0; i < serverData.clients.used; ++i) {
             const Client* client = serverData.clients.buffer[i];
             if (!GuidListFind(
-                  &client->connectedStreams, &message->id, NULL, NULL)) {
+                  &client->connectedStreams, &message->id, NULL, NULL) ||
+                !clientHasReadAccess(client, stream)) {
                 continue;
             }
             if (udp) {
@@ -276,7 +320,7 @@ handleTcpConnection(pClient client)
         MESSAGE_DESERIALIZE(message, bytes);
         switch (message.tag) {
             case MessageTag_streamMessage:
-                copyMessageToClients(&message.streamMessage, &bytes);
+                copyMessageToClients(client, &message.streamMessage, &bytes);
                 break;
             case MessageTag_connectToStream: {
                 IN_MUTEX(serverData.mutex, cts, {
@@ -671,7 +715,16 @@ runUdpServer(const AllConfiguration* configuration)
         MessageFree(&message);
         MESSAGE_DESERIALIZE(message, bytes);
         if (message.tag == MessageTag_streamMessage) {
-            copyMessageToClients(&message.streamMessage, &bytes);
+            IN_MUTEX(serverData.mutex, endClientFind, {
+                const pClient* writer = NULL;
+                if (GetClientFromGuid(&serverData.clients,
+                                      &message.streamMessage.id,
+                                      &writer,
+                                      NULL)) {
+                    copyMessageToClients(
+                      *writer, &message.streamMessage, &bytes);
+                }
+            });
         } else {
 #if _DEBUG
             printf("Got invalid message on UDP port: %s\n",
@@ -695,11 +748,8 @@ cleanupThread(uint32_t timeout)
         size_t i = 0;
         while (i < serverData.streams.used) {
             const Stream* stream = &serverData.streams.buffer[i];
-            if (pClientListFindIf(&serverData.clients,
-                                  (pClientListFindFunc)ClientGuidEquals,
-                                  &stream->owner,
-                                  NULL,
-                                  NULL)) {
+            if (GetClientFromGuid(
+                  &serverData.clients, &stream->owner, NULL, NULL)) {
                 ++i;
             } else {
                 printf("Owner of stream '%s' has disconnected\n",

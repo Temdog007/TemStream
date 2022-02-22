@@ -1,5 +1,8 @@
 #include <include/main.h>
 
+#define MIN_WIDTH 32
+#define MIN_HEIGHT 32
+
 ClientData clientData = { 0 };
 
 bool
@@ -906,7 +909,10 @@ end:
 }
 
 void
-drawTextures(SDL_Renderer* renderer, const size_t target)
+drawTextures(SDL_Renderer* renderer,
+             const size_t target,
+             const float maxX,
+             const float maxY)
 {
     SDL_SetRenderTarget(renderer, NULL);
 
@@ -920,19 +926,21 @@ drawTextures(SDL_Renderer* renderer, const size_t target)
             SDL_RenderFillRectF(renderer, (const SDL_FRect*)&display->rect);
         }
         for (size_t i = 0; i < clientData.displays.used; ++i) {
-            const StreamDisplay* display = &clientData.displays.buffer[i];
+            pStreamDisplay display = &clientData.displays.buffer[i];
             SDL_Texture* texture = display->texture;
             if (texture == NULL) {
                 continue;
             }
+            SDL_FRect* rect = (SDL_FRect*)&display->rect;
+            rect->x = SDL_clamp(rect->x, 0, maxX);
+            rect->y = SDL_clamp(rect->y, 0, maxY);
             if (target == i) {
                 SDL_SetTextureColorMod(texture, 0x0u, 0x0u, 0x0u);
             } else {
                 SDL_SetTextureColorMod(texture, 0xffu, 0xffu, 0xffu);
             }
             SDL_SetTextureAlphaMod(texture, 0xffu);
-            SDL_RenderCopyF(
-              renderer, texture, NULL, (const SDL_FRect*)&display->rect);
+            SDL_RenderCopyF(renderer, texture, NULL, rect);
         }
     });
 
@@ -1114,15 +1122,15 @@ runClient(const AllConfiguration* configuration)
                     switch (moveMode) {
                         case MoveMode_Position:
                             display->rect.x = SDL_clamp(
-                              display->rect.x + e.motion.xrel, 0, w * 0.99f);
+                              display->rect.x + e.motion.xrel, 0, w - 32);
                             display->rect.y = SDL_clamp(
-                              display->rect.y + e.motion.yrel, 0, h * 0.99f);
+                              display->rect.y + e.motion.yrel, 0, h - 32);
                             break;
                         case MoveMode_Size:
                             display->rect.w = SDL_clamp(
-                              display->rect.w + e.motion.xrel, 100, w);
+                              display->rect.w + e.motion.xrel, MIN_WIDTH, w);
                             display->rect.h = SDL_clamp(
-                              display->rect.h + e.motion.yrel, 100, h);
+                              display->rect.h + e.motion.yrel, MIN_HEIGHT, h);
                             break;
                         default:
                             break;
@@ -1132,9 +1140,15 @@ runClient(const AllConfiguration* configuration)
             } break;
             case SDL_USEREVENT:
                 switch (e.user.code) {
-                    case CustomEvent_Render:
-                        drawTextures(renderer, targetDisplay);
-                        break;
+                    case CustomEvent_Render: {
+                        int w;
+                        int h;
+                        SDL_GetWindowSize(window, &w, &h);
+                        drawTextures(renderer,
+                                     targetDisplay,
+                                     (float)w - 32.f,
+                                     (float)h - 32.f);
+                    } break;
                     case CustomEvent_AddTexture: {
                         int w;
                         int h;
