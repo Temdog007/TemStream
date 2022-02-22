@@ -61,7 +61,7 @@ extern bool
 StreamNameEquals(const Stream*, const TemLangString*);
 
 extern bool
-StreamStorageGuidEquals(const StreamStorage*, const Guid*);
+StreamMessageGuidEquals(const StreamMessage*, const Guid*);
 
 extern bool
 StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
@@ -192,15 +192,9 @@ extern bool
 GetStreamFromGuid(const StreamList*, const Guid*, const Stream**, size_t*);
 
 extern bool
-GetStreamStorageFromName(const StreamStorageList*,
-                         const TemLangString*,
-                         const StreamStorage**,
-                         size_t*);
-
-extern bool
-GetStreamStorageFromGuid(const StreamStorageList*,
+GetStreamMessageFromGuid(const StreamMessageList*,
                          const Guid*,
-                         const StreamStorage**,
+                         const StreamMessage**,
                          size_t*);
 
 extern bool

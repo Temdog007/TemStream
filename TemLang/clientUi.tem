@@ -22,7 +22,18 @@ enum MoveMode {
     Size
 }
 
+struct StreamDisplayChat {
+    [0 ChatMessage] logs
+    u32 offset
+}
+
+variant StreamDisplayData {
+    null none
+    StreamDisplayChat chat
+}
+
 resource StreamDisplay {
+    StreamDisplayData data
     Rect rect
     null texture
     Guid id
@@ -33,3 +44,20 @@ resource StreamDisplay {
 }
 
 inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
+
+resource ClientData {
+    [0 Stream] allStreams
+    [0 Guid] ownStreams
+    [0 Guid] connectedStreams
+    [0 string] otherClients
+    [0 StreamDisplay] displays
+    string name
+    Guid id
+    null mutex
+    null cond
+} cd {
+    inlineC "
+        SDL_DestroyCond(cd.cond);
+        SDL_DestroyMutex(cd.mutex);
+    "
+}

@@ -18,6 +18,25 @@ renderDisplays()
 }
 
 void
+cleanupStreamDisplays()
+{
+    IN_MUTEX(clientData.mutex, end, {
+        size_t i = 0;
+        while (i < clientData.displays.used) {
+            if (GuidListFind(&clientData.connectedStreams,
+                             &clientData.displays.buffer[i].id,
+                             NULL,
+                             NULL)) {
+                ++i;
+            } else {
+                StreamDisplayListSwapRemove(&clientData.displays, i);
+            }
+        }
+        renderDisplays();
+    });
+}
+
+void
 askQuestion(const char* string)
 {
     const size_t size = strlen(string);
@@ -447,6 +466,22 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
                     message.streamMessage.data.text = TemLangStringCreate(
                       (char*)bytes->buffer, currentAllocator);
                     break;
+                case StreamType_Chat:
+                    printf("Enter message for chat stream '%s'\n",
+                           stream->name.buffer);
+                    if (!getUserInput(inputfd, bytes, NULL)) {
+                        continue;
+                    }
+                    message.streamMessage.data.tag =
+                      StreamMessageDataTag_chatMessage;
+                    message.streamMessage.data.chatMessage.message =
+                      TemLangStringCreate((char*)bytes->buffer,
+                                          currentAllocator);
+                    TemLangStringCopy(
+                      &message.streamMessage.data.chatMessage.author,
+                      &clientData.name,
+                      currentAllocator);
+                    break;
                 default:
                     printf("Cannot manually send data to stream type '%s'\n",
                            StreamTypeToCharString(stream->type));
@@ -621,7 +656,7 @@ readSocket(const int sockfd, pBytes bytes)
                                   currentAllocator);
                 clientData.id = message.authenticateAck.id;
                 break;
-            case MessageTag_getAllDataAck:
+            case MessageTag_getAllDataAck: {
                 GuidListCopy(&clientData.connectedStreams,
                              &message.getAllDataAck.connectedStreams,
                              currentAllocator);
@@ -632,8 +667,9 @@ readSocket(const int sockfd, pBytes bytes)
                                &message.getAllDataAck.allStreams,
                                currentAllocator);
                 doSignal = true;
+                cleanupStreamDisplays();
                 puts("Updated server data");
-                break;
+            } break;
             case MessageTag_getClientsAck:
                 TemLangStringListCopy(&clientData.otherClients,
                                       &message.getClientsAck,
@@ -646,6 +682,7 @@ readSocket(const int sockfd, pBytes bytes)
                              &message.getConnectedStreamsAck,
                              currentAllocator);
                 doSignal = true;
+                cleanupStreamDisplays();
                 puts("Updated connected streams");
                 break;
             case MessageTag_getClientStreamsAck:
@@ -690,31 +727,28 @@ readSocket(const int sockfd, pBytes bytes)
                 break;
             case MessageTag_connectToStreamAck:
                 switch (message.connectToStreamAck.tag) {
-                    case OptionalStreamStorageTag_streamStorage: {
+                    case OptionalStreamMessageTag_streamMessage: {
                         puts("Connected to stream");
-                        const StreamStorage* storage =
-                          &message.connectToStreamAck.streamStorage;
+                        const StreamMessage* streamMessage =
+                          &message.connectToStreamAck.streamMessage;
 
                         SDL_Event e = { 0 };
                         e.type = SDL_USEREVENT;
                         e.user.code = CustomEvent_AddTexture;
                         Guid* guid = currentAllocator->allocate(sizeof(Guid));
-                        *guid = storage->id;
+                        *guid = streamMessage->id;
                         e.user.data1 = guid;
                         SDL_PushEvent(&e);
 
-                        switch (storage->data.tag) {
-                            case StreamMessageDataTag_text: {
-                                printf("Got text stream update: %s\n",
-                                       storage->data.text.buffer);
+                        switch (streamMessage->data.tag) {
+                            case StreamMessageDataTag_text:
+                            case StreamMessageDataTag_chatMessage:
+                            case StreamMessageDataTag_chatLogs: {
                                 e.user.code = CustomEvent_UpdateStreamDisplay;
                                 pStreamMessage m = currentAllocator->allocate(
                                   sizeof(StreamMessage));
-                                m->id = storage->id;
-                                m->data.tag = StreamMessageDataTag_text;
-                                TemLangStringCopy(&m->data.text,
-                                                  &storage->data.text,
-                                                  currentAllocator);
+                                StreamMessageCopy(
+                                  m, streamMessage, currentAllocator);
                                 e.user.data1 = m;
                                 SDL_PushEvent(&e);
                             } break;
@@ -733,10 +767,13 @@ readSocket(const int sockfd, pBytes bytes)
                 } else {
                     puts("Failed to disconnect from stream");
                 }
+                refreshStreams(sockfd, bytes);
                 break;
             case MessageTag_streamMessage:
                 switch (message.streamMessage.data.tag) {
-                    case StreamMessageDataTag_text: {
+                    case StreamMessageDataTag_text:
+                    case StreamMessageDataTag_chatLogs:
+                    case StreamMessageDataTag_chatMessage: {
                         SDL_Event e = { 0 };
                         e.type = SDL_USEREVENT;
                         e.user.code = CustomEvent_UpdateStreamDisplay;
@@ -788,7 +825,7 @@ updateTextDisplay(SDL_Renderer* renderer,
 
         SDL_Color color = { 0 };
         color.r = color.g = color.b = color.a = 0xffu;
-        surface = TTF_RenderText_Solid(ttfFont, string->buffer, color);
+        surface = TTF_RenderText_Solid_Wrapped(ttfFont, string->buffer, color);
         if (surface == NULL) {
             fprintf(
               stderr, "Failed to create text surface: %s\n", TTF_GetError());
@@ -807,6 +844,99 @@ updateTextDisplay(SDL_Renderer* renderer,
 
     end:
         SDL_FreeSurface(surface);
+    });
+}
+
+void
+updateChatDisplay(SDL_Renderer* renderer,
+                  TTF_Font* ttfFont,
+                  pStreamDisplay display)
+{
+    if (display->texture != NULL) {
+        SDL_DestroyTexture(display->texture);
+    }
+
+    const StreamDisplayChat* chat = &display->data.chat;
+    if (ChatMessageListIsEmpty(&chat->logs)) {
+        return;
+    }
+
+    TemLangString string = { .allocator = currentAllocator };
+
+    char buffer[128] = { 0 };
+    for (size_t j = chat->offset; j < chat->logs.used; ++j) {
+        const ChatMessage* cm = &chat->logs.buffer[j];
+        const time_t t = (time_t)cm->timeStamp;
+        strftime(buffer, sizeof(buffer), "%c", localtime(&t));
+        TemLangStringAppendFormat(string,
+                                  "|%s| %s: %s\n",
+                                  buffer,
+                                  cm->author.buffer,
+                                  cm->message.buffer);
+    }
+
+    SDL_Color color = { 0 };
+    color.r = color.g = color.b = color.a = 0xffu;
+    SDL_Surface* surface =
+      TTF_RenderText_Solid_Wrapped(ttfFont, string.buffer, color, 0);
+    if (surface == NULL) {
+        fprintf(stderr, "Failed to create text surface: %s\n", TTF_GetError());
+        goto end;
+    }
+
+    display->rect.w = surface->w;
+    display->rect.h = surface->h;
+
+    display->texture = SDL_CreateTextureFromSurface(renderer, surface);
+    if (display->texture == NULL) {
+        fprintf(stderr,
+                "Failed to update text display texture: %s\n",
+                SDL_GetError());
+    }
+
+end:
+    TemLangStringFree(&string);
+    SDL_FreeSurface(surface);
+}
+
+void
+updateChatDisplayFromList(SDL_Renderer* renderer,
+                          TTF_Font* ttfFont,
+                          const Guid* id,
+                          const ChatMessageList* list)
+{
+    IN_MUTEX(clientData.mutex, endMutex, {
+        size_t i = 0;
+        if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
+            puts("Missing stream display for chat stream");
+            goto endMutex;
+        }
+
+        pStreamDisplay display = &clientData.displays.buffer[i];
+        ChatMessageListCopy(&display->data.chat.logs, list, currentAllocator);
+        updateChatDisplay(renderer, ttfFont, display);
+    });
+}
+
+void
+updateChatDisplayFromMessage(SDL_Renderer* renderer,
+                             TTF_Font* ttfFont,
+                             const Guid* id,
+                             const ChatMessage* message)
+{
+    IN_MUTEX(clientData.mutex, endMutex, {
+        size_t i = 0;
+        if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
+            puts("Missing stream display for chat stream");
+            goto endMutex;
+        }
+
+        pStreamDisplay display = &clientData.displays.buffer[i];
+        if (display->data.chat.logs.allocator == NULL) {
+            display->data.chat.logs.allocator = currentAllocator;
+        }
+        ChatMessageListAppend(&display->data.chat.logs, message);
+        updateChatDisplay(renderer, ttfFont, display);
     });
 }
 
@@ -971,7 +1101,7 @@ runClient(const AllConfiguration* configuration)
     SDL_Thread* thread = NULL;
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
-    Font font = { 0 };
+    // Font font = { 0 };
     TTF_Font* ttfFont = NULL;
 
     clientData.displays.allocator = currentAllocator;
@@ -1041,10 +1171,11 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
-    if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer, &font)) {
-        fprintf(stderr, "Failed to load font\n");
-        goto end;
-    }
+    // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer, &font))
+    // {
+    //     fprintf(stderr, "Failed to load font\n");
+    //     goto end;
+    // }
 
     ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
     if (ttfFont == NULL) {
@@ -1169,13 +1300,21 @@ runClient(const AllConfiguration* configuration)
                     case CustomEvent_UpdateStreamDisplay: {
                         pStreamMessage m = e.user.data1;
                         switch (m->data.tag) {
-                            case StreamMessageDataTag_text: {
-                                printf("Updating text stream with '%s'\n",
-                                       m->data.text.buffer);
+                            case StreamMessageDataTag_text:
                                 updateTextDisplay(
                                   renderer, ttfFont, &m->id, &m->data.text);
-                                renderDisplays();
-                            } break;
+                                break;
+                            case StreamMessageDataTag_chatMessage:
+                                updateChatDisplayFromMessage(
+                                  renderer,
+                                  ttfFont,
+                                  &m->id,
+                                  &m->data.chatMessage);
+                                break;
+                            case StreamMessageDataTag_chatLogs:
+                                updateChatDisplayFromList(
+                                  renderer, ttfFont, &m->id, &m->data.chatLogs);
+                                break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
                                        StreamMessageDataTagToCharString(
@@ -1183,6 +1322,7 @@ runClient(const AllConfiguration* configuration)
                                 break;
                         }
                         currentAllocator->free(m);
+                        renderDisplays();
                     } break;
                     default:
                         break;
@@ -1194,7 +1334,7 @@ runClient(const AllConfiguration* configuration)
     }
 
 end:
-    FontFree(&font);
+    // FontFree(&font);
     TTF_CloseFont(ttfFont);
     TTF_Quit();
     SDL_WaitThread(thread, &result);

@@ -6,7 +6,7 @@ typedef struct ServerData
     pClientList clients;
     SDL_mutex* mutex;
     int32_t udpSocket;
-    StreamStorageList storage;
+    StreamMessageList storage;
 } ServerData, *pServerData;
 
 ServerData serverData = { 0 };
@@ -17,7 +17,7 @@ ServerDataFree(pServerData data)
     SDL_DestroyMutex(data->mutex);
     pClientListFree(&data->clients);
     StreamListFree(&data->streams);
-    StreamStorageListFree(&data->storage);
+    StreamMessageListFree(&data->storage);
 }
 
 // Assigns client a name also
@@ -87,10 +87,29 @@ clientHasWriteAccess(const Client* client, const Stream* stream)
     return clientHasAccess(client, &stream->writers, stream);
 }
 
+bool
+setStreamMessageTimestamp(pMessage message)
+{
+    switch (message->tag) {
+        case MessageTag_streamMessage: {
+            pStreamMessage streamMessage = &message->streamMessage;
+            switch (streamMessage->data.tag) {
+                case StreamMessageDataTag_chatMessage:
+                    streamMessage->data.chatMessage.timeStamp =
+                      (int64_t)time(NULL);
+                    return true;
+                default:
+                    break;
+            }
+        } break;
+        default:
+            break;
+    }
+    return false;
+}
+
 void
-copyMessageToClients(const Client* writer,
-                     const StreamMessage* message,
-                     const Bytes* bytes)
+copyMessageToClients(const Client* writer, pStreamMessage message, pBytes bytes)
 {
     const bool udp = MessageUsesUdp(message);
 
@@ -110,40 +129,40 @@ copyMessageToClients(const Client* writer,
             goto endMutex;
         }
         {
-            pStreamStorage storage = NULL;
+            pStreamMessage storage = NULL;
             size_t sIndex = 0;
-            if (StreamStorageListFindIf(
+            if (StreamMessageListFindIf(
                   &serverData.storage,
-                  (StreamStorageListFindFunc)StreamStorageGuidEquals,
+                  (StreamMessageListFindFunc)StreamMessageGuidEquals,
                   &message->id,
                   NULL,
                   &sIndex)) {
                 storage = &serverData.storage.buffer[sIndex];
             } else {
-                StreamStorage s = { 0 };
+                StreamMessage s = { 0 };
                 s.id = message->id;
                 switch (message->data.tag) {
                     case StreamMessageDataTag_chatMessage:
-                        s.data.tag = StreamStorageDataTag_chatLogs;
+                        s.data.tag = StreamMessageDataTag_chatLogs;
                         s.data.chatLogs.allocator = currentAllocator;
                         break;
                     case StreamMessageDataTag_text:
-                        s.data.tag = StreamStorageDataTag_text;
+                        s.data.tag = StreamMessageDataTag_text;
                         s.data.text.allocator = currentAllocator;
                         break;
                     default:
-                        s.data.tag = StreamStorageDataTag_none;
+                        s.data.tag = StreamMessageDataTag_none;
                         s.data.none = NULL;
                         break;
                 }
-                StreamStorageListAppend(&serverData.storage, &s);
+                StreamMessageListAppend(&serverData.storage, &s);
                 storage =
                   &serverData.storage.buffer[serverData.storage.used - 1U];
             }
             switch (message->data.tag) {
                 case StreamMessageDataTag_chatMessage:
-                    TemLangStringListAppend(&storage->data.chatLogs,
-                                            &message->data.chatMessage);
+                    ChatMessageListAppend(&storage->data.chatLogs,
+                                          &message->data.chatMessage);
                     break;
                 case StreamMessageDataTag_text:
                     TemLangStringCopy(&storage->data.text,
@@ -318,6 +337,9 @@ handleTcpConnection(pClient client)
         bytes.used = (uint32_t)size;
         MessageFree(&message);
         MESSAGE_DESERIALIZE(message, bytes);
+        if (setStreamMessageTimestamp(&message)) {
+            MESSAGE_SERIALIZE(message, bytes);
+        }
         switch (message.tag) {
             case MessageTag_streamMessage:
                 copyMessageToClients(client, &message.streamMessage, &bytes);
@@ -325,13 +347,13 @@ handleTcpConnection(pClient client)
             case MessageTag_connectToStream: {
                 IN_MUTEX(serverData.mutex, cts, {
                     const Stream* stream = NULL;
-                    const StreamStorage* storage = NULL;
+                    const StreamMessage* storage = NULL;
                     const bool success =
                       GetStreamFromGuid(&serverData.streams,
                                         &message.connectToStream,
                                         &stream,
                                         NULL);
-                    GetStreamStorageFromGuid(&serverData.storage,
+                    GetStreamMessageFromGuid(&serverData.storage,
                                              &message.connectToStream,
                                              &storage,
                                              NULL);
@@ -352,24 +374,24 @@ handleTcpConnection(pClient client)
                     message.tag = MessageTag_connectToStreamAck;
                     if (success) {
                         message.connectToStreamAck.tag =
-                          OptionalStreamStorageTag_streamStorage;
+                          OptionalStreamMessageTag_streamMessage;
                         if (storage == NULL) {
-                            message.connectToStreamAck.streamStorage.id =
+                            message.connectToStreamAck.streamMessage.id =
                               stream->id;
-                            message.connectToStreamAck.streamStorage.data.tag =
+                            message.connectToStreamAck.streamMessage.data.tag =
                               StreamMessageDataTag_none;
-                            message.connectToStreamAck.streamStorage.data.none =
+                            message.connectToStreamAck.streamMessage.data.none =
                               NULL;
                         } else {
-                            StreamStorageCopy(
-                              &message.connectToStreamAck.streamStorage,
+                            StreamMessageCopy(
+                              &message.connectToStreamAck.streamMessage,
                               storage,
                               currentAllocator);
                         }
                     } else {
                         message.connectToStreamAck.none = NULL;
                         message.connectToStreamAck.tag =
-                          OptionalStreamStorageTag_none;
+                          OptionalStreamMessageTag_none;
                     }
                 });
                 MESSAGE_SERIALIZE(message, bytes);
@@ -420,6 +442,18 @@ handleTcpConnection(pClient client)
                            newStream.record);
                     IN_MUTEX(serverData.mutex, ss2, {
                         StreamListAppend(&serverData.streams, &newStream);
+                        switch (newStream.type) {
+                            case StreamType_Chat: {
+                                StreamMessage m = { 0 };
+                                m.id = newStream.id;
+                                m.data.tag = StreamMessageDataTag_chatLogs;
+                                m.data.chatLogs.allocator = currentAllocator;
+                                StreamMessageListAppend(&serverData.storage,
+                                                        &m);
+                            } break;
+                            default:
+                                break;
+                        }
                     })
                     MessageFree(&message);
                     message.tag = MessageTag_startStreamingAck;
@@ -714,6 +748,9 @@ runUdpServer(const AllConfiguration* configuration)
         bytes.used = (uint32_t)size;
         MessageFree(&message);
         MESSAGE_DESERIALIZE(message, bytes);
+        if (setStreamMessageTimestamp(&message)) {
+            MESSAGE_SERIALIZE(message, bytes);
+        }
         if (message.tag == MessageTag_streamMessage) {
             IN_MUTEX(serverData.mutex, endClientFind, {
                 const pClient* writer = NULL;

@@ -75,11 +75,19 @@ struct AllConfiguration {
     Address address
 }
 
+struct ChatMessage {
+    string message
+    string author
+    i64 timeStamp
+}
+
+inlineC "MAKE_DEFAULT_LIST(ChatMessage);"
+
 variant StreamMessageData {
     null none
     string text
-    string chatMessage
-    string chatLogs
+    ChatMessage chatMessage
+    [0 ChatMessage] chatLogs
 }
 
 struct StreamMessage {
@@ -89,23 +97,10 @@ struct StreamMessage {
 
 inlineC "MAKE_DEFAULT_LIST(StreamMessage);"
 
-variant StreamStorageData {
+variant OptionalStreamMessage {
     null none
-    string text
-    [0 string] chatLogs
+    StreamMessage streamMessage
 }
-
-struct StreamStorage {
-    Guid id
-    StreamStorageData data
-}
-
-variant OptionalStreamStorage {
-    null none
-    StreamStorage streamStorage
-}
-
-inlineC "MAKE_DEFAULT_LIST(StreamStorage);"
 
 variant Access {
     null anyone
@@ -152,7 +147,7 @@ variant Message {
     ClientAuthentication authenticate
     ClientInfo authenticateAck
     Guid connectToStream
-    OptionalStreamStorage connectToStreamAck
+    OptionalStreamMessage connectToStreamAck
     Guid disconnectFromStream
     bool disconnectFromStreamAck
     Stream startStreaming
@@ -176,20 +171,3 @@ variant Message {
 inlineC "MAKE_DEFAULT_LIST(Message);"
 
 inlineFile "TemLang/clientUi.tem"
-
-resource ClientData {
-    [0 Stream] allStreams
-    [0 Guid] ownStreams
-    [0 Guid] connectedStreams
-    [0 string] otherClients
-    [0 StreamDisplay] displays
-    string name
-    Guid id
-    null mutex
-    null cond
-} cd {
-    inlineC "
-        SDL_DestroyCond(cd.cond);
-        SDL_DestroyMutex(cd.mutex);
-    "
-}

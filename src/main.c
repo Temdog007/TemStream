@@ -230,9 +230,9 @@ StreamNameEquals(const Stream* stream, const TemLangString* name)
 }
 
 bool
-StreamStorageGuidEquals(const StreamStorage* stream, const Guid* guid)
+StreamMessageGuidEquals(const StreamMessage* message, const Guid* guid)
 {
-    return GuidEquals(&stream->id, guid);
+    return GuidEquals(&message->id, guid);
 }
 
 bool
@@ -262,14 +262,14 @@ GetStreamFromGuid(const StreamList* streams,
 }
 
 bool
-GetStreamStorageFromGuid(const StreamStorageList* streams,
+GetStreamMessageFromGuid(const StreamMessageList* streams,
                          const Guid* guid,
-                         const StreamStorage** stream,
+                         const StreamMessage** stream,
                          size_t* index)
 {
-    return StreamStorageListFindIf(
+    return StreamMessageListFindIf(
       streams,
-      (StreamStorageListFindFunc)StreamStorageGuidEquals,
+      (StreamMessageListFindFunc)StreamMessageGuidEquals,
       guid,
       stream,
       index);
