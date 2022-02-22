@@ -88,7 +88,7 @@ clientHasWriteAccess(const Client* client, const Stream* stream)
 }
 
 bool
-setStreamMessageTimestamp(pMessage message)
+setStreamMessageTimestamp(const Client* client, pMessage message)
 {
     switch (message->tag) {
         case MessageTag_streamMessage: {
@@ -97,7 +97,10 @@ setStreamMessageTimestamp(pMessage message)
                 case StreamMessageDataTag_chatMessage:
                     streamMessage->data.chatMessage.timeStamp =
                       (int64_t)time(NULL);
-                    return true;
+                    return TemLangStringCopy(
+                      &streamMessage->data.chatMessage.author,
+                      &client->name,
+                      currentAllocator);
                 default:
                     break;
             }
@@ -316,7 +319,7 @@ handleTcpConnection(pClient client)
     }
 
     while (!appDone) {
-        switch (poll(&pfds, 1, 1000)) {
+        switch (poll(&pfds, 1, SERVER_POLL_WAIT)) {
             case -1:
                 perror("poll");
                 goto end;
@@ -337,7 +340,7 @@ handleTcpConnection(pClient client)
         bytes.used = (uint32_t)size;
         MessageFree(&message);
         MESSAGE_DESERIALIZE(message, bytes);
-        if (setStreamMessageTimestamp(&message)) {
+        if (setStreamMessageTimestamp(client, &message)) {
             MESSAGE_SERIALIZE(message, bytes);
         }
         switch (message.tag) {
@@ -532,8 +535,20 @@ handleTcpConnection(pClient client)
             case MessageTag_getStream: {
                 IN_MUTEX(serverData.mutex, gs, {
                     const Stream* stream = NULL;
-                    GetStreamFromGuid(
-                      &serverData.streams, &message.getStream, &stream, NULL);
+                    switch (message.getStream.tag) {
+                        case StringOrGuidTag_name:
+                            GetStreamFromName(&serverData.streams,
+                                              &message.getStream.name,
+                                              &stream,
+                                              NULL);
+                            break;
+                        default:
+                            GetStreamFromGuid(&serverData.streams,
+                                              &message.getStream.id,
+                                              &stream,
+                                              NULL);
+                            break;
+                    }
                     Message newMessage = { 0 };
                     newMessage.tag = MessageTag_getStreamAck;
                     if (stream == NULL) {
@@ -587,11 +602,11 @@ handleTcpConnection(pClient client)
     }
 
 end:
+    printf("Closing connection: %s (%s)\n", client->name.buffer, buffer);
     IN_MUTEX(serverData.mutex, fend, {
         pClientListSwapRemoveValue(&serverData.clients, &client);
     });
 
-    printf("Closing connection: %s\n", buffer);
     MessageFree(&message);
     uint8_tListFree(&bytes);
     ClientFree(client);
@@ -623,7 +638,7 @@ runTcpServer(const AllConfiguration* configuration)
     RandomState rs = makeRandomState();
     struct pollfd pfds = { .events = POLLIN, .revents = 0, .fd = listener };
     while (!appDone) {
-        switch (poll(&pfds, 1, 1000)) {
+        switch (poll(&pfds, 1, SERVER_POLL_WAIT)) {
             case INVALID_SOCKET:
                 perror("poll");
                 continue;
@@ -720,7 +735,7 @@ runUdpServer(const AllConfiguration* configuration)
                            .events = POLLIN,
                            .revents = 0 };
     while (!appDone) {
-        switch (poll(&pfds, 1, 1000)) {
+        switch (poll(&pfds, 1, SERVER_POLL_WAIT)) {
             case INVALID_SOCKET:
                 perror("poll");
                 continue;
@@ -748,9 +763,6 @@ runUdpServer(const AllConfiguration* configuration)
         bytes.used = (uint32_t)size;
         MessageFree(&message);
         MESSAGE_DESERIALIZE(message, bytes);
-        if (setStreamMessageTimestamp(&message)) {
-            MESSAGE_SERIALIZE(message, bytes);
-        }
         if (message.tag == MessageTag_streamMessage) {
             IN_MUTEX(serverData.mutex, endClientFind, {
                 const pClient* writer = NULL;
@@ -758,6 +770,9 @@ runUdpServer(const AllConfiguration* configuration)
                                       &message.streamMessage.id,
                                       &writer,
                                       NULL)) {
+                    if (setStreamMessageTimestamp(*writer, &message)) {
+                        MESSAGE_SERIALIZE(message, bytes);
+                    }
                     copyMessageToClients(
                       *writer, &message.streamMessage, &bytes);
                 }

@@ -227,7 +227,8 @@ authenticateClient(pClient client,
 #define MESSAGE_DESERIALIZE(message, bytes)                                    \
     MessageDeserialize(&message, &bytes, 0, true)
 
-#define POLL_WAIT 100
+#define CLIENT_POLL_WAIT 100
+#define SERVER_POLL_WAIT 1000
 
 // Font
 typedef struct Character

@@ -23,7 +23,7 @@ openSocket(void* data, const SocketOptions options)
     struct sockaddr* addr = (struct sockaddr*)data;
 
 #if _DEBUG
-    char buffer[64];
+    char buffer[64] = { 0 };
     int port;
     getAddrInfoString(res, buffer, &port);
     printf("Attempting to open socket: %s:%d\n", buffer, port);
@@ -48,6 +48,16 @@ openSocket(void* data, const SocketOptions options)
             closeSocket(fd);
             fd = INVALID_SOCKET;
             goto end;
+        }
+        if (isTcp) {
+            int yes = 1;
+            if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) ==
+                -1) {
+                perror("setsockopt");
+                closeSocket(fd);
+                fd = INVALID_SOCKET;
+                goto end;
+            }
         }
     }
 
@@ -199,7 +209,6 @@ openSocketFromAddress(const Address* address, const SocketOptions options)
     switch (address->tag) {
         case AddressTag_domainSocket:
             return openUnixSocket(address->domainSocket.buffer, options);
-            break;
         case AddressTag_ipAddress:
             return openIpSocket(address->ipAddress.ip.buffer,
                                 address->ipAddress.port.buffer,

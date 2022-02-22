@@ -162,7 +162,7 @@ bool
 getUserInput(struct pollfd inputfd, pBytes bytes, ssize_t* output)
 {
     while (!appDone) {
-        switch (poll(&inputfd, 1, POLL_WAIT)) {
+        switch (poll(&inputfd, 1, CLIENT_POLL_WAIT)) {
             case -1:
                 perror("poll");
                 return false;
@@ -477,10 +477,6 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
                     message.streamMessage.data.chatMessage.message =
                       TemLangStringCreate((char*)bytes->buffer,
                                           currentAllocator);
-                    TemLangStringCopy(
-                      &message.streamMessage.data.chatMessage.author,
-                      &clientData.name,
-                      currentAllocator);
                     break;
                 default:
                     printf("Cannot manually send data to stream type '%s'\n",
@@ -819,13 +815,17 @@ updateTextDisplay(SDL_Renderer* renderer,
         }
 
         pStreamDisplay display = &clientData.displays.buffer[i];
+        display->data.tag = StreamDisplayDataTag_none;
         if (display->texture != NULL) {
             SDL_DestroyTexture(display->texture);
         }
 
-        SDL_Color color = { 0 };
-        color.r = color.g = color.b = color.a = 0xffu;
-        surface = TTF_RenderText_Solid_Wrapped(ttfFont, string->buffer, color);
+        SDL_Color fg = { 0 };
+        fg.r = fg.g = fg.b = fg.a = 0xffu;
+        SDL_Color bg = { 0 };
+        bg.a = 128;
+        surface =
+          TTF_RenderUTF8_Shaded_Wrapped(ttfFont, string->buffer, fg, bg, 0);
         if (surface == NULL) {
             fprintf(
               stderr, "Failed to create text surface: %s\n", TTF_GetError());
@@ -862,9 +862,9 @@ updateChatDisplay(SDL_Renderer* renderer,
     }
 
     TemLangString string = { .allocator = currentAllocator };
-
+    display->data.tag = StreamDisplayDataTag_chat;
     char buffer[128] = { 0 };
-    for (size_t j = chat->offset; j < chat->logs.used; ++j) {
+    for (uint32_t j = chat->offset; j < chat->logs.used; ++j) {
         const ChatMessage* cm = &chat->logs.buffer[j];
         const time_t t = (time_t)cm->timeStamp;
         strftime(buffer, sizeof(buffer), "%c", localtime(&t));
@@ -875,10 +875,10 @@ updateChatDisplay(SDL_Renderer* renderer,
                                   cm->message.buffer);
     }
 
-    SDL_Color color = { 0 };
-    color.r = color.g = color.b = color.a = 0xffu;
+    const SDL_Color fg = { .r = 0xffu, .g = 0xffu, .b = 0xffu, .a = 0xffu };
+    const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 128u };
     SDL_Surface* surface =
-      TTF_RenderText_Solid_Wrapped(ttfFont, string.buffer, color, 0);
+      TTF_RenderUTF8_Shaded_Wrapped(ttfFont, string.buffer, fg, bg, 0);
     if (surface == NULL) {
         fprintf(stderr, "Failed to create text surface: %s\n", TTF_GetError());
         goto end;
@@ -999,7 +999,7 @@ readFromServer(struct AllConfiguration* configuration)
     }
 
     while (!appDone) {
-        switch (poll(pfdsList, len, POLL_WAIT)) {
+        switch (poll(pfdsList, len, CLIENT_POLL_WAIT)) {
             case -1:
                 perror("poll");
                 appDone = true;
@@ -1052,8 +1052,10 @@ drawTextures(SDL_Renderer* renderer,
     IN_MUTEX(clientData.mutex, end, {
         if (target < clientData.displays.used) {
             const StreamDisplay* display = &clientData.displays.buffer[target];
-            SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
-            SDL_RenderFillRectF(renderer, (const SDL_FRect*)&display->rect);
+            if (display->texture != NULL) {
+                SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
+                SDL_RenderFillRectF(renderer, (const SDL_FRect*)&display->rect);
+            }
         }
         for (size_t i = 0; i < clientData.displays.used; ++i) {
             pStreamDisplay display = &clientData.displays.buffer[i];
@@ -1195,7 +1197,7 @@ runClient(const AllConfiguration* configuration)
     MoveMode moveMode = MoveMode_None;
     appDone = false;
     while (!appDone) {
-        if (appDone || SDL_WaitEventTimeout(&e, POLL_WAIT) == 0) {
+        if (appDone || SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT) == 0) {
             continue;
         }
         switch (e.type) {
@@ -1247,6 +1249,9 @@ runClient(const AllConfiguration* configuration)
                     }
                     pStreamDisplay display =
                       &clientData.displays.buffer[targetDisplay];
+                    if (display->texture == NULL) {
+                        goto endMotion;
+                    }
                     int w;
                     int h;
                     SDL_GetWindowSize(window, &w, &h);
@@ -1263,6 +1268,28 @@ runClient(const AllConfiguration* configuration)
                             display->rect.h = SDL_clamp(
                               display->rect.h + e.motion.yrel, MIN_HEIGHT, h);
                             break;
+                        default:
+                            break;
+                    }
+                    renderDisplays();
+                });
+            } break;
+            case SDL_MOUSEWHEEL: {
+                IN_MUTEX(clientData.mutex, endWheel, {
+                    if (targetDisplay >= clientData.displays.used) {
+                        goto endWheel;
+                    }
+                    pStreamDisplay display =
+                      &clientData.displays.buffer[targetDisplay];
+                    switch (display->data.tag) {
+                        case StreamDisplayDataTag_chat: {
+                            const int64_t offset = display->data.chat.offset;
+                            display->data.chat.offset = (uint32_t)SDL_clamp(
+                              offset + (e.wheel.y > 0 ? 1LL : -1LL),
+                              0LL,
+                              display->data.chat.logs.used - 1LL);
+                            updateChatDisplay(renderer, ttfFont, display);
+                        } break;
                         default:
                             break;
                     }
