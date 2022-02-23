@@ -48,6 +48,9 @@ ClientGuidEquals(const pClient*, const Guid*);
 
 extern TemLangString RandomClientName(pRandomState);
 
+extern TemLangString
+RandomString(pRandomState, size_t min, size_t max);
+
 MAKE_COPY_AND_FREE(pClient);
 MAKE_DEFAULT_LIST(pClient);
 

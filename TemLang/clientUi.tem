@@ -34,9 +34,15 @@ enum MoveMode {
     Size
 }
 
+variant ChatView {
+    null autoScroll
+    u32 offset    
+}
+
 struct StreamDisplayChat {
     [0 ChatMessage] logs
-    u32 offset
+    ChatView view
+    u32 count
 }
 
 variant StreamDisplayData {

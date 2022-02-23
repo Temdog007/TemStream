@@ -40,19 +40,36 @@ parseCredentials(const char* str, pCredentials c)
 TemLangString
 RandomClientName(pRandomState rs)
 {
-    const uint64_t len = 3ULL + (random64(rs) % 7ULL);
+    TemLangString name = RandomString(rs, 3, 10);
+    TemLangStringInsertChar(&name, '@', 0);
+    return name;
+}
+
+TemLangString
+RandomString(pRandomState rs, const uint64_t min, const uint64_t max)
+{
+    const uint64_t len = min + (random64(rs) % (max - min));
     TemLangString name = { .allocator = currentAllocator,
                            .buffer = currentAllocator->allocate(len),
                            .size = len,
                            .used = 0 };
-    TemLangStringAppendChar(&name, '@');
-    for (size_t i = 0; i < len; ++i) {
+    for (uint64_t i = 0; i < len; ++i) {
         do {
             const char c = (char)(random64(rs) % 128ULL);
-            if (isalnum(c)) {
-                TemLangStringAppendChar(&name, c);
-                break;
+            switch (c) {
+                case ':':
+                    continue;
+                case '_':
+                case ' ':
+                    break;
+                default:
+                    if (isalnum(c)) {
+                        break;
+                    }
+                    continue;
             }
+            TemLangStringAppendChar(&name, c);
+            break;
         } while (true);
     }
     return name;

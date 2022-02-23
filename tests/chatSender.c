@@ -89,7 +89,7 @@ main(int argc, char** argv)
         for (int i = 0; i < messages; ++i) {
             TemLangStringFree(&message.streamMessage.data.chatMessage.message);
             message.streamMessage.data.chatMessage.message =
-              RandomClientName(&rs);
+              RandomString(&rs, 5, 150);
             TemLangStringAppendFormat(
               message.streamMessage.data.chatMessage.message, "_%d", i);
             MESSAGE_SERIALIZE(message, bytes);
@@ -97,6 +97,7 @@ main(int argc, char** argv)
             if (!socketSend(s, &bytes, false)) {
                 goto end;
             }
+            SDL_Delay(100);
         }
         puts("Done sending messages");
 

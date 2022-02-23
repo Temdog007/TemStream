@@ -3,8 +3,7 @@
     - [x] Move chat index
     - [x] Color time, username, and message differently
     - [x] Shaded background
-- [ ] Fix packet loss
-- [ ] Show last N number of chat messages
+- [x] Show last N number of chat messages
 - [ ] Image stream
 - [ ] Video stream
 - [ ] Audio stream

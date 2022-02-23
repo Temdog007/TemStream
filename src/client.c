@@ -20,6 +20,9 @@ renderDisplays()
 void
 cleanupStreamDisplays()
 {
+#if _DEBUG
+    puts("Cleaned up stream display");
+#endif
     IN_MUTEX(clientData.mutex, end, {
         size_t i = 0;
         while (i < clientData.displays.used) {
@@ -720,6 +723,7 @@ readSocket(const int sockfd, pBytes bytes)
                         socketSend(sockfd, bytes, true);
                         break;
                 }
+                refreshStreams(sockfd, bytes);
                 break;
             case MessageTag_connectToStreamAck:
                 switch (message.connectToStreamAck.tag) {
@@ -923,7 +927,7 @@ updateChatDisplay(SDL_Renderer* renderer,
     SDL_SetRenderTarget(renderer, display->texture);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
+    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0x0u);
     SDL_RenderClear(renderer);
 
     SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
@@ -935,12 +939,25 @@ updateChatDisplay(SDL_Renderer* renderer,
     const SDL_Color purple = { .r = 0xffu, .g = 0x0u, .b = 0xffu, .a = 0xffu };
     const SDL_Color yellow = { .r = 0xffu, .g = 0xffu, .b = 0x0u, .a = 0xffu };
     const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 128u };
-    const SDL_Color black = { .r = 0u, .g = 0u, .b = 0u, .a = 0xff };
+    const SDL_Color black = { .r = 0u, .g = 0u, .b = 0u, .a = 0xffu };
 
     SDL_Rect rect = { 0 };
     float maxW = 0.f;
     uint32_t y = 0;
-    for (uint32_t j = chat->offset; y < h && j < chat->logs.used; ++j) {
+    uint32_t offset;
+    switch (chat->view.tag) {
+        case ChatViewTag_offset:
+            offset = chat->view.offset;
+            break;
+        default: {
+            int64_t iOffset = chat->logs.used;
+            iOffset -= chat->count;
+            offset = (uint32_t)SDL_clamp(iOffset, 0LL, chat->logs.used);
+        } break;
+    }
+    for (uint32_t j = offset, n = offset + chat->count;
+         y < h && j < n && j < chat->logs.used;
+         ++j) {
         const ChatMessage* cm = &chat->logs.buffer[j];
         const time_t t = (time_t)cm->timeStamp;
 
@@ -948,10 +965,10 @@ updateChatDisplay(SDL_Renderer* renderer,
         rect = renderText(renderer, ttfFont, buffer, 0, y, purple, black, w);
         maxW = SDL_max(maxW, rect.w);
 
-        const float w = rect.w;
+        const float oldW = rect.w;
         rect = renderText(
           renderer, ttfFont, cm->author.buffer, rect.w, y, yellow, black, w);
-        maxW = SDL_max(maxW, w + rect.w);
+        maxW = SDL_max(maxW, oldW + rect.w);
         y += rect.h;
 
         rect =
@@ -970,6 +987,8 @@ updateChatDisplay(SDL_Renderer* renderer,
     display->dstRect.h = y;
 }
 
+#define DEFAULT_CHAT_COUNT 10
+
 void
 updateChatDisplayFromList(SDL_Renderer* renderer,
                           TTF_Font* ttfFont,
@@ -986,6 +1005,9 @@ updateChatDisplayFromList(SDL_Renderer* renderer,
         }
 
         pStreamDisplay display = &clientData.displays.buffer[i];
+        if (display->data.chat.logs.allocator == NULL) {
+            display->data.chat.count = DEFAULT_CHAT_COUNT;
+        }
         ChatMessageListCopy(&display->data.chat.logs, list, currentAllocator);
         updateChatDisplay(renderer, ttfFont, w, h, display);
     });
@@ -1009,6 +1031,7 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
         pStreamDisplay display = &clientData.displays.buffer[i];
         if (display->data.chat.logs.allocator == NULL) {
             display->data.chat.logs.allocator = currentAllocator;
+            display->data.chat.count = DEFAULT_CHAT_COUNT;
         }
         ChatMessageListAppend(&display->data.chat.logs, message);
         updateChatDisplay(renderer, ttfFont, w, h, display);
@@ -1351,10 +1374,10 @@ runClient(const AllConfiguration* configuration)
                     SDL_GetWindowSize(window, &w, &h);
                     switch (moveMode) {
                         case MoveMode_Position:
-                            display->dstRect.x = SDL_clamp(
-                              display->dstRect.x + e.motion.xrel, 0, w - 32);
-                            display->dstRect.y = SDL_clamp(
-                              display->dstRect.y + e.motion.yrel, 0, h - 32);
+                            display->dstRect.x =
+                              display->dstRect.x + e.motion.xrel;
+                            display->dstRect.y =
+                              display->dstRect.y + e.motion.yrel;
                             break;
                         case MoveMode_Size:
                             display->dstRect.w = SDL_clamp(
@@ -1367,6 +1390,10 @@ runClient(const AllConfiguration* configuration)
                         default:
                             break;
                     }
+                    display->dstRect.x = SDL_clamp(
+                      display->dstRect.x, 0.f, w - display->dstRect.w);
+                    display->dstRect.y = SDL_clamp(
+                      display->dstRect.y, 0.f, h - display->dstRect.h);
                     renderDisplays();
                 });
             } break;
@@ -1382,14 +1409,30 @@ runClient(const AllConfiguration* configuration)
                       &clientData.displays.buffer[targetDisplay];
                     switch (display->data.tag) {
                         case StreamDisplayDataTag_chat: {
-                            const int64_t offset = display->data.chat.offset;
-                            display->data.chat.offset = (uint32_t)SDL_clamp(
-                              offset + (e.wheel.y > 0 ? 1LL : -1LL),
-                              0LL,
-                              display->data.chat.logs.used - 1LL);
+                            pStreamDisplayChat chat = &display->data.chat;
+                            int64_t offset;
+                            switch (chat->view.tag) {
+                                case ChatViewTag_offset:
+                                    offset = chat->view.offset;
+                                    break;
+                                default:
+                                    offset = chat->logs.used - chat->count;
+                                    break;
+                            }
+                            offset += (e.wheel.y > 0) ? -1LL : 1LL;
+                            offset = SDL_max(offset, 0LL);
+                            if (offset < chat->logs.used - chat->count) {
+                                chat->view.tag = ChatViewTag_offset;
+                                chat->view.offset = offset;
+                            } else {
+                                chat->view.tag = ChatViewTag_autoScroll;
+                                chat->view.autoScroll = NULL;
+                            }
                             const float width = display->dstRect.w;
+                            const float height = display->dstRect.h;
                             updateChatDisplay(renderer, ttfFont, w, h, display);
                             display->dstRect.w = width;
+                            display->dstRect.h = height;
                         } break;
                         default:
                             break;
