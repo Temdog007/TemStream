@@ -38,7 +38,6 @@ struct StreamDisplayChat {
     [0 ChatMessage] logs
     u32 offset
     u32 count
-    bool autoScroll
 }
 
 variant StreamDisplayData {

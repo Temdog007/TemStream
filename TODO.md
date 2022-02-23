@@ -7,7 +7,8 @@
 - [x] Show last N number of chat messages
 
 ### Feb 23, 2022
-- [ ] Packet loss
+- [x] Packet loss (need sleep?)
+- [x] Fix auto scroll
 - [ ] Image stream
 
 ### Later

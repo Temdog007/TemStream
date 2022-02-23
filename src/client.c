@@ -820,8 +820,14 @@ void
 readSocket(const int sockfd, pBytes bytes)
 {
     const ssize_t size = recv(sockfd, bytes->buffer, bytes->size, 0);
-    if (size <= 0) {
-        return;
+    switch (size) {
+        case -1:
+            perror("recv");
+            return;
+        case 0:
+            return;
+        default:
+            break;
     }
 
     bytes->used = (uint32_t)size;
@@ -972,13 +978,11 @@ updateChatDisplay(SDL_Renderer* renderer,
     float maxW = 0.f;
     uint32_t y = 0;
     uint32_t offset = chat->offset;
-    if (chat->offset >= chat->logs.used - chat->count) {
-        chat->autoScroll = true;
-    }
-    if (chat->autoScroll || chat->logs.used > chat->count) {
-        chat->offset =
-          SDL_clamp(chat->offset, 0U, chat->logs.used - chat->count);
-        offset = chat->offset;
+    if (chat->logs.used >= chat->count) {
+        offset = SDL_clamp(chat->offset, 0U, chat->logs.used - chat->count);
+        if (offset == chat->count) {
+            chat->offset = chat->logs.used;
+        }
     } else {
         offset = 0;
     }
@@ -1037,7 +1041,10 @@ updateChatDisplayFromList(SDL_Renderer* renderer,
             display->data.chat.count = DEFAULT_CHAT_COUNT;
         }
         ChatMessageListCopy(&display->data.chat.logs, list, currentAllocator);
+        display->data.chat.offset = list->used;
+#if _DEBUG
         printf("Got %u chat messages\n", list->used);
+#endif
         updateChatDisplay(renderer, ttfFont, w, h, display);
     });
 }
@@ -1058,11 +1065,17 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
         }
 
         pStreamDisplay display = &clientData.displays.buffer[i];
-        if (display->data.chat.logs.allocator == NULL) {
-            display->data.chat.logs.allocator = currentAllocator;
-            display->data.chat.count = DEFAULT_CHAT_COUNT;
+        pStreamDisplayChat chat = &display->data.chat;
+        pChatMessageList list = &chat->logs;
+        if (list->allocator == NULL) {
+            list->allocator = currentAllocator;
+            chat->count = DEFAULT_CHAT_COUNT;
         }
-        ChatMessageListAppend(&display->data.chat.logs, message);
+        ChatMessageListAppend(list, message);
+        if (list->used > chat->count &&
+            display->data.chat.offset >= list->used - chat->count) {
+            display->data.chat.offset = list->used - 1U;
+        }
         updateChatDisplay(renderer, ttfFont, w, h, display);
     });
 }
@@ -1447,8 +1460,6 @@ runClient(const AllConfiguration* configuration)
                             offset += (e.wheel.y > 0) ? -1LL : 1LL;
                             offset = SDL_clamp(offset, 0LL, chat->logs.used);
                             chat->offset = (uint32_t)offset;
-                            chat->autoScroll =
-                              chat->offset >= chat->logs.used - chat->count;
                             // printf("After: %u\n", chat->offset);
                             // printf("Logs %u\n", chat->logs.used);
 

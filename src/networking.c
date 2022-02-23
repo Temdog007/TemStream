@@ -10,7 +10,7 @@ void
     emscripten_websocket_close(sockfd, 0, "Close requested");
     emscripten_websocket_delete(sockfd);
 #else
-    shutdown(sockfd, SHUT_WR);
+    shutdown(sockfd, SHUT_RD);
     close(sockfd);
 #endif
 }
@@ -81,7 +81,7 @@ openSocket(void* data, const SocketOptions options)
             fd = INVALID_SOCKET;
             goto end;
         }
-        if (isTcp && listen(fd, 128) == -1) {
+        if (isTcp && listen(fd, 10) == -1) {
             perror("listen");
             closeSocket(fd);
             fd = INVALID_SOCKET;
@@ -284,8 +284,8 @@ socketSend(const int sockfd, const Bytes* bytes, const bool exitOnError)
     }
 #if _DEBUG
     printf("Sent all bytes\n");
-    // SDL_Delay(1);
 #endif
+    SDL_Delay(500);
     return true;
 }
 

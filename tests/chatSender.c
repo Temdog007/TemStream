@@ -46,8 +46,14 @@ main(int argc, char** argv)
         }
 
         size = recv(s, bytes.buffer, bytes.size, 0);
-        if (size <= 0) {
-            goto end;
+        switch (size) {
+            case -1:
+                perror("recv");
+                goto end;
+            case 0:
+                goto end;
+            default:
+                break;
         }
         bytes.used = (uint32_t)size;
 
@@ -68,8 +74,14 @@ main(int argc, char** argv)
         }
 
         size = recv(s, bytes.buffer, bytes.size, 0);
-        if (size <= 0) {
-            goto end;
+        switch (size) {
+            case -1:
+                perror("recv");
+                goto end;
+            case 0:
+                goto end;
+            default:
+                break;
         }
         bytes.used = (uint32_t)size;
 

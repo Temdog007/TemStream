@@ -582,8 +582,14 @@ handleTcpConnection(pClient client)
     }
 
     ssize_t size = recv(pfds.fd, bytes.buffer, bytes.size, 0);
-    if (size <= 0) {
-        goto end;
+    switch (size) {
+        case -1:
+            perror("recv");
+            goto end;
+        case 0:
+            goto end;
+        default:
+            break;
     }
 
     RandomState rs = makeRandomState();
@@ -626,9 +632,16 @@ handleTcpConnection(pClient client)
         }
 
         size = recv(pfds.fd, bytes.buffer, bytes.size, 0);
-        if (size <= 0) {
-            goto end;
+        switch (size) {
+            case -1:
+                perror("recv");
+                goto end;
+            case 0:
+                goto end;
+            default:
+                break;
         }
+
         ++messages;
         printf("Got %zu messages from '%s'\n", messages, client->name.buffer);
 
@@ -795,8 +808,14 @@ runUdpServer(const AllConfiguration* configuration)
                                       0,
                                       (struct sockaddr*)&addr,
                                       &socklen);
-        if (size <= 0) {
-            continue;
+        switch (size) {
+            case -1:
+                perror("recvfrom");
+                continue;
+            case 0:
+                continue;
+            default:
+                break;
         }
 
         bytes.used = (uint32_t)size;
