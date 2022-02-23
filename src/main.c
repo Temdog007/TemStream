@@ -161,6 +161,17 @@ printAddress(const Address* address)
     }
 }
 
+int
+printStream(const Stream* stream)
+{
+    char guid[128];
+    getGuidString(&stream->id, guid);
+    return printf("%s: %s (%s)\n",
+                  guid,
+                  stream->name.buffer,
+                  StreamTypeToCharString(stream->type));
+}
+
 bool
 StreamTypeMatchStreamMessage(const StreamType type,
                              const StreamMessageDataTag tag)

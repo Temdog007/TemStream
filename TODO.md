@@ -9,6 +9,7 @@
 ### Feb 23, 2022
 - [x] Packet loss (need sleep?)
 - [x] Fix auto scroll
+- [x] Handle dropped text
 - [ ] Image stream
 
 ### Later

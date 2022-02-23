@@ -1,5 +1,8 @@
 enum ClientCommand {
     PrintName
+    ShowAllStreams
+    ShowConnectedStreams
+    ShowOwnStreams
     GetClients
     ConnectToStream
     DisconnectFromStream
@@ -67,6 +70,8 @@ resource ClientData {
     [0 StreamDisplay] displays
     string name
     Guid id
+    i32 tcpSocket
+    i32 udpSocket
     null mutex
     null cond
 } cd {

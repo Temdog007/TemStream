@@ -506,9 +506,10 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
 }
 
 int
-handleUserInput(const int* sockfdPtr)
+handleUserInput(const void* ptr)
 {
-    const int sockfd = *sockfdPtr;
+    (void)ptr;
+    const int sockfd = clientData.tcpSocket;
     struct pollfd inputfd = { .events = POLLIN,
                               .revents = 0,
                               .fd = STDIN_FILENO };
@@ -551,6 +552,9 @@ handleUserInput(const int* sockfdPtr)
                 appDone = true;
                 continue;
             case ClientCommand_ConnectToStream:
+            case ClientCommand_ShowAllStreams:
+            case ClientCommand_ShowConnectedStreams:
+            case ClientCommand_ShowOwnStreams:
                 if (!refreshStreams(sockfd, &bytes)) {
                     appDone = true;
                     continue;
@@ -628,6 +632,44 @@ handleUserInput(const int* sockfdPtr)
                 break;
             case ClientCommand_SendStreamData:
                 selectStreamToSendDataTo(inputfd, sockfd, &bytes);
+                break;
+            case ClientCommand_ShowAllStreams:
+                askQuestion("All Streams");
+                IN_MUTEX(clientData.mutex, endShowAll, {
+                    for (size_t i = 0; i < clientData.allStreams.used; ++i) {
+                        printStream(&clientData.allStreams.buffer[i]);
+                    }
+                });
+                break;
+            case ClientCommand_ShowConnectedStreams:
+                askQuestion("Connected Streams");
+                IN_MUTEX(clientData.mutex, endShowConnected, {
+                    const Stream* stream = NULL;
+                    for (size_t i = 0; i < clientData.connectedStreams.used;
+                         ++i) {
+                        if (GetStreamFromGuid(
+                              &clientData.allStreams,
+                              &clientData.connectedStreams.buffer[i],
+                              &stream,
+                              NULL)) {
+                            printStream(stream);
+                        }
+                    }
+                });
+                break;
+            case ClientCommand_ShowOwnStreams:
+                askQuestion("Own Streams");
+                IN_MUTEX(clientData.mutex, endShowOwn, {
+                    const Stream* stream = NULL;
+                    for (size_t i = 0; i < clientData.ownStreams.used; ++i) {
+                        if (GetStreamFromGuid(&clientData.allStreams,
+                                              &clientData.ownStreams.buffer[i],
+                                              &stream,
+                                              NULL)) {
+                            printStream(stream);
+                        }
+                    }
+                });
                 break;
             default:
                 continue;
@@ -1092,19 +1134,20 @@ readFromServer(struct AllConfiguration* configuration)
                     .size = MAX_PACKET_SIZE,
                     .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
                     .used = 0 };
-    const int tcpListener =
+    clientData.tcpSocket =
       openSocketFromAddress(&configuration->address, SocketOptions_Tcp);
-    const int udpListener = openSocketFromAddress(&configuration->address, 0);
-    if (tcpListener == INVALID_SOCKET || udpListener == INVALID_SOCKET) {
+    clientData.udpSocket = openSocketFromAddress(&configuration->address, 0);
+    if (clientData.tcpSocket == INVALID_SOCKET ||
+        clientData.udpSocket == INVALID_SOCKET) {
         goto end;
     }
 
     struct pollfd pfdsList[] = { { .events = POLLIN | POLLERR | POLLHUP,
                                    .revents = 0,
-                                   .fd = tcpListener },
+                                   .fd = clientData.tcpSocket },
                                  { .events = POLLIN | POLLERR | POLLHUP,
                                    .revents = 0,
-                                   .fd = udpListener } };
+                                   .fd = clientData.udpSocket } };
     const size_t len = sizeof(pfdsList) / sizeof(struct pollfd);
 
     {
@@ -1112,7 +1155,7 @@ readFromServer(struct AllConfiguration* configuration)
         message.tag = MessageTag_authenticate;
         message.authenticate = config->authentication;
         MESSAGE_SERIALIZE(message, bytes);
-        if (!socketSend(tcpListener, &bytes, true)) {
+        if (!socketSend(clientData.tcpSocket, &bytes, true)) {
             goto end;
         }
         puts("Waiting for server authorization...");
@@ -1131,8 +1174,8 @@ readFromServer(struct AllConfiguration* configuration)
         }
     }
 
-    thread = SDL_CreateThread(
-      (SDL_ThreadFunction)handleUserInput, "Input", (void*)&tcpListener);
+    thread =
+      SDL_CreateThread((SDL_ThreadFunction)handleUserInput, "Input", NULL);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
         goto end;
@@ -1172,8 +1215,6 @@ end:
     IN_MUTEX(clientData.mutex, dfsa2, { SDL_CondSignal(clientData.cond); });
     SDL_WaitThread(thread, &result);
     uint8_tListFree(&bytes);
-    closeSocket(udpListener);
-    closeSocket(tcpListener);
     puts("Closed server connection");
     return result;
 }
@@ -1265,6 +1306,12 @@ runClient(const AllConfiguration* configuration)
     SDL_Renderer* renderer = NULL;
     // Font font = { 0 };
     TTF_Font* ttfFont = NULL;
+
+    Message message = { 0 };
+    Bytes bytes = { .allocator = currentAllocator,
+                    .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
+                    .size = MAX_PACKET_SIZE,
+                    .used = 0 };
 
     clientData.displays.allocator = currentAllocator;
 
@@ -1537,6 +1584,54 @@ runClient(const AllConfiguration* configuration)
                         break;
                 }
             } break;
+            case SDL_DROPTEXT: {
+                // Look for a text or chat stream
+                puts("Got dropped text");
+                IN_MUTEX(clientData.mutex, endDropText, {
+                    const GuidList* streams = &clientData.connectedStreams;
+                    const Stream* stream = NULL;
+                    for (size_t i = 0; i < streams->used; ++i) {
+                        if (!GetStreamFromGuid(&clientData.allStreams,
+                                               &streams->buffer[i],
+                                               &stream,
+                                               NULL)) {
+                            continue;
+                        }
+                        switch (stream->type) {
+                            case StreamType_Text: {
+                                MessageFree(&message);
+                                message.tag = MessageTag_streamMessage;
+                                message.streamMessage.id = stream->id;
+                                message.streamMessage.data.tag =
+                                  StreamMessageDataTag_text;
+                                message.streamMessage.data.text =
+                                  TemLangStringCreate(e.drop.file,
+                                                      currentAllocator);
+                                MESSAGE_SERIALIZE(message, bytes);
+                                socketSend(clientData.tcpSocket, &bytes, true);
+                                goto endDropText;
+                            }
+                            case StreamType_Chat: {
+                                MessageFree(&message);
+                                message.tag = MessageTag_streamMessage;
+                                message.streamMessage.id = stream->id;
+                                message.streamMessage.data.tag =
+                                  StreamMessageDataTag_chatMessage;
+                                message.streamMessage.data.chatMessage.message =
+                                  TemLangStringCreate(e.drop.file,
+                                                      currentAllocator);
+                                MESSAGE_SERIALIZE(message, bytes);
+                                socketSend(clientData.tcpSocket, &bytes, true);
+                                goto endDropText;
+                            }
+                            default:
+                                break;
+                        }
+                    }
+                    puts("No stream to send text too...");
+                });
+                SDL_free(e.drop.file);
+            } break;
             default:
                 break;
         }
@@ -1544,6 +1639,8 @@ runClient(const AllConfiguration* configuration)
 
 end:
     // FontFree(&font);
+    MessageFree(&message);
+    uint8_tListFree(&bytes);
     TTF_CloseFont(ttfFont);
     TTF_Quit();
     SDL_WaitThread(thread, &result);

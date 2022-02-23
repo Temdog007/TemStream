@@ -147,6 +147,9 @@ printClientConfiguration(const ClientConfiguration*);
 extern int
 printServerConfiguration(const ServerConfiguration*);
 
+extern int
+printStream(const Stream*);
+
 // Parsing
 
 extern bool
