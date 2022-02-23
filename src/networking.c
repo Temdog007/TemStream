@@ -10,7 +10,7 @@ void
     emscripten_websocket_close(sockfd, 0, "Close requested");
     emscripten_websocket_delete(sockfd);
 #else
-    shutdown(sockfd, SHUT_RDWR);
+    shutdown(sockfd, SHUT_WR);
     close(sockfd);
 #endif
 }
@@ -22,15 +22,19 @@ openSocket(void* data, const SocketOptions options)
     struct addrinfo* res = (struct addrinfo*)data;
     struct sockaddr* addr = (struct sockaddr*)data;
 
+    const bool isTcp = (options & SocketOptions_Tcp) != 0;
+    const bool isLocal = (options & SocketOptions_Local) != 0;
+
 #if _DEBUG
     char buffer[64] = { 0 };
     int port;
     getAddrInfoString(res, buffer, &port);
-    printf("Attempting to open socket: %s:%d\n", buffer, port);
+    printf("Attempting to open '%s' socket: %s:%d\n",
+           isTcp ? "tcp" : "udp",
+           buffer,
+           port);
 #endif
 
-    const bool isTcp = (options & SocketOptions_Tcp) != 0;
-    const bool isLocal = (options & SocketOptions_Local) != 0;
     if (isLocal) {
         fd = socket(AF_UNIX, isTcp ? SOCK_STREAM : SOCK_DGRAM, 0);
     } else {
@@ -84,6 +88,10 @@ openSocket(void* data, const SocketOptions options)
             goto end;
         }
     }
+
+#if _DEBUG
+    puts("Opened socket");
+#endif
 
 end:
     return fd;
@@ -220,20 +228,118 @@ openSocketFromAddress(const Address* address, const SocketOptions options)
 }
 
 bool
-clientSend(const Client* client, const Bytes* bytes)
+clientSend(const Client* client, const Bytes* bytes, const bool sendSize)
 {
+    if (sendSize) {
+        Message temp = { 0 };
+        temp.tag = MessageTag_prepareForData;
+        temp.prepareForData = bytes->used;
+        uint8_t buffer[KB(1)] = { 0 };
+        Bytes tempBytes = { .allocator = NULL,
+                            .buffer = buffer,
+                            .size = sizeof(buffer),
+                            .used = 0 };
+        MESSAGE_SERIALIZE(temp, tempBytes);
+        if (!socketSend(client->sockfd, &tempBytes, false)) {
+            return false;
+        }
+    }
     return socketSend(client->sockfd, bytes, false);
 }
 
 bool
 socketSend(const int sockfd, const Bytes* bytes, const bool exitOnError)
 {
-    if (send(sockfd, bytes->buffer, bytes->used, 0) != (ssize_t)bytes->used) {
-        perror("send");
-        if (exitOnError) {
-            appDone = true;
+#if _DEBUG
+    printf("Sending %u bytes to peer...\n", bytes->used);
+#endif
+    const ssize_t target = (ssize_t)bytes->used;
+    struct pollfd pfds = { .events = POLLOUT, .revents = 0, .fd = sockfd };
+    ssize_t sent = 0;
+    while (sent < target) {
+        switch (poll(&pfds, 1, LONG_POLL_WAIT)) {
+            case -1:
+                perror("poll");
+                return false;
+            case 0:
+                printf("Packet send timeout occurred. Only sent %u bytes\n",
+                       bytes->used);
+                return false;
+            default:
+                break;
         }
-        return false;
+        const ssize_t current =
+          send(sockfd, bytes->buffer + sent, target - sent, 0);
+        if (current <= 0) {
+            perror("send");
+            if (exitOnError) {
+                appDone = true;
+            }
+            return false;
+        }
+#if _DEBUG
+        printf("Sent %zd bytes\n", current);
+#endif
+        sent += current;
     }
+#if _DEBUG
+    printf("Sent all bytes\n");
+    // SDL_Delay(1);
+#endif
     return true;
+}
+
+bool
+readAllData(const int sockfd,
+            const uint64_t totalSize,
+            pMessage message,
+            pBytes bytes)
+{
+    bool result = false;
+#if _DEBUG
+    printf("Waiting for %" PRIu64 " bytes from peer...\n", totalSize);
+#endif
+    bytes->used = 0;
+    uint8_t buffer[KB(10)];
+    struct pollfd pfds = { .fd = sockfd, .events = POLLIN, .revents = 0 };
+    while (bytes->used < totalSize) {
+        switch (poll(&pfds, 1, LONG_POLL_WAIT)) {
+            case -1:
+                perror("poll");
+                goto end;
+            case 0:
+                printf("Peer timed-out when waiting for %" PRIu64
+                       " bytes. Only got %u bytes\n",
+                       totalSize,
+                       bytes->used);
+                goto end;
+            default:
+                break;
+        }
+        if ((pfds.revents & POLLIN) == 0) {
+            continue;
+        }
+        const ssize_t size = recv(sockfd, buffer, sizeof(buffer), 0);
+        if (size < 0) {
+            perror("recv");
+            goto end;
+        }
+        if (size == 0) {
+            // Handle bytes acquired
+            break;
+        }
+#if _DEBUG
+        printf("Received %zd bytes\n", size);
+#endif
+        for (ssize_t i = 0; i < size; ++i) {
+            uint8_tListAppend(bytes, &buffer[i]);
+        }
+    }
+#if _DEBUG
+    printf("Got %u bytes from peer\n", bytes->used);
+#endif
+    result = true;
+end:
+    MESSAGE_DESERIALIZE((*message), (*bytes));
+    return result;
 }

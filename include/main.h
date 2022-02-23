@@ -111,10 +111,13 @@ extern int
 openSocketFromAddress(const Address*, SocketOptions);
 
 bool
-clientSend(const Client*, const Bytes*);
+clientSend(const Client*, const Bytes*, const bool sendSize);
 
 bool
 socketSend(const int, const Bytes*, bool);
+
+bool
+readAllData(const int sockfd, const uint64_t, pMessage, pBytes);
 
 // Defaults
 
@@ -228,10 +231,12 @@ authenticateClient(pClient client,
     MessageSerialize(&message, &bytes, true)
 
 #define MESSAGE_DESERIALIZE(message, bytes)                                    \
+    MessageFree(&message);                                                     \
     MessageDeserialize(&message, &bytes, 0, true)
 
 #define CLIENT_POLL_WAIT 100
 #define SERVER_POLL_WAIT 1000
+#define LONG_POLL_WAIT 5000
 
 // Font
 typedef struct Character

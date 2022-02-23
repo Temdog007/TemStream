@@ -56,6 +56,8 @@ main(int argc, char** argv)
             goto end;
         }
 
+        printf("Clietn name: %s\n", message.authenticateAck.name.buffer);
+
         MessageFree(&message);
         message.tag = MessageTag_getStream;
         message.getStream.tag = StringOrGuidTag_name;
@@ -83,21 +85,22 @@ main(int argc, char** argv)
         message.tag = MessageTag_streamMessage;
         message.streamMessage.id = id;
         message.streamMessage.data.tag = StreamMessageDataTag_chatMessage;
+        message.streamMessage.data.chatMessage.message.allocator =
+          currentAllocator;
         const int messages = atoi(argv[3]);
         printf("Sending %d messages...\n", messages);
-        RandomState rs = makeRandomState();
+        // RandomState rs = makeRandomState();
         for (int i = 0; i < messages; ++i) {
-            TemLangStringFree(&message.streamMessage.data.chatMessage.message);
-            message.streamMessage.data.chatMessage.message =
-              RandomString(&rs, 5, 150);
+            message.streamMessage.data.chatMessage.message.used = 0;
+            // message.streamMessage.data.chatMessage.message =
+            //   RandomString(&rs, 32, 1024);
             TemLangStringAppendFormat(
-              message.streamMessage.data.chatMessage.message, "_%d", i);
+              message.streamMessage.data.chatMessage.message, "message #%d", i);
             MESSAGE_SERIALIZE(message, bytes);
             printf("Sending message #%d\n", i);
-            if (!socketSend(s, &bytes, false)) {
+            if (!socketSend(s, &bytes, true)) {
                 goto end;
             }
-            SDL_Delay(100);
         }
         puts("Done sending messages");
 

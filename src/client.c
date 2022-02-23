@@ -60,7 +60,7 @@ defaultClientConfiguration()
         .fullscreen = false,
         .windowWidth = 800,
         .windowHeight = 600,
-        .fontSize = 24,
+        .fontSize = 48,
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
     };
@@ -78,6 +78,8 @@ parseClientConfiguration(const int argc,
         const char* value = argv[i + 1];
         STR_EQUALS(key, "-F", keyLen, { goto parseTTF; });
         STR_EQUALS(key, "--font", keyLen, { goto parseTTF; });
+        STR_EQUALS(key, "-S", keyLen, { goto parseSize; });
+        STR_EQUALS(key, "--font-size", keyLen, { goto parseSize; });
         STR_EQUALS(key, "-W", keyLen, { goto parseWidth; });
         STR_EQUALS(key, "--width", keyLen, { goto parseWidth; });
         STR_EQUALS(key, "-H", keyLen, { goto parseHeight; });
@@ -95,6 +97,10 @@ parseClientConfiguration(const int argc,
         continue;
     parseTTF : {
         client->ttfFile = TemLangStringCreate(value, currentAllocator);
+        continue;
+    }
+    parseSize : {
+        client->fontSize = atoi(value);
         continue;
     }
     parseWidth : {
@@ -580,8 +586,8 @@ handleUserInput(const int* sockfdPtr)
         bool gotData = false;
         IN_MUTEX(clientData.mutex, end, {
             while (!appDone) {
-                const int result =
-                  SDL_CondWaitTimeout(clientData.cond, clientData.mutex, 5000U);
+                const int result = SDL_CondWaitTimeout(
+                  clientData.cond, clientData.mutex, LONG_POLL_WAIT);
                 if (result < 0) {
                     fprintf(stderr, "Cond error: %s\n", SDL_GetError());
                     break;
@@ -634,36 +640,37 @@ handleUserInput(const int* sockfdPtr)
 }
 
 void
-readSocket(const int sockfd, pBytes bytes)
+clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
 {
-    const ssize_t size = recv(sockfd, bytes->buffer, bytes->size, 0);
-    if (size <= 0) {
-        return;
-    }
-
-    bytes->used = (uint32_t)size;
-    Message message = { 0 };
-    MESSAGE_DESERIALIZE(message, (*bytes));
     IN_MUTEX(clientData.mutex, end, {
         bool doSignal = false;
-        switch (message.tag) {
+        switch (message->tag) {
+            case MessageTag_prepareForData: {
+                // Don't lock mutex while waiting for server data
+                SDL_UnlockMutex(clientData.mutex);
+                if (readAllData(
+                      sockfd, message->prepareForData, message, bytes)) {
+                    clientHandleMessage(message, sockfd, bytes);
+                }
+                SDL_LockMutex(clientData.mutex);
+            } break;
             case MessageTag_authenticateAck:
                 printf("Client name: %s\n",
-                       message.authenticateAck.name.buffer);
+                       message->authenticateAck.name.buffer);
                 TemLangStringCopy(&clientData.name,
-                                  &message.authenticateAck.name,
+                                  &message->authenticateAck.name,
                                   currentAllocator);
-                clientData.id = message.authenticateAck.id;
+                clientData.id = message->authenticateAck.id;
                 break;
             case MessageTag_getAllDataAck: {
                 GuidListCopy(&clientData.connectedStreams,
-                             &message.getAllDataAck.connectedStreams,
+                             &message->getAllDataAck.connectedStreams,
                              currentAllocator);
                 GuidListCopy(&clientData.ownStreams,
-                             &message.getAllDataAck.clientStreams,
+                             &message->getAllDataAck.clientStreams,
                              currentAllocator);
                 StreamListCopy(&clientData.allStreams,
-                               &message.getAllDataAck.allStreams,
+                               &message->getAllDataAck.allStreams,
                                currentAllocator);
                 doSignal = true;
                 cleanupStreamDisplays();
@@ -671,14 +678,14 @@ readSocket(const int sockfd, pBytes bytes)
             } break;
             case MessageTag_getClientsAck:
                 TemLangStringListCopy(&clientData.otherClients,
-                                      &message.getClientsAck,
+                                      &message->getClientsAck,
                                       currentAllocator);
                 doSignal = true;
                 puts("Updated client list");
                 break;
             case MessageTag_getConnectedStreamsAck:
                 GuidListCopy(&clientData.connectedStreams,
-                             &message.getConnectedStreamsAck,
+                             &message->getConnectedStreamsAck,
                              currentAllocator);
                 doSignal = true;
                 cleanupStreamDisplays();
@@ -686,51 +693,51 @@ readSocket(const int sockfd, pBytes bytes)
                 break;
             case MessageTag_getClientStreamsAck:
                 GuidListCopy(&clientData.ownStreams,
-                             &message.getClientStreamsAck,
+                             &message->getClientStreamsAck,
                              currentAllocator);
                 doSignal = true;
                 puts("Updated client's streams");
                 break;
             case MessageTag_getAllStreamsAck:
                 StreamListCopy(&clientData.allStreams,
-                               &message.getAllStreamsAck,
+                               &message->getAllStreamsAck,
                                currentAllocator);
                 doSignal = true;
                 puts("Updated stream list");
                 break;
             case MessageTag_startStreamingAck:
-                switch (message.startStreamingAck.tag) {
+                switch (message->startStreamingAck.tag) {
                     case OptionalGuidTag_none:
                         puts("Server failed to start stream");
                         break;
                     default:
-                        message.tag = MessageTag_getClientStreams;
-                        message.getClientStreams = NULL;
-                        MESSAGE_SERIALIZE(message, (*bytes));
+                        message->tag = MessageTag_getClientStreams;
+                        message->getClientStreams = NULL;
+                        MESSAGE_SERIALIZE((*message), (*bytes));
                         socketSend(sockfd, bytes, true);
                         break;
                 }
                 break;
             case MessageTag_stopStreamingAck:
-                switch (message.stopStreamingAck.tag) {
+                switch (message->stopStreamingAck.tag) {
                     case OptionalGuidTag_none:
                         puts("Server failed to stop stream");
                         break;
                     default:
-                        message.tag = MessageTag_getClientStreams;
-                        message.getClientStreams = NULL;
-                        MESSAGE_SERIALIZE(message, (*bytes));
+                        message->tag = MessageTag_getClientStreams;
+                        message->getClientStreams = NULL;
+                        MESSAGE_SERIALIZE((*message), (*bytes));
                         socketSend(sockfd, bytes, true);
                         break;
                 }
                 refreshStreams(sockfd, bytes);
                 break;
             case MessageTag_connectToStreamAck:
-                switch (message.connectToStreamAck.tag) {
+                switch (message->connectToStreamAck.tag) {
                     case OptionalStreamMessageTag_streamMessage: {
                         puts("Connected to stream");
                         const StreamMessage* streamMessage =
-                          &message.connectToStreamAck.streamMessage;
+                          &message->connectToStreamAck.streamMessage;
 
                         SDL_Event e = { 0 };
                         e.type = SDL_USEREVENT;
@@ -743,7 +750,10 @@ readSocket(const int sockfd, pBytes bytes)
                         switch (streamMessage->data.tag) {
                             case StreamMessageDataTag_text:
                             case StreamMessageDataTag_chatMessage:
-                            case StreamMessageDataTag_chatLogs: {
+                            case StreamMessageDataTag_chatLogs:
+                            case StreamMessageDataTag_videoChunk:
+                            case StreamMessageDataTag_audioChunk:
+                            case StreamMessageDataTag_image: {
                                 e.user.code = CustomEvent_UpdateStreamDisplay;
                                 pStreamMessage m = currentAllocator->allocate(
                                   sizeof(StreamMessage));
@@ -762,7 +772,7 @@ readSocket(const int sockfd, pBytes bytes)
                 }
                 break;
             case MessageTag_disconnectFromStreamAck:
-                if (message.disconnectFromStreamAck) {
+                if (message->disconnectFromStreamAck) {
                     puts("Disconnected from stream");
                 } else {
                     puts("Failed to disconnect from stream");
@@ -770,17 +780,20 @@ readSocket(const int sockfd, pBytes bytes)
                 refreshStreams(sockfd, bytes);
                 break;
             case MessageTag_streamMessage:
-                switch (message.streamMessage.data.tag) {
+                switch (message->streamMessage.data.tag) {
                     case StreamMessageDataTag_text:
                     case StreamMessageDataTag_chatLogs:
-                    case StreamMessageDataTag_chatMessage: {
+                    case StreamMessageDataTag_chatMessage:
+                    case StreamMessageDataTag_videoChunk:
+                    case StreamMessageDataTag_audioChunk:
+                    case StreamMessageDataTag_image: {
                         SDL_Event e = { 0 };
                         e.type = SDL_USEREVENT;
                         e.user.code = CustomEvent_UpdateStreamDisplay;
                         pStreamMessage m =
                           currentAllocator->allocate(sizeof(StreamMessage));
                         StreamMessageCopy(
-                          m, &message.streamMessage, currentAllocator);
+                          m, &message->streamMessage, currentAllocator);
                         e.user.data1 = m;
                         SDL_PushEvent(&e);
                     } break;
@@ -788,19 +801,33 @@ readSocket(const int sockfd, pBytes bytes)
                         fprintf(stderr,
                                 "Unexpected '%s' stream message\n",
                                 StreamMessageDataTagToCharString(
-                                  message.streamMessage.data.tag));
+                                  message->streamMessage.data.tag));
                         break;
                 }
                 break;
             default:
                 printf("Unexpected message: %s\n",
-                       MessageTagToCharString(message.tag));
+                       MessageTagToCharString(message->tag));
                 break;
         }
         if (doSignal) {
             SDL_CondSignal(clientData.cond);
         }
     });
+}
+
+void
+readSocket(const int sockfd, pBytes bytes)
+{
+    const ssize_t size = recv(sockfd, bytes->buffer, bytes->size, 0);
+    if (size <= 0) {
+        return;
+    }
+
+    bytes->used = (uint32_t)size;
+    Message message = { 0 };
+    MESSAGE_DESERIALIZE(message, (*bytes));
+    clientHandleMessage(&message, sockfd, bytes);
     MessageFree(&message);
 }
 
@@ -909,7 +936,7 @@ updateChatDisplay(SDL_Renderer* renderer,
         SDL_DestroyTexture(display->texture);
     }
 
-    const StreamDisplayChat* chat = &display->data.chat;
+    pStreamDisplayChat chat = &display->data.chat;
     if (ChatMessageListIsEmpty(&chat->logs)) {
         return;
     }
@@ -944,17 +971,18 @@ updateChatDisplay(SDL_Renderer* renderer,
     SDL_Rect rect = { 0 };
     float maxW = 0.f;
     uint32_t y = 0;
-    uint32_t offset;
-    switch (chat->view.tag) {
-        case ChatViewTag_offset:
-            offset = chat->view.offset;
-            break;
-        default: {
-            int64_t iOffset = chat->logs.used;
-            iOffset -= chat->count;
-            offset = (uint32_t)SDL_clamp(iOffset, 0LL, chat->logs.used);
-        } break;
+    uint32_t offset = chat->offset;
+    if (chat->offset >= chat->logs.used - chat->count) {
+        chat->autoScroll = true;
     }
+    if (chat->autoScroll || chat->logs.used > chat->count) {
+        chat->offset =
+          SDL_clamp(chat->offset, 0U, chat->logs.used - chat->count);
+        offset = chat->offset;
+    } else {
+        offset = 0;
+    }
+
     for (uint32_t j = offset, n = offset + chat->count;
          y < h && j < n && j < chat->logs.used;
          ++j) {
@@ -987,7 +1015,7 @@ updateChatDisplay(SDL_Renderer* renderer,
     display->dstRect.h = y;
 }
 
-#define DEFAULT_CHAT_COUNT 10
+#define DEFAULT_CHAT_COUNT 5
 
 void
 updateChatDisplayFromList(SDL_Renderer* renderer,
@@ -1009,6 +1037,7 @@ updateChatDisplayFromList(SDL_Renderer* renderer,
             display->data.chat.count = DEFAULT_CHAT_COUNT;
         }
         ChatMessageListCopy(&display->data.chat.logs, list, currentAllocator);
+        printf("Got %u chat messages\n", list->used);
         updateChatDisplay(renderer, ttfFont, w, h, display);
     });
 }
@@ -1194,7 +1223,8 @@ drawTextures(SDL_Renderer* renderer,
     });
 
     // uint8_t background[4] = { 0xff, 0xffu, 0x0u, 0xffu };
-    // renderFont(renderer, font, "Hello World", 0, 0, 5.f, NULL, background);
+    // renderFont(renderer, font, "Hello World", 0, 0, 5.f, NULL,
+    // background);
     SDL_RenderPresent(renderer);
 }
 
@@ -1290,7 +1320,8 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
-    // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer, &font))
+    // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
+    // &font))
     // {
     //     fprintf(stderr, "Failed to load font\n");
     //     goto end;
@@ -1410,24 +1441,17 @@ runClient(const AllConfiguration* configuration)
                     switch (display->data.tag) {
                         case StreamDisplayDataTag_chat: {
                             pStreamDisplayChat chat = &display->data.chat;
-                            int64_t offset;
-                            switch (chat->view.tag) {
-                                case ChatViewTag_offset:
-                                    offset = chat->view.offset;
-                                    break;
-                                default:
-                                    offset = chat->logs.used - chat->count;
-                                    break;
-                            }
+                            int64_t offset = chat->offset;
+
+                            // printf("Before: %" PRId64 "\n", offset);
                             offset += (e.wheel.y > 0) ? -1LL : 1LL;
-                            offset = SDL_max(offset, 0LL);
-                            if (offset < chat->logs.used - chat->count) {
-                                chat->view.tag = ChatViewTag_offset;
-                                chat->view.offset = offset;
-                            } else {
-                                chat->view.tag = ChatViewTag_autoScroll;
-                                chat->view.autoScroll = NULL;
-                            }
+                            offset = SDL_clamp(offset, 0LL, chat->logs.used);
+                            chat->offset = (uint32_t)offset;
+                            chat->autoScroll =
+                              chat->offset >= chat->logs.used - chat->count;
+                            // printf("After: %u\n", chat->offset);
+                            // printf("Logs %u\n", chat->logs.used);
+
                             const float width = display->dstRect.w;
                             const float height = display->dstRect.h;
                             updateChatDisplay(renderer, ttfFont, w, h, display);

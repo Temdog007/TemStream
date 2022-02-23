@@ -88,6 +88,9 @@ variant StreamMessageData {
     string text
     ChatMessage chatMessage
     [0 ChatMessage] chatLogs
+    [0 u8] image
+    [0 u8] videoChunk
+    [0 u8] audioChunk
 }
 
 struct StreamMessage {
@@ -171,6 +174,7 @@ variant Message {
     [0 string] getClientsAck
     null getAllData
     AllServerStreams getAllDataAck
+    u64 prepareForData
 }
 
 inlineC "MAKE_DEFAULT_LIST(Message);"
