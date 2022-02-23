@@ -13,10 +13,13 @@
 - [x] Image stream
 - [x] Handle jpeg and webp
 
-### Later
+### Feb 24, 2022
 - [ ] Download images
-- [ ] Video stream
+- [ ] Play gifs
 - [ ] Audio stream
+
+### Later
+- [ ] Video stream
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls)
