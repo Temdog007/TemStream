@@ -10,7 +10,8 @@
 - [x] Packet loss (need sleep?)
 - [x] Fix auto scroll
 - [x] Handle dropped text
-- [ ] Image stream
+- [x] Image stream
+- [ ] Handle other formats (jpeg, tiff, and webp)
 
 ### Later
 - [ ] Video stream

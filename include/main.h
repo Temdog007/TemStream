@@ -26,6 +26,7 @@
 #include <SDL2/SDL_ttf.h>
 
 #include <DefaultExternalFunctions.h>
+#include <IO.h>
 
 #include <generated/data.h>
 
@@ -110,13 +111,16 @@ openUnixSocket(const char* filename, SocketOptions);
 extern int
 openSocketFromAddress(const Address*, SocketOptions);
 
-bool
+extern bool
+sendPrepareMessage(const int sockfd, const uint64_t size);
+
+extern bool
 clientSend(const Client*, const Bytes*, const bool sendSize);
 
-bool
+extern bool
 socketSend(const int, const Bytes*, bool);
 
-bool
+extern bool
 readAllData(const int sockfd, const uint64_t, pMessage, pBytes);
 
 // Defaults

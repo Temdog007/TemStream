@@ -172,12 +172,18 @@ copyMessageToClients(const Client* writer, pStreamMessage message, pBytes bytes)
                                       &message->data.text,
                                       currentAllocator);
                     break;
-                default:
+                case StreamMessageDataTag_image:
+                    uint8_tListCopy(&storage->data.image,
+                                    &message->data.image,
+                                    currentAllocator);
                     break;
+                default:
+                    printf("Unexpected message type: %s\n",
+                           StreamMessageDataTagToCharString(message->data.tag));
+                    goto endMutex;
             }
         }
-        Bytes tempBytes = { 0 };
-        tempBytes.allocator = currentAllocator;
+
         for (size_t i = 0; i < serverData.clients.used; ++i) {
             const Client* client = serverData.clients.buffer[i];
             if (!GuidListFind(
@@ -188,6 +194,10 @@ copyMessageToClients(const Client* writer, pStreamMessage message, pBytes bytes)
             if (udp) {
                 const size_t socklen = sizeof(client->addr);
                 // Prepare client for data
+                uint8_t buffer[1024];
+                Bytes tempBytes = { 0 };
+                tempBytes.buffer = buffer;
+                tempBytes.size = sizeof(buffer);
                 Message temp = { 0 };
                 temp.tag = MessageTag_prepareForData;
                 temp.prepareForData = bytes->used;
@@ -206,7 +216,7 @@ copyMessageToClients(const Client* writer, pStreamMessage message, pBytes bytes)
                                                 0,
                                                 (struct sockaddr*)&client->addr,
                                                 socklen);
-                    if (sent == -1) {
+                    if (sent < 0) {
                         perror("sendto");
                         break;
                     }
@@ -216,7 +226,6 @@ copyMessageToClients(const Client* writer, pStreamMessage message, pBytes bytes)
                 clientSend(client, bytes, true);
             }
         }
-        uint8_tListFree(&tempBytes);
     })
 }
 
@@ -399,6 +408,13 @@ serverHandleMessage(pClient client,
                             m.id = newStream.id;
                             m.data.tag = StreamMessageDataTag_chatLogs;
                             m.data.chatLogs.allocator = currentAllocator;
+                            StreamMessageListAppend(&serverData.storage, &m);
+                        } break;
+                        case StreamType_Image: {
+                            StreamMessage m = { 0 };
+                            m.id = newStream.id;
+                            m.data.tag = StreamMessageDataTag_image;
+                            m.data.image.allocator = currentAllocator;
                             StreamMessageListAppend(&serverData.storage, &m);
                         } break;
                         default:

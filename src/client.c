@@ -897,6 +897,7 @@ updateTextDisplay(SDL_Renderer* renderer,
         display->data.tag = StreamDisplayDataTag_none;
         if (display->texture != NULL) {
             SDL_DestroyTexture(display->texture);
+            display->texture = NULL;
         }
 
         SDL_Color fg = { 0 };
@@ -926,6 +927,58 @@ updateTextDisplay(SDL_Renderer* renderer,
                     SDL_GetError());
         }
 
+    end:
+        SDL_FreeSurface(surface);
+    });
+}
+
+void
+updateImageDisplay(SDL_Renderer* renderer, const Guid* id, const Bytes* bytes)
+{
+    IN_MUTEX(clientData.mutex, endMutex, {
+        size_t i = 0;
+        SDL_Surface* surface = NULL;
+        if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
+            puts("Missing stream display for image stream");
+            goto end;
+        }
+        if (uint8_tListIsEmpty(bytes)) {
+            goto end;
+        }
+
+        pStreamDisplay display = &clientData.displays.buffer[i];
+        display->data.tag = StreamDisplayDataTag_none;
+        if (display->texture != NULL) {
+            SDL_DestroyTexture(display->texture);
+            display->texture = NULL;
+        }
+
+        SDL_RWops* rw = SDL_RWFromConstMem(bytes->buffer, bytes->used);
+        if (rw == NULL) {
+            fprintf(
+              stderr, "Failed to load image memory: %s\n", SDL_GetError());
+            goto end;
+        }
+        surface = IMG_Load_RW(rw, 0);
+        if (surface == NULL) {
+            fprintf(stderr, "Failed to load image: %s\n", SDL_GetError());
+            goto end;
+        }
+
+        display->srcRect.tag = OptionalRectTag_none;
+        display->srcRect.none = NULL;
+
+        display->dstRect.x = 0.f;
+        display->dstRect.y = 0.f;
+        display->dstRect.w = surface->w;
+        display->dstRect.h = surface->h;
+
+        display->texture = SDL_CreateTextureFromSurface(renderer, surface);
+        if (display->texture == NULL) {
+            fprintf(stderr,
+                    "Failed to update text display texture: %s\n",
+                    SDL_GetError());
+        }
     end:
         SDL_FreeSurface(surface);
     });
@@ -982,6 +1035,7 @@ updateChatDisplay(SDL_Renderer* renderer,
 {
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
+        display->texture = NULL;
     }
 
     pStreamDisplayChat chat = &display->data.chat;
@@ -1571,6 +1625,10 @@ runClient(const AllConfiguration* configuration)
                                                           &m->id,
                                                           &m->data.chatLogs);
                                 break;
+                            case StreamMessageDataTag_image:
+                                updateImageDisplay(
+                                  renderer, &m->id, &m->data.image);
+                                break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
                                        StreamMessageDataTagToCharString(
@@ -1584,7 +1642,56 @@ runClient(const AllConfiguration* configuration)
                         break;
                 }
             } break;
-            case SDL_DROPTEXT: {
+            case SDL_DROPFILE: {
+                // Look for image stream
+                puts("Got dropped file");
+                int fd = 0;
+                char* ptr = NULL;
+                size_t size = 0;
+                if (!mapFile(e.drop.file, &fd, &ptr, &size, MapFileType_Read)) {
+                    fprintf(stderr,
+                            "Error opening file '%s': %s\n",
+                            e.drop.file,
+                            strerror(errno));
+                    goto endDropFile2;
+                }
+                Bytes fileBytes = { .allocator = NULL,
+                                    .buffer = (uint8_t*)ptr,
+                                    .size = size,
+                                    .used = size };
+                IN_MUTEX(clientData.mutex, endDropFile, {
+                    const GuidList* streams = &clientData.connectedStreams;
+                    const Stream* stream = NULL;
+                    for (size_t i = 0; i < streams->used; ++i) {
+                        if (!GetStreamFromGuid(&clientData.allStreams,
+                                               &streams->buffer[i],
+                                               &stream,
+                                               NULL) ||
+                            stream->type != StreamType_Image) {
+                            printf("%d\n", stream->type);
+                            continue;
+                        }
+                        MessageFree(&message);
+                        message.tag = MessageTag_streamMessage;
+                        message.streamMessage.id = stream->id;
+                        message.streamMessage.data.tag =
+                          StreamMessageDataTag_image;
+                        message.streamMessage.data.image = fileBytes;
+                        MESSAGE_SERIALIZE(message, bytes);
+                        sendPrepareMessage(clientData.tcpSocket, bytes.used);
+                        socketSend(clientData.tcpSocket, &bytes, true);
+                        // Don't free the image bytes since they weren't
+                        // allocated
+                        memset(&message, 0, sizeof(message));
+                        goto endDropFile;
+                    }
+                    puts("No stream to send image too...");
+                });
+            endDropFile2:
+                unmapFile(fd, ptr, size);
+                SDL_free(e.drop.file);
+            } break;
+            case SDL_DROPTEXT:
                 // Look for a text or chat stream
                 puts("Got dropped text");
                 IN_MUTEX(clientData.mutex, endDropText, {
@@ -1631,7 +1738,7 @@ runClient(const AllConfiguration* configuration)
                     puts("No stream to send text too...");
                 });
                 SDL_free(e.drop.file);
-            } break;
+                break;
             default:
                 break;
         }

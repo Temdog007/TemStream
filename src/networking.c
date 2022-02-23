@@ -228,19 +228,24 @@ openSocketFromAddress(const Address* address, const SocketOptions options)
 }
 
 bool
+sendPrepareMessage(const int sockfd, const uint64_t size)
+{
+    Message message = { 0 };
+    message.tag = MessageTag_prepareForData;
+    message.prepareForData = size;
+    uint8_t buffer[16] = { 0 };
+    Bytes bytes = {
+        .allocator = NULL, .buffer = buffer, .size = sizeof(buffer), .used = 0
+    };
+    MESSAGE_SERIALIZE(message, bytes);
+    return socketSend(sockfd, &bytes, false);
+}
+
+bool
 clientSend(const Client* client, const Bytes* bytes, const bool sendSize)
 {
     if (sendSize) {
-        Message temp = { 0 };
-        temp.tag = MessageTag_prepareForData;
-        temp.prepareForData = bytes->used;
-        uint8_t buffer[KB(1)] = { 0 };
-        Bytes tempBytes = { .allocator = NULL,
-                            .buffer = buffer,
-                            .size = sizeof(buffer),
-                            .used = 0 };
-        MESSAGE_SERIALIZE(temp, tempBytes);
-        if (!socketSend(client->sockfd, &tempBytes, false)) {
+        if (!sendPrepareMessage(client->sockfd, bytes->used)) {
             return false;
         }
     }
