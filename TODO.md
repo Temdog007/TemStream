@@ -11,9 +11,10 @@
 - [x] Fix auto scroll
 - [x] Handle dropped text
 - [x] Image stream
-- [ ] Handle other formats (jpeg, tiff, and webp)
+- [x] Handle jpeg and webp
 
 ### Later
+- [ ] Download images
 - [ ] Video stream
 - [ ] Audio stream
 - [ ] Make save configuration file based on current connected streams
