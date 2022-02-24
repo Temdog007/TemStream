@@ -76,25 +76,20 @@ variant ServerAuthentication {
     string file
 }
 
-flag SocketOptions {
-    Tcp
-    Server
-    Local
-}
-
 struct IpAddress {
     string ip
     string port
 }
 
-variant Address {
-    string domainSocket
-    IpAddress ipAddress
+struct SecureIpAddress {
+    string certFile
+    string keyFile
+    IpAddress address
 }
 
-struct Socket {
-    i32 domain
-    [2 i32] ip
+variant OptionalSecureIpAddress {
+    SecureIpAddress address 
+    null none
 }
 
 struct ClientConfiguration {
@@ -119,7 +114,8 @@ variant Configuration {
 
 struct AllConfiguration {
     Configuration configuration
-    Address address
+    IpAddress address
+    OptionalSecureIpAddress secure
 }
 
 struct ChatMessage {
@@ -197,6 +193,27 @@ variant StringOrGuid{
     Guid id
 }
 
+struct ServerIncoming {
+    null message
+    null client
+}
+
+struct ServerResponse {
+    Message message
+    null client
+}
+
+variant ServerOutgoing {
+    ServerResponse response
+    null getClients
+    null disconnect
+}
+
+inlineC "
+MAKE_DEFAULT_LIST(ServerIncoming); 
+MAKE_DEFAULT_LIST(ServerOutgoing);
+"
+
 variant Message {
     StreamMessage streamMessage
     ClientAuthentication authenticate
@@ -221,7 +238,6 @@ variant Message {
     [0 string] getClientsAck
     null getAllData
     AllServerStreams getAllDataAck
-    u64 prepareForData
 }
 
 inlineC "MAKE_DEFAULT_LIST(Message);"

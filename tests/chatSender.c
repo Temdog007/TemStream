@@ -1,7 +1,6 @@
 #include <include/main.h>
 
 #include <src/misc.c>
-#include <src/networking.c>
 
 const Allocator* currentAllocator = NULL;
 bool appDone = true;
@@ -20,7 +19,7 @@ main(int argc, char** argv)
     currentAllocator = &allocator;
 
     Address address = { 0 };
-    if (!parseAddress(argv[1], &address)) {
+    if (!parseIpAddress(argv[1], &address)) {
         return EXIT_FAILURE;
     }
 

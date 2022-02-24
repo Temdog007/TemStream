@@ -5,20 +5,15 @@
 
 #if __EMSCRIPTEN__
 #include <emscripten.h>
+#else
+#include <enet/enet.h>
 #endif
 
-#include <arpa/inet.h>
 #include <errno.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 #include <SDL2/SDL.h>
@@ -32,14 +27,14 @@
 
 #define MAX_PACKET_SIZE KB(64)
 
+const extern Guid ZeroGuid;
+
 typedef struct Client
 {
-    struct sockaddr_storage addr;
     Guid id;
     TemLangString name;
     GuidList connectedStreams;
     const ServerAuthentication* serverAuthentication;
-    int32_t sockfd;
 } Client, *pClient;
 
 extern void ClientFree(pClient);
@@ -73,14 +68,15 @@ StreamMessageGuidEquals(const StreamMessage*, const Guid*);
 extern bool
 StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
 
-extern bool
-MessageUsesUdp(const StreamMessage*);
-
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 1
 #define VERSION_PATCH 1
 
 #define INVALID_SOCKET (-1)
+
+typedef SDL_Thread* pSDL_Thread;
+MAKE_COPY_AND_FREE(pSDL_Thread);
+MAKE_DEFAULT_LIST(pSDL_Thread);
 
 extern int
 printVersion();
@@ -89,42 +85,6 @@ extern bool appDone;
 
 extern void
 signalHandler(int);
-
-// Networking
-
-extern const char*
-getAddrString(const struct sockaddr_storage*, char[64], int*);
-
-struct addrinfo;
-extern const char*
-getAddrInfoString(const struct addrinfo*, char[64], int*);
-
-extern void
-closeSocket(int);
-
-extern int
-openSocket(void*, SocketOptions);
-
-extern int
-openIpSocket(const char* ip, const char* port, SocketOptions);
-
-extern int
-openUnixSocket(const char* filename, SocketOptions);
-
-extern int
-openSocketFromAddress(const Address*, SocketOptions);
-
-extern bool
-sendPrepareMessage(const int sockfd, const uint64_t size);
-
-extern bool
-clientSend(const Client*, const Bytes*, const bool sendSize);
-
-extern bool
-socketSend(const int, const Bytes*, bool);
-
-extern bool
-readAllData(const int sockfd, const uint64_t, pMessage, pBytes);
 
 // Defaults
 
@@ -140,10 +100,24 @@ defaultConfiguration();
 extern AllConfiguration
 defaultAllConfiguration();
 
+// ENet
+
+extern ENetPeer*
+FindPeerFromData(ENetPeer*, size_t, const void*);
+
+extern ENetPeer*
+BytesToPacket(const Bytes*, bool);
+
+extern bool
+messageIsReliable(const StreamMessage*);
+
+#define SERVER_CHANNEL 0
+#define CLIENT_CHANNEL 1
+
 // Printing
 
 extern int
-printAddress(const Address*);
+printIpAddress(const IpAddress*);
 
 extern int
 printAllConfiguration(const AllConfiguration*);
@@ -175,7 +149,7 @@ extern bool
 parseCommonConfiguration(const char*, const char*, pAllConfiguration);
 
 extern bool
-parseAddress(const char*, pAddress);
+parseIpAddress(const char*, pIpAddress);
 
 extern bool
 parseCredentials(const char*, pCredentials);

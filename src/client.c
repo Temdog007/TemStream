@@ -5,8 +5,8 @@
 
 ClientData clientData = { 0 };
 
-bool
-refreshStreams(const int, pBytes);
+void
+refreshStreams(ENetPeer* peer, const int, pBytes);
 
 void
 renderDisplays()
@@ -23,20 +23,18 @@ cleanupStreamDisplays()
 #if _DEBUG
     puts("Cleaned up stream display");
 #endif
-    IN_MUTEX(clientData.mutex, end, {
-        size_t i = 0;
-        while (i < clientData.displays.used) {
-            if (GuidListFind(&clientData.connectedStreams,
-                             &clientData.displays.buffer[i].id,
-                             NULL,
-                             NULL)) {
-                ++i;
-            } else {
-                StreamDisplayListSwapRemove(&clientData.displays, i);
-            }
+    size_t i = 0;
+    while (i < clientData.displays.used) {
+        if (GuidListFind(&clientData.connectedStreams,
+                         &clientData.displays.buffer[i].id,
+                         NULL,
+                         NULL)) {
+            ++i;
+        } else {
+            StreamDisplayListSwapRemove(&clientData.displays, i);
         }
-        renderDisplays();
-    });
+    }
+    renderDisplays();
 }
 
 void
@@ -135,7 +133,6 @@ parseClientConfiguration(const int argc,
 void
 ClientFree(pClient client)
 {
-    closeSocket(client->sockfd);
     GuidListFree(&client->connectedStreams);
     TemLangStringFree(&client->name);
 }
@@ -218,8 +215,8 @@ userIndexFromUser(struct pollfd inputfd,
     return true;
 }
 
-bool
-refreshStreams(const int sockfd, pBytes bytes)
+void
+refreshStreams(ENetPeer* peer, const int sockfd, pBytes bytes)
 {
     puts("Requesting stream information from server...");
     Message message = { 0 };
@@ -227,46 +224,45 @@ refreshStreams(const int sockfd, pBytes bytes)
     message.tag = MessageTag_getAllData;
     message.getAllData = NULL;
     MESSAGE_SERIALIZE(message, (*bytes));
-    return socketSend(sockfd, bytes, true);
+    ENetPacket* packet = BytesToPacket(bytes, true);
+    enet_peer_send(peer, CLIENT_CHANNEL, packet);
 }
 
 void
 selectAStreamToConnectTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
 {
-    IN_MUTEX(clientData.mutex, end0, {
-        while (!appDone) {
-            const uint32_t streamNum = clientData.allStreams.used;
-            askQuestion("Select a stream to connect to");
-            for (uint32_t i = 0; i < streamNum; ++i) {
-                const Stream* stream = &clientData.allStreams.buffer[i];
-                printf("%u) %s (%s)\n",
-                       i + 1U,
-                       stream->name.buffer,
-                       StreamTypeToCharString(stream->type));
-            }
-            puts("");
+    while (!appDone) {
+        const uint32_t streamNum = clientData.allStreams.used;
+        askQuestion("Select a stream to connect to");
+        for (uint32_t i = 0; i < streamNum; ++i) {
+            const Stream* stream = &clientData.allStreams.buffer[i];
+            printf("%u) %s (%s)\n",
+                   i + 1U,
+                   stream->name.buffer,
+                   StreamTypeToCharString(stream->type));
+        }
+        puts("");
 
-            if (streamNum == 0) {
-                puts("No streams to connect to");
-                break;
-            }
-
-            uint32_t i = 0;
-            if (streamNum == 1) {
-                puts("Connecting to only stream available");
-            } else if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
-                continue;
-            }
-
-            Message message = { 0 };
-            message.tag = MessageTag_connectToStream;
-            message.connectToStream = clientData.allStreams.buffer[i].id;
-            MESSAGE_SERIALIZE(message, (*bytes));
-            socketSend(sockfd, bytes, true);
-            MessageFree(&message);
+        if (streamNum == 0) {
+            puts("No streams to connect to");
             break;
         }
-    });
+
+        uint32_t i = 0;
+        if (streamNum == 1) {
+            puts("Connecting to only stream available");
+        } else if (!userIndexFromUser(inputfd, bytes, streamNum, &i)) {
+            continue;
+        }
+
+        Message message = { 0 };
+        message.tag = MessageTag_connectToStream;
+        message.connectToStream = clientData.allStreams.buffer[i].id;
+        MESSAGE_SERIALIZE(message, (*bytes));
+        socketSend(sockfd, bytes, true);
+        MessageFree(&message);
+        break;
+    }
 }
 
 void
@@ -695,204 +691,188 @@ saveScreenshot(SDL_Renderer* renderer, const Guid* id)
     });
 }
 
-int
-handleUserInput(const void* ptr)
+void
+handleUserInput(ENetHost* host, ENetPeer* peer, pBytes bytes)
 {
-    (void)ptr;
     const int sockfd = clientData.tcpSocket;
     struct pollfd inputfd = { .events = POLLIN,
                               .revents = 0,
                               .fd = STDIN_FILENO };
-    Bytes bytes = { .allocator = currentAllocator,
-                    .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
-                    .size = MAX_PACKET_SIZE,
-                    .used = 0 };
     Message message = { 0 };
-    while (!appDone) {
-        askQuestion("Choose an option");
-        for (size_t i = 0; i < ClientCommand_Length; ++i) {
-            TemLangString s = ClientCommandToString(i);
-            camelCaseToNormal(&s);
-            printf("%zu) %s\n", i + 1UL, s.buffer);
-            TemLangStringFree(&s);
-        }
-        puts("");
+    askQuestion("Choose an option");
+    for (size_t i = 0; i < ClientCommand_Length; ++i) {
+        TemLangString s = ClientCommandToString(i);
+        camelCaseToNormal(&s);
+        printf("%zu) %s\n", i + 1UL, s.buffer);
+        TemLangStringFree(&s);
+    }
+    puts("");
 
-        uint32_t index;
-        if (!userIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
+    uint32_t index;
+    if (!userIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
+        goto end;
+    }
+
+    switch (index) {
+        case ClientCommand_PrintName:
+            IN_MUTEX(clientData.mutex, printName, {
+                printf("Client name: %s\n", clientData.name.buffer);
+            });
+            goto end;
+        case ClientCommand_GetClients:
+            message.tag = MessageTag_getClients;
+            message.getClients = NULL;
+            MESSAGE_SERIALIZE(message, (*bytes));
+            ENetPacket* packet = BytesToPacket(bytes, true);
+            enet_peer_send(peer, CLIENT_CHANNEL, packet);
+            break;
+        case ClientCommand_Quit:
+            appDone = true;
+            goto end;
+        case ClientCommand_StartStreaming:
+            selectStreamToStart(inputfd, sockfd, &bytes);
+            goto end;
+        case ClientCommand_SaveScreenshot: {
+            StreamList streams = { .allocator = currentAllocator };
+            IN_MUTEX(clientData.mutex, saveEnd, {
+                askQuestion("Select stream to take screenshot from");
+                for (size_t i = 0; i < clientData.connectedStreams.used; ++i) {
+                    const Stream* stream = NULL;
+                    if (!GetStreamFromGuid(
+                          &clientData.allStreams,
+                          &clientData.connectedStreams.buffer[i],
+                          &stream,
+                          NULL)) {
+                        continue;
+                    }
+                    printf(
+                      "%zu) %s\n", streams.used + 1UL, stream->name.buffer);
+                    StreamListAppend(&streams, stream);
+                }
+                puts("");
+
+                uint32_t i = 1;
+                if (StreamListIsEmpty(&streams)) {
+                    puts("No streams to take screenshot from");
+                    goto saveEnd;
+                } else if (streams.used == 1) {
+                    puts("Taking screenshot from only available stream");
+                } else if (!userIndexFromUser(
+                             inputfd, &bytes, streams.used, &i)) {
+                    goto saveEnd;
+                }
+                SDL_Event e = { 0 };
+                e.type = SDL_USEREVENT;
+                e.user.code = CustomEvent_SaveScreenshot;
+                Guid* guid = currentAllocator->allocate(sizeof(Guid));
+                *guid = streams.buffer[i].id;
+                e.user.data1 = guid;
+                SDL_PushEvent(&e);
+            });
+            StreamListFree(&streams);
+            goto end;
+        }
+        case ClientCommand_ConnectToStream:
+        case ClientCommand_ShowAllStreams:
+        case ClientCommand_ShowConnectedStreams:
+        case ClientCommand_ShowOwnStreams:
+        case ClientCommand_DisconnectFromStream:
+        case ClientCommand_StopStreaming:
+        case ClientCommand_UploadFile:
+        case ClientCommand_UploadText:
+            refreshStreams(sockfd, &bytes);
+            break;
+        default:
+            fprintf(stderr,
+                    "Command '%s' is not implemented\n",
+                    ClientCommandToCharString(index));
+            goto end;
+    }
+
+    if (!clientData.gotResponse) {
+        puts("Waiting for stream information from server...");
+        size_t tries = 50;
+        while (!appDone && !clientData.gotResponse && tries != 0) {
+            SDL_Delay(100);
+            --tries;
+        }
+        if (appDone || tries == 0) {
+            puts("Didn't get information from server!");
             continue;
         }
-
-        MessageFree(&message);
-        clientData.gotResponse = false;
-        switch (index) {
-            case ClientCommand_PrintName:
-                IN_MUTEX(clientData.mutex, printName, {
-                    printf("Client name: %s\n", clientData.name.buffer);
-                });
-                continue;
-            case ClientCommand_GetClients:
-                message.tag = MessageTag_getClients;
-                message.getClients = NULL;
-                MESSAGE_SERIALIZE(message, bytes);
-                if (!socketSend(sockfd, &bytes, true)) {
-                    continue;
-                }
-                break;
-            case ClientCommand_Quit:
-                appDone = true;
-                continue;
-            case ClientCommand_StartStreaming:
-                selectStreamToStart(inputfd, sockfd, &bytes);
-                continue;
-            case ClientCommand_SaveScreenshot: {
-                StreamList streams = { .allocator = currentAllocator };
-                IN_MUTEX(clientData.mutex, saveEnd, {
-                    askQuestion("Select stream to take screenshot from");
-                    for (size_t i = 0; i < clientData.connectedStreams.used;
-                         ++i) {
-                        const Stream* stream = NULL;
-                        if (!GetStreamFromGuid(
-                              &clientData.allStreams,
-                              &clientData.connectedStreams.buffer[i],
-                              &stream,
-                              NULL)) {
-                            continue;
-                        }
-                        printf(
-                          "%zu) %s\n", streams.used + 1UL, stream->name.buffer);
-                        StreamListAppend(&streams, stream);
-                    }
-                    puts("");
-
-                    uint32_t i = 1;
-                    if (StreamListIsEmpty(&streams)) {
-                        puts("No streams to take screenshot from");
-                        goto saveEnd;
-                    } else if (streams.used == 1) {
-                        puts("Taking screenshot from only available stream");
-                    } else if (!userIndexFromUser(
-                                 inputfd, &bytes, streams.used, &i)) {
-                        goto saveEnd;
-                    }
-                    SDL_Event e = { 0 };
-                    e.type = SDL_USEREVENT;
-                    e.user.code = CustomEvent_SaveScreenshot;
-                    Guid* guid = currentAllocator->allocate(sizeof(Guid));
-                    *guid = streams.buffer[i].id;
-                    e.user.data1 = guid;
-                    SDL_PushEvent(&e);
-                });
-                StreamListFree(&streams);
-                continue;
-            }
-            case ClientCommand_ConnectToStream:
-            case ClientCommand_ShowAllStreams:
-            case ClientCommand_ShowConnectedStreams:
-            case ClientCommand_ShowOwnStreams:
-            case ClientCommand_DisconnectFromStream:
-            case ClientCommand_StopStreaming:
-            case ClientCommand_UploadFile:
-            case ClientCommand_UploadText:
-                if (!refreshStreams(sockfd, &bytes)) {
-                    appDone = true;
-                    continue;
-                }
-                break;
-            default:
-                fprintf(stderr,
-                        "Command '%s' is not implemented\n",
-                        ClientCommandToCharString(index));
-                continue;
-        }
-
-        if (!clientData.gotResponse) {
-            puts("Waiting for stream information from server...");
-            size_t tries = 50;
-            while (!appDone && !clientData.gotResponse && tries != 0) {
-                SDL_Delay(100);
-                --tries;
-            }
-            if (appDone || tries == 0) {
-                puts("Didn't get information from server!");
-                continue;
-            }
-            puts("Got stream information from server");
-        }
-
-        switch (index) {
-            case ClientCommand_GetClients:
-                IN_MUTEX(clientData.mutex, endClients, {
-                    askQuestion("Clients");
-                    for (size_t i = 0; i < clientData.otherClients.used; ++i) {
-                        printf("%zu) %s\n",
-                               i + 1,
-                               clientData.otherClients.buffer[i].buffer);
-                    }
-                    puts("");
-                });
-                break;
-            case ClientCommand_ConnectToStream:
-                selectAStreamToConnectTo(inputfd, sockfd, &bytes);
-                break;
-            case ClientCommand_DisconnectFromStream:
-                selectAStreamToDisconnectFrom(inputfd, sockfd, &bytes);
-                break;
-            case ClientCommand_StopStreaming:
-                selectStreamToStop(inputfd, sockfd, &bytes);
-                break;
-            case ClientCommand_UploadText:
-                selectStreamToSendTextTo(inputfd, sockfd, &bytes);
-                break;
-            case ClientCommand_UploadFile:
-                selectStreamToUploadFileTo(inputfd, sockfd, &bytes);
-                break;
-            case ClientCommand_ShowAllStreams:
-                askQuestion("All Streams");
-                IN_MUTEX(clientData.mutex, endShowAll, {
-                    for (size_t i = 0; i < clientData.allStreams.used; ++i) {
-                        printStream(&clientData.allStreams.buffer[i]);
-                    }
-                });
-                break;
-            case ClientCommand_ShowConnectedStreams:
-                askQuestion("Connected Streams");
-                IN_MUTEX(clientData.mutex, endShowConnected, {
-                    const Stream* stream = NULL;
-                    for (size_t i = 0; i < clientData.connectedStreams.used;
-                         ++i) {
-                        if (GetStreamFromGuid(
-                              &clientData.allStreams,
-                              &clientData.connectedStreams.buffer[i],
-                              &stream,
-                              NULL)) {
-                            printStream(stream);
-                        }
-                    }
-                });
-                break;
-            case ClientCommand_ShowOwnStreams:
-                askQuestion("Own Streams");
-                IN_MUTEX(clientData.mutex, endShowOwn, {
-                    const Stream* stream = NULL;
-                    for (size_t i = 0; i < clientData.ownStreams.used; ++i) {
-                        if (GetStreamFromGuid(&clientData.allStreams,
-                                              &clientData.ownStreams.buffer[i],
-                                              &stream,
-                                              NULL)) {
-                            printStream(stream);
-                        }
-                    }
-                });
-                break;
-            default:
-                continue;
-        }
-        MessageFree(&message);
+        puts("Got stream information from server");
     }
+
+    switch (index) {
+        case ClientCommand_GetClients:
+            IN_MUTEX(clientData.mutex, endClients, {
+                askQuestion("Clients");
+                for (size_t i = 0; i < clientData.otherClients.used; ++i) {
+                    printf("%zu) %s\n",
+                           i + 1,
+                           clientData.otherClients.buffer[i].buffer);
+                }
+                puts("");
+            });
+            break;
+        case ClientCommand_ConnectToStream:
+            selectAStreamToConnectTo(inputfd, sockfd, &bytes);
+            break;
+        case ClientCommand_DisconnectFromStream:
+            selectAStreamToDisconnectFrom(inputfd, sockfd, &bytes);
+            break;
+        case ClientCommand_StopStreaming:
+            selectStreamToStop(inputfd, sockfd, &bytes);
+            break;
+        case ClientCommand_UploadText:
+            selectStreamToSendTextTo(inputfd, sockfd, &bytes);
+            break;
+        case ClientCommand_UploadFile:
+            selectStreamToUploadFileTo(inputfd, sockfd, &bytes);
+            break;
+        case ClientCommand_ShowAllStreams:
+            askQuestion("All Streams");
+            IN_MUTEX(clientData.mutex, endShowAll, {
+                for (size_t i = 0; i < clientData.allStreams.used; ++i) {
+                    printStream(&clientData.allStreams.buffer[i]);
+                }
+            });
+            break;
+        case ClientCommand_ShowConnectedStreams:
+            askQuestion("Connected Streams");
+            IN_MUTEX(clientData.mutex, endShowConnected, {
+                const Stream* stream = NULL;
+                for (size_t i = 0; i < clientData.connectedStreams.used; ++i) {
+                    if (GetStreamFromGuid(
+                          &clientData.allStreams,
+                          &clientData.connectedStreams.buffer[i],
+                          &stream,
+                          NULL)) {
+                        printStream(stream);
+                    }
+                }
+            });
+            break;
+        case ClientCommand_ShowOwnStreams:
+            askQuestion("Own Streams");
+            IN_MUTEX(clientData.mutex, endShowOwn, {
+                const Stream* stream = NULL;
+                for (size_t i = 0; i < clientData.ownStreams.used; ++i) {
+                    if (GetStreamFromGuid(&clientData.allStreams,
+                                          &clientData.ownStreams.buffer[i],
+                                          &stream,
+                                          NULL)) {
+                        printStream(stream);
+                    }
+                }
+            });
+            break;
+        default:
+            break;
+    }
+
+end:
     MessageFree(&message);
-    uint8_tListFree(&bytes);
-    return EXIT_SUCCESS;
 }
 
 void
@@ -1411,13 +1391,6 @@ readFromServer(struct AllConfiguration* configuration)
                     .size = MAX_PACKET_SIZE,
                     .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
                     .used = 0 };
-    clientData.tcpSocket =
-      openSocketFromAddress(&configuration->address, SocketOptions_Tcp);
-    clientData.udpSocket = openSocketFromAddress(&configuration->address, 0);
-    if (clientData.tcpSocket == INVALID_SOCKET ||
-        clientData.udpSocket == INVALID_SOCKET) {
-        goto end;
-    }
 
     struct pollfd pfdsList[] = { { .events = POLLIN | POLLERR | POLLHUP,
                                    .revents = 0,
@@ -1595,13 +1568,13 @@ loadNewFont(const char* filename, const int fontSize, TTF_Font** ttfFont)
 int
 runClient(const AllConfiguration* configuration)
 {
+    ENetPeer* peer = NULL;
     int result = EXIT_FAILURE;
     puts("Running client");
     printAllConfiguration(configuration);
 
     const ClientConfiguration* config = &configuration->configuration.client;
 
-    SDL_Thread* thread = NULL;
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
     // Font font = { 0 };
@@ -1682,13 +1655,6 @@ runClient(const AllConfiguration* configuration)
     ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
     if (ttfFont == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
-        goto end;
-    }
-
-    thread = SDL_CreateThread(
-      (SDL_ThreadFunction)readFromServer, "Read", (void*)configuration);
-    if (thread == NULL) {
-        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
         goto end;
     }
 
@@ -2036,11 +2002,13 @@ runClient(const AllConfiguration* configuration)
 
 end:
     // FontFree(&font);
+    if (peer != NULL) {
+        enet_peer_reset(peer);
+    }
     MessageFree(&message);
     uint8_tListFree(&bytes);
     TTF_CloseFont(ttfFont);
     TTF_Quit();
-    SDL_WaitThread(thread, &result);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();

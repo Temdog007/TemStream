@@ -1,7 +1,9 @@
 #include <include/main.h>
 
+Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
+
 bool
-parseAddress(const char* str, pAddress address)
+parseIpAddress(const char* str, pIpAddress address)
 {
     const size_t len = strlen(str);
     for (size_t i = 0; i < len; ++i) {
@@ -9,16 +11,11 @@ parseAddress(const char* str, pAddress address)
             continue;
         }
 
-        address->tag = AddressTag_ipAddress;
-        address->ipAddress.ip =
-          TemLangStringCreateFromSize(str, i + 1, currentAllocator);
-        address->ipAddress.port =
-          TemLangStringCreate(str + i + 1, currentAllocator);
+        address->ip = TemLangStringCreateFromSize(str, i + 1, currentAllocator);
+        address->port = TemLangStringCreate(str + i + 1, currentAllocator);
         return true;
     }
-    address->tag = AddressTag_domainSocket;
-    address->domainSocket = TemLangStringCreate(str, currentAllocator);
-    return true;
+    return false;
 }
 
 bool
@@ -139,4 +136,22 @@ FileExtenstionToStreamType(const FileExtensionTag tag)
         default:
             return StreamType_Invalid;
     }
+}
+
+ENetPeer*
+FindPeerFromData(ENetPeer* peers, const size_t count, const void* data)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (peers[i].data == data) {
+            return &peers[i];
+        }
+    }
+    return NULL;
+}
+
+ENetPeer*
+BytesToPacket(const Bytes* bytes, const bool reliable)
+{
+    return enet_packet_create(
+      bytes->buffer, bytes->used, (reliable ? ENET_PACKET_FLAG_RELIABLE : 0));
 }

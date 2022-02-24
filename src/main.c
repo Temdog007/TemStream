@@ -2,7 +2,6 @@
 
 #include "client.c"
 #include "misc.c"
-#include "networking.c"
 #include "rendering.c"
 #include "server.c"
 
@@ -29,8 +28,14 @@ main(const int argc, const char** argv)
     static Allocator allocator = { 0 };
     allocator = makeDefaultAllocator();
     currentAllocator = &allocator;
+    if (enet_initialize() != 0) {
+        fprintf(stderr, "Failed to initialize ENet\n");
+        return EXIT_FAILURE;
+    }
 
-    return runApp(argc, argv);
+    const int result = runApp(argc, argv);
+    enet_deinitialize();
+    return result;
 }
 
 int
@@ -96,10 +101,12 @@ defaultConfiguration()
 AllConfiguration
 defaultAllConfiguration()
 {
-    return (AllConfiguration){ .address = { .domainSocket = TemLangStringCreate(
-                                              "app.sock", currentAllocator),
-                                            .tag = AddressTag_domainSocket },
-                               .configuration = defaultConfiguration() };
+    return (AllConfiguration){
+        .address = { .ip = TemLangStringCreate("localhost", currentAllocator),
+                     .port = TemLangStringCreate("10000", currentAllocator) },
+        .secure = { .tag = OptionalSecureIpAddressTag_none, .none = NULL },
+        .configuration = defaultConfiguration()
+    };
 }
 
 void
@@ -119,10 +126,10 @@ parseCommonConfiguration(const char* key,
 {
     const size_t keyLen = strlen(key);
     STR_EQUALS(key, "-A", keyLen, {
-        return parseAddress(value, &configuration->address);
+        return parseIpAddress(value, &configuration->address);
     });
     STR_EQUALS(key, "--address", keyLen, {
-        return parseAddress(value, &configuration->address);
+        return parseIpAddress(value, &configuration->address);
     });
     return false;
 }
@@ -147,18 +154,10 @@ printAllConfiguration(const AllConfiguration* configuration)
 }
 
 int
-printAddress(const Address* address)
+printIpAddress(const IpAddress* address)
 {
-    switch (address->tag) {
-        case AddressTag_domainSocket:
-            return printf("Domain socket: %s\n", address->domainSocket.buffer);
-        case AddressTag_ipAddress:
-            return printf("Ip socket: %s:%s\n",
-                          address->ipAddress.ip.buffer,
-                          address->ipAddress.port.buffer);
-        default:
-            return 0;
-    }
+    return printf(
+      "Ip address: %s:%s\n", address->ip.buffer, address->port.buffer);
 }
 
 int
@@ -178,18 +177,6 @@ StreamTypeMatchStreamMessage(const StreamType type,
 {
     return (type == StreamType_Text && tag == StreamMessageDataTag_text) ||
            (type == StreamType_Chat && tag == StreamMessageDataTag_chatMessage);
-}
-
-bool
-MessageUsesUdp(const StreamMessage* message)
-{
-    switch (message->data.tag) {
-        case StreamMessageDataTag_none:
-            return true;
-        default:
-            break;
-    }
-    return false;
 }
 
 bool

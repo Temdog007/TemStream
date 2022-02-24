@@ -72,10 +72,6 @@ resource ClientData {
     [0 StreamDisplay] displays
     string name
     Guid id
-    i32 tcpSocket
-    i32 udpSocket
-    bool gotResponse
-    null mutex
 } cd {
     inlineC "
         SDL_DestroyMutex(cd.mutex);
