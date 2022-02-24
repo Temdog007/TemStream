@@ -7,9 +7,10 @@ enum ClientCommand {
     ConnectToStream
     DisconnectFromStream
     StartStreaming
+    StopStreaming
     UploadText
     UploadFile
-    StopStreaming
+    SaveScreenshot
     Quit
 }
 
@@ -75,10 +76,8 @@ resource ClientData {
     i32 udpSocket
     bool gotResponse
     null mutex
-    null cond
 } cd {
     inlineC "
-        SDL_DestroyCond(cd.cond);
         SDL_DestroyMutex(cd.mutex);
     "
 }

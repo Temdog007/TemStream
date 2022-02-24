@@ -290,8 +290,8 @@ socketSend(const int sockfd, const Bytes* bytes, const bool exitOnError)
 #if _DEBUG
     printf("Sent all bytes\n");
 #endif
-    SDL_Delay(250U);
-    return true;
+    // SDL_Delay(500U);
+    return sent == target;
 }
 
 bool

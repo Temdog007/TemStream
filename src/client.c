@@ -620,6 +620,81 @@ selectStreamToUploadFileTo(struct pollfd inputfd,
     StreamListFree(&streams);
 }
 
+void
+saveScreenshot(SDL_Renderer* renderer, const Guid* id)
+{
+    IN_MUTEX(clientData.mutex, fend, {
+        const StreamDisplay* display = NULL;
+        SDL_Texture* temp = NULL;
+        SDL_Surface* surface = NULL;
+        if (!GetStreamDisplayFromGuid(
+              &clientData.displays, id, &display, NULL)) {
+            fprintf(stderr, "Guid missing from stream list\n");
+            goto end;
+        }
+
+        if (display->texture == NULL) {
+            puts("Stream display has no texture");
+            goto end;
+        }
+
+        int width;
+        int height;
+        if (SDL_QueryTexture(display->texture, 0, 0, &width, &height) != 0) {
+            fprintf(stderr, "Failed to query texture: %s\n", SDL_GetError());
+            goto end;
+        }
+        temp = SDL_CreateTexture(renderer,
+                                 SDL_PIXELFORMAT_RGBA8888,
+                                 SDL_TEXTUREACCESS_TARGET,
+                                 width,
+                                 height);
+        if (temp == NULL) {
+            fprintf(stderr, "Failed to create texture: %s\n", SDL_GetError());
+            goto end;
+        }
+
+        if (SDL_SetTextureBlendMode(temp, SDL_BLENDMODE_NONE) != 0 ||
+            SDL_SetRenderTarget(renderer, temp) != 0 ||
+            SDL_RenderCopy(renderer, display->texture, NULL, NULL) != 0) {
+            fprintf(stderr, "Error with texture: %s\n", SDL_GetError());
+            goto end;
+        }
+
+        surface = SDL_CreateRGBSurface(0, width, height, 32, 0, 0, 0, 0);
+        if (surface == NULL) {
+            fprintf(stderr, "Failed to create surface: %s\n", SDL_GetError());
+            goto end;
+        }
+
+        if (SDL_RenderReadPixels(renderer,
+                                 NULL,
+                                 surface->format->format,
+                                 surface->pixels,
+                                 surface->pitch) != 0) {
+            fprintf(stderr, "Failed to read pixels: %s\n", SDL_GetError());
+            goto end;
+        }
+
+        char buffer[1024];
+        const time_t t = time(NULL);
+        strftime(buffer,
+                 sizeof(buffer),
+                 "screenshot_%y_%m_%d_%H_%M_%S.png",
+                 localtime(&t));
+        if (IMG_SavePNG(surface, buffer) != 0) {
+            fprintf(stderr, "Failed to save screenshot: %s\n", IMG_GetError());
+            goto end;
+        }
+
+        printf("Saved screenshot to '%s'\n", buffer);
+
+    end:
+        SDL_DestroyTexture(temp);
+        SDL_FreeSurface(surface);
+    });
+}
+
 int
 handleUserInput(const void* ptr)
 {
@@ -667,6 +742,50 @@ handleUserInput(const void* ptr)
             case ClientCommand_Quit:
                 appDone = true;
                 continue;
+            case ClientCommand_StartStreaming:
+                selectStreamToStart(inputfd, sockfd, &bytes);
+                continue;
+            case ClientCommand_SaveScreenshot: {
+                StreamList streams = { .allocator = currentAllocator };
+                IN_MUTEX(clientData.mutex, saveEnd, {
+                    askQuestion("Select stream to take screenshot from");
+                    for (size_t i = 0; i < clientData.connectedStreams.used;
+                         ++i) {
+                        const Stream* stream = NULL;
+                        if (!GetStreamFromGuid(
+                              &clientData.allStreams,
+                              &clientData.connectedStreams.buffer[i],
+                              &stream,
+                              NULL)) {
+                            continue;
+                        }
+                        printf(
+                          "%zu) %s\n", streams.used + 1UL, stream->name.buffer);
+                        StreamListAppend(&streams, stream);
+                    }
+                    puts("");
+
+                    uint32_t i = 1;
+                    if (StreamListIsEmpty(&streams)) {
+                        puts("No streams to take screenshot from");
+                        goto saveEnd;
+                    } else if (streams.used == 1) {
+                        puts("Taking screenshot from only available stream");
+                    } else if (!userIndexFromUser(
+                                 inputfd, &bytes, streams.used, &i)) {
+                        goto saveEnd;
+                    }
+                    SDL_Event e = { 0 };
+                    e.type = SDL_USEREVENT;
+                    e.user.code = CustomEvent_SaveScreenshot;
+                    Guid* guid = currentAllocator->allocate(sizeof(Guid));
+                    *guid = streams.buffer[i].id;
+                    e.user.data1 = guid;
+                    SDL_PushEvent(&e);
+                });
+                StreamListFree(&streams);
+                continue;
+            }
             case ClientCommand_ConnectToStream:
             case ClientCommand_ShowAllStreams:
             case ClientCommand_ShowConnectedStreams:
@@ -680,10 +799,6 @@ handleUserInput(const void* ptr)
                     continue;
                 }
                 break;
-            case ClientCommand_StartStreaming: {
-                selectStreamToStart(inputfd, sockfd, &bytes);
-                continue;
-            } break;
             default:
                 fprintf(stderr,
                         "Command '%s' is not implemented\n",
@@ -691,28 +806,19 @@ handleUserInput(const void* ptr)
                 continue;
         }
 
-        puts("Waiting for stream information from server...");
-        bool gotData = false;
-        IN_MUTEX(clientData.mutex, end, {
-            while (!appDone && !clientData.gotResponse) {
-                const int result = SDL_CondWaitTimeout(
-                  clientData.cond, clientData.mutex, LONG_POLL_WAIT);
-                if (result < 0) {
-                    fprintf(stderr, "Cond error: %s\n", SDL_GetError());
-                    break;
-                } else if (result == 0) {
-                    gotData = true;
-                    break;
-                } else {
-                    puts("Failed to get information from server");
-                    break;
-                }
+        if (!clientData.gotResponse) {
+            puts("Waiting for stream information from server...");
+            size_t tries = 50;
+            while (!appDone && !clientData.gotResponse && tries != 0) {
+                SDL_Delay(100);
+                --tries;
             }
-        });
-        if (!gotData) {
-            continue;
+            if (appDone || tries == 0) {
+                puts("Didn't get information from server!");
+                continue;
+            }
+            puts("Got stream information from server");
         }
-        puts("Got stream information from server");
 
         switch (index) {
             case ClientCommand_GetClients:
@@ -964,7 +1070,6 @@ clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
         }
         if (doSignal) {
             clientData.gotResponse = true;
-            SDL_CondSignal(clientData.cond);
         }
     });
 }
@@ -1366,9 +1471,6 @@ readFromServer(struct AllConfiguration* configuration)
                     struct pollfd pfds = pfdsList[i];
                     if ((pfds.revents & (POLLERR | POLLHUP)) != 0) {
                         puts("Connection to server lost!");
-                        IN_MUTEX(clientData.mutex, dfsa, {
-                            SDL_CondSignal(clientData.cond);
-                        });
                         appDone = true;
                         break;
                     }
@@ -1384,7 +1486,6 @@ readFromServer(struct AllConfiguration* configuration)
 end:
     appDone = true;
     puts("Closing server connection...");
-    IN_MUTEX(clientData.mutex, dfsa2, { SDL_CondSignal(clientData.cond); });
     SDL_WaitThread(thread, &result);
     uint8_tListFree(&bytes);
     puts("Closed server connection");
@@ -1563,12 +1664,6 @@ runClient(const AllConfiguration* configuration)
 
         SDL_GetRendererInfo(renderer, &info);
         printf("Current renderer: %s\n", info.name);
-    }
-
-    clientData.cond = SDL_CreateCond();
-    if (clientData.cond == NULL) {
-        fprintf(stderr, "Failed to create cond: %s\n", SDL_GetError());
-        goto end;
     }
 
     clientData.mutex = SDL_CreateMutex();
@@ -1755,6 +1850,10 @@ runClient(const AllConfiguration* configuration)
                         currentAllocator->free(e.user.data1);
                         renderDisplays();
                     } break;
+                    case CustomEvent_SaveScreenshot:
+                        saveScreenshot(renderer, (const Guid*)e.user.data1);
+                        currentAllocator->free(e.user.data1);
+                        break;
                     case CustomEvent_UpdateStreamDisplay: {
                         pStreamMessage m = e.user.data1;
                         switch (m->data.tag) {

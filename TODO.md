@@ -7,7 +7,6 @@
 - [x] Show last N number of chat messages
 
 ### Feb 23, 2022
-- [x] Packet loss (need sleep?)
 - [x] Fix auto scroll
 - [x] Handle dropped text
 - [x] Image stream
@@ -15,7 +14,8 @@
 
 ### Feb 24, 2022
 - [x] File drop onto stream texture
-- [ ] Download screenshot of stream
+- [ ] Download screenshot of stream (still need test)
+- [ ] Packet loss (TCP merges packets, use ENET)
 
 ### Later
 - [ ] Play gifs (use FFMPEG)
@@ -26,3 +26,6 @@
 - [ ] Create an HTML page that allows browser GUI to send commands on behalf of the native version
 - [ ] SSL encryption (dtls)
 - [ ] Add logging library (or make one)
+
+### Maybe
+- [ ] Make a thread safe allocator to use

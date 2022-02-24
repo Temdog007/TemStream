@@ -52,6 +52,14 @@ variant FileExtension {
     null font
 }
 
+enum CustomEvent {
+    Render
+    AddTexture
+    UpdateStreamDisplay
+    SaveScreenshot
+
+}
+
 struct Credentials {
     string username
     string password

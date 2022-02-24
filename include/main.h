@@ -292,16 +292,6 @@ renderFont(SDL_Renderer* renderer,
            const uint8_t foreground[4],
            const uint8_t background[4]);
 
-// Custom Events
-
-typedef enum CustomEvent
-{
-    CustomEvent_Render = 0x31ab,
-    CustomEvent_AddTexture,
-    CustomEvent_UpdateStreamDisplay,
-} CustomEvent,
-  *pCustomEvent;
-
 // SDL
 
 SDL_FORCE_INLINE SDL_bool

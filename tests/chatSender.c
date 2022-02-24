@@ -62,7 +62,7 @@ main(int argc, char** argv)
             goto end;
         }
 
-        printf("Clietn name: %s\n", message.authenticateAck.name.buffer);
+        printf("Client name: %s\n", message.authenticateAck.name.buffer);
 
         MessageFree(&message);
         message.tag = MessageTag_getStream;
