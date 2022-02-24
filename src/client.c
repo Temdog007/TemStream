@@ -427,7 +427,7 @@ selectStreamToStop(struct pollfd inputfd, const int sockfd, pBytes bytes)
 }
 
 void
-selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
+selectStreamToSendTextTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
 {
     StreamList streams = { 0 };
     IN_MUTEX(clientData.mutex, end0, {
@@ -435,7 +435,7 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
             const Stream* stream = NULL;
             const uint32_t streamNum = clientData.connectedStreams.used;
             uint32_t streamsFound = 0;
-            askQuestion("Send data to which stream?");
+            askQuestion("Send text to which stream?");
             StreamListFree(&streams);
             streams.allocator = currentAllocator;
             for (uint32_t i = 0; i < streamNum; ++i) {
@@ -450,13 +450,13 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
             puts("");
 
             if (streamNum == 0 || streamsFound == 0) {
-                puts("No streams to send data");
+                puts("No streams to send text to");
                 break;
             }
 
             uint32_t i = 0;
             if (streamsFound == 1) {
-                puts("Sending data to only stream available");
+                puts("Sending text to only stream available");
             } else if (!userIndexFromUser(inputfd, bytes, streamsFound, &i)) {
                 continue;
             }
@@ -488,7 +488,7 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
                                           currentAllocator);
                     break;
                 default:
-                    printf("Cannot manually send data to stream type '%s'\n",
+                    printf("Cannot send text to stream type '%s'\n",
                            StreamTypeToCharString(stream->type));
                     continue;
             }
@@ -499,6 +499,121 @@ selectStreamToSendDataTo(struct pollfd inputfd, const int sockfd, pBytes bytes)
             MessageFree(&message);
 
             socketSend(sockfd, bytes, true);
+            break;
+        }
+    });
+    StreamListFree(&streams);
+}
+
+void
+selectStreamToUploadFileTo(struct pollfd inputfd,
+                           const int sockfd,
+                           pBytes bytes)
+{
+    StreamList streams = { 0 };
+    IN_MUTEX(clientData.mutex, end0, {
+        while (!appDone) {
+            const Stream* stream = NULL;
+            const uint32_t streamNum = clientData.connectedStreams.used;
+            uint32_t streamsFound = 0;
+            askQuestion("Send file to which stream?");
+            StreamListFree(&streams);
+            streams.allocator = currentAllocator;
+            for (uint32_t i = 0; i < streamNum; ++i) {
+                const Guid guid = clientData.connectedStreams.buffer[i];
+                if (GetStreamFromGuid(
+                      &clientData.allStreams, &guid, &stream, NULL)) {
+                    printf("%u) %s\n", i + 1U, stream->name.buffer);
+                    ++streamsFound;
+                    StreamListAppend(&streams, stream);
+                }
+            }
+            puts("");
+
+            if (streamNum == 0 || streamsFound == 0) {
+                puts("No streams to send data");
+                break;
+            }
+
+            uint32_t i = 0;
+            if (streamsFound == 1) {
+                puts("Sending data to only stream available");
+            } else if (!userIndexFromUser(inputfd, bytes, streamsFound, &i)) {
+                continue;
+            }
+
+            stream = &streams.buffer[i];
+
+            askQuestion("Enter file name");
+            if (!getUserInput(inputfd, bytes, NULL)) {
+                continue;
+            }
+
+            int fd = -1;
+            char* ptr = NULL;
+            size_t size = 0;
+            if (!mapFile(
+                  (char*)bytes->buffer, &fd, &ptr, &size, MapFileType_Read)) {
+                fprintf(stderr,
+                        "Error opening file '%s': %s\n",
+                        (char*)bytes->buffer,
+                        strerror(errno));
+                goto end;
+            }
+
+            Bytes fileBytes = { 0 };
+            fileBytes.size = size;
+            fileBytes.used = size;
+            fileBytes.buffer = (uint8_t*)ptr;
+
+            bool doFree = true;
+
+            Message message = { 0 };
+            switch (stream->type) {
+                case StreamType_Image:
+                    message.streamMessage.data.tag = StreamMessageDataTag_image;
+                    message.streamMessage.data.image = fileBytes;
+                    doFree = false;
+                    break;
+                case StreamType_Video:
+                    message.streamMessage.data.tag = StreamMessageDataTag_video;
+                    message.streamMessage.data.video = fileBytes;
+                    doFree = false;
+                    break;
+                case StreamType_Audio:
+                    message.streamMessage.data.tag = StreamMessageDataTag_audio;
+                    message.streamMessage.data.audio = fileBytes;
+                    doFree = false;
+                    break;
+                case StreamType_Text:
+                    message.streamMessage.data.tag = StreamMessageDataTag_text;
+                    message.streamMessage.data.text =
+                      TemLangStringCreateFromSize(ptr, size, currentAllocator);
+                    break;
+                case StreamType_Chat:
+                    message.streamMessage.data.tag =
+                      StreamMessageDataTag_chatMessage;
+                    message.streamMessage.data.chatMessage.message =
+                      TemLangStringCreateFromSize(ptr, size, currentAllocator);
+                    break;
+                default:
+                    printf("Cannot send file data to stream type '%s'\n",
+                           StreamTypeToCharString(stream->type));
+                    goto end;
+            }
+
+            message.streamMessage.id = stream->id;
+            message.tag = MessageTag_streamMessage;
+            MESSAGE_SERIALIZE(message, (*bytes));
+            if (doFree) {
+                MessageFree(&message);
+            } else {
+                memset(&message, 0, sizeof(message));
+            }
+
+            socketSend(sockfd, bytes, true);
+        end:
+            unmapFile(fd, ptr, size);
             break;
         }
     });
@@ -534,6 +649,7 @@ handleUserInput(const void* ptr)
         }
 
         MessageFree(&message);
+        clientData.gotResponse = false;
         switch (index) {
             case ClientCommand_PrintName:
                 IN_MUTEX(clientData.mutex, printName, {
@@ -555,13 +671,12 @@ handleUserInput(const void* ptr)
             case ClientCommand_ShowAllStreams:
             case ClientCommand_ShowConnectedStreams:
             case ClientCommand_ShowOwnStreams:
+            case ClientCommand_DisconnectFromStream:
+            case ClientCommand_StopStreaming:
+            case ClientCommand_UploadFile:
+            case ClientCommand_UploadText:
                 if (!refreshStreams(sockfd, &bytes)) {
                     appDone = true;
-                    continue;
-                }
-                break;
-            case ClientCommand_DisconnectFromStream:
-                if (!refreshStreams(sockfd, &bytes)) {
                     continue;
                 }
                 break;
@@ -569,16 +684,6 @@ handleUserInput(const void* ptr)
                 selectStreamToStart(inputfd, sockfd, &bytes);
                 continue;
             } break;
-            case ClientCommand_StopStreaming:
-                if (!refreshStreams(sockfd, &bytes)) {
-                    continue;
-                }
-                break;
-            case ClientCommand_SendStreamData:
-                if (!refreshStreams(sockfd, &bytes)) {
-                    continue;
-                }
-                break;
             default:
                 fprintf(stderr,
                         "Command '%s' is not implemented\n",
@@ -589,7 +694,7 @@ handleUserInput(const void* ptr)
         puts("Waiting for stream information from server...");
         bool gotData = false;
         IN_MUTEX(clientData.mutex, end, {
-            while (!appDone) {
+            while (!appDone && !clientData.gotResponse) {
                 const int result = SDL_CondWaitTimeout(
                   clientData.cond, clientData.mutex, LONG_POLL_WAIT);
                 if (result < 0) {
@@ -630,8 +735,11 @@ handleUserInput(const void* ptr)
             case ClientCommand_StopStreaming:
                 selectStreamToStop(inputfd, sockfd, &bytes);
                 break;
-            case ClientCommand_SendStreamData:
-                selectStreamToSendDataTo(inputfd, sockfd, &bytes);
+            case ClientCommand_UploadText:
+                selectStreamToSendTextTo(inputfd, sockfd, &bytes);
+                break;
+            case ClientCommand_UploadFile:
+                selectStreamToUploadFileTo(inputfd, sockfd, &bytes);
                 break;
             case ClientCommand_ShowAllStreams:
                 askQuestion("All Streams");
@@ -855,6 +963,7 @@ clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
                 break;
         }
         if (doSignal) {
+            clientData.gotResponse = true;
             SDL_CondSignal(clientData.cond);
         }
     });
@@ -900,6 +1009,9 @@ updateTextDisplay(SDL_Renderer* renderer,
         if (display->texture != NULL) {
             SDL_DestroyTexture(display->texture);
             display->texture = NULL;
+        }
+        if (TemLangStringIsEmpty(string)) {
+            goto end;
         }
 
         SDL_Color fg = { 0 };
@@ -1058,10 +1170,10 @@ updateChatDisplay(SDL_Renderer* renderer,
     SDL_SetRenderTarget(renderer, display->texture);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0x0u);
+    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 128u);
     SDL_RenderClear(renderer);
 
-    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
+    // SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
 
     display->data.tag = StreamDisplayDataTag_chat;
     char buffer[128] = { 0 };
@@ -1069,7 +1181,7 @@ updateChatDisplay(SDL_Renderer* renderer,
     const SDL_Color white = { .r = 0xffu, .g = 0xffu, .b = 0xffu, .a = 0xffu };
     const SDL_Color purple = { .r = 0xffu, .g = 0x0u, .b = 0xffu, .a = 0xffu };
     const SDL_Color yellow = { .r = 0xffu, .g = 0xffu, .b = 0x0u, .a = 0xffu };
-    const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 128u };
+    const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 0u };
     const SDL_Color black = { .r = 0u, .g = 0u, .b = 0u, .a = 0xffu };
 
     SDL_Rect rect = { 0 };
@@ -1176,7 +1288,9 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
         }
         const FRect rect = display->dstRect;
         updateChatDisplay(renderer, ttfFont, w, h, display);
-        display->dstRect = rect;
+        if (list->used > 2) {
+            display->dstRect = rect;
+        }
     });
 }
 

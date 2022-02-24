@@ -7,7 +7,8 @@ enum ClientCommand {
     ConnectToStream
     DisconnectFromStream
     StartStreaming
-    SendStreamData
+    UploadText
+    UploadFile
     StopStreaming
     Quit
 }
@@ -72,6 +73,7 @@ resource ClientData {
     Guid id
     i32 tcpSocket
     i32 udpSocket
+    bool gotResponse
     null mutex
     null cond
 } cd {
