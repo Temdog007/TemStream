@@ -759,6 +759,7 @@ clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
                         socketSend(sockfd, bytes, true);
                         break;
                 }
+                refreshStreams(sockfd, bytes);
                 break;
             case MessageTag_stopStreamingAck:
                 switch (message->stopStreamingAck.tag) {
@@ -793,8 +794,8 @@ clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
                             case StreamMessageDataTag_text:
                             case StreamMessageDataTag_chatMessage:
                             case StreamMessageDataTag_chatLogs:
-                            case StreamMessageDataTag_videoChunk:
-                            case StreamMessageDataTag_audioChunk:
+                            case StreamMessageDataTag_video:
+                            case StreamMessageDataTag_audio:
                             case StreamMessageDataTag_image: {
                                 e.user.code = CustomEvent_UpdateStreamDisplay;
                                 pStreamMessage m = currentAllocator->allocate(
@@ -812,6 +813,7 @@ clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
                         puts("Failed to connect to stream");
                         break;
                 }
+                refreshStreams(sockfd, bytes);
                 break;
             case MessageTag_disconnectFromStreamAck:
                 if (message->disconnectFromStreamAck) {
@@ -826,8 +828,8 @@ clientHandleMessage(pMessage message, const int sockfd, pBytes bytes)
                     case StreamMessageDataTag_text:
                     case StreamMessageDataTag_chatLogs:
                     case StreamMessageDataTag_chatMessage:
-                    case StreamMessageDataTag_videoChunk:
-                    case StreamMessageDataTag_audioChunk:
+                    case StreamMessageDataTag_video:
+                    case StreamMessageDataTag_audio:
                     case StreamMessageDataTag_image: {
                         SDL_Event e = { 0 };
                         e.type = SDL_USEREVENT;
@@ -915,8 +917,8 @@ updateTextDisplay(SDL_Renderer* renderer,
         display->srcRect.tag = OptionalRectTag_none;
         display->srcRect.none = NULL;
 
-        display->dstRect.x = 0.f;
-        display->dstRect.y = 0.f;
+        // display->dstRect.x = 0.f;
+        // display->dstRect.y = 0.f;
         display->dstRect.w = surface->w;
         display->dstRect.h = surface->h;
 
@@ -968,8 +970,8 @@ updateImageDisplay(SDL_Renderer* renderer, const Guid* id, const Bytes* bytes)
         display->srcRect.tag = OptionalRectTag_none;
         display->srcRect.none = NULL;
 
-        display->dstRect.x = 0.f;
-        display->dstRect.y = 0.f;
+        // display->dstRect.x = 0.f;
+        // display->dstRect.y = 0.f;
         display->dstRect.w = surface->w;
         display->dstRect.h = surface->h;
 
@@ -1172,7 +1174,9 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
             display->data.chat.offset >= list->used - chat->count) {
             display->data.chat.offset = list->used - 1U;
         }
+        const FRect rect = display->dstRect;
         updateChatDisplay(renderer, ttfFont, w, h, display);
+        display->dstRect = rect;
     });
 }
 
@@ -1346,6 +1350,33 @@ printRenderInfo(const SDL_RendererInfo* info)
     }
 }
 
+bool
+findDisplayFromPoint(const SDL_FPoint* point, size_t* targetDisplay)
+{
+    for (size_t i = 0; i < clientData.displays.used; ++i) {
+        pStreamDisplay display = &clientData.displays.buffer[i];
+        if (!SDL_PointInFRect(point, (const SDL_FRect*)&display->dstRect)) {
+            continue;
+        }
+        *targetDisplay = i;
+        return true;
+    }
+    return false;
+}
+
+bool
+loadNewFont(const char* filename, const int fontSize, TTF_Font** ttfFont)
+{
+    TTF_Font* newFont = TTF_OpenFont(filename, fontSize);
+    if (newFont == NULL) {
+        fprintf(stderr, "Failed to load new font: %s\n", TTF_GetError());
+        return false;
+    }
+    TTF_CloseFont(*ttfFont);
+    *ttfFont = newFont;
+    return true;
+}
+
 int
 runClient(const AllConfiguration* configuration)
 {
@@ -1455,6 +1486,7 @@ runClient(const AllConfiguration* configuration)
     SDL_Event e = { 0 };
     size_t targetDisplay = UINT32_MAX;
     MoveMode moveMode = MoveMode_None;
+    bool hasTarget = false;
     appDone = false;
     while (!appDone) {
         if (appDone || SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT) == 0) {
@@ -1484,13 +1516,8 @@ runClient(const AllConfiguration* configuration)
                     SDL_FPoint point = { 0 };
                     point.x = e.button.x;
                     point.y = e.button.y;
-                    for (size_t i = 0; i < clientData.displays.used; ++i) {
-                        pStreamDisplay display = &clientData.displays.buffer[i];
-                        if (!SDL_PointInFRect(
-                              &point, (const SDL_FRect*)&display->dstRect)) {
-                            continue;
-                        }
-                        targetDisplay = i;
+                    if (findDisplayFromPoint(&point, &targetDisplay)) {
+                        hasTarget = true;
                         SDL_SetWindowGrab(window, true);
                         renderDisplays();
                         goto endMouseButton;
@@ -1498,46 +1525,61 @@ runClient(const AllConfiguration* configuration)
                 });
             } break;
             case SDL_MOUSEBUTTONUP: {
+                hasTarget = false;
                 targetDisplay = UINT32_MAX;
                 SDL_SetWindowGrab(window, false);
                 renderDisplays();
             } break;
             case SDL_MOUSEMOTION: {
                 IN_MUTEX(clientData.mutex, endMotion, {
-                    if (targetDisplay >= clientData.displays.used) {
-                        goto endMotion;
+                    if (hasTarget) {
+                        if (targetDisplay >= clientData.displays.used) {
+                            goto endMotion;
+                        }
+                        pStreamDisplay display =
+                          &clientData.displays.buffer[targetDisplay];
+                        if (display->texture == NULL) {
+                            goto endMotion;
+                        }
+                        int w;
+                        int h;
+                        SDL_GetWindowSize(window, &w, &h);
+                        switch (moveMode) {
+                            case MoveMode_Position:
+                                display->dstRect.x =
+                                  display->dstRect.x + e.motion.xrel;
+                                display->dstRect.y =
+                                  display->dstRect.y + e.motion.yrel;
+                                break;
+                            case MoveMode_Size:
+                                display->dstRect.w =
+                                  SDL_clamp(display->dstRect.w + e.motion.xrel,
+                                            MIN_WIDTH,
+                                            w);
+                                display->dstRect.h =
+                                  SDL_clamp(display->dstRect.h + e.motion.yrel,
+                                            MIN_HEIGHT,
+                                            h);
+                                break;
+                            default:
+                                break;
+                        }
+                        display->dstRect.x = SDL_clamp(
+                          display->dstRect.x, 0.f, w - display->dstRect.w);
+                        display->dstRect.y = SDL_clamp(
+                          display->dstRect.y, 0.f, h - display->dstRect.h);
+                        renderDisplays();
+                    } else {
+                        SDL_FPoint point = { 0 };
+                        int x;
+                        int y;
+                        SDL_GetMouseState(&x, &y);
+                        point.x = (float)x;
+                        point.y = (float)y;
+                        targetDisplay = UINT_MAX;
+                        findDisplayFromPoint(&point, &targetDisplay);
+                        renderDisplays();
                     }
-                    pStreamDisplay display =
-                      &clientData.displays.buffer[targetDisplay];
-                    if (display->texture == NULL) {
-                        goto endMotion;
-                    }
-                    int w;
-                    int h;
-                    SDL_GetWindowSize(window, &w, &h);
-                    switch (moveMode) {
-                        case MoveMode_Position:
-                            display->dstRect.x =
-                              display->dstRect.x + e.motion.xrel;
-                            display->dstRect.y =
-                              display->dstRect.y + e.motion.yrel;
-                            break;
-                        case MoveMode_Size:
-                            display->dstRect.w = SDL_clamp(
-                              display->dstRect.w + e.motion.xrel, MIN_WIDTH, w);
-                            display->dstRect.h =
-                              SDL_clamp(display->dstRect.h + e.motion.yrel,
-                                        MIN_HEIGHT,
-                                        h);
-                            break;
-                        default:
-                            break;
-                    }
-                    display->dstRect.x = SDL_clamp(
-                      display->dstRect.x, 0.f, w - display->dstRect.w);
-                    display->dstRect.y = SDL_clamp(
-                      display->dstRect.y, 0.f, h - display->dstRect.h);
-                    renderDisplays();
                 });
             } break;
             case SDL_MOUSEWHEEL: {
@@ -1642,10 +1684,21 @@ runClient(const AllConfiguration* configuration)
             } break;
             case SDL_DROPFILE: {
                 // Look for image stream
-                puts("Got dropped file");
-                int fd = 0;
+                printf("Got dropped file: %s\n", e.drop.file);
+                int fd = -1;
                 char* ptr = NULL;
                 size_t size = 0;
+
+                FileExtension ext = { 0 };
+                if (!filenameToExtension(e.drop.file, &ext)) {
+                    puts("Failed to find file extension");
+                    goto endDropFile2;
+                }
+                if (ext.tag == FileExtensionTag_font) {
+                    loadNewFont(e.drop.file, config->fontSize, &ttfFont);
+                    goto endDropFile2;
+                }
+
                 if (!mapFile(e.drop.file, &fd, &ptr, &size, MapFileType_Read)) {
                     fprintf(stderr,
                             "Error opening file '%s': %s\n",
@@ -1653,37 +1706,60 @@ runClient(const AllConfiguration* configuration)
                             strerror(errno));
                     goto endDropFile2;
                 }
+
                 Bytes fileBytes = { .allocator = NULL,
                                     .buffer = (uint8_t*)ptr,
                                     .size = size,
                                     .used = size };
                 IN_MUTEX(clientData.mutex, endDropFile, {
-                    const GuidList* streams = &clientData.connectedStreams;
                     const Stream* stream = NULL;
-                    for (size_t i = 0; i < streams->used; ++i) {
-                        if (!GetStreamFromGuid(&clientData.allStreams,
-                                               &streams->buffer[i],
-                                               &stream,
-                                               NULL) ||
-                            stream->type != StreamType_Image) {
-                            printf("%d\n", stream->type);
-                            continue;
+                    if (targetDisplay >= clientData.displays.used) {
+                        if (!GetStreamFromType(
+                              &clientData.allStreams,
+                              FileExtenstionToStreamType(ext.tag),
+                              &stream,
+                              NULL)) {
+                            puts("No stream to send data too...");
+                            goto endDropFile;
                         }
-                        MessageFree(&message);
-                        message.tag = MessageTag_streamMessage;
-                        message.streamMessage.id = stream->id;
-                        message.streamMessage.data.tag =
-                          StreamMessageDataTag_image;
-                        message.streamMessage.data.image = fileBytes;
-                        MESSAGE_SERIALIZE(message, bytes);
-                        sendPrepareMessage(clientData.tcpSocket, bytes.used);
-                        socketSend(clientData.tcpSocket, &bytes, true);
-                        // Don't free the image bytes since they weren't
-                        // allocated
-                        memset(&message, 0, sizeof(message));
-                        goto endDropFile;
+                    } else {
+                        const StreamDisplay* display =
+                          &clientData.displays.buffer[targetDisplay];
+                        if (!GetStreamFromGuid(&clientData.allStreams,
+                                               &display->id,
+                                               &stream,
+                                               NULL)) {
+                            puts("No stream to send data too...");
+                            goto endDropFile;
+                        }
                     }
-                    puts("No stream to send image too...");
+
+                    MessageFree(&message);
+                    message.tag = MessageTag_streamMessage;
+                    message.streamMessage.id = stream->id;
+                    switch (ext.tag) {
+                        case FileExtensionTag_audio:
+                            message.streamMessage.data.tag =
+                              StreamMessageDataTag_audio;
+                            message.streamMessage.data.audio = fileBytes;
+                            break;
+                        case FileExtensionTag_video:
+                            message.streamMessage.data.tag =
+                              StreamMessageDataTag_video;
+                            message.streamMessage.data.video = fileBytes;
+                            break;
+                        default:
+                            message.streamMessage.data.tag =
+                              StreamMessageDataTag_image;
+                            message.streamMessage.data.image = fileBytes;
+                            break;
+                    }
+                    MESSAGE_SERIALIZE(message, bytes);
+                    sendPrepareMessage(clientData.tcpSocket, bytes.used);
+                    socketSend(clientData.tcpSocket, &bytes, true);
+                    // Don't free the bytes since they weren't
+                    // allocated
+                    memset(&message, 0, sizeof(message));
                 });
             endDropFile2:
                 unmapFile(fd, ptr, size);
@@ -1693,47 +1769,50 @@ runClient(const AllConfiguration* configuration)
                 // Look for a text or chat stream
                 puts("Got dropped text");
                 IN_MUTEX(clientData.mutex, endDropText, {
-                    const GuidList* streams = &clientData.connectedStreams;
-                    const Stream* stream = NULL;
-                    for (size_t i = 0; i < streams->used; ++i) {
-                        if (!GetStreamFromGuid(&clientData.allStreams,
-                                               &streams->buffer[i],
-                                               &stream,
-                                               NULL)) {
-                            continue;
-                        }
-                        switch (stream->type) {
-                            case StreamType_Text: {
-                                MessageFree(&message);
-                                message.tag = MessageTag_streamMessage;
-                                message.streamMessage.id = stream->id;
-                                message.streamMessage.data.tag =
-                                  StreamMessageDataTag_text;
-                                message.streamMessage.data.text =
-                                  TemLangStringCreate(e.drop.file,
-                                                      currentAllocator);
-                                MESSAGE_SERIALIZE(message, bytes);
-                                socketSend(clientData.tcpSocket, &bytes, true);
-                                goto endDropText;
-                            }
-                            case StreamType_Chat: {
-                                MessageFree(&message);
-                                message.tag = MessageTag_streamMessage;
-                                message.streamMessage.id = stream->id;
-                                message.streamMessage.data.tag =
-                                  StreamMessageDataTag_chatMessage;
-                                message.streamMessage.data.chatMessage.message =
-                                  TemLangStringCreate(e.drop.file,
-                                                      currentAllocator);
-                                MESSAGE_SERIALIZE(message, bytes);
-                                socketSend(clientData.tcpSocket, &bytes, true);
-                                goto endDropText;
-                            }
-                            default:
-                                break;
-                        }
+                    if (targetDisplay >= clientData.displays.used) {
+                        puts("No stream to text too...");
+                        goto endDropText;
                     }
-                    puts("No stream to send text too...");
+                    const StreamDisplay* display =
+                      &clientData.displays.buffer[targetDisplay];
+                    const Stream* stream = NULL;
+                    if (!GetStreamFromGuid(&clientData.allStreams,
+                                           &display->id,
+                                           &stream,
+                                           NULL)) {
+                        puts("No stream to text too...");
+                        goto endDropText;
+                    }
+                    switch (stream->type) {
+                        case StreamType_Text:
+                            MessageFree(&message);
+                            message.tag = MessageTag_streamMessage;
+                            message.streamMessage.id = stream->id;
+                            message.streamMessage.data.tag =
+                              StreamMessageDataTag_text;
+                            message.streamMessage.data.text =
+                              TemLangStringCreate(e.drop.file,
+                                                  currentAllocator);
+                            MESSAGE_SERIALIZE(message, bytes);
+                            socketSend(clientData.tcpSocket, &bytes, true);
+                            break;
+                        case StreamType_Chat:
+                            MessageFree(&message);
+                            message.tag = MessageTag_streamMessage;
+                            message.streamMessage.id = stream->id;
+                            message.streamMessage.data.tag =
+                              StreamMessageDataTag_chatMessage;
+                            message.streamMessage.data.chatMessage.message =
+                              TemLangStringCreate(e.drop.file,
+                                                  currentAllocator);
+                            MESSAGE_SERIALIZE(message, bytes);
+                            socketSend(clientData.tcpSocket, &bytes, true);
+                            break;
+                        default:
+                            printf("Cannot send text to '%s' stream\n",
+                                   StreamTypeToCharString(stream->type));
+                            break;
+                    }
                 });
                 SDL_free(e.drop.file);
                 break;

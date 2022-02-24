@@ -30,7 +30,7 @@
 
 #include <generated/data.h>
 
-#define MAX_PACKET_SIZE KB(10)
+#define MAX_PACKET_SIZE KB(64)
 
 typedef struct Client
 {
@@ -63,6 +63,9 @@ StreamGuidEquals(const Stream*, const Guid*);
 
 extern bool
 StreamNameEquals(const Stream*, const TemLangString*);
+
+extern bool
+StreamTypeEquals(const Stream*, const StreamType*);
 
 extern bool
 StreamMessageGuidEquals(const StreamMessage*, const Guid*);
@@ -202,6 +205,9 @@ GetStreamFromName(const StreamList*,
                   size_t*);
 
 extern bool
+GetStreamFromType(const StreamList*, StreamType, const Stream**, size_t*);
+
+extern bool
 GetStreamFromGuid(const StreamList*, const Guid*, const Stream**, size_t*);
 
 extern bool
@@ -244,6 +250,11 @@ authenticateClient(pClient client,
 #define CLIENT_POLL_WAIT 100
 #define SERVER_POLL_WAIT 1000
 #define LONG_POLL_WAIT 5000
+
+extern bool
+filenameToExtension(const char*, pFileExtension);
+
+extern StreamType FileExtenstionToStreamType(FileExtensionTag);
 
 // Font
 typedef struct Character

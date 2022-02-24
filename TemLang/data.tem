@@ -13,6 +13,45 @@ enum StreamType {
     Replay
 }
 
+enum ImageExtension {
+    ICO
+    CUR
+    BMP
+    JPG
+    JPEG 
+    LBM
+    PCX
+    PNG
+    PNM 
+    SVG
+    TGA
+    WEBP
+    XCF 
+    XPM 
+    XV 
+}
+
+enum VideoExtension {
+    WMV
+    MP4
+    MPV
+    GIF
+}
+
+enum AudioExtension {
+    MP3
+    OGG
+    FLAC
+    WAV
+}
+
+variant FileExtension {
+    VideoExtension video
+    AudioExtension audio
+    ImageExtension image
+    null font
+}
+
 struct Credentials {
     string username
     string password
@@ -89,8 +128,8 @@ variant StreamMessageData {
     ChatMessage chatMessage
     [0 ChatMessage] chatLogs
     [0 u8] image
-    [0 u8] videoChunk
-    [0 u8] audioChunk
+    [0 u8] video
+    [0 u8] audio
 }
 
 struct StreamMessage {

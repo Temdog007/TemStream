@@ -14,12 +14,13 @@
 - [x] Handle jpeg and webp
 
 ### Feb 24, 2022
-- [ ] Download images
-- [ ] Play gifs
-- [ ] Audio stream
+- [ ] File drop onto stream texture
+- [ ] Download screenshot of stream
 
 ### Later
+- [ ] Play gifs (use FFMPEG)
 - [ ] Video stream
+- [ ] Audio stream
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls)

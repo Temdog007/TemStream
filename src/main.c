@@ -205,6 +205,12 @@ StreamNameEquals(const Stream* stream, const TemLangString* name)
 }
 
 bool
+StreamTypeEquals(const Stream* stream, const StreamType* type)
+{
+    return stream->type == *type;
+}
+
+bool
 StreamMessageGuidEquals(const StreamMessage* message, const Guid* guid)
 {
     return GuidEquals(&message->id, guid);
@@ -224,6 +230,16 @@ GetStreamFromName(const StreamList* streams,
 {
     return StreamListFindIf(
       streams, (StreamListFindFunc)StreamNameEquals, name, stream, index);
+}
+
+bool
+GetStreamFromType(const StreamList* streams,
+                  const StreamType type,
+                  const Stream** stream,
+                  size_t* index)
+{
+    return StreamListFindIf(
+      streams, (StreamListFindFunc)StreamTypeEquals, &type, stream, index);
 }
 
 bool
