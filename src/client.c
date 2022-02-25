@@ -240,6 +240,7 @@ refreshStreams(ENetPeer* peer, pBytes bytes)
     message.getAllData = NULL;
     MESSAGE_SERIALIZE(message, (*bytes));
     ENetPacket* packet = BytesToPacket(bytes, true);
+    // printSendingPacket(packet);
     enet_peer_send(peer, CLIENT_CHANNEL, packet);
 }
 
@@ -895,13 +896,21 @@ void
 clientHandleMessage(ENetPeer* peer, pMessage message, pBytes bytes)
 {
     switch (message->tag) {
-        case MessageTag_authenticateAck:
+        case MessageTag_authenticateAck: {
+#if _DEBUG
+            char buffer[128];
+            getGuidString(&message->authenticateAck.id, buffer);
+            printf("Client name: %s (%s)\n",
+                   message->authenticateAck.name.buffer,
+                   buffer);
+#else
             printf("Client name: %s\n", message->authenticateAck.name.buffer);
+#endif
             TemLangStringCopy(&clientData.name,
                               &message->authenticateAck.name,
                               currentAllocator);
             clientData.id = message->authenticateAck.id;
-            break;
+        } break;
         case MessageTag_getAllDataAck: {
             GuidListCopy(&clientData.connectedStreams,
                          &message->getAllDataAck.connectedStreams,
@@ -1541,12 +1550,31 @@ runClient(const AllConfiguration* configuration)
         peer = enet_host_connect(host, &address, 2, 0);
     }
     if (peer == NULL) {
-        fprintf(stderr, "Failed to connect to client\n");
+        fprintf(stderr, "Failed to connect to server\n");
+        goto end;
+    }
+
+    ENetEvent event = { 0 };
+    if (enet_host_service(host, &event, 5000) > 0 &&
+        event.type == ENET_EVENT_TYPE_CONNECT) {
+        printf("Connected to server: %x:%u\n",
+               event.peer->address.host,
+               event.peer->address.port);
+        displayUserOptions();
+        Message message = { 0 };
+        message.tag = MessageTag_authenticate;
+        message.authenticate = config->authentication;
+        MESSAGE_SERIALIZE(message, bytes);
+        ENetPacket* packet = BytesToPacket(&bytes, true);
+        // printSendingPacket(packet);
+        enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    } else {
+        fprintf(stderr, "Failed to connect to server\n");
         goto end;
     }
 
     SDL_Event e = { 0 };
-    ENetEvent event = { 0 };
+
     size_t targetDisplay = UINT32_MAX;
     MoveMode moveMode = MoveMode_None;
     bool hasTarget = false;
@@ -1756,6 +1784,7 @@ runClient(const AllConfiguration* configuration)
                     goto endDropFile;
                 }
                 if (ext.tag == FileExtensionTag_font) {
+                    puts("Loading new font...");
                     loadNewFont(e.drop.file, config->fontSize, &ttfFont);
                     goto endDropFile;
                 }
@@ -1882,32 +1911,25 @@ runClient(const AllConfiguration* configuration)
             break;
         }
         if (result == 0) {
-            continue;
+            goto doSleep;
         }
         switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT: {
-                printf("Connected to server: %x:%u\n",
-                       event.peer->address.host,
-                       event.peer->address.port);
-                displayUserOptions();
-                Message message = { 0 };
-                message.tag = MessageTag_authenticate;
-                message.authenticate = config->authentication;
-                MESSAGE_SERIALIZE(message, bytes);
-                ENetPacket* packet = BytesToPacket(&bytes, true);
-                enet_peer_send(peer, CLIENT_CHANNEL, packet);
+                puts("Unexpected connect event from server");
+                appDone = true;
             } break;
             case ENET_EVENT_TYPE_DISCONNECT:
                 puts("Disconnected from server");
                 appDone = true;
                 break;
             case ENET_EVENT_TYPE_RECEIVE: {
-                Message message = { 0 };
-                const Bytes packetBytes = { .allocator = NULL,
+                const Bytes packetBytes = { .allocator = currentAllocator,
                                             .buffer = event.packet->data,
                                             .size = event.packet->dataLength,
                                             .used = event.packet->dataLength };
+                Message message = { 0 };
                 MESSAGE_DESERIALIZE(message, packetBytes);
+                // printReceivedPacket(event.packet);
                 clientHandleMessage(peer, &message, &bytes);
                 MessageFree(&message);
                 enet_packet_destroy(event.packet);
@@ -1917,6 +1939,8 @@ runClient(const AllConfiguration* configuration)
             default:
                 break;
         }
+    doSleep:
+        SDL_Delay(1);
     }
 
     result = EXIT_SUCCESS;

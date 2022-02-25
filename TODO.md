@@ -17,7 +17,7 @@
 
 ### Feb 25, 2022
 - [ ] Download screenshot of stream
-- [ ] Packet loss (TCP merges packets, use ENET)
+- [x] Packet loss (TCP merges packets, use ENET)
 
 ### Later
 - [ ] Allow for blacklist/whitelist for stream access

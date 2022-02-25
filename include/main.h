@@ -131,6 +131,15 @@ printServerConfiguration(const ServerConfiguration*);
 extern int
 printStream(const Stream*);
 
+extern int
+printSendingPacket(const ENetPacket*);
+
+extern int
+printReceivedPacket(const ENetPacket*);
+
+extern int
+printBytes(const uint8_t*, const size_t);
+
 // Parsing
 
 extern bool

@@ -169,3 +169,28 @@ streamMessageIsReliable(const StreamMessage* m)
             return true;
     }
 }
+
+int
+printBytes(const uint8_t* bytes, const size_t size)
+{
+    int result = 0;
+    for (size_t i = 0; i < size; ++i) {
+        result += printf("%02hhX%s", bytes[i], i == size - 1 ? "" : " ");
+    }
+    puts("");
+    return result;
+}
+
+int
+printSendingPacket(const ENetPacket* packet)
+{
+    return printf("Sending %zu bytes: ", packet->dataLength) +
+           printBytes(packet->data, packet->dataLength);
+}
+
+int
+printReceivedPacket(const ENetPacket* packet)
+{
+    return printf("Received %zu bytes: ", packet->dataLength) +
+           printBytes(packet->data, packet->dataLength);
+}
