@@ -14,10 +14,13 @@
 
 ### Feb 24, 2022
 - [x] File drop onto stream texture
-- [ ] Download screenshot of stream (still need test)
+
+### Feb 25, 2022
+- [ ] Download screenshot of stream
 - [ ] Packet loss (TCP merges packets, use ENET)
 
 ### Later
+- [ ] Allow for blacklist/whitelist for stream access
 - [ ] Play gifs (use FFMPEG)
 - [ ] Video stream
 - [ ] Audio stream

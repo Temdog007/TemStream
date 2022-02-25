@@ -204,10 +204,8 @@ copyMessageToClients(ENetHost* server,
         for (size_t i = 0; i < server->peerCount; ++i) {
             ENetPeer* peer = &server->peers[i];
             const Client* client = peer->data;
-            if (client == NULL) {
-                continue;
-            }
-            if (!GuidListFind(
+            if (client == NULL ||
+                !GuidListFind(
                   &client->connectedStreams, &message->id, NULL, NULL) ||
                 !clientHasReadAccess(client, stream)) {
                 continue;
@@ -661,7 +659,8 @@ runServer(const AllConfiguration* configuration)
                     while (i < serverData.streams.used) {
                         const Stream* stream = &serverData.streams.buffer[i];
                         if (GuidEquals(&stream->owner, &client->id)) {
-                            printf("Closing stream '%s\n", stream->name.buffer);
+                            printf("Closing stream '%s'\n",
+                                   stream->name.buffer);
                             StreamListSwapRemove(&serverData.streams, i);
                         } else {
                             ++i;
@@ -724,11 +723,11 @@ runServer(const AllConfiguration* configuration)
                         }
                     } break;
                     case ServerOutgoingTag_response: {
-                        MESSAGE_SERIALIZE(so->response.message, bytes);
                         ENetPeer* peer = FindPeerFromData(server->peers,
                                                           server->peerCount,
                                                           so->response.client);
                         if (peer != NULL) {
+                            MESSAGE_SERIALIZE(so->response.message, bytes);
                             ENetPacket* packet = BytesToPacket(&bytes, true);
                             enet_peer_send(peer, SERVER_CHANNEL, packet);
                         }

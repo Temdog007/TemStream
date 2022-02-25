@@ -1821,7 +1821,7 @@ runClient(const AllConfiguration* configuration)
                 unmapFile(fd, ptr, size);
                 SDL_free(e.drop.file);
             } break;
-            case SDL_DROPTEXT:
+            case SDL_DROPTEXT: {
                 // Look for a text or chat stream
                 puts("Got dropped text");
                 if (targetDisplay >= clientData.displays.used) {
@@ -1869,7 +1869,7 @@ runClient(const AllConfiguration* configuration)
                         break;
                 }
                 SDL_free(e.drop.file);
-                break;
+            } break;
             default:
                 break;
         }
