@@ -105,11 +105,11 @@ defaultAllConfiguration();
 extern ENetPeer*
 FindPeerFromData(ENetPeer*, size_t, const void*);
 
-extern ENetPeer*
+extern ENetPacket*
 BytesToPacket(const Bytes*, bool);
 
 extern bool
-messageIsReliable(const StreamMessage*);
+streamMessageIsReliable(const StreamMessage*);
 
 #define SERVER_CHANNEL 0
 #define CLIENT_CHANNEL 1
@@ -224,6 +224,8 @@ authenticateClient(pClient client,
 #define CLIENT_POLL_WAIT 100
 #define SERVER_POLL_WAIT 1000
 #define LONG_POLL_WAIT 5000
+
+#define USER_INPUT_TIMEOUT 3000
 
 extern bool
 filenameToExtension(const char*, pFileExtension);

@@ -64,7 +64,7 @@ resource StreamDisplay {
 
 inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
 
-resource ClientData {
+struct ClientData {
     [0 Stream] allStreams
     [0 Guid] ownStreams
     [0 Guid] connectedStreams
@@ -72,8 +72,12 @@ resource ClientData {
     [0 StreamDisplay] displays
     string name
     Guid id
-} cd {
-    inlineC "
-        SDL_DestroyMutex(cd.mutex);
-    "
+}
+
+enum CustomEvent {
+    Render
+    AddTexture
+    UpdateStreamDisplay
+    SaveScreenshot
+    ClientCommand
 }

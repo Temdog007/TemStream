@@ -52,14 +52,6 @@ variant FileExtension {
     null font
 }
 
-enum CustomEvent {
-    Render
-    AddTexture
-    UpdateStreamDisplay
-    SaveScreenshot
-
-}
-
 struct Credentials {
     string username
     string password
@@ -209,11 +201,6 @@ variant ServerOutgoing {
     null disconnect
 }
 
-inlineC "
-MAKE_DEFAULT_LIST(ServerIncoming); 
-MAKE_DEFAULT_LIST(ServerOutgoing);
-"
-
 variant Message {
     StreamMessage streamMessage
     ClientAuthentication authenticate
@@ -240,6 +227,10 @@ variant Message {
     AllServerStreams getAllDataAck
 }
 
-inlineC "MAKE_DEFAULT_LIST(Message);"
+inlineC "
+MAKE_DEFAULT_LIST(Message);
+MAKE_DEFAULT_LIST(ServerIncoming); 
+MAKE_DEFAULT_LIST(ServerOutgoing);
+"
 
 inlineFile "TemLang/clientUi.tem"

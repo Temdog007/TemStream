@@ -1,6 +1,6 @@
 #include <include/main.h>
 
-Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
+const Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
 
 bool
 parseIpAddress(const char* str, pIpAddress address)
@@ -149,9 +149,23 @@ FindPeerFromData(ENetPeer* peers, const size_t count, const void* data)
     return NULL;
 }
 
-ENetPeer*
+ENetPacket*
 BytesToPacket(const Bytes* bytes, const bool reliable)
 {
-    return enet_packet_create(
-      bytes->buffer, bytes->used, (reliable ? ENET_PACKET_FLAG_RELIABLE : 0));
+    return enet_packet_create(bytes->buffer,
+                              bytes->used,
+                              (reliable
+                                 ? ENET_PACKET_FLAG_RELIABLE
+                                 : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT));
+}
+
+bool
+streamMessageIsReliable(const StreamMessage* m)
+{
+    switch (m->data.tag) {
+        case StreamMessageDataTag_Invalid:
+            return false;
+        default:
+            return true;
+    }
 }

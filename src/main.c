@@ -79,8 +79,12 @@ runApp(const int argc, const char** argv)
 int
 printVersion()
 {
-    return printf(
-      "TemStream %d.%d.%d\n", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+    const ENetVersion version = enet_linked_version();
+    return printf("TemStream %d.%d.%d\nENet %x\n",
+                  VERSION_MAJOR,
+                  VERSION_MINOR,
+                  VERSION_PATCH,
+                  version);
 }
 
 void
@@ -137,7 +141,7 @@ parseCommonConfiguration(const char* key,
 int
 printAllConfiguration(const AllConfiguration* configuration)
 {
-    int output = printAddress(&configuration->address);
+    int output = printIpAddress(&configuration->address);
     switch (configuration->configuration.tag) {
         case ConfigurationTag_client:
             output +=

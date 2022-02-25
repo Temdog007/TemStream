@@ -19,10 +19,10 @@ ServerDataFree(pServerData data)
     SDL_DestroyMutex(data->mutex);
     SDL_DestroyCond(data->cond);
 
-    ServerIncomingListFree(&data->incoming);
-    ServerIncomingListFree(&data->outgoing);
-
     StreamListFree(&data->streams);
+
+    ServerIncomingListFree(&data->incoming);
+    ServerOutgoingListFree(&data->outgoing);
     StreamMessageListFree(&data->storage);
 }
 
@@ -40,6 +40,7 @@ authenticateClient(pClient client,
         default:
             switch (cAuth->tag) {
                 case ClientAuthenticationTag_credentials:
+                    client->id = randomGuid(rs);
                     return TemLangStringCopy(&client->name,
                                              &cAuth->credentials.username,
                                              currentAllocator);
@@ -94,6 +95,22 @@ clientHasWriteAccess(const Client* client, const Stream* stream)
     return clientHasAccess(client, &stream->writers, stream);
 }
 
+void
+sendResponse(const ServerOutgoing* r)
+{
+    IN_MUTEX(serverData.mutex, end, {
+        ServerOutgoingListAppend(&serverData.outgoing, r);
+    });
+}
+
+void
+sendDisconnect(pClient client)
+{
+    ServerOutgoing o = { .tag = ServerOutgoingTag_disconnect,
+                         .disconnect = client };
+    sendResponse(&o);
+}
+
 bool
 setStreamMessageTimestamp(const Client* client, pStreamMessage streamMessage)
 {
@@ -115,7 +132,7 @@ copyMessageToClients(ENetHost* server,
                      const StreamMessage* message,
                      const Bytes* bytes)
 {
-    const bool reliable = messageIsReliable(message);
+    const bool reliable = streamMessageIsReliable(message);
     IN_MUTEX(serverData.mutex, endMutex, {
         const Stream* stream = NULL;
         if (!StreamListFindIf(&serverData.streams,
@@ -187,6 +204,9 @@ copyMessageToClients(ENetHost* server,
         for (size_t i = 0; i < server->peerCount; ++i) {
             ENetPeer* peer = &server->peers[i];
             const Client* client = peer->data;
+            if (client == NULL) {
+                continue;
+            }
             if (!GuidListFind(
                   &client->connectedStreams, &message->id, NULL, NULL) ||
                 !clientHasReadAccess(client, stream)) {
@@ -255,9 +275,7 @@ getClientsStreams(pClient client, pGuidList guids)
 }
 
 void
-serverHandleMessage(const Client* client,
-                    const Message* message,
-                    pRandomState rs)
+serverHandleMessage(pClient client, const Message* message, pRandomState rs)
 {
     ServerOutgoing outgoing = { 0 };
     outgoing.tag = ServerOutgoingTag_response;
@@ -335,25 +353,22 @@ serverHandleMessage(const Client* client,
             sendResponse(&outgoing);
         } break;
         case MessageTag_startStreaming: {
-            const Stream* stream = NULL;
             IN_MUTEX(serverData.mutex, start1, {
+                const Stream* stream = NULL;
                 GetStreamFromName(&serverData.streams,
                                   &message->startStreaming.name,
                                   &stream,
                                   NULL);
-            });
-
-            if (stream == NULL) {
-                Stream newStream = message->startStreaming;
-                newStream.owner = client->id;
-                newStream.id = randomGuid(rs);
-                printf("Client '%s' started a '%s' stream named '%s' "
-                       "(record=%d)\n",
-                       client->name.buffer,
-                       StreamTypeToCharString(newStream.type),
-                       newStream.name.buffer,
-                       newStream.record);
-                IN_MUTEX(serverData.mutex, ss2, {
+                if (stream == NULL) {
+                    Stream newStream = message->startStreaming;
+                    newStream.owner = client->id;
+                    newStream.id = randomGuid(rs);
+                    printf("Client '%s' started a '%s' stream named '%s' "
+                           "(record=%d)\n",
+                           client->name.buffer,
+                           StreamTypeToCharString(newStream.type),
+                           newStream.name.buffer,
+                           newStream.record);
                     StreamListAppend(&serverData.streams, &newStream);
                     switch (newStream.type) {
                         case StreamType_Chat: {
@@ -373,21 +388,21 @@ serverHandleMessage(const Client* client,
                         default:
                             break;
                     }
-                });
-                rMessage->tag = MessageTag_startStreamingAck;
-                rMessage->startStreamingAck.guid = newStream.id;
-                rMessage->startStreamingAck.tag = OptionalGuidTag_guid;
-            } else {
-#if _DEBUG
-                printf("Client '%s' tried to add duplicate stream '%s'\n",
-                       client->name.buffer,
-                       stream->name.buffer);
-#endif
-                rMessage->tag = MessageTag_startStreamingAck;
-                rMessage->startStreamingAck.none = NULL;
-                rMessage->startStreamingAck.tag = OptionalGuidTag_none;
-            }
 
+                    rMessage->tag = MessageTag_startStreamingAck;
+                    rMessage->startStreamingAck.guid = newStream.id;
+                    rMessage->startStreamingAck.tag = OptionalGuidTag_guid;
+                } else {
+#if _DEBUG
+                    printf("Client '%s' tried to add duplicate stream '%s'\n",
+                           client->name.buffer,
+                           stream->name.buffer);
+#endif
+                    rMessage->tag = MessageTag_startStreamingAck;
+                    rMessage->startStreamingAck.none = NULL;
+                    rMessage->startStreamingAck.tag = OptionalGuidTag_none;
+                }
+            });
             sendResponse(&outgoing);
         } break;
         case MessageTag_stopStreaming: {
@@ -408,23 +423,26 @@ serverHandleMessage(const Client* client,
                     rMessage->stopStreamingAck.guid = stream->id;
                 }
             });
-
             sendResponse(&outgoing);
         } break;
         case MessageTag_getAllStreams: {
-            rMessage->tag = MessageTag_getAllStreamsAck;
-            rMessage->getAllStreamsAck = serverData.streams;
-            sendResponse(&outgoing);
+            IN_MUTEX(serverData.mutex, allEnd, {
+                rMessage->tag = MessageTag_getAllStreamsAck;
+                rMessage->getAllStreamsAck = serverData.streams;
+                sendResponse(&outgoing);
+            });
+            memset(rMessage, 0, sizeof(*rMessage));
         } break;
         case MessageTag_getConnectedStreams: {
             rMessage->tag = MessageTag_getConnectedStreamsAck;
             rMessage->getConnectedStreamsAck = client->connectedStreams;
             sendResponse(&outgoing);
+            memset(rMessage, 0, sizeof(*rMessage));
         } break;
         case MessageTag_getClientStreams: {
             rMessage->tag = MessageTag_getClientStreamsAck;
             rMessage->getClientStreamsAck.allocator = currentAllocator;
-            getClientsStreams(client, &message->getClientStreamsAck);
+            getClientsStreams(client, &rMessage->getClientStreamsAck);
             sendResponse(&outgoing);
         } break;
         case MessageTag_getStream: {
@@ -454,6 +472,7 @@ serverHandleMessage(const Client* client,
                 }
             });
             sendResponse(&outgoing);
+            memset(&rMessage->getStreamAck, 0, sizeof(rMessage->getStreamAck));
         } break;
         case MessageTag_getClients: {
             outgoing.tag = ServerOutgoingTag_getClients;
@@ -470,6 +489,9 @@ serverHandleMessage(const Client* client,
                                   &rMessage->getAllDataAck.clientStreams);
             });
             sendResponse(&outgoing);
+            GuidListFree(&rMessage->getAllDataAck.clientStreams);
+            memset(
+              &rMessage->getAllDataAck, 0, sizeof(rMessage->getAllDataAck));
         } break;
         default:
             printf("Got invalid message '%s' (%d) from client '%s'\n",
@@ -482,26 +504,15 @@ serverHandleMessage(const Client* client,
 }
 
 void
-sendResponse(const ServerOutgoing* r)
-{
-    IN_MUTEX(serverData.mutex, end, {
-        ServerOutgoingListAppend(&serverData.outgoing, r);
-    });
-}
-
-void
-sendDisconnect(pClient client)
-{
-    ServerOutgoing o = { .tag = ServerOutgoingTag_disconnect,
-                         .disconnect = client };
-    sendResponse(&o);
-}
-
-void
 handleServerIncoming(ServerIncoming incoming, pRandomState rs)
 {
     pMessage message = incoming.message;
     pClient client = incoming.client;
+    if (message == NULL) {
+        ClientFree(client);
+        currentAllocator->free(client);
+        return;
+    }
     if (GuidEquals(&client->id, &ZeroGuid)) {
         if (message->tag == MessageTag_authenticate) {
             if (authenticateClient(client, &message->authenticate, rs)) {
@@ -528,6 +539,8 @@ handleServerIncoming(ServerIncoming incoming, pRandomState rs)
         }
         return;
     }
+
+    serverHandleMessage(client, message, rs);
 }
 
 int
@@ -558,7 +571,6 @@ serverIncomingThread(void* ptr)
         });
     }
 
-end:
     return EXIT_SUCCESS;
 }
 
@@ -617,7 +629,6 @@ runServer(const AllConfiguration* configuration)
         goto end;
     }
 
-    RandomState rs = makeRandomState();
     ENetEvent event = { 0 };
     while (!appDone) {
         const int result = enet_host_service(server, &event, 1U);
@@ -645,8 +656,8 @@ runServer(const AllConfiguration* configuration)
                 pClient client = (pClient)event.peer->data;
                 printf("%s disconnected\n", client->name.buffer);
                 event.peer->data = NULL;
-                size_t i = 0;
                 IN_MUTEX(serverData.mutex, disEnd, {
+                    size_t i = 0;
                     while (i < serverData.streams.used) {
                         const Stream* stream = &serverData.streams.buffer[i];
                         if (GuidEquals(&stream->owner, &client->id)) {
@@ -656,7 +667,11 @@ runServer(const AllConfiguration* configuration)
                             ++i;
                         }
                     }
-                    currentAllocator->free(client);
+                    ServerIncoming g = { 0 };
+                    g.message = NULL;
+                    g.client = client;
+                    ServerIncomingListAppend(&serverData.incoming, &g);
+                    SDL_CondSignal(serverData.cond);
                 });
             } break;
             case ENET_EVENT_TYPE_RECEIVE: {
@@ -671,10 +686,13 @@ runServer(const AllConfiguration* configuration)
                     if (setStreamMessageTimestamp(client,
                                                   &message->streamMessage)) {
                         MESSAGE_SERIALIZE((*message), bytes);
-                        copyMessageToClients(server, client, message, &bytes);
+                        copyMessageToClients(
+                          server, client, &message->streamMessage, &bytes);
                     } else {
-                        copyMessageToClients(server, client, message, &temp);
+                        copyMessageToClients(
+                          server, client, &message->streamMessage, &temp);
                     }
+                    MessageFree(message);
                     currentAllocator->free(message);
                 } else {
                     IN_MUTEX(serverData.mutex, recEnd, {
@@ -683,7 +701,7 @@ runServer(const AllConfiguration* configuration)
                         incoming.client = client;
                         ServerIncomingListAppend(&serverData.incoming,
                                                  &incoming);
-                        SDL_CondSignal(&serverData.cond);
+                        SDL_CondSignal(serverData.cond);
                     });
                 }
                 enet_packet_destroy(event.packet);
@@ -715,6 +733,30 @@ runServer(const AllConfiguration* configuration)
                             enet_peer_send(peer, SERVER_CHANNEL, packet);
                         }
                     } break;
+                    case ServerOutgoingTag_getClients: {
+                        pClient target = so->getClients;
+                        ENetPeer* peer = NULL;
+                        Message message = { 0 };
+                        message.tag = MessageTag_getClientsAck;
+                        message.getClientsAck.allocator = currentAllocator;
+                        for (size_t i = 0; i < server->peerCount; ++i) {
+                            const Client* client = server->peers[i].data;
+                            if (client == NULL) {
+                                continue;
+                            }
+                            if (client == target) {
+                                peer = &server->peers[i];
+                            }
+                            TemLangStringListAppend(&message.getClientsAck,
+                                                    &client->name);
+                        }
+                        if (peer != NULL) {
+                            MESSAGE_SERIALIZE(message, bytes);
+                            ENetPacket* packet = BytesToPacket(&bytes, true);
+                            enet_peer_send(peer, SERVER_CHANNEL, packet);
+                        }
+                        MessageFree(&message);
+                    } break;
                     default:
                         break;
                 }
@@ -727,9 +769,8 @@ runServer(const AllConfiguration* configuration)
     result = EXIT_SUCCESS;
 
 end:
-    enet_host_destroy(server);
     appDone = true;
-    IN_MUTEX(serverData.mutex, end, { SDL_CondSignal(serverData.cond); });
+    IN_MUTEX(serverData.mutex, end2, { SDL_CondSignal(serverData.cond); });
     SDL_WaitThread(thread, NULL);
     if (server != NULL) {
         enet_host_destroy(server);
