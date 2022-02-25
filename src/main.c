@@ -24,10 +24,28 @@ main(const int argc, const char** argv)
         action.sa_flags = 0;
         sigaction(SIGINT, &action, NULL);
     }
+    {
+        // Look for -M or --memory
+        uint64_t memory = MB(32);
+        for (int i = 1; i < argc - 1; i += 2) {
+            if (strcmp("-M", argv[i]) != 0 &&
+                strcmp("--memory", argv[i]) != 0) {
+                continue;
+            }
 
-    static Allocator allocator = { 0 };
-    allocator = makeDefaultAllocator();
-    currentAllocator = &allocator;
+            char* end = NULL;
+            memory = SDL_strtoull(argv[i + 1], &end, 10);
+            break;
+        }
+        if (memory == 0) {
+            fprintf(stderr, "Memory allocator cannot be sized at 0\n");
+            return EXIT_FAILURE;
+        }
+
+        static Allocator allocator = { 0 };
+        allocator = makeTSAllocator(memory);
+        currentAllocator = &allocator;
+    }
     if (enet_initialize() != 0) {
         fprintf(stderr, "Failed to initialize ENet\n");
         return EXIT_FAILURE;
@@ -35,6 +53,16 @@ main(const int argc, const char** argv)
 
     const int result = runApp(argc, argv);
     enet_deinitialize();
+
+#if _DEBUG
+    const size_t used = currentAllocator->used();
+    if (used == 0) {
+        printf("No memory leaked\n");
+    } else {
+        fprintf(stderr, "Leaked %zu bytes\n", used);
+    }
+#endif
+    freeTSAllocator();
     return result;
 }
 

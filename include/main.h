@@ -306,3 +306,10 @@ expandRect(const SDL_FRect* rect, const float sw, const float sh)
                         .w = newWidth,
                         .h = newHeight };
 }
+
+// Allocator
+
+extern Allocator makeTSAllocator(size_t);
+
+extern void
+freeTSAllocator();

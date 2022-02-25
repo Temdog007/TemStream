@@ -18,7 +18,7 @@
 ### Feb 25, 2022
 - [x] Download screenshot of stream
 - [x] Retest chat
-- [ ] Make thread safe allocator
+- [x] Make thread safe allocator
 - [x] Packet loss (TCP merges packets, use ENET)
 
 ### Later

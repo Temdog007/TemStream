@@ -324,3 +324,78 @@ ClientGuidEquals(const pClient* client, const Guid* guid)
 {
     return GuidEquals(&(*client)->id, guid);
 }
+
+typedef struct ThreadSafeAllocator
+{
+    SDL_mutex* mutex;
+    const Allocator* allocator;
+} TSAllocator, *pTSAllocator;
+
+TSAllocator tsAllocator = { 0 };
+
+void*
+tsAllocate(const size_t size)
+{
+    void* data = NULL;
+    IN_MUTEX(tsAllocator.mutex, end, {
+        data = tsAllocator.allocator->allocate(size);
+    });
+    return data;
+}
+
+void*
+tsReallocate(void* ptr, const size_t size)
+{
+    void* data = NULL;
+    IN_MUTEX(tsAllocator.mutex, end, {
+        data = tsAllocator.allocator->reallocate(ptr, size);
+    });
+    return data;
+}
+
+void
+tsFree(void* data)
+{
+    IN_MUTEX(tsAllocator.mutex, end, { tsAllocator.allocator->free(data); });
+}
+
+size_t
+tsUsed()
+{
+    size_t i;
+    IN_MUTEX(tsAllocator.mutex, end, { i = tsAllocator.allocator->used(); });
+    return i;
+}
+
+size_t
+tsTotalSize()
+{
+    size_t i;
+    IN_MUTEX(
+      tsAllocator.mutex, end, { i = tsAllocator.allocator->totalSize(); });
+    return i;
+}
+
+MAKE_FREE_LIST_ALLOCATOR(TemStreamAllocator);
+
+Allocator
+makeTSAllocator(const size_t memory)
+{
+    TemStreamAllocator = FreeListAllocatorCreate(
+      "TemStream allocator", memory, PlacementPolicy_First);
+    static Allocator a = { 0 };
+    a = make_TemStreamAllocator_allocator();
+    tsAllocator.allocator = &a;
+    tsAllocator.mutex = SDL_CreateMutex();
+    return (Allocator){ .allocate = tsAllocate,
+                        .free = tsFree,
+                        .reallocate = tsReallocate,
+                        .used = tsUsed,
+                        .totalSize = tsTotalSize };
+}
+
+void
+freeTSAllocator()
+{
+    FreeListAllocatorDelete(&TemStreamAllocator);
+}

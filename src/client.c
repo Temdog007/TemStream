@@ -1530,6 +1530,26 @@ runClient(const AllConfiguration* configuration)
                 case SDL_WINDOWEVENT:
                     renderDisplays();
                     break;
+                case SDL_KEYDOWN:
+                    switch (e.key.keysym.sym) {
+                        case SDLK_F1:
+                        case SDLK_ESCAPE:
+                            displayUserOptions();
+                            break;
+                        case SDLK_v: {
+                            if ((e.key.keysym.mod & KMOD_CTRL) == 0) {
+                                break;
+                            }
+                            e.type = SDL_DROPTEXT;
+                            e.drop.file = SDL_GetClipboardText();
+                            e.drop.timestamp = SDL_GetTicks64();
+                            e.drop.windowID = SDL_GetWindowID(window);
+                            SDL_PushEvent(&e);
+                        } break;
+                        default:
+                            break;
+                    }
+                    break;
                 case SDL_MOUSEBUTTONDOWN: {
                     switch (e.button.button) {
                         case SDL_BUTTON_LEFT:

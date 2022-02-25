@@ -609,89 +609,86 @@ runServer(const AllConfiguration* configuration)
         if (localIncoming.used > 100) {
             goto checkOutgoing;
         }
-        const int result = enet_host_service(server, &event, 100U);
-        if (result == 0) {
-            goto checkOutgoing;
-        }
-        if (result < 0) {
-            fprintf(stderr, "Error occurred on server\n");
-            appDone = true;
-            break;
-        }
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT: {
-                char buffer[512] = { 0 };
-                enet_address_get_host_ip(
-                  &event.peer->address, buffer, sizeof(buffer));
-                printf(
-                  "New client from %s:%u\n", buffer, event.peer->address.port);
-                pClient client = currentAllocator->allocate(sizeof(Client));
-                client->serverAuthentication = &config->authentication;
-                // name, id, and authentication will be set after parsing
-                // authentication message
-                client->connectedStreams.allocator = currentAllocator;
-                event.peer->data = client;
-            } break;
-            case ENET_EVENT_TYPE_DISCONNECT: {
-                pClient client = (pClient)event.peer->data;
-                printf("%s disconnected\n", client->name.buffer);
-                event.peer->data = NULL;
-                IN_MUTEX(serverData.mutex, disEnd, {
-                    size_t i = 0;
-                    while (i < serverData.streams.used) {
-                        const Stream* stream = &serverData.streams.buffer[i];
-                        if (GuidEquals(&stream->owner, &client->id)) {
-                            printf("Closing stream '%s'\n",
-                                   stream->name.buffer);
-                            StreamListSwapRemove(&serverData.streams, i);
-                        } else {
-                            ++i;
+        while (enet_host_service(server, &event, 0U) > 0) {
+            switch (event.type) {
+                case ENET_EVENT_TYPE_CONNECT: {
+                    char buffer[512] = { 0 };
+                    enet_address_get_host_ip(
+                      &event.peer->address, buffer, sizeof(buffer));
+                    printf("New client from %s:%u\n",
+                           buffer,
+                           event.peer->address.port);
+                    pClient client = currentAllocator->allocate(sizeof(Client));
+                    client->serverAuthentication = &config->authentication;
+                    // name, id, and authentication will be set after parsing
+                    // authentication message
+                    client->connectedStreams.allocator = currentAllocator;
+                    event.peer->data = client;
+                } break;
+                case ENET_EVENT_TYPE_DISCONNECT: {
+                    pClient client = (pClient)event.peer->data;
+                    printf("%s disconnected\n", client->name.buffer);
+                    event.peer->data = NULL;
+                    IN_MUTEX(serverData.mutex, disEnd, {
+                        size_t i = 0;
+                        while (i < serverData.streams.used) {
+                            const Stream* stream =
+                              &serverData.streams.buffer[i];
+                            if (GuidEquals(&stream->owner, &client->id)) {
+                                printf("Closing stream '%s'\n",
+                                       stream->name.buffer);
+                                StreamListSwapRemove(&serverData.streams, i);
+                            } else {
+                                ++i;
+                            }
                         }
-                    }
-                    ServerIncoming g = { 0 };
-                    g.message = NULL;
-                    g.client = client;
-                    ServerIncomingListAppend(&localIncoming, &g);
-                });
-            } break;
-            case ENET_EVENT_TYPE_RECEIVE: {
-                const Bytes temp = { .allocator = currentAllocator,
-                                     .buffer = event.packet->data,
-                                     .size = event.packet->dataLength,
-                                     .used = event.packet->dataLength };
-                pMessage message = currentAllocator->allocate(sizeof(Message));
-                MESSAGE_DESERIALIZE((*message), temp);
-                // printReceivedPacket(event.packet);
-                pClient client = (pClient)event.peer->data;
-                if (message->tag == MessageTag_streamMessage) {
-                    if (setStreamMessageTimestamp(client,
-                                                  &message->streamMessage)) {
-                        MESSAGE_SERIALIZE((*message), bytes);
-                        copyMessageToClients(
-                          server, client, &message->streamMessage, &bytes);
-                    } else {
-                        copyMessageToClients(
-                          server, client, &message->streamMessage, &temp);
-                    }
-                    MessageFree(message);
-                    currentAllocator->free(message);
-                } else {
-                    IN_MUTEX(serverData.mutex, recEnd, {
-                        ServerIncoming incoming = { 0 };
-                        incoming.message = message;
-                        incoming.client = client;
-                        ServerIncomingListAppend(&localIncoming, &incoming);
+                        ServerIncoming g = { 0 };
+                        g.message = NULL;
+                        g.client = client;
+                        ServerIncomingListAppend(&localIncoming, &g);
                     });
-                }
-                enet_packet_destroy(event.packet);
-                continue;
-            } break;
-            case ENET_EVENT_TYPE_NONE:
-                break;
-            default:
-                break;
+                } break;
+                case ENET_EVENT_TYPE_RECEIVE: {
+                    const Bytes temp = { .allocator = currentAllocator,
+                                         .buffer = event.packet->data,
+                                         .size = event.packet->dataLength,
+                                         .used = event.packet->dataLength };
+                    pMessage message =
+                      currentAllocator->allocate(sizeof(Message));
+                    MESSAGE_DESERIALIZE((*message), temp);
+                    // printReceivedPacket(event.packet);
+                    pClient client = (pClient)event.peer->data;
+                    if (message->tag == MessageTag_streamMessage) {
+                        if (setStreamMessageTimestamp(
+                              client, &message->streamMessage)) {
+                            MESSAGE_SERIALIZE((*message), bytes);
+                            copyMessageToClients(
+                              server, client, &message->streamMessage, &bytes);
+                        } else {
+                            copyMessageToClients(
+                              server, client, &message->streamMessage, &temp);
+                        }
+                        MessageFree(message);
+                        currentAllocator->free(message);
+                    } else {
+                        IN_MUTEX(serverData.mutex, recEnd, {
+                            ServerIncoming incoming = { 0 };
+                            incoming.message = message;
+                            incoming.client = client;
+                            ServerIncomingListAppend(&localIncoming, &incoming);
+                        });
+                    }
+                    enet_packet_destroy(event.packet);
+                    continue;
+                } break;
+                case ENET_EVENT_TYPE_NONE:
+                    break;
+                default:
+                    break;
+            }
         }
     checkOutgoing:
+        SDL_Delay(1);
         IN_MUTEX(serverData.mutex, oEnd, {
             for (size_t i = 0; i < localIncoming.used; ++i) {
                 ServerIncomingListAppend(&serverData.incoming,
