@@ -5,6 +5,7 @@ typedef struct ServerData
     SDL_mutex* mutex;
     SDL_cond* cond;
 
+    bool needToUpdateClients;
     StreamList streams;
     ServerIncomingList incoming;
     ServerOutgoingList outgoing;
@@ -12,6 +13,9 @@ typedef struct ServerData
 } ServerData, *pServerData;
 
 ServerData serverData = { 0 };
+
+void
+sendServerDataToClient(pClient client);
 
 void
 ServerDataFree(pServerData data)
@@ -203,9 +207,14 @@ copyMessageToClients(ENetHost* server,
 
         for (size_t i = 0; i < server->peerCount; ++i) {
             ENetPeer* peer = &server->peers[i];
-            const Client* client = peer->data;
-            if (client == NULL ||
-                !GuidListFind(
+            pClient client = peer->data;
+            if (client == NULL) {
+                continue;
+            }
+            if (serverData.needToUpdateClients) {
+                sendServerDataToClient(client);
+            }
+            if (!GuidListFind(
                   &client->connectedStreams, &message->id, NULL, NULL) ||
                 !clientHasReadAccess(client, stream)) {
                 continue;
@@ -213,6 +222,7 @@ copyMessageToClients(ENetHost* server,
             ENetPacket* packet = BytesToPacket(bytes, reliable);
             enet_peer_send(peer, SERVER_CHANNEL, packet);
         }
+        serverData.needToUpdateClients = false;
     });
 }
 
@@ -273,6 +283,21 @@ getClientsStreams(pClient client, pGuidList guids)
 }
 
 void
+sendServerDataToClient(pClient client)
+{
+    ServerOutgoing o = { 0 };
+    o.tag = ServerOutgoingTag_response;
+    o.response.client = client;
+    pMessage message = &o.response.message;
+    message->tag = MessageTag_serverData;
+    message->serverData.allStreams = serverData.streams;
+    message->serverData.connectedStreams = client->connectedStreams;
+    getClientsStreams(client, &message->serverData.clientStreams);
+    sendResponse(&o);
+    GuidListFree(&message->serverData.clientStreams);
+}
+
+void
 serverHandleMessage(pClient client, const Message* message, pRandomState rs)
 {
     ServerOutgoing outgoing = { 0 };
@@ -318,6 +343,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                   OptionalStreamMessageTag_none;
             }
             sendResponse(&outgoing);
+            sendServerDataToClient(client);
         } break;
         case MessageTag_disconnectFromStream: {
             const Stream* stream = NULL;
@@ -338,6 +364,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
             rMessage->tag = MessageTag_disconnectFromStreamAck;
             rMessage->disconnectFromStreamAck = success;
             sendResponse(&outgoing);
+            sendServerDataToClient(client);
         } break;
         case MessageTag_startStreaming: {
             const Stream* stream = NULL;
@@ -378,6 +405,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                 rMessage->tag = MessageTag_startStreamingAck;
                 rMessage->startStreamingAck.guid = newStream.id;
                 rMessage->startStreamingAck.tag = OptionalGuidTag_guid;
+                serverData.needToUpdateClients = true;
             } else {
 #if _DEBUG
                 printf("Client '%s' tried to add duplicate stream '%s'\n",
@@ -389,6 +417,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                 rMessage->startStreamingAck.tag = OptionalGuidTag_none;
             }
             sendResponse(&outgoing);
+            sendServerDataToClient(client);
         } break;
         case MessageTag_stopStreaming: {
             const Stream* stream = NULL;
@@ -407,66 +436,13 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                 rMessage->stopStreamingAck.guid = stream->id;
             }
             sendResponse(&outgoing);
-        } break;
-        case MessageTag_getAllStreams: {
-            rMessage->tag = MessageTag_getAllStreamsAck;
-            rMessage->getAllStreamsAck = serverData.streams;
-            sendResponse(&outgoing);
-            memset(rMessage, 0, sizeof(*rMessage));
-        } break;
-        case MessageTag_getConnectedStreams: {
-            rMessage->tag = MessageTag_getConnectedStreamsAck;
-            rMessage->getConnectedStreamsAck = client->connectedStreams;
-            sendResponse(&outgoing);
-            memset(rMessage, 0, sizeof(*rMessage));
-        } break;
-        case MessageTag_getClientStreams: {
-            rMessage->tag = MessageTag_getClientStreamsAck;
-            rMessage->getClientStreamsAck.allocator = currentAllocator;
-            getClientsStreams(client, &rMessage->getClientStreamsAck);
-            sendResponse(&outgoing);
-        } break;
-        case MessageTag_getStream: {
-            const Stream* stream = NULL;
-            switch (message->getStream.tag) {
-                case StringOrGuidTag_name:
-                    GetStreamFromName(&serverData.streams,
-                                      &message->getStream.name,
-                                      &stream,
-                                      NULL);
-                    break;
-                default:
-                    GetStreamFromGuid(&serverData.streams,
-                                      &message->getStream.id,
-                                      &stream,
-                                      NULL);
-                    break;
-            }
-            rMessage->tag = MessageTag_getStreamAck;
-            if (stream == NULL) {
-                rMessage->getStreamAck.tag = OptionalStreamTag_none;
-                rMessage->getStreamAck.none = NULL;
-            } else {
-                rMessage->getStreamAck.tag = OptionalStreamTag_stream;
-                rMessage->getStreamAck.stream = *stream;
-            }
-            sendResponse(&outgoing);
-            memset(&rMessage->getStreamAck, 0, sizeof(rMessage->getStreamAck));
+            serverData.needToUpdateClients = true;
+            sendServerDataToClient(client);
         } break;
         case MessageTag_getClients: {
             outgoing.tag = ServerOutgoingTag_getClients;
             outgoing.getClients = NULL;
             sendResponse(&outgoing);
-        } break;
-        case MessageTag_getAllData: {
-            rMessage->tag = MessageTag_getAllDataAck;
-            rMessage->getAllDataAck.allStreams = serverData.streams;
-            rMessage->getAllDataAck.connectedStreams = client->connectedStreams;
-            getClientsStreams(client, &rMessage->getAllDataAck.clientStreams);
-            sendResponse(&outgoing);
-            GuidListFree(&rMessage->getAllDataAck.clientStreams);
-            memset(
-              &rMessage->getAllDataAck, 0, sizeof(rMessage->getAllDataAck));
         } break;
         default:
             printf("Got invalid message '%s' (%d) from client '%s'\n",
@@ -507,6 +483,7 @@ handleServerIncoming(ServerIncoming incoming, pRandomState rs)
                 printf("Client assigned name '%s' (%s)\n",
                        client->name.buffer,
                        buffer);
+                sendServerDataToClient(client);
             } else {
                 puts("Client failed authentication\n");
                 sendDisconnect(client);
@@ -622,9 +599,11 @@ runServer(const AllConfiguration* configuration)
         }
         switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT: {
-                printf("New client from %x:%u\n",
-                       event.peer->address.host,
-                       event.peer->address.port);
+                char buffer[512] = { 0 };
+                enet_address_get_host_ip(
+                  &event.peer->address, buffer, sizeof(buffer));
+                printf(
+                  "New client from %s:%u\n", buffer, event.peer->address.port);
                 pClient client = currentAllocator->allocate(sizeof(Client));
                 client->serverAuthentication = &config->authentication;
                 // name, id, and authentication will be set after parsing

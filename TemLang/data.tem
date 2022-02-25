@@ -213,18 +213,9 @@ variant Message {
     OptionalGuid startStreamingAck
     Guid stopStreaming
     OptionalGuid stopStreamingAck
-    null getAllStreams
-    [0 Stream] getAllStreamsAck
-    null getConnectedStreams
-    [0 Guid] getConnectedStreamsAck
-    null getClientStreams
-    [0 Guid] getClientStreamsAck
-    StringOrGuid getStream
-    OptionalStream getStreamAck
     null getClients
     [0 string] getClientsAck
-    null getAllData
-    AllServerStreams getAllDataAck
+    AllServerStreams serverData
 }
 
 inlineC "

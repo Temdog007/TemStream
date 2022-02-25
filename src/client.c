@@ -6,9 +6,6 @@
 ClientData clientData = { 0 };
 
 void
-refreshStreams(ENetPeer* peer, pBytes);
-
-void
 renderDisplays()
 {
     SDL_Event e = { 0 };
@@ -228,20 +225,6 @@ userIndexFromUser(struct pollfd inputfd,
         return UserInputResult_Error;
     }
     return UserInputResult_Input;
-}
-
-void
-refreshStreams(ENetPeer* peer, pBytes bytes)
-{
-    puts("Requesting stream information from server...");
-    Message message = { 0 };
-
-    message.tag = MessageTag_getAllData;
-    message.getAllData = NULL;
-    MESSAGE_SERIALIZE(message, (*bytes));
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    // printSendingPacket(packet);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
 }
 
 void
@@ -741,7 +724,6 @@ handleUserInput(ENetPeer* peer, pBytes bytes)
             printf("Client name: %s\n", clientData.name.buffer);
             break;
         case ClientCommand_GetClients: {
-            puts("Getting clients from server...");
             Message message = { 0 };
             message.tag = MessageTag_getClients;
             message.getClients = NULL;
@@ -805,7 +787,6 @@ handleUserInput(ENetPeer* peer, pBytes bytes)
         case ClientCommand_StopStreaming:
         case ClientCommand_UploadFile:
         case ClientCommand_UploadText:
-            refreshStreams(peer, bytes);
             sendEvent = true;
             break;
         default:
@@ -834,14 +815,6 @@ handleClientCommand(const ClientCommand command, ENetPeer* peer, pBytes bytes)
                                     .events = POLLIN,
                                     .fd = STDIN_FILENO };
     switch (command) {
-        case ClientCommand_GetClients:
-            askQuestion("Clients");
-            for (size_t i = 0; i < clientData.otherClients.used; ++i) {
-                printf(
-                  "%zu) %s\n", i + 1, clientData.otherClients.buffer[i].buffer);
-            }
-            puts("");
-            break;
         case ClientCommand_ConnectToStream:
             selectAStreamToConnectTo(inputfd, peer, bytes);
             break;
@@ -893,7 +866,7 @@ handleClientCommand(const ClientCommand command, ENetPeer* peer, pBytes bytes)
 }
 
 void
-clientHandleMessage(ENetPeer* peer, pMessage message, pBytes bytes)
+clientHandleMessage(pMessage message)
 {
     switch (message->tag) {
         case MessageTag_authenticateAck: {
@@ -911,58 +884,35 @@ clientHandleMessage(ENetPeer* peer, pMessage message, pBytes bytes)
                               currentAllocator);
             clientData.id = message->authenticateAck.id;
         } break;
-        case MessageTag_getAllDataAck: {
+        case MessageTag_serverData: {
             GuidListCopy(&clientData.connectedStreams,
-                         &message->getAllDataAck.connectedStreams,
+                         &message->serverData.connectedStreams,
                          currentAllocator);
             GuidListCopy(&clientData.ownStreams,
-                         &message->getAllDataAck.clientStreams,
+                         &message->serverData.clientStreams,
                          currentAllocator);
             StreamListCopy(&clientData.allStreams,
-                           &message->getAllDataAck.allStreams,
+                           &message->serverData.allStreams,
                            currentAllocator);
             cleanupStreamDisplays();
             puts("Updated server data");
         } break;
-        case MessageTag_getClientsAck:
-            TemLangStringListCopy(&clientData.otherClients,
-                                  &message->getClientsAck,
-                                  currentAllocator);
-            puts("Updated client list");
-            break;
-        case MessageTag_getConnectedStreamsAck:
-            GuidListCopy(&clientData.connectedStreams,
-                         &message->getConnectedStreamsAck,
-                         currentAllocator);
-            cleanupStreamDisplays();
-            puts("Updated connected streams");
-            break;
-        case MessageTag_getClientStreamsAck:
-            GuidListCopy(&clientData.ownStreams,
-                         &message->getClientStreamsAck,
-                         currentAllocator);
-            puts("Updated client's streams");
-            break;
-        case MessageTag_getAllStreamsAck:
-            StreamListCopy(&clientData.allStreams,
-                           &message->getAllStreamsAck,
-                           currentAllocator);
-            puts("Updated stream list");
-            break;
+        case MessageTag_getClientsAck: {
+            pTemLangStringList clients = &message->getClientsAck;
+            askQuestion("Clients");
+            for (size_t i = 0; i < clients->used; ++i) {
+                puts(clients->buffer[i].buffer);
+            }
+        } break;
         case MessageTag_startStreamingAck:
             switch (message->startStreamingAck.tag) {
                 case OptionalGuidTag_none:
                     puts("Server failed to start stream");
                     break;
-                default: {
-                    message->tag = MessageTag_getClientStreams;
-                    message->getClientStreams = NULL;
-                    MESSAGE_SERIALIZE((*message), (*bytes));
-                    ENetPacket* packet = BytesToPacket(bytes, true);
-                    enet_peer_send(peer, CLIENT_CHANNEL, packet);
-                } break;
+                default:
+                    puts("Stream started");
+                    break;
             }
-            refreshStreams(peer, bytes);
             break;
         case MessageTag_stopStreamingAck:
             switch (message->stopStreamingAck.tag) {
@@ -970,14 +920,9 @@ clientHandleMessage(ENetPeer* peer, pMessage message, pBytes bytes)
                     puts("Server failed to stop stream");
                     break;
                 default:
-                    message->tag = MessageTag_getClientStreams;
-                    message->getClientStreams = NULL;
-                    MESSAGE_SERIALIZE((*message), (*bytes));
-                    ENetPacket* packet = BytesToPacket(bytes, true);
-                    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+                    puts("Stopped stream");
                     break;
             }
-            refreshStreams(peer, bytes);
             break;
         case MessageTag_connectToStreamAck:
             switch (message->connectToStreamAck.tag) {
@@ -1017,7 +962,6 @@ clientHandleMessage(ENetPeer* peer, pMessage message, pBytes bytes)
                     puts("Failed to connect to stream");
                     break;
             }
-            refreshStreams(peer, bytes);
             break;
         case MessageTag_disconnectFromStreamAck:
             if (message->disconnectFromStreamAck) {
@@ -1025,7 +969,6 @@ clientHandleMessage(ENetPeer* peer, pMessage message, pBytes bytes)
             } else {
                 puts("Failed to disconnect from stream");
             }
-            refreshStreams(peer, bytes);
             break;
         case MessageTag_streamMessage:
             switch (message->streamMessage.data.tag) {
@@ -1548,6 +1491,9 @@ runClient(const AllConfiguration* configuration)
         address.port =
           (uint16_t)strtoul(configuration->address.port.buffer, &end, 10);
         peer = enet_host_connect(host, &address, 2, 0);
+        char buffer[512] = { 0 };
+        enet_address_get_host_ip(&address, buffer, sizeof(buffer));
+        printf("Connecting to server: %s:%u...\n", buffer, address.port);
     }
     if (peer == NULL) {
         fprintf(stderr, "Failed to connect to server\n");
@@ -1557,9 +1503,10 @@ runClient(const AllConfiguration* configuration)
     ENetEvent event = { 0 };
     if (enet_host_service(host, &event, 5000) > 0 &&
         event.type == ENET_EVENT_TYPE_CONNECT) {
-        printf("Connected to server: %x:%u\n",
-               event.peer->address.host,
-               event.peer->address.port);
+        char buffer[512] = { 0 };
+        enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
+        printf(
+          "Connected to server: %s:%u\n", buffer, event.peer->address.port);
         displayUserOptions();
         Message message = { 0 };
         message.tag = MessageTag_authenticate;
@@ -1570,6 +1517,8 @@ runClient(const AllConfiguration* configuration)
         enet_peer_send(peer, CLIENT_CHANNEL, packet);
     } else {
         fprintf(stderr, "Failed to connect to server\n");
+        enet_peer_reset(peer);
+        peer = NULL;
         goto end;
     }
 
@@ -1930,7 +1879,7 @@ runClient(const AllConfiguration* configuration)
                 Message message = { 0 };
                 MESSAGE_DESERIALIZE(message, packetBytes);
                 // printReceivedPacket(event.packet);
-                clientHandleMessage(peer, &message, &bytes);
+                clientHandleMessage(&message);
                 MessageFree(&message);
                 enet_packet_destroy(event.packet);
             } break;

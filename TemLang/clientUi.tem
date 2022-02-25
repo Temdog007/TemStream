@@ -68,7 +68,6 @@ struct ClientData {
     [0 Stream] allStreams
     [0 Guid] ownStreams
     [0 Guid] connectedStreams
-    [0 string] otherClients
     [0 StreamDisplay] displays
     string name
     Guid id
