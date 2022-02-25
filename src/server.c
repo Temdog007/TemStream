@@ -180,6 +180,7 @@ copyMessageToClients(ENetHost* server,
                         break;
                 }
                 StreamMessageListAppend(&serverData.storage, &s);
+                StreamMessageFree(&s);
                 storage =
                   &serverData.storage.buffer[serverData.storage.used - 1U];
             }
@@ -271,9 +272,8 @@ printServerConfiguration(const ServerConfiguration* configuration)
 void
 getClientsStreams(pClient client, pGuidList guids)
 {
-    if (guids->allocator == NULL) {
-        guids->allocator = currentAllocator;
-    }
+    GuidListFree(guids);
+    guids->allocator = currentAllocator;
     for (size_t i = 0; i < serverData.streams.used; ++i) {
         const Stream* stream = &serverData.streams.buffer[i];
         if (GuidEquals(&stream->owner, &client->id)) {
@@ -407,6 +407,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                         m.data.tag = StreamMessageDataTag_chatLogs;
                         m.data.chatLogs.allocator = currentAllocator;
                         StreamMessageListAppend(&serverData.storage, &m);
+                        StreamMessageFree(&m);
                     } break;
                     case StreamType_Image: {
                         StreamMessage m = { 0 };
@@ -414,6 +415,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                         m.data.tag = StreamMessageDataTag_image;
                         m.data.image.allocator = currentAllocator;
                         StreamMessageListAppend(&serverData.storage, &m);
+                        StreamMessageFree(&m);
                     } break;
                     default:
                         break;
@@ -514,10 +516,11 @@ handleServerIncoming(ServerIncoming incoming, pRandomState rs)
                    MessageTagToCharString(message->tag));
             sendDisconnect(client);
         }
-        return;
+    } else {
+        serverHandleMessage(client, message, rs);
     }
-
-    serverHandleMessage(client, message, rs);
+    MessageFree(message);
+    currentAllocator->free(message);
 }
 
 int
@@ -671,12 +674,10 @@ runServer(const AllConfiguration* configuration)
                         MessageFree(message);
                         currentAllocator->free(message);
                     } else {
-                        IN_MUTEX(serverData.mutex, recEnd, {
-                            ServerIncoming incoming = { 0 };
-                            incoming.message = message;
-                            incoming.client = client;
-                            ServerIncomingListAppend(&localIncoming, &incoming);
-                        });
+                        ServerIncoming incoming = { 0 };
+                        incoming.message = message;
+                        incoming.client = client;
+                        ServerIncomingListAppend(&localIncoming, &incoming);
                     }
                     enet_packet_destroy(event.packet);
                     continue;
@@ -757,9 +758,19 @@ end:
     appDone = true;
     IN_MUTEX(serverData.mutex, end2, { SDL_CondSignal(serverData.cond); });
     SDL_WaitThread(thread, NULL);
+    for (size_t i = 0; i < server->peerCount; ++i) {
+        pClient client = server->peers[i].data;
+        if (client == NULL) {
+            continue;
+        }
+        ClientFree(client);
+        currentAllocator->free(client);
+        server->peers[i].data = NULL;
+    }
     if (server != NULL) {
         enet_host_destroy(server);
     }
+    ServerIncomingListFree(&localIncoming);
     uint8_tListFree(&bytes);
     ServerDataFree(&serverData);
     SDL_Quit();

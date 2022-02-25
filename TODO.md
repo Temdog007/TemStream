@@ -21,13 +21,18 @@
 - [x] Make thread safe allocator
 - [x] Packet loss (TCP merges packets, use ENET)
 
+### Feb 26, 2022
+- [ ] Audio stream
+
 ### Later
 - [ ] Allow for blacklist/whitelist for stream access
+- [ ] Allow owner to add/remove writers/readers
 - [ ] Play gifs (use FFMPEG)
 - [ ] Video stream
-- [ ] Audio stream
+- [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
 - [ ] Create an HTML page that allows browser GUI to send commands on behalf of the native version
+- [ ] Add websocket connection
 - [ ] SSL encryption (dtls)
 - [ ] Add logging library (or make one)

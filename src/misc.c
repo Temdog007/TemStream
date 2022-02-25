@@ -152,11 +152,8 @@ FindPeerFromData(ENetPeer* peers, const size_t count, const void* data)
 ENetPacket*
 BytesToPacket(const Bytes* bytes, const bool reliable)
 {
-    return enet_packet_create(bytes->buffer,
-                              bytes->used,
-                              (reliable
-                                 ? ENET_PACKET_FLAG_RELIABLE
-                                 : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT));
+    return enet_packet_create(
+      bytes->buffer, bytes->used, (reliable ? ENET_PACKET_FLAG_RELIABLE : 0));
 }
 
 bool
