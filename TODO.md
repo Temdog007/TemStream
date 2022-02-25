@@ -23,6 +23,7 @@
 
 ### Feb 26, 2022
 - [ ] Audio stream
+- [ ] Add no display mode
 
 ### Later
 - [ ] Allow for blacklist/whitelist for stream access

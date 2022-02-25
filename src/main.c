@@ -26,7 +26,7 @@ main(const int argc, const char** argv)
     }
     {
         // Look for -M or --memory
-        uint64_t memory = MB(32);
+        uint64_t memory = MB(256);
         for (int i = 1; i < argc - 1; i += 2) {
             if (strcmp("-M", argv[i]) != 0 &&
                 strcmp("--memory", argv[i]) != 0) {
@@ -44,6 +44,7 @@ main(const int argc, const char** argv)
 
         static Allocator allocator = { 0 };
         allocator = makeTSAllocator(memory);
+        printf("Using %zu MB of memory\n", memory / (1024 * 1024));
         currentAllocator = &allocator;
     }
     if (enet_initialize() != 0) {
