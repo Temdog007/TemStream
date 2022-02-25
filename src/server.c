@@ -283,8 +283,25 @@ getClientsStreams(pClient client, pGuidList guids)
 }
 
 void
+cleanupConnectedStreams(pClient client)
+{
+    size_t i = 0;
+    while (i < client->connectedStreams.used) {
+        if (GetStreamFromGuid(&serverData.streams,
+                              &client->connectedStreams.buffer[i],
+                              NULL,
+                              NULL)) {
+            ++i;
+        } else {
+            GuidListSwapRemove(&client->connectedStreams, i);
+        }
+    }
+}
+
+void
 sendServerDataToClient(pClient client)
 {
+    cleanupConnectedStreams(client);
     ServerOutgoing o = { 0 };
     o.tag = ServerOutgoingTag_response;
     o.response.client = client;
@@ -423,7 +440,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
             const Stream* stream = NULL;
             size_t i = 0;
             GetStreamFromGuid(
-              &serverData.streams, &rMessage->stopStreaming, &stream, &i);
+              &serverData.streams, &message->stopStreaming, &stream, &i);
             rMessage->tag = MessageTag_stopStreamingAck;
             rMessage->stopStreamingAck.tag = OptionalGuidTag_none;
             rMessage->stopStreamingAck.none = NULL;
@@ -434,6 +451,10 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                 StreamListSwapRemove(&serverData.streams, i);
                 rMessage->stopStreamingAck.tag = OptionalGuidTag_guid;
                 rMessage->stopStreamingAck.guid = stream->id;
+            } else {
+                printf("Client '%s' tried end a stream that it either didn't "
+                       "own or didn't exists\n",
+                       client->name.buffer);
             }
             sendResponse(&outgoing);
             serverData.needToUpdateClients = true;
@@ -441,7 +462,7 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
         } break;
         case MessageTag_getClients: {
             outgoing.tag = ServerOutgoingTag_getClients;
-            outgoing.getClients = NULL;
+            outgoing.getClients = client;
             sendResponse(&outgoing);
         } break;
         default:

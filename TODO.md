@@ -16,7 +16,9 @@
 - [x] File drop onto stream texture
 
 ### Feb 25, 2022
-- [ ] Download screenshot of stream
+- [x] Download screenshot of stream
+- [x] Retest chat
+- [ ] Make thread safe allocator
 - [x] Packet loss (TCP merges packets, use ENET)
 
 ### Later
@@ -29,6 +31,3 @@
 - [ ] Create an HTML page that allows browser GUI to send commands on behalf of the native version
 - [ ] SSL encryption (dtls)
 - [ ] Add logging library (or make one)
-
-### Maybe
-- [ ] Make a thread safe allocator to use
