@@ -24,7 +24,7 @@
 ### Feb 26, 2022
 - [x] Add threads to client
 - [ ] Use custom allocator for ENet
-- [ ] Test changing font
+- [x] Test changing font
 - [x] Allow playback device to be changed
 - [x] Audio stream (allow playback and recording device to be selected)
 - [x] Add no display mode
@@ -41,6 +41,7 @@
     - [ ] Record screen
     - [ ] Record webcam
 - [ ] Mix audio properply
+- [ ] Display audio mixer
 - [ ] Include press to talk
 - [ ] Create web page for GUI
 - [ ] Make layout message

@@ -49,6 +49,7 @@ struct StreamDisplayChat {
 variant StreamDisplayData {
     null none
     StreamDisplayChat chat
+    string text
 }
 
 resource StreamDisplay {

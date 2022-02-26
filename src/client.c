@@ -1198,7 +1198,11 @@ updateTextDisplay(SDL_Renderer* renderer,
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;
     }
-    if (TemLangStringIsEmpty(string)) {
+    if (string != NULL) {
+        TemLangStringCopy(&display->data.text, string, currentAllocator);
+    }
+
+    if (TemLangStringIsEmpty(&display->data.text)) {
         goto end;
     }
 
@@ -1206,7 +1210,8 @@ updateTextDisplay(SDL_Renderer* renderer,
     fg.r = fg.g = fg.b = fg.a = 0xffu;
     SDL_Color bg = { 0 };
     bg.a = 128u;
-    surface = TTF_RenderUTF8_Shaded_Wrapped(ttfFont, string->buffer, fg, bg, 0);
+    surface = TTF_RenderUTF8_Shaded_Wrapped(
+      ttfFont, display->data.text.buffer, fg, bg, 0);
     if (surface == NULL) {
         fprintf(stderr, "Failed to create text surface: %s\n", TTF_GetError());
         goto end;
@@ -1481,6 +1486,27 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
     updateChatDisplay(renderer, ttfFont, w, h, display);
     if (list->used > 2) {
         display->dstRect = rect;
+    }
+}
+
+void
+updateAllDisplays(SDL_Renderer* renderer,
+                  TTF_Font* ttfFont,
+                  const int w,
+                  const int h)
+{
+    for (size_t i = 0; i < clientData.displays.used; ++i) {
+        pStreamDisplay display = &clientData.displays.buffer[i];
+        switch (display->data.tag) {
+            case StreamDisplayDataTag_chat:
+                updateChatDisplay(renderer, ttfFont, w, h, display);
+                break;
+            case StreamDisplayDataTag_text:
+                updateTextDisplay(renderer, ttfFont, &display->id, NULL);
+                break;
+            default:
+                break;
+        }
     }
 }
 
@@ -2160,7 +2186,12 @@ runClient(const AllConfiguration* configuration)
                 }
                 if (ext.tag == FileExtensionTag_font) {
                     puts("Loading new font...");
-                    loadNewFont(e.drop.file, config->fontSize, &ttfFont);
+                    if (loadNewFont(e.drop.file, config->fontSize, &ttfFont)) {
+                        int w, h;
+                        SDL_GetWindowSize(window, &w, &h);
+                        updateAllDisplays(renderer, ttfFont, w, h);
+                        puts("Loaded new font");
+                    }
                     goto endDropFile;
                 }
 
