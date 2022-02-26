@@ -152,14 +152,18 @@ FindPeerFromData(ENetPeer* peers, const size_t count, const void* data)
 ENetPacket*
 BytesToPacket(const Bytes* bytes, const bool reliable)
 {
-    return enet_packet_create(
-      bytes->buffer, bytes->used, (reliable ? ENET_PACKET_FLAG_RELIABLE : 0));
+    return enet_packet_create(bytes->buffer,
+                              bytes->used,
+                              (reliable
+                                 ? ENET_PACKET_FLAG_RELIABLE
+                                 : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT));
 }
 
 bool
 streamMessageIsReliable(const StreamMessage* m)
 {
     switch (m->data.tag) {
+        case StreamMessageDataTag_audio:
         case StreamMessageDataTag_Invalid:
             return false;
         default:
@@ -208,6 +212,18 @@ printStream(const Stream* stream)
                   guid,
                   stream->name.buffer,
                   StreamTypeToCharString(stream->type));
+}
+
+int
+printAudioSpec(const SDL_AudioSpec* spec)
+{
+    return printf("Frequency: %d Hz\nChannels: %u\nSilence: %u\nSamples: "
+                  "%u\nBuffer size: %u bytes\n",
+                  spec->freq,
+                  spec->channels,
+                  spec->silence,
+                  spec->samples,
+                  spec->size);
 }
 
 bool
@@ -395,4 +411,48 @@ void
 freeTSAllocator()
 {
     FreeListAllocatorDelete(&TemStreamAllocator);
+}
+
+bool
+streamTypeMatchesMessage(const StreamType type, const StreamMessageDataTag tag)
+{
+    switch (type) {
+        case StreamType_Audio:
+            return tag == StreamMessageDataTag_audio;
+        case StreamType_Text:
+            return tag == StreamMessageDataTag_text;
+        case StreamType_Chat:
+            return tag == StreamMessageDataTag_chatMessage;
+        case StreamType_Image:
+            return tag == StreamMessageDataTag_image;
+        default:
+            return false;
+    }
+}
+
+SDL_AudioSpec
+makeAudioSpec(SDL_AudioCallback callback, void* userdata)
+{
+#if AUDIO == HIGH_AUDIO
+    return (SDL_AudioSpec){ .freq = 44100,
+                            .format = AUDIO_F32,
+                            .channels = 2,
+                            .samples = 4096,
+                            .callback = callback,
+                            .userdata = userdata };
+#elif AUDIO == MED_AUDIO
+    return (SDL_AudioSpec){ .freq = 22050,
+                            .format = AUDIO_S16,
+                            .channels = 1,
+                            .samples = 2048,
+                            .callback = callback,
+                            .userdata = userdata };
+#else
+    return (SDL_AudioSpec){ .freq = 8000,
+                            .format = AUDIO_S8,
+                            .channels = 1,
+                            .samples = 2048,
+                            .callback = callback,
+                            .userdata = userdata };
+#endif
 }

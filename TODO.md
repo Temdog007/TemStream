@@ -23,7 +23,7 @@
 
 ### Feb 26, 2022
 - [x] Add threads to client
-- [ ] Audio stream (allow playback and recording device to be selected)
+- [x] Audio stream (allow playback and recording device to be selected)
 - [x] Add no display mode
 - [x] Show message box when fatal errors occur (ex. disconnect from server)
 

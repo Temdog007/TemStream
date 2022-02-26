@@ -27,6 +27,11 @@
 
 #define MAX_PACKET_SIZE KB(64)
 
+#define LOW_AUDIO 0
+#define MED_AUDIO 1
+#define HIGH_AUDIO 2
+#define AUDIO MED_AUDIO
+
 const extern Guid ZeroGuid;
 
 typedef struct Client
@@ -145,6 +150,9 @@ printReceivedPacket(const ENetPacket*);
 extern int
 printBytes(const uint8_t*, const size_t);
 
+extern int
+printAudioSpec(const SDL_AudioSpec*);
+
 // Parsing
 
 extern bool
@@ -246,6 +254,21 @@ filenameToExtension(const char*, pFileExtension);
 
 extern StreamType FileExtenstionToStreamType(FileExtensionTag);
 
+typedef struct AudioRecordState
+{
+    SDL_AudioSpec spec;
+    Guid id;
+    SDL_AudioDeviceID deviceId;
+    SDL_bool running;
+} AudioRecordState, *pAudioRecordState;
+
+typedef pAudioRecordState AudioRecordStatePtr;
+
+MAKE_COPY_AND_FREE(AudioRecordStatePtr);
+MAKE_DEFAULT_LIST(AudioRecordStatePtr);
+
+extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
+
 // Font
 typedef struct Character
 {
@@ -311,6 +334,9 @@ expandRect(const SDL_FRect* rect, const float sw, const float sh)
                         .w = newWidth,
                         .h = newHeight };
 }
+
+extern SDL_AudioSpec
+makeAudioSpec(SDL_AudioCallback, void* userdata);
 
 // Allocator
 

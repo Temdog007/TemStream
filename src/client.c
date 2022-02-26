@@ -9,6 +9,14 @@ SDL_mutex* packetMutex = NULL;
 
 pENetPacketList outgoingPackets = { 0 };
 
+AudioRecordStatePtrList audioRecordings = { 0 };
+
+SDL_atomic_t runningThreads = { 0 };
+
+SDL_AudioDeviceID playbackId = 0;
+
+Bytes audioBytes = { 0 };
+
 bool
 enqueuePacket(ENetPacket* packet)
 {
@@ -336,6 +344,129 @@ end:
 }
 
 void
+audioCaptureCallback(const AudioRecordState* state, uint8_t* data, int len)
+{
+    const Bytes audioBytes = {
+        .allocator = NULL, .buffer = data, .size = len, .used = len
+    };
+
+    Bytes bytes = { .allocator = currentAllocator };
+    Message message = { 0 };
+    message.tag = MessageTag_streamMessage;
+    message.streamMessage.id = state->id;
+    message.streamMessage.data.tag = StreamMessageDataTag_audio;
+    message.streamMessage.data.audio = audioBytes;
+    MESSAGE_SERIALIZE(message, bytes);
+    ENetPacket* packet = BytesToPacket(&bytes, false);
+    enqueuePacket(packet);
+    // Don't free messages. Bytes weren't allocated
+    uint8_tListFree(&bytes);
+}
+
+void
+audioPlaybackCallback(void* ptr, uint8_t* audioStream, const int len)
+{
+    (void)ptr;
+    size_t sLen = len;
+    sLen = SDL_min(sLen, audioBytes.used);
+    if (len > 0) {
+        memcpy(audioStream, audioBytes.buffer, sLen);
+        uint8_tListQuickRemove(&audioBytes, 0, sLen);
+    }
+}
+
+int
+audioRecordThread(pAudioRecordState state)
+{
+    SDL_PauseAudioDevice(state->deviceId, SDL_FALSE);
+    while (!appDone && state->running == SDL_TRUE) {
+        SDL_Delay(100);
+    }
+    printf("Closing audio device: %u\n", state->deviceId);
+    SDL_CloseAudioDevice(state->deviceId);
+    currentAllocator->free(state);
+    SDL_AtomicDecRef(&runningThreads);
+    return EXIT_SUCCESS;
+}
+
+void
+startRecording(const Guid* guid)
+{
+    const int devices = SDL_GetNumAudioDevices(SDL_TRUE);
+    if (devices == 0) {
+        fprintf(stderr, "No recording devices found to send audio\n");
+        return;
+    }
+
+    AudioRecordStatePtr state =
+      currentAllocator->allocate(sizeof(AudioRecordState));
+    state->id = *guid;
+    SDL_MessageBoxButtonData* buttons =
+      currentAllocator->allocate(devices * sizeof(SDL_MessageBoxButtonData));
+    for (int i = 0; i < devices; ++i) {
+        buttons[i].buttonid = i;
+        buttons[i].flags = 0;
+        const char* name = SDL_GetAudioDeviceName(i, SDL_TRUE);
+        const size_t len = strlen(name);
+        char* ptr = currentAllocator->allocate(sizeof(char) * (len + 1));
+        memcpy(ptr, name, len);
+        buttons[i].text = ptr;
+    }
+
+    const SDL_MessageBoxData data = { .flags = SDL_MESSAGEBOX_INFORMATION,
+                                      .window = NULL,
+                                      .title = "Audio recording",
+                                      .message =
+                                        "Select an audio device to stream",
+                                      .numbuttons = devices,
+                                      .buttons = buttons,
+                                      .colorScheme = NULL };
+    int selected;
+    if (SDL_ShowMessageBox(&data, &selected) != 0) {
+        fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
+        goto audioStartEnd;
+    }
+    const SDL_AudioSpec desiredRecordingSpec =
+      makeAudioSpec((SDL_AudioCallback)audioCaptureCallback, state);
+    state->deviceId =
+      SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_TRUE),
+                          SDL_TRUE,
+                          &desiredRecordingSpec,
+                          &state->spec,
+                          SDL_AUDIO_ALLOW_ANY_CHANGE);
+    if (state->deviceId == 0) {
+        fprintf(stderr, "Failed to start recording: %s\n", SDL_GetError());
+        goto audioStartEnd;
+    }
+    puts("Recording audio specification");
+    printAudioSpec(&state->spec);
+
+    printf("Open audio device: %u\n", state->deviceId);
+
+    state->running = SDL_TRUE;
+    SDL_Thread* thread = SDL_CreateThread(
+      (SDL_ThreadFunction)audioRecordThread, "audio", (void*)state);
+    if (thread == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        goto audioStartEnd;
+    }
+    SDL_AtomicIncRef(&runningThreads);
+    SDL_DetachThread(thread);
+
+    AudioRecordStatePtrListAppend(&audioRecordings, &state);
+    state = NULL;
+audioStartEnd:
+    if (state != NULL) {
+        SDL_CloseAudioDevice(state->deviceId);
+        currentAllocator->free(state);
+    }
+    for (int i = 0; i < devices; ++i) {
+        currentAllocator->free((char*)buttons[i].text);
+    }
+    currentAllocator->free(buttons);
+}
+
+void
 selectStreamToStart(struct pollfd inputfd, pBytes bytes)
 {
     askQuestion("Select the type of stream to create");
@@ -385,15 +516,13 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes)
         puts("Enter y or n");
     }
 
-    // TODO: Allow readers and writers to be set
-
     MESSAGE_SERIALIZE(message, (*bytes));
     printf("\nCreating '%s' stream named '%s'...\n",
            StreamTypeToCharString(message.startStreaming.type),
            message.startStreaming.name.buffer);
-    MessageFree(&message);
     ENetPacket* packet = BytesToPacket(bytes, true);
     enqueuePacket(packet);
+    MessageFree(&message);
 }
 
 void
@@ -917,11 +1046,18 @@ clientHandleMessage(pMessage message)
         } break;
         case MessageTag_startStreamingAck:
             switch (message->startStreamingAck.tag) {
-                case OptionalGuidTag_none:
-                    puts("Server failed to start stream");
-                    break;
-                default:
+                case OptionalGuidTag_guid: {
                     puts("Stream started");
+                    SDL_Event e = { 0 };
+                    e.type = SDL_USEREVENT;
+                    e.user.code = CustomEvent_CheckAddedStream;
+                    pGuid guid = currentAllocator->allocate(sizeof(Guid));
+                    *guid = message->startStreamingAck.guid;
+                    e.user.data1 = guid;
+                    SDL_PushEvent(&e);
+                } break;
+                default:
+                    puts("Server failed to start stream");
                     break;
             }
             break;
@@ -1618,7 +1754,10 @@ runClient(const AllConfiguration* configuration)
         displayError(window, "Failed to start");
         goto end;
     }
+
     outgoingPackets.allocator = currentAllocator;
+    audioRecordings.allocator = currentAllocator;
+    audioBytes.allocator = currentAllocator;
 
     if (!config->noGui) {
         window = SDL_CreateWindow(
@@ -1656,6 +1795,20 @@ runClient(const AllConfiguration* configuration)
             SDL_GetRendererInfo(renderer, &info);
             printf("Current renderer: %s\n", info.name);
         }
+
+        const SDL_AudioSpec desired =
+          makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, NULL);
+        SDL_AudioSpec obtained = { 0 };
+        playbackId = SDL_OpenAudioDevice(
+          NULL, SDL_FALSE, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
+        if (playbackId == 0) {
+            fprintf(stderr, "Failed to open playback device\n");
+            displayError(window, "Failed to start");
+            goto end;
+        }
+        puts("Playback audio specification");
+        printAudioSpec(&obtained);
+        SDL_PauseAudioDevice(playbackId, SDL_FALSE);
     }
 
     // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
@@ -1688,6 +1841,8 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
+    SDL_AtomicSet(&runningThreads, 0);
+
     SDL_Event e = { 0 };
 
     size_t targetDisplay = UINT32_MAX;
@@ -1695,6 +1850,15 @@ runClient(const AllConfiguration* configuration)
     bool hasTarget = false;
 
     while (!appDone) {
+        for (size_t i = 0; i < audioRecordings.used; ++i) {
+            AudioRecordStatePtr ptr = audioRecordings.buffer[i];
+            if (GetStreamFromGuid(
+                  &clientData.allStreams, &ptr->id, NULL, NULL)) {
+                continue;
+            }
+            ptr->running = SDL_FALSE;
+            AudioRecordStatePtrListRemove(&audioRecordings, i);
+        }
         switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
             case -1:
                 fprintf(stderr, "Event error: %s\n", SDL_GetError());
@@ -1869,6 +2033,16 @@ runClient(const AllConfiguration* configuration)
                                                  (char*)e.user.data2,
                                                  window);
                         break;
+                    case CustomEvent_CheckAddedStream: {
+                        pGuid guid = e.user.data1;
+                        const Stream* stream = NULL;
+                        if (GetStreamFromGuid(
+                              &clientData.allStreams, guid, &stream, NULL) &&
+                            stream->type == StreamType_Audio) {
+                            startRecording(guid);
+                        }
+                        currentAllocator->free(guid);
+                    } break;
                     case CustomEvent_AddTexture: {
                         StreamDisplay s = { 0 };
                         s.dstRect.x = 0.f;
@@ -1909,6 +2083,13 @@ runClient(const AllConfiguration* configuration)
                                 updateImageDisplay(
                                   renderer, &m->id, &m->data.image);
                                 break;
+                            case StreamMessageDataTag_audio: {
+                                SDL_LockAudioDevice(playbackId);
+                                uint8_tListQuickAppend(&audioBytes,
+                                                       m->data.audio.buffer,
+                                                       m->data.audio.used);
+                                SDL_UnlockAudioDevice(playbackId);
+                            } break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
                                        StreamMessageDataTagToCharString(
@@ -2064,9 +2245,15 @@ end:
     for (size_t i = 0; i < sizeof(threads) / sizeof(SDL_Thread*); ++i) {
         SDL_WaitThread(threads[i], NULL);
     }
+    while (SDL_AtomicGet(&runningThreads) > 0) {
+        SDL_Delay(1);
+    }
     pENetPacketListFree(&outgoingPackets);
+    AudioRecordStatePtrListFree(&audioRecordings);
+    SDL_CloseAudioDevice(playbackId);
     SDL_DestroyMutex(packetMutex);
     uint8_tListFree(&bytes);
+    uint8_tListFree(&audioBytes);
     ClientDataFree(&clientData);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

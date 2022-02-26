@@ -149,7 +149,9 @@ copyMessageToClients(ENetHost* server,
 #endif
             goto endMutex;
         }
-        if (!clientHasWriteAccess(writer, stream)) {
+
+        if (!streamTypeMatchesMessage(stream->type, message->data.tag) ||
+            !clientHasWriteAccess(writer, stream)) {
             goto endMutex;
         }
         {
@@ -198,6 +200,8 @@ copyMessageToClients(ENetHost* server,
                     uint8_tListCopy(&storage->data.image,
                                     &message->data.image,
                                     currentAllocator);
+                    break;
+                case StreamMessageDataTag_audio:
                     break;
                 default:
                     printf("Unexpected message type: %s\n",

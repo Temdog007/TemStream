@@ -80,4 +80,5 @@ enum CustomEvent {
     SaveScreenshot
     HandleMessage
     ShowSimpleMessage
+    CheckAddedStream
 }
