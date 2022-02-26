@@ -52,7 +52,7 @@ cleanupStreamDisplays()
         StreamDisplayListFree(&clientData.displays);
         clientData.displays.allocator = currentAllocator;
 #if _DEBUG
-        puts("Remvoed all stream displays");
+        puts("Removed all stream displays");
 #endif
     } else {
         size_t i = 0;
@@ -372,9 +372,11 @@ audioPlaybackCallback(void* ptr, uint8_t* audioStream, const int len)
     (void)ptr;
     size_t sLen = len;
     sLen = SDL_min(sLen, audioBytes.used);
-    if (len > 0) {
+    if (sLen > 0) {
         memcpy(audioStream, audioBytes.buffer, sLen);
         uint8_tListQuickRemove(&audioBytes, 0, sLen);
+    } else {
+        memset(audioStream, 0, len);
     }
 }
 

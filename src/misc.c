@@ -156,7 +156,8 @@ BytesToPacket(const Bytes* bytes, const bool reliable)
                               bytes->used,
                               (reliable
                                  ? ENET_PACKET_FLAG_RELIABLE
-                                 : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT));
+                                 : (ENET_PACKET_FLAG_UNSEQUENCED |
+                                    ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT)));
 }
 
 bool
@@ -451,7 +452,7 @@ makeAudioSpec(SDL_AudioCallback callback, void* userdata)
     return (SDL_AudioSpec){ .freq = 8000,
                             .format = AUDIO_S8,
                             .channels = 1,
-                            .samples = 2048,
+                            .samples = 1024,
                             .callback = callback,
                             .userdata = userdata };
 #endif
