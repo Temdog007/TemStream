@@ -85,12 +85,13 @@ variant OptionalSecureIpAddress {
 }
 
 struct ClientConfiguration {
+    ClientAuthentication authentication
     string ttfFile
     i32 fontSize
     i32 windowWidth
     i32 windowHeight
+    bool noGui
     bool fullscreen
-    ClientAuthentication authentication
 }
 
 struct ServerConfiguration {

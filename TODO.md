@@ -24,7 +24,7 @@
 ### Feb 26, 2022
 - [x] Add threads to client
 - [ ] Audio stream (allow playback and recording device to be selected)
-- [ ] Add no display mode
+- [x] Add no display mode
 - [ ] Show message box when fatal errors occur (ex. disconnect from server)
 
 ### Later
@@ -32,6 +32,7 @@
 - [ ] Allow for blacklist/whitelist for stream access
 - [ ] Allow owner to add/remove writers/readers
 - [ ] Play gifs (use FFMPEG)
+- [ ] Create web page for GUI
 - [ ] Video stream
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams

@@ -84,6 +84,7 @@ defaultClientConfiguration()
         .windowWidth = 800,
         .windowHeight = 600,
         .fontSize = 48,
+        .noGui = false,
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
     };
@@ -113,6 +114,8 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--token", keyLen, { goto parseToken; });
         STR_EQUALS(key, "-C", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "--credentials", keyLen, { goto parseCredentials; });
+        STR_EQUALS(key, "-N", keyLen, { goto parseNoGui; });
+        STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;
@@ -149,6 +152,10 @@ parseClientConfiguration(const int argc,
         if (!parseCredentials(value, &client->authentication.credentials)) {
             return false;
         }
+        continue;
+    }
+    parseNoGui : {
+        client->noGui = atoi(value);
         continue;
     }
     }
@@ -619,6 +626,9 @@ end:
 void
 saveScreenshot(SDL_Renderer* renderer, const Guid* id)
 {
+    if (renderer == NULL) {
+        return;
+    }
     const StreamDisplay* display = NULL;
     SDL_Texture* temp = NULL;
     SDL_Surface* surface = NULL;
@@ -1010,6 +1020,9 @@ updateTextDisplay(SDL_Renderer* renderer,
                   const Guid* id,
                   const TemLangString* string)
 {
+    if (renderer == NULL) {
+        return;
+    }
     size_t i = 0;
     SDL_Surface* surface = NULL;
     if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
@@ -1059,6 +1072,9 @@ end:
 void
 updateImageDisplay(SDL_Renderer* renderer, const Guid* id, const Bytes* bytes)
 {
+    if (renderer == NULL) {
+        return;
+    }
     size_t i = 0;
     SDL_Surface* surface = NULL;
     if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
@@ -1115,9 +1131,12 @@ renderText(SDL_Renderer* renderer,
            const SDL_Color bg,
            const uint32_t wrapped)
 {
+    SDL_Rect rect = { 0 };
     SDL_Surface* surface = NULL;
     SDL_Texture* texture = NULL;
-    SDL_Rect rect = { 0 };
+    if (renderer == NULL) {
+        goto end;
+    }
 
     surface = TTF_RenderUTF8_Shaded_Wrapped(ttfFont, text, fg, bg, wrapped);
     if (surface == NULL) {
@@ -1154,6 +1173,9 @@ updateChatDisplay(SDL_Renderer* renderer,
                   const uint32_t h,
                   pStreamDisplay display)
 {
+    if (renderer == NULL) {
+        return;
+    }
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;
@@ -1243,6 +1265,9 @@ updateChatDisplayFromList(SDL_Renderer* renderer,
                           const Guid* id,
                           const ChatMessageList* list)
 {
+    if (renderer == NULL) {
+        return;
+    }
     size_t i = 0;
     if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
         puts("Missing stream display for chat stream");
@@ -1269,6 +1294,9 @@ updateChatDisplayFromMessage(SDL_Renderer* renderer,
                              const Guid* id,
                              const ChatMessage* message)
 {
+    if (renderer == NULL) {
+        return;
+    }
     size_t i = 0;
     if (!GetStreamDisplayFromGuid(&clientData.displays, id, NULL, &i)) {
         puts("Missing stream display for chat stream");
@@ -1300,6 +1328,9 @@ drawTextures(SDL_Renderer* renderer,
              const float maxX,
              const float maxY)
 {
+    if (renderer == NULL) {
+        return;
+    }
     SDL_SetRenderTarget(renderer, NULL);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
@@ -1404,6 +1435,7 @@ clientConnectionThread(const AllConfiguration* configuration)
     host = enet_host_create(NULL, 1, 2, 0, 0);
     if (host == NULL) {
         fprintf(stderr, "Failed to create client host\n");
+        appDone = true;
         goto end;
     }
     {
@@ -1419,6 +1451,7 @@ clientConnectionThread(const AllConfiguration* configuration)
     }
     if (peer == NULL) {
         fprintf(stderr, "Failed to connect to server\n");
+        appDone = true;
         goto end;
     }
 
@@ -1444,6 +1477,7 @@ clientConnectionThread(const AllConfiguration* configuration)
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
         peer = NULL;
+        appDone = true;
         goto end;
     }
 
@@ -1564,37 +1598,40 @@ runClient(const AllConfiguration* configuration)
     }
     outgoingPackets.allocator = currentAllocator;
 
-    window = SDL_CreateWindow(
-      "TemStream Client",
-      SDL_WINDOWPOS_UNDEFINED,
-      SDL_WINDOWPOS_UNDEFINED,
-      config->windowWidth,
-      config->windowHeight,
-      SDL_WINDOW_RESIZABLE |
-        (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
-    if (window == NULL) {
-        fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
-        goto end;
-    }
-
-    {
-        SDL_RendererInfo info = { 0 };
-#if _DEBUG
-        int drivers = SDL_GetNumRenderDrivers();
-        for (int i = 0; i < drivers; ++i) {
-            SDL_GetRenderDriverInfo(i, &info);
-            printRenderInfo(&info);
-        }
-#endif
-
-        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-        if (renderer == NULL) {
-            fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
+    if (!config->noGui) {
+        window = SDL_CreateWindow(
+          "TemStream Client",
+          SDL_WINDOWPOS_UNDEFINED,
+          SDL_WINDOWPOS_UNDEFINED,
+          config->windowWidth,
+          config->windowHeight,
+          SDL_WINDOW_RESIZABLE |
+            (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
+        if (window == NULL) {
+            fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
             goto end;
         }
 
-        SDL_GetRendererInfo(renderer, &info);
-        printf("Current renderer: %s\n", info.name);
+        {
+            SDL_RendererInfo info = { 0 };
+#if _DEBUG
+            int drivers = SDL_GetNumRenderDrivers();
+            for (int i = 0; i < drivers; ++i) {
+                SDL_GetRenderDriverInfo(i, &info);
+                printRenderInfo(&info);
+            }
+#endif
+
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+            if (renderer == NULL) {
+                fprintf(
+                  stderr, "Failed to create renderer: %s\n", SDL_GetError());
+                goto end;
+            }
+
+            SDL_GetRendererInfo(renderer, &info);
+            printf("Current renderer: %s\n", info.name);
+        }
     }
 
     // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
@@ -1610,6 +1647,7 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
+    appDone = false;
     threads[0] = SDL_CreateThread(
       (SDL_ThreadFunction)clientConnectionThread, "enet", (void*)configuration);
 
@@ -1621,7 +1659,7 @@ runClient(const AllConfiguration* configuration)
     size_t targetDisplay = UINT32_MAX;
     MoveMode moveMode = MoveMode_None;
     bool hasTarget = false;
-    appDone = false;
+
     while (!appDone) {
         switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
             case -1:
