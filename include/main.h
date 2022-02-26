@@ -30,7 +30,7 @@
 #define LOW_AUDIO 0
 #define MED_AUDIO 1
 #define HIGH_AUDIO 2
-#define AUDIO MED_AUDIO
+#define AUDIO HIGH_AUDIO
 
 const extern Guid ZeroGuid;
 

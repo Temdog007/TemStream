@@ -23,6 +23,10 @@
 
 ### Feb 26, 2022
 - [x] Add threads to client
+- [ ] Use custom allocator for ENet
+- [ ] Include press to talk
+- [ ] Test changing font
+- [x] Allow playback device to be changed
 - [x] Audio stream (allow playback and recording device to be selected)
 - [x] Add no display mode
 - [x] Show message box when fatal errors occur (ex. disconnect from server)
@@ -31,9 +35,14 @@
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Allow for blacklist/whitelist for stream access
 - [ ] Allow owner to add/remove writers/readers
-- [ ] Play gifs (use FFMPEG)
+- [ ] Include FFMPEG
+    - [ ] Play gifs
+    - [ ] Compress audio
+    - [ ] Record windows
+    - [ ] Record screen
+    - [ ] Record webcam
+- [ ] Mix audio properply
 - [ ] Create web page for GUI
-- [ ] Video stream
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects

@@ -17,6 +17,9 @@ SDL_AudioDeviceID playbackId = 0;
 
 Bytes audioBytes = { 0 };
 
+void
+startPlayback(const char* name);
+
 bool
 enqueuePacket(ENetPacket* packet)
 {
@@ -240,10 +243,10 @@ getUserInput(struct pollfd inputfd,
 }
 
 UserInputResult
-userIndexFromUser(struct pollfd inputfd,
-                  pBytes bytes,
-                  const uint32_t max,
-                  uint32_t* index)
+getIndexFromUser(struct pollfd inputfd,
+                 pBytes bytes,
+                 const uint32_t max,
+                 uint32_t* index)
 {
     ssize_t size = 0;
     while (!appDone) {
@@ -288,7 +291,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streamNum == 1) {
         puts("Connecting to only stream available");
-    } else if (userIndexFromUser(inputfd, bytes, streamNum, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streamNum, &i) !=
                UserInputResult_Input) {
         puts("Canceling connecting to stream");
         return;
@@ -326,7 +329,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1) {
         puts("Disconnecting from only stream available");
-    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceled disconnecting from stream");
         goto end;
@@ -476,7 +479,7 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes)
     puts("");
 
     uint32_t index;
-    if (userIndexFromUser(inputfd, bytes, StreamType_Length, &index) !=
+    if (getIndexFromUser(inputfd, bytes, StreamType_Length, &index) !=
         UserInputResult_Input) {
         puts("Canceling start stream");
         return;
@@ -550,7 +553,7 @@ selectStreamToStop(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1U) {
         puts("Stopping to only stream available");
-    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceled stopping stream");
         goto end;
@@ -594,7 +597,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1) {
         puts("Sending text to only stream available");
-    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceling text send");
         goto end;
@@ -673,7 +676,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1U) {
         puts("Sending data to only stream available");
-    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceling file upload");
         goto end;
@@ -857,7 +860,7 @@ userInputThread(void* ptr)
     while (!appDone) {
         uint32_t index = 0;
         switch (
-          userIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
+          getIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
             case UserInputResult_Input:
                 break;
             case UserInputResult_Error:
@@ -909,7 +912,7 @@ userInputThread(void* ptr)
                     goto saveEnd;
                 } else if (streams.used == 1) {
                     puts("Taking screenshot from only available stream");
-                } else if (userIndexFromUser(
+                } else if (getIndexFromUser(
                              inputfd, &bytes, streams.used, &i) !=
                            UserInputResult_Input) {
                     puts("Canceling screenshot");
@@ -924,8 +927,29 @@ userInputThread(void* ptr)
                 SDL_PushEvent(&e);
             saveEnd:
                 StreamListFree(&streams);
-                break;
-            }
+            } break;
+            case ClientCommand_ChangePlaybackDevice: {
+                const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
+                if (devices == 0) {
+                    puts("No playback devices detected");
+                    break;
+                }
+                uint32_t index = 0;
+                if (devices != 1) {
+                    askQuestion("Select a playback device");
+                    for (int i = 0; i < devices; ++i) {
+                        printf("%d) %s\n",
+                               i + 1,
+                               SDL_GetAudioDeviceName(i, SDL_FALSE));
+                    }
+                    if (getIndexFromUser(inputfd, &bytes, devices, &index) !=
+                        UserInputResult_Input) {
+                        puts("Cancel changing playback device");
+                        break;
+                    }
+                }
+                startPlayback(SDL_GetAudioDeviceName(index, SDL_FALSE));
+            } break;
             case ClientCommand_ConnectToStream:
             case ClientCommand_ShowAllStreams:
             case ClientCommand_ShowConnectedStreams:
@@ -1707,6 +1731,31 @@ displayError(SDL_Window* window, const char* e)
       SDL_MESSAGEBOX_ERROR, "SDL error", e, window);
 }
 
+void
+startPlayback(const char* name)
+{
+    if (playbackId != 0) {
+        SDL_CloseAudioDevice(playbackId);
+        playbackId = 0;
+    }
+    const SDL_AudioSpec desired =
+      makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, NULL);
+    SDL_AudioSpec obtained = { 0 };
+    playbackId = SDL_OpenAudioDevice(
+      name, SDL_FALSE, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
+    if (playbackId == 0) {
+        fprintf(stderr,
+                "Failed to open playback device. No audio will be played\n");
+    } else {
+        puts("Playback audio specification");
+        printAudioSpec(&obtained);
+        SDL_PauseAudioDevice(playbackId, SDL_FALSE);
+#if _DEBUG
+        printf("Playback id: %u\n", playbackId);
+#endif
+    }
+}
+
 int
 runClient(const AllConfiguration* configuration)
 {
@@ -1796,19 +1845,7 @@ runClient(const AllConfiguration* configuration)
             printf("Current renderer: %s\n", info.name);
         }
 
-        const SDL_AudioSpec desired =
-          makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, NULL);
-        SDL_AudioSpec obtained = { 0 };
-        playbackId = SDL_OpenAudioDevice(
-          NULL, SDL_FALSE, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
-        if (playbackId == 0) {
-            fprintf(stderr, "Failed to open playback device\n");
-            displayError(window, "Failed to start");
-            goto end;
-        }
-        puts("Playback audio specification");
-        printAudioSpec(&obtained);
-        SDL_PauseAudioDevice(playbackId, SDL_FALSE);
+        startPlayback(NULL);
     }
 
     // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
@@ -2084,6 +2121,9 @@ runClient(const AllConfiguration* configuration)
                                   renderer, &m->id, &m->data.image);
                                 break;
                             case StreamMessageDataTag_audio: {
+                                if (playbackId == 0) {
+                                    break;
+                                }
                                 SDL_LockAudioDevice(playbackId);
                                 uint8_tListQuickAppend(&audioBytes,
                                                        m->data.audio.buffer,
