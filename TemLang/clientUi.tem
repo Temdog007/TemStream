@@ -78,5 +78,6 @@ enum CustomEvent {
     AddTexture
     UpdateStreamDisplay
     SaveScreenshot
-    Message
+    HandleMessage
+    ShowSimpleMessage
 }

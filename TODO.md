@@ -25,7 +25,7 @@
 - [x] Add threads to client
 - [ ] Audio stream (allow playback and recording device to be selected)
 - [x] Add no display mode
-- [ ] Show message box when fatal errors occur (ex. disconnect from server)
+- [x] Show message box when fatal errors occur (ex. disconnect from server)
 
 ### Later
 - [ ] Implement stream recording and playback (need to timestamp messages)

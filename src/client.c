@@ -1491,6 +1491,11 @@ clientConnectionThread(const AllConfiguration* configuration)
         const int status = enet_host_service(host, &event, 100U);
         if (status < 0) {
             fprintf(stderr, "Connection error\n");
+            SDL_Event e = { 0 };
+            e.user.code = CustomEvent_ShowSimpleMessage;
+            e.user.data1 = "Connection error";
+            e.user.data2 = "Lost connection from server";
+            SDL_PushEvent(&e);
             appDone = true;
             goto end;
         }
@@ -1502,10 +1507,16 @@ clientConnectionThread(const AllConfiguration* configuration)
                 puts("Unexpected connect event from server");
                 appDone = true;
                 goto end;
-            case ENET_EVENT_TYPE_DISCONNECT:
+            case ENET_EVENT_TYPE_DISCONNECT: {
                 puts("Disconnected from server");
                 appDone = true;
+                SDL_Event e = { 0 };
+                e.user.code = CustomEvent_ShowSimpleMessage;
+                e.user.data1 = "Connection error";
+                e.user.data2 = "Lost connection from server";
+                SDL_PushEvent(&e);
                 goto end;
+            }
             case ENET_EVENT_TYPE_RECEIVE: {
                 const Bytes packetBytes = { .allocator = currentAllocator,
                                             .buffer = event.packet->data,
@@ -1515,7 +1526,7 @@ clientConnectionThread(const AllConfiguration* configuration)
                 MESSAGE_DESERIALIZE((*message), packetBytes);
                 SDL_Event e = { 0 };
                 e.type = SDL_USEREVENT;
-                e.user.code = CustomEvent_Message;
+                e.user.code = CustomEvent_HandleMessage;
                 e.user.data1 = message;
                 SDL_PushEvent(&e);
                 enet_packet_destroy(event.packet);
@@ -1554,6 +1565,13 @@ continueEnd:
 }
 
 int
+displayError(SDL_Window* window, const char* e)
+{
+    return SDL_ShowSimpleMessageBox(
+      SDL_MESSAGEBOX_ERROR, "SDL error", e, window);
+}
+
+int
 runClient(const AllConfiguration* configuration)
 {
     int result = EXIT_FAILURE;
@@ -1575,6 +1593,7 @@ runClient(const AllConfiguration* configuration)
     clientData.displays.allocator = currentAllocator;
     if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
+        displayError(window, "Failed to start");
         goto end;
     }
 
@@ -1582,18 +1601,21 @@ runClient(const AllConfiguration* configuration)
         const uint32_t flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_WEBP;
         if (IMG_Init(flags) != flags) {
             fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
+            displayError(window, "Failed to start");
             goto end;
         }
     }
 
     if (TTF_Init() == -1) {
         fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
+        displayError(window, "Failed to start");
         goto end;
     }
 
     packetMutex = SDL_CreateMutex();
     if (packetMutex == NULL) {
         fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
+        displayError(window, "Failed to start");
         goto end;
     }
     outgoingPackets.allocator = currentAllocator;
@@ -1609,6 +1631,7 @@ runClient(const AllConfiguration* configuration)
             (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
         if (window == NULL) {
             fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
+            displayError(window, "Failed to start");
             goto end;
         }
 
@@ -1626,6 +1649,7 @@ runClient(const AllConfiguration* configuration)
             if (renderer == NULL) {
                 fprintf(
                   stderr, "Failed to create renderer: %s\n", SDL_GetError());
+                displayError(window, "Failed to start");
                 goto end;
             }
 
@@ -1644,15 +1668,25 @@ runClient(const AllConfiguration* configuration)
     ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
     if (ttfFont == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
+        displayError(window, "Failed to start");
         goto end;
     }
 
     appDone = false;
     threads[0] = SDL_CreateThread(
       (SDL_ThreadFunction)clientConnectionThread, "enet", (void*)configuration);
-
+    if (threads[0] == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        displayError(window, "Failed to start");
+        goto end;
+    }
     threads[1] = SDL_CreateThread(
       (SDL_ThreadFunction)userInputThread, "user", (void*)configuration);
+    if (threads[1] == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        displayError(window, "Failed to start");
+        goto end;
+    }
 
     SDL_Event e = { 0 };
 
@@ -1664,6 +1698,7 @@ runClient(const AllConfiguration* configuration)
         switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
             case -1:
                 fprintf(stderr, "Event error: %s\n", SDL_GetError());
+                displayError(window, "Failed to start");
                 appDone = true;
                 continue;
             case 0:
@@ -1822,12 +1857,18 @@ runClient(const AllConfiguration* configuration)
                         saveScreenshot(renderer, (const Guid*)e.user.data1);
                         currentAllocator->free(e.user.data1);
                         break;
-                    case CustomEvent_Message: {
+                    case CustomEvent_HandleMessage: {
                         pMessage message = e.user.data1;
                         clientHandleMessage(message);
                         MessageFree(message);
                         currentAllocator->free(e.user.data1);
                     } break;
+                    case CustomEvent_ShowSimpleMessage:
+                        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                                 (char*)e.user.data1,
+                                                 (char*)e.user.data2,
+                                                 window);
+                        break;
                     case CustomEvent_AddTexture: {
                         StreamDisplay s = { 0 };
                         s.dstRect.x = 0.f;
