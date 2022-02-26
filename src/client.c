@@ -1948,6 +1948,11 @@ runClient(const AllConfiguration* configuration)
                     case SDLK_ESCAPE:
                         displayUserOptions();
                         break;
+                    case SDLK_F2:
+                        printf("Memory: %zu / %zu\n",
+                               currentAllocator->used(),
+                               currentAllocator->totalSize());
+                        break;
                     case SDLK_v: {
                         if ((e.key.keysym.mod & KMOD_CTRL) == 0) {
                             break;

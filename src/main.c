@@ -47,7 +47,11 @@ main(const int argc, const char** argv)
         printf("Using %zu MB of memory\n", memory / (1024 * 1024));
         currentAllocator = &allocator;
     }
-    if (enet_initialize() != 0) {
+
+    const ENetCallbacks callbacks = { .free = tsFree,
+                                      .malloc = tsAllocate,
+                                      .no_memory = NULL };
+    if (enet_initialize_with_callbacks(ENET_VERSION, &callbacks) != 0) {
         fprintf(stderr, "Failed to initialize ENet\n");
         return EXIT_FAILURE;
     }

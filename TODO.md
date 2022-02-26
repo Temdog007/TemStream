@@ -23,7 +23,7 @@
 
 ### Feb 26, 2022
 - [x] Add threads to client
-- [ ] Use custom allocator for ENet
+- [x] Use custom allocator for ENet
 - [x] Test changing font
 - [x] Allow playback device to be changed
 - [x] Audio stream (allow playback and recording device to be selected)
