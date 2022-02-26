@@ -5,6 +5,20 @@
 
 ClientData clientData = { 0 };
 
+SDL_mutex* packetMutex = NULL;
+
+pENetPacketList outgoingPackets = { 0 };
+
+bool
+enqueuePacket(ENetPacket* packet)
+{
+    bool result;
+    IN_MUTEX(packetMutex, end, {
+        result = pENetPacketListAppend(&outgoingPackets, &packet);
+    });
+    return result;
+}
+
 void
 renderDisplays()
 {
@@ -214,29 +228,31 @@ UserInputResult
 userIndexFromUser(struct pollfd inputfd,
                   pBytes bytes,
                   const uint32_t max,
-                  uint32_t* index,
-                  const int timeout)
+                  uint32_t* index)
 {
     ssize_t size = 0;
-    switch (getUserInput(inputfd, bytes, &size, timeout)) {
-        case UserInputResult_Error:
+    while (!appDone) {
+        switch (getUserInput(inputfd, bytes, &size, CLIENT_POLL_WAIT)) {
+            case UserInputResult_Error:
+                return UserInputResult_Error;
+            case UserInputResult_NoInput:
+                continue;
+            default:
+                break;
+        }
+        char* end = NULL;
+        *index = (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
+        if (end != (char*)&bytes->buffer[size] || *index >= max) {
+            printf("Enter a number between 1 and %u\n", max);
             return UserInputResult_Error;
-        case UserInputResult_NoInput:
-            return UserInputResult_NoInput;
-        default:
-            break;
+        }
+        return UserInputResult_Input;
     }
-    char* end = NULL;
-    *index = (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
-    if (end != (char*)&bytes->buffer[size] || *index >= max) {
-        printf("Enter a number between 1 and %u\n", max);
-        return UserInputResult_Error;
-    }
-    return UserInputResult_Input;
+    return UserInputResult_NoInput;
 }
 
 void
-selectAStreamToConnectTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
+selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
 {
     const uint32_t streamNum = clientData.allStreams.used;
     askQuestion("Select a stream to connect to");
@@ -257,8 +273,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     uint32_t i = 0;
     if (streamNum == 1) {
         puts("Connecting to only stream available");
-    } else if (userIndexFromUser(
-                 inputfd, bytes, streamNum, &i, USER_INPUT_TIMEOUT) !=
+    } else if (userIndexFromUser(inputfd, bytes, streamNum, &i) !=
                UserInputResult_Input) {
         puts("Canceling connecting to stream");
         return;
@@ -270,13 +285,11 @@ selectAStreamToConnectTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
     ENetPacket* packet = BytesToPacket(bytes, true);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    enqueuePacket(packet);
 }
 
 void
-selectAStreamToDisconnectFrom(struct pollfd inputfd,
-                              ENetPeer* peer,
-                              pBytes bytes)
+selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
 {
     StreamList streams = { .allocator = currentAllocator };
     const uint32_t streamNum = clientData.connectedStreams.used;
@@ -298,8 +311,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
     uint32_t i = 0;
     if (streams.used == 1) {
         puts("Disconnecting from only stream available");
-    } else if (userIndexFromUser(
-                 inputfd, bytes, streams.used, &i, USER_INPUT_TIMEOUT) !=
+    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceled disconnecting from stream");
         goto end;
@@ -311,13 +323,13 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd,
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
     ENetPacket* packet = BytesToPacket(bytes, true);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    enqueuePacket(packet);
 end:
     StreamListFree(&streams);
 }
 
 void
-selectStreamToStart(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
+selectStreamToStart(struct pollfd inputfd, pBytes bytes)
 {
     askQuestion("Select the type of stream to create");
     for (uint32_t i = 0; i < StreamType_Length; ++i) {
@@ -326,8 +338,7 @@ selectStreamToStart(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     puts("");
 
     uint32_t index;
-    if (userIndexFromUser(
-          inputfd, bytes, StreamType_Length, &index, USER_INPUT_TIMEOUT) !=
+    if (userIndexFromUser(inputfd, bytes, StreamType_Length, &index) !=
         UserInputResult_Input) {
         puts("Canceling start stream");
         return;
@@ -338,8 +349,7 @@ selectStreamToStart(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     message.startStreaming.type = (StreamType)index;
 
     askQuestion("What's the name of the stream?");
-    if (getUserInput(inputfd, bytes, NULL, USER_INPUT_TIMEOUT) !=
-        UserInputResult_Input) {
+    if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
         puts("Canceling start stream");
         return;
     }
@@ -350,8 +360,7 @@ selectStreamToStart(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
 
     askQuestion("Do want the stream to be recorded on the server (y or n)?");
     while (!appDone) {
-        if (getUserInput(inputfd, bytes, NULL, USER_INPUT_TIMEOUT) !=
-            UserInputResult_Input) {
+        if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
             goto write_Y_N_error;
         }
         switch ((char)bytes->buffer[0]) {
@@ -377,11 +386,11 @@ selectStreamToStart(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
            message.startStreaming.name.buffer);
     MessageFree(&message);
     ENetPacket* packet = BytesToPacket(bytes, true);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    enqueuePacket(packet);
 }
 
 void
-selectStreamToStop(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
+selectStreamToStop(struct pollfd inputfd, pBytes bytes)
 {
     StreamList streams = { .allocator = currentAllocator };
 
@@ -405,8 +414,7 @@ selectStreamToStop(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1U) {
         puts("Stopping to only stream available");
-    } else if (userIndexFromUser(
-                 inputfd, bytes, streams.used, &i, USER_INPUT_TIMEOUT) !=
+    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceled stopping stream");
         goto end;
@@ -420,14 +428,14 @@ selectStreamToStop(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     MessageFree(&message);
 
     ENetPacket* packet = BytesToPacket(bytes, true);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    enqueuePacket(packet);
 
 end:
     StreamListFree(&streams);
 }
 
 void
-selectStreamToSendTextTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
+selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
 {
     StreamList streams = { .allocator = currentAllocator };
     const Stream* stream = NULL;
@@ -450,8 +458,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1) {
         puts("Sending text to only stream available");
-    } else if (userIndexFromUser(
-                 inputfd, bytes, streams.used, &i, USER_INPUT_TIMEOUT) !=
+    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceling text send");
         goto end;
@@ -464,7 +471,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
         case StreamType_Text:
             printf("Enter text to update text stream '%s'\n",
                    stream->name.buffer);
-            if (getUserInput(inputfd, bytes, NULL, USER_INPUT_TIMEOUT) !=
+            if (getUserInput(inputfd, bytes, NULL, -1) !=
                 UserInputResult_Input) {
                 puts("Canceling text send");
                 goto end;
@@ -475,7 +482,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
             break;
         case StreamType_Chat:
             printf("Enter message for chat stream '%s'\n", stream->name.buffer);
-            if (getUserInput(inputfd, bytes, NULL, USER_INPUT_TIMEOUT) !=
+            if (getUserInput(inputfd, bytes, NULL, -1) !=
                 UserInputResult_Input) {
                 puts("Canceling text send");
                 goto end;
@@ -495,14 +502,14 @@ selectStreamToSendTextTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
     ENetPacket* packet = BytesToPacket(bytes, true);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    enqueuePacket(packet);
 
 end:
     StreamListFree(&streams);
 }
 
 void
-selectStreamToUploadFileTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
+selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
 {
     StreamList streams = { .allocator = currentAllocator };
     int fd = -1;
@@ -530,8 +537,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1U) {
         puts("Sending data to only stream available");
-    } else if (userIndexFromUser(
-                 inputfd, bytes, streams.used, &i, USER_INPUT_TIMEOUT) !=
+    } else if (userIndexFromUser(inputfd, bytes, streams.used, &i) !=
                UserInputResult_Input) {
         puts("Canceling file upload");
         goto end;
@@ -540,8 +546,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     stream = &streams.buffer[i];
 
     askQuestion("Enter file name");
-    if (getUserInput(inputfd, bytes, NULL, USER_INPUT_TIMEOUT) !=
-        UserInputResult_Input) {
+    if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
         puts("Canceling file upload");
         goto end;
     }
@@ -604,7 +609,8 @@ selectStreamToUploadFileTo(struct pollfd inputfd, ENetPeer* peer, pBytes bytes)
     }
 
     ENetPacket* packet = BytesToPacket(bytes, true);
-    enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    enqueuePacket(packet);
+    puts("Sent file");
 end:
     unmapFile(fd, ptr, size);
     StreamListFree(&streams);
@@ -696,135 +702,134 @@ displayUserOptions()
 }
 
 void
-handleUserInput(ENetPeer* peer, pBytes bytes)
+handleClientCommand(const ClientCommand command, pBytes bytes);
+
+int
+userInputThread(void* ptr)
 {
+    (void)ptr;
+    Bytes bytes = { .allocator = currentAllocator,
+                    .buffer = currentAllocator->allocate(KB(1)),
+                    .size = KB(1),
+                    .used = 0 };
     struct pollfd inputfd = { .events = POLLIN,
                               .revents = 0,
                               .fd = STDIN_FILENO };
-
-    uint32_t index;
-    switch (
-      userIndexFromUser(inputfd, bytes, ClientCommand_Length, &index, 0)) {
-        case UserInputResult_Input:
-            break;
-        case UserInputResult_Error:
-            displayUserOptions();
-            goto end;
-        default:
-            goto end;
-    }
-
-    bool sendEvent = false;
-    switch (index) {
-        case ClientCommand_PrintName:
-            printf("Client name: %s\n", clientData.name.buffer);
-            break;
-        case ClientCommand_GetClients: {
-            Message message = { 0 };
-            message.tag = MessageTag_getClients;
-            message.getClients = NULL;
-            MESSAGE_SERIALIZE(message, (*bytes));
-            ENetPacket* packet = BytesToPacket(bytes, true);
-            enet_peer_send(peer, CLIENT_CHANNEL, packet);
-        } break;
-        case ClientCommand_Quit:
-            appDone = true;
-            break;
-        case ClientCommand_StartStreaming:
-            selectStreamToStart(inputfd, peer, bytes);
-            break;
-        case ClientCommand_SaveScreenshot: {
-            StreamList streams = { .allocator = currentAllocator };
-            askQuestion("Select stream to take screenshot from");
-            for (size_t i = 0; i < clientData.connectedStreams.used; ++i) {
-                const Stream* stream = NULL;
-                if (!GetStreamFromGuid(&clientData.allStreams,
-                                       &clientData.connectedStreams.buffer[i],
-                                       &stream,
-                                       NULL)) {
-                    continue;
-                }
-                printf("%zu) %s\n", streams.used + 1UL, stream->name.buffer);
-                StreamListAppend(&streams, stream);
-            }
-            puts("");
-
-            uint32_t i = 1;
-            if (StreamListIsEmpty(&streams)) {
-                puts("No streams to take screenshot from");
-                goto saveEnd;
-            } else if (streams.used == 1) {
-                puts("Taking screenshot from only available stream");
-            } else if (userIndexFromUser(inputfd,
-                                         bytes,
-                                         streams.used,
-                                         &i,
-                                         USER_INPUT_TIMEOUT) !=
-                       UserInputResult_Input) {
-                puts("Canceling screenshot");
-                goto saveEnd;
-            }
-            SDL_Event e = { 0 };
-            e.type = SDL_USEREVENT;
-            e.user.code = CustomEvent_SaveScreenshot;
-            Guid* guid = currentAllocator->allocate(sizeof(Guid));
-            *guid = streams.buffer[i].id;
-            e.user.data1 = guid;
-            SDL_PushEvent(&e);
-        saveEnd:
-            StreamListFree(&streams);
-            break;
+    while (!appDone) {
+        uint32_t index = 0;
+        switch (
+          userIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
+            case UserInputResult_Input:
+                break;
+            case UserInputResult_Error:
+                displayUserOptions();
+                continue;
+            default:
+                continue;
         }
-        case ClientCommand_ConnectToStream:
-        case ClientCommand_ShowAllStreams:
-        case ClientCommand_ShowConnectedStreams:
-        case ClientCommand_ShowOwnStreams:
-        case ClientCommand_DisconnectFromStream:
-        case ClientCommand_StopStreaming:
-        case ClientCommand_UploadFile:
-        case ClientCommand_UploadText:
-            sendEvent = true;
-            break;
-        default:
-            fprintf(stderr,
-                    "Command '%s' is not implemented\n",
-                    ClientCommandToCharString(index));
-            break;
+
+        switch (index) {
+            case ClientCommand_PrintName:
+                printf("Client name: %s\n", clientData.name.buffer);
+                break;
+            case ClientCommand_GetClients: {
+                Message message = { 0 };
+                message.tag = MessageTag_getClients;
+                message.getClients = NULL;
+                MESSAGE_SERIALIZE(message, bytes);
+                ENetPacket* packet = BytesToPacket(&bytes, true);
+                enqueuePacket(packet);
+            } break;
+            case ClientCommand_Quit:
+                appDone = true;
+                break;
+            case ClientCommand_StartStreaming:
+                selectStreamToStart(inputfd, &bytes);
+                break;
+            case ClientCommand_SaveScreenshot: {
+                StreamList streams = { .allocator = currentAllocator };
+                askQuestion("Select stream to take screenshot from");
+                for (size_t i = 0; i < clientData.connectedStreams.used; ++i) {
+                    const Stream* stream = NULL;
+                    if (!GetStreamFromGuid(
+                          &clientData.allStreams,
+                          &clientData.connectedStreams.buffer[i],
+                          &stream,
+                          NULL)) {
+                        continue;
+                    }
+                    printf(
+                      "%zu) %s\n", streams.used + 1UL, stream->name.buffer);
+                    StreamListAppend(&streams, stream);
+                }
+                puts("");
+
+                uint32_t i = 1;
+                if (StreamListIsEmpty(&streams)) {
+                    puts("No streams to take screenshot from");
+                    goto saveEnd;
+                } else if (streams.used == 1) {
+                    puts("Taking screenshot from only available stream");
+                } else if (userIndexFromUser(
+                             inputfd, &bytes, streams.used, &i) !=
+                           UserInputResult_Input) {
+                    puts("Canceling screenshot");
+                    goto saveEnd;
+                }
+                SDL_Event e = { 0 };
+                e.type = SDL_USEREVENT;
+                e.user.code = CustomEvent_SaveScreenshot;
+                Guid* guid = currentAllocator->allocate(sizeof(Guid));
+                *guid = streams.buffer[i].id;
+                e.user.data1 = guid;
+                SDL_PushEvent(&e);
+            saveEnd:
+                StreamListFree(&streams);
+                break;
+            }
+            case ClientCommand_ConnectToStream:
+            case ClientCommand_ShowAllStreams:
+            case ClientCommand_ShowConnectedStreams:
+            case ClientCommand_ShowOwnStreams:
+            case ClientCommand_DisconnectFromStream:
+            case ClientCommand_StopStreaming:
+            case ClientCommand_UploadFile:
+            case ClientCommand_UploadText:
+                handleClientCommand(index, &bytes);
+                break;
+            default:
+                fprintf(stderr,
+                        "Command '%s' is not implemented\n",
+                        ClientCommandToCharString(index));
+                break;
+        }
     }
 
-    if (sendEvent) {
-        SDL_Event e = { 0 };
-        e.type = SDL_USEREVENT;
-        e.user.code = CustomEvent_ClientCommand;
-        e.user.data1 = (void*)(size_t)index;
-        SDL_PushEvent(&e);
-    }
-
-end:
-    return;
+    uint8_tListFree(&bytes);
+    return EXIT_SUCCESS;
 }
 
 void
-handleClientCommand(const ClientCommand command, ENetPeer* peer, pBytes bytes)
+handleClientCommand(const ClientCommand command, pBytes bytes)
 {
     const struct pollfd inputfd = { .revents = 0,
                                     .events = POLLIN,
                                     .fd = STDIN_FILENO };
     switch (command) {
         case ClientCommand_ConnectToStream:
-            selectAStreamToConnectTo(inputfd, peer, bytes);
+            selectAStreamToConnectTo(inputfd, bytes);
             break;
         case ClientCommand_DisconnectFromStream:
-            selectAStreamToDisconnectFrom(inputfd, peer, bytes);
+            selectAStreamToDisconnectFrom(inputfd, bytes);
             break;
         case ClientCommand_StopStreaming:
-            selectStreamToStop(inputfd, peer, bytes);
+            selectStreamToStop(inputfd, bytes);
             break;
         case ClientCommand_UploadText:
-            selectStreamToSendTextTo(inputfd, peer, bytes);
+            selectStreamToSendTextTo(inputfd, bytes);
             break;
         case ClientCommand_UploadFile:
-            selectStreamToUploadFileTo(inputfd, peer, bytes);
+            selectStreamToUploadFileTo(inputfd, bytes);
             break;
         case ClientCommand_ShowAllStreams:
             askQuestion("All Streams");
@@ -1388,10 +1393,135 @@ loadNewFont(const char* filename, const int fontSize, TTF_Font** ttfFont)
 }
 
 int
-runClient(const AllConfiguration* configuration)
+clientConnectionThread(const AllConfiguration* configuration)
 {
+    const ClientConfiguration* config = &configuration->configuration.client;
+
+    int result = EXIT_FAILURE;
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
+
+    host = enet_host_create(NULL, 1, 2, 0, 0);
+    if (host == NULL) {
+        fprintf(stderr, "Failed to create client host\n");
+        goto end;
+    }
+    {
+        ENetAddress address = { 0 };
+        enet_address_set_host(&address, configuration->address.ip.buffer);
+        char* end = NULL;
+        address.port =
+          (uint16_t)strtoul(configuration->address.port.buffer, &end, 10);
+        peer = enet_host_connect(host, &address, 2, 0);
+        char buffer[512] = { 0 };
+        enet_address_get_host_ip(&address, buffer, sizeof(buffer));
+        printf("Connecting to server: %s:%u...\n", buffer, address.port);
+    }
+    if (peer == NULL) {
+        fprintf(stderr, "Failed to connect to server\n");
+        goto end;
+    }
+
+    ENetEvent event = { 0 };
+    if (enet_host_service(host, &event, 5000) > 0 &&
+        event.type == ENET_EVENT_TYPE_CONNECT) {
+        char buffer[KB(1)] = { 0 };
+        enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
+        printf(
+          "Connected to server: %s:%u\n", buffer, event.peer->address.port);
+        displayUserOptions();
+        Message message = { 0 };
+        message.tag = MessageTag_authenticate;
+        message.authenticate = config->authentication;
+        Bytes bytes = { .allocator = currentAllocator,
+                        .buffer = (uint8_t*)buffer,
+                        .used = 0,
+                        .size = sizeof(buffer) };
+        MESSAGE_SERIALIZE(message, bytes);
+        ENetPacket* packet = BytesToPacket(&bytes, true);
+        enet_peer_send(peer, CLIENT_CHANNEL, packet);
+    } else {
+        fprintf(stderr, "Failed to connect to server\n");
+        enet_peer_reset(peer);
+        peer = NULL;
+        goto end;
+    }
+
+    while (!appDone) {
+        IN_MUTEX(packetMutex, end2, {
+            for (size_t i = 0; i < outgoingPackets.used; ++i) {
+                enet_peer_send(peer, CLIENT_CHANNEL, outgoingPackets.buffer[i]);
+            }
+            outgoingPackets.used = 0;
+        });
+        const int status = enet_host_service(host, &event, 100U);
+        if (status < 0) {
+            fprintf(stderr, "Connection error\n");
+            appDone = true;
+            goto end;
+        }
+        if (status == 0) {
+            continue;
+        }
+        switch (event.type) {
+            case ENET_EVENT_TYPE_CONNECT:
+                puts("Unexpected connect event from server");
+                appDone = true;
+                goto end;
+            case ENET_EVENT_TYPE_DISCONNECT:
+                puts("Disconnected from server");
+                appDone = true;
+                goto end;
+            case ENET_EVENT_TYPE_RECEIVE: {
+                const Bytes packetBytes = { .allocator = currentAllocator,
+                                            .buffer = event.packet->data,
+                                            .size = event.packet->dataLength,
+                                            .used = event.packet->dataLength };
+                pMessage message = currentAllocator->allocate(sizeof(Message));
+                MESSAGE_DESERIALIZE((*message), packetBytes);
+                SDL_Event e = { 0 };
+                e.type = SDL_USEREVENT;
+                e.user.code = CustomEvent_Message;
+                e.user.data1 = message;
+                SDL_PushEvent(&e);
+                enet_packet_destroy(event.packet);
+            } break;
+            case ENET_EVENT_TYPE_NONE:
+                break;
+            default:
+                break;
+        }
+    }
+
+    result = EXIT_SUCCESS;
+
+end:
+    if (peer != NULL) {
+        enet_peer_disconnect(peer, 0);
+        while (enet_host_service(host, &event, 3000) > 0) {
+            switch (event.type) {
+                case ENET_EVENT_TYPE_RECEIVE:
+                    enet_packet_destroy(event.packet);
+                    break;
+                case ENET_EVENT_TYPE_DISCONNECT:
+                    puts("Disconnected gracefully from server");
+                    goto continueEnd;
+                default:
+                    break;
+            }
+        }
+        enet_peer_reset(peer);
+    }
+continueEnd:
+    if (host != NULL) {
+        enet_host_destroy(host);
+    }
+    return result;
+}
+
+int
+runClient(const AllConfiguration* configuration)
+{
     int result = EXIT_FAILURE;
     puts("Running client");
     printAllConfiguration(configuration);
@@ -1402,6 +1532,7 @@ runClient(const AllConfiguration* configuration)
     SDL_Renderer* renderer = NULL;
     // Font font = { 0 };
     TTF_Font* ttfFont = NULL;
+    SDL_Thread* threads[2] = { 0 };
     Bytes bytes = { .allocator = currentAllocator,
                     .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
                     .size = MAX_PACKET_SIZE,
@@ -1425,6 +1556,13 @@ runClient(const AllConfiguration* configuration)
         fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
         goto end;
     }
+
+    packetMutex = SDL_CreateMutex();
+    if (packetMutex == NULL) {
+        fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
+        goto end;
+    }
+    outgoingPackets.allocator = currentAllocator;
 
     window = SDL_CreateWindow(
       "TemStream Client",
@@ -1472,48 +1610,11 @@ runClient(const AllConfiguration* configuration)
         goto end;
     }
 
-    host = enet_host_create(NULL, 1, 2, 0, 0);
-    if (host == NULL) {
-        fprintf(stderr, "Failed to create client host\n");
-        goto end;
-    }
-    {
-        ENetAddress address = { 0 };
-        enet_address_set_host(&address, configuration->address.ip.buffer);
-        char* end = NULL;
-        address.port =
-          (uint16_t)strtoul(configuration->address.port.buffer, &end, 10);
-        peer = enet_host_connect(host, &address, 2, 0);
-        char buffer[512] = { 0 };
-        enet_address_get_host_ip(&address, buffer, sizeof(buffer));
-        printf("Connecting to server: %s:%u...\n", buffer, address.port);
-    }
-    if (peer == NULL) {
-        fprintf(stderr, "Failed to connect to server\n");
-        goto end;
-    }
+    threads[0] = SDL_CreateThread(
+      (SDL_ThreadFunction)clientConnectionThread, "enet", (void*)configuration);
 
-    ENetEvent event = { 0 };
-    if (enet_host_service(host, &event, 5000) > 0 &&
-        event.type == ENET_EVENT_TYPE_CONNECT) {
-        char buffer[512] = { 0 };
-        enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
-        printf(
-          "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-        displayUserOptions();
-        Message message = { 0 };
-        message.tag = MessageTag_authenticate;
-        message.authenticate = config->authentication;
-        MESSAGE_SERIALIZE(message, bytes);
-        ENetPacket* packet = BytesToPacket(&bytes, true);
-        // printSendingPacket(packet);
-        enet_peer_send(peer, CLIENT_CHANNEL, packet);
-    } else {
-        fprintf(stderr, "Failed to connect to server\n");
-        enet_peer_reset(peer);
-        peer = NULL;
-        goto end;
-    }
+    threads[1] = SDL_CreateThread(
+      (SDL_ThreadFunction)userInputThread, "user", (void*)configuration);
 
     SDL_Event e = { 0 };
 
@@ -1522,398 +1623,358 @@ runClient(const AllConfiguration* configuration)
     bool hasTarget = false;
     appDone = false;
     while (!appDone) {
-        while (SDL_PollEvent(&e)) {
-            switch (e.type) {
-                case SDL_QUIT:
-                    appDone = true;
-                    break;
-                case SDL_WINDOWEVENT:
+        switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
+            case -1:
+                fprintf(stderr, "Event error: %s\n", SDL_GetError());
+                appDone = true;
+                continue;
+            case 0:
+                continue;
+            default:
+                break;
+        }
+        switch (e.type) {
+            case SDL_QUIT:
+                appDone = true;
+                break;
+            case SDL_WINDOWEVENT:
+                renderDisplays();
+                break;
+            case SDL_KEYDOWN:
+                switch (e.key.keysym.sym) {
+                    case SDLK_F1:
+                    case SDLK_ESCAPE:
+                        displayUserOptions();
+                        break;
+                    case SDLK_v: {
+                        if ((e.key.keysym.mod & KMOD_CTRL) == 0) {
+                            break;
+                        }
+                        e.type = SDL_DROPTEXT;
+                        e.drop.file = SDL_GetClipboardText();
+                        e.drop.timestamp = SDL_GetTicks64();
+                        e.drop.windowID = SDL_GetWindowID(window);
+                        SDL_PushEvent(&e);
+                    } break;
+                    default:
+                        break;
+                }
+                break;
+            case SDL_MOUSEBUTTONDOWN: {
+                switch (e.button.button) {
+                    case SDL_BUTTON_LEFT:
+                        moveMode = MoveMode_Position;
+                        break;
+                    case SDL_BUTTON_RIGHT:
+                    case SDL_BUTTON_MIDDLE:
+                        moveMode = MoveMode_Size;
+                        break;
+                    default:
+                        moveMode = MoveMode_None;
+                        break;
+                }
+                SDL_FPoint point = { 0 };
+                point.x = e.button.x;
+                point.y = e.button.y;
+                if (findDisplayFromPoint(&point, &targetDisplay)) {
+                    hasTarget = true;
+                    SDL_SetWindowGrab(window, true);
                     renderDisplays();
-                    break;
-                case SDL_KEYDOWN:
-                    switch (e.key.keysym.sym) {
-                        case SDLK_F1:
-                        case SDLK_ESCAPE:
-                            displayUserOptions();
-                            break;
-                        case SDLK_v: {
-                            if ((e.key.keysym.mod & KMOD_CTRL) == 0) {
-                                break;
-                            }
-                            e.type = SDL_DROPTEXT;
-                            e.drop.file = SDL_GetClipboardText();
-                            e.drop.timestamp = SDL_GetTicks64();
-                            e.drop.windowID = SDL_GetWindowID(window);
-                            SDL_PushEvent(&e);
-                        } break;
-                        default:
-                            break;
-                    }
-                    break;
-                case SDL_MOUSEBUTTONDOWN: {
-                    switch (e.button.button) {
-                        case SDL_BUTTON_LEFT:
-                            moveMode = MoveMode_Position;
-                            break;
-                        case SDL_BUTTON_RIGHT:
-                        case SDL_BUTTON_MIDDLE:
-                            moveMode = MoveMode_Size;
-                            break;
-                        default:
-                            moveMode = MoveMode_None;
-                            break;
-                    }
-                    SDL_FPoint point = { 0 };
-                    point.x = e.button.x;
-                    point.y = e.button.y;
-                    if (findDisplayFromPoint(&point, &targetDisplay)) {
-                        hasTarget = true;
-                        SDL_SetWindowGrab(window, true);
-                        renderDisplays();
-                    }
-                } break;
-                case SDL_MOUSEBUTTONUP: {
-                    hasTarget = false;
-                    targetDisplay = UINT32_MAX;
-                    SDL_SetWindowGrab(window, false);
-                    renderDisplays();
-                } break;
-                case SDL_MOUSEMOTION: {
-                    if (hasTarget) {
-                        if (targetDisplay >= clientData.displays.used) {
-                            break;
-                        }
-                        pStreamDisplay display =
-                          &clientData.displays.buffer[targetDisplay];
-                        if (display->texture == NULL) {
-                            break;
-                        }
-                        int w;
-                        int h;
-                        SDL_GetWindowSize(window, &w, &h);
-                        switch (moveMode) {
-                            case MoveMode_Position:
-                                display->dstRect.x =
-                                  display->dstRect.x + e.motion.xrel;
-                                display->dstRect.y =
-                                  display->dstRect.y + e.motion.yrel;
-                                break;
-                            case MoveMode_Size:
-                                display->dstRect.w =
-                                  SDL_clamp(display->dstRect.w + e.motion.xrel,
-                                            MIN_WIDTH,
-                                            w);
-                                display->dstRect.h =
-                                  SDL_clamp(display->dstRect.h + e.motion.yrel,
-                                            MIN_HEIGHT,
-                                            h);
-                                break;
-                            default:
-                                break;
-                        }
-                        display->dstRect.x = SDL_clamp(
-                          display->dstRect.x, 0.f, w - display->dstRect.w);
-                        display->dstRect.y = SDL_clamp(
-                          display->dstRect.y, 0.f, h - display->dstRect.h);
-                        renderDisplays();
-                    } else {
-                        SDL_FPoint point = { 0 };
-                        int x;
-                        int y;
-                        SDL_GetMouseState(&x, &y);
-                        point.x = (float)x;
-                        point.y = (float)y;
-                        targetDisplay = UINT_MAX;
-                        findDisplayFromPoint(&point, &targetDisplay);
-                        renderDisplays();
-                    }
-                } break;
-                case SDL_MOUSEWHEEL: {
+                }
+            } break;
+            case SDL_MOUSEBUTTONUP: {
+                hasTarget = false;
+                targetDisplay = UINT32_MAX;
+                SDL_SetWindowGrab(window, false);
+                renderDisplays();
+            } break;
+            case SDL_MOUSEMOTION: {
+                if (hasTarget) {
                     if (targetDisplay >= clientData.displays.used) {
                         break;
                     }
-                    int w;
-                    int h;
-                    SDL_GetWindowSize(window, &w, &h);
                     pStreamDisplay display =
                       &clientData.displays.buffer[targetDisplay];
-                    switch (display->data.tag) {
-                        case StreamDisplayDataTag_chat: {
-                            pStreamDisplayChat chat = &display->data.chat;
-                            int64_t offset = (int64_t)chat->offset;
-
-                            // printf("Before: %" PRId64 "\n", offset);
-                            offset += (e.wheel.y > 0) ? -1LL : 1LL;
-                            offset = SDL_clamp(
-                              offset, 0LL, (int64_t)chat->logs.used - 1LL);
-                            chat->offset = (uint32_t)offset;
-                            // printf("After: %u\n", chat->offset);
-                            // printf("Logs %u\n", chat->logs.used);
-
-                            const float width = display->dstRect.w;
-                            const float height = display->dstRect.h;
-                            updateChatDisplay(renderer, ttfFont, w, h, display);
-                            display->dstRect.w = width;
-                            display->dstRect.h = height;
-                        } break;
-                        default:
-                            break;
+                    if (display->texture == NULL) {
+                        break;
                     }
-                    renderDisplays();
-                } break;
-                case SDL_USEREVENT: {
                     int w;
                     int h;
                     SDL_GetWindowSize(window, &w, &h);
-                    switch (e.user.code) {
-                        case CustomEvent_Render:
-                            drawTextures(renderer,
-                                         targetDisplay,
-                                         (float)w - 32.f,
-                                         (float)h - 32.f);
+                    switch (moveMode) {
+                        case MoveMode_Position:
+                            display->dstRect.x =
+                              display->dstRect.x + e.motion.xrel;
+                            display->dstRect.y =
+                              display->dstRect.y + e.motion.yrel;
                             break;
-                        case CustomEvent_SaveScreenshot:
-                            saveScreenshot(renderer, (const Guid*)e.user.data1);
-                            currentAllocator->free(e.user.data1);
-                            break;
-                        case CustomEvent_ClientCommand:
-                            handleClientCommand(
-                              (ClientCommand)(size_t)e.user.data1,
-                              peer,
-                              &bytes);
-                            break;
-                        case CustomEvent_AddTexture: {
-                            StreamDisplay s = { 0 };
-                            s.dstRect.x = 0.f;
-                            s.dstRect.y = 0.f;
-                            s.dstRect.w = (float)w;
-                            s.dstRect.h = (float)h;
-                            s.id = *(Guid*)e.user.data1;
-                            // Create texture once data is received
-                            StreamDisplayListAppend(&clientData.displays, &s);
-                            currentAllocator->free(e.user.data1);
-                            renderDisplays();
-                        } break;
-                        case CustomEvent_UpdateStreamDisplay: {
-                            pStreamMessage m = e.user.data1;
-                            switch (m->data.tag) {
-                                case StreamMessageDataTag_text:
-                                    updateTextDisplay(
-                                      renderer, ttfFont, &m->id, &m->data.text);
-                                    break;
-                                case StreamMessageDataTag_chatMessage:
-                                    updateChatDisplayFromMessage(
-                                      renderer,
-                                      ttfFont,
-                                      w,
-                                      h,
-                                      &m->id,
-                                      &m->data.chatMessage);
-                                    break;
-                                case StreamMessageDataTag_chatLogs:
-                                    updateChatDisplayFromList(
-                                      renderer,
-                                      ttfFont,
-                                      w,
-                                      h,
-                                      &m->id,
-                                      &m->data.chatLogs);
-                                    break;
-                                case StreamMessageDataTag_image:
-                                    updateImageDisplay(
-                                      renderer, &m->id, &m->data.image);
-                                    break;
-                                default:
-                                    printf(
-                                      "Cannot update display of stream '%s'\n",
-                                      StreamMessageDataTagToCharString(
-                                        m->data.tag));
-                                    break;
-                            }
-                            StreamMessageFree(m);
-                            currentAllocator->free(m);
-                            renderDisplays();
-                        } break;
-                        default:
-                            break;
-                    }
-                } break;
-                case SDL_DROPFILE: {
-                    // Look for image stream
-                    printf("Got dropped file: %s\n", e.drop.file);
-                    int fd = -1;
-                    char* ptr = NULL;
-                    size_t size = 0;
-
-                    FileExtension ext = { 0 };
-                    if (!filenameToExtension(e.drop.file, &ext)) {
-                        puts("Failed to find file extension");
-                        goto endDropFile;
-                    }
-                    if (ext.tag == FileExtensionTag_font) {
-                        puts("Loading new font...");
-                        loadNewFont(e.drop.file, config->fontSize, &ttfFont);
-                        goto endDropFile;
-                    }
-
-                    if (!mapFile(
-                          e.drop.file, &fd, &ptr, &size, MapFileType_Read)) {
-                        fprintf(stderr,
-                                "Error opening file '%s': %s\n",
-                                e.drop.file,
-                                strerror(errno));
-                        goto endDropFile;
-                    }
-
-                    Bytes fileBytes = { .allocator = NULL,
-                                        .buffer = (uint8_t*)ptr,
-                                        .size = size,
-                                        .used = size };
-                    const Stream* stream = NULL;
-                    if (targetDisplay >= clientData.displays.used) {
-                        if (!GetStreamFromType(
-                              &clientData.allStreams,
-                              FileExtenstionToStreamType(ext.tag),
-                              &stream,
-                              NULL)) {
-                            puts("No stream to send data too...");
-                            goto endDropFile;
-                        }
-                    } else {
-                        const StreamDisplay* display =
-                          &clientData.displays.buffer[targetDisplay];
-                        if (!GetStreamFromGuid(&clientData.allStreams,
-                                               &display->id,
-                                               &stream,
-                                               NULL)) {
-                            puts("No stream to send data too...");
-                            goto endDropFile;
-                        }
-                    }
-
-                    Message message = { 0 };
-                    message.tag = MessageTag_streamMessage;
-                    message.streamMessage.id = stream->id;
-                    switch (ext.tag) {
-                        case FileExtensionTag_audio:
-                            message.streamMessage.data.tag =
-                              StreamMessageDataTag_audio;
-                            message.streamMessage.data.audio = fileBytes;
-                            break;
-                        case FileExtensionTag_video:
-                            message.streamMessage.data.tag =
-                              StreamMessageDataTag_video;
-                            message.streamMessage.data.video = fileBytes;
+                        case MoveMode_Size:
+                            display->dstRect.w = SDL_clamp(
+                              display->dstRect.w + e.motion.xrel, MIN_WIDTH, w);
+                            display->dstRect.h =
+                              SDL_clamp(display->dstRect.h + e.motion.yrel,
+                                        MIN_HEIGHT,
+                                        h);
                             break;
                         default:
-                            message.streamMessage.data.tag =
-                              StreamMessageDataTag_image;
-                            message.streamMessage.data.image = fileBytes;
                             break;
                     }
-                    MESSAGE_SERIALIZE(message, bytes);
-                    ENetPacket* packet = BytesToPacket(&bytes, true);
-                    enet_peer_send(peer, CLIENT_CHANNEL, packet);
-                    // Don't free message since it wasn't allocated
-                endDropFile:
-                    unmapFile(fd, ptr, size);
-                    SDL_free(e.drop.file);
-                } break;
-                case SDL_DROPTEXT: {
-                    // Look for a text or chat stream
-                    puts("Got dropped text");
-                    if (targetDisplay >= clientData.displays.used) {
-                        puts("No stream to text too...");
+                    display->dstRect.x = SDL_clamp(
+                      display->dstRect.x, 0.f, w - display->dstRect.w);
+                    display->dstRect.y = SDL_clamp(
+                      display->dstRect.y, 0.f, h - display->dstRect.h);
+                    renderDisplays();
+                } else {
+                    SDL_FPoint point = { 0 };
+                    int x;
+                    int y;
+                    SDL_GetMouseState(&x, &y);
+                    point.x = (float)x;
+                    point.y = (float)y;
+                    targetDisplay = UINT_MAX;
+                    findDisplayFromPoint(&point, &targetDisplay);
+                    renderDisplays();
+                }
+            } break;
+            case SDL_MOUSEWHEEL: {
+                if (targetDisplay >= clientData.displays.used) {
+                    break;
+                }
+                int w;
+                int h;
+                SDL_GetWindowSize(window, &w, &h);
+                pStreamDisplay display =
+                  &clientData.displays.buffer[targetDisplay];
+                switch (display->data.tag) {
+                    case StreamDisplayDataTag_chat: {
+                        pStreamDisplayChat chat = &display->data.chat;
+                        int64_t offset = (int64_t)chat->offset;
+
+                        // printf("Before: %" PRId64 "\n", offset);
+                        offset += (e.wheel.y > 0) ? -1LL : 1LL;
+                        offset = SDL_clamp(
+                          offset, 0LL, (int64_t)chat->logs.used - 1LL);
+                        chat->offset = (uint32_t)offset;
+                        // printf("After: %u\n", chat->offset);
+                        // printf("Logs %u\n", chat->logs.used);
+
+                        const float width = display->dstRect.w;
+                        const float height = display->dstRect.h;
+                        updateChatDisplay(renderer, ttfFont, w, h, display);
+                        display->dstRect.w = width;
+                        display->dstRect.h = height;
+                    } break;
+                    default:
                         break;
+                }
+                renderDisplays();
+            } break;
+            case SDL_USEREVENT: {
+                int w;
+                int h;
+                SDL_GetWindowSize(window, &w, &h);
+                switch (e.user.code) {
+                    case CustomEvent_Render:
+                        drawTextures(renderer,
+                                     targetDisplay,
+                                     (float)w - 32.f,
+                                     (float)h - 32.f);
+                        break;
+                    case CustomEvent_SaveScreenshot:
+                        saveScreenshot(renderer, (const Guid*)e.user.data1);
+                        currentAllocator->free(e.user.data1);
+                        break;
+                    case CustomEvent_Message: {
+                        pMessage message = e.user.data1;
+                        clientHandleMessage(message);
+                        MessageFree(message);
+                        currentAllocator->free(e.user.data1);
+                    } break;
+                    case CustomEvent_AddTexture: {
+                        StreamDisplay s = { 0 };
+                        s.dstRect.x = 0.f;
+                        s.dstRect.y = 0.f;
+                        s.dstRect.w = (float)w;
+                        s.dstRect.h = (float)h;
+                        s.id = *(Guid*)e.user.data1;
+                        // Create texture once data is received
+                        StreamDisplayListAppend(&clientData.displays, &s);
+                        currentAllocator->free(e.user.data1);
+                        renderDisplays();
+                    } break;
+                    case CustomEvent_UpdateStreamDisplay: {
+                        pStreamMessage m = e.user.data1;
+                        switch (m->data.tag) {
+                            case StreamMessageDataTag_text:
+                                updateTextDisplay(
+                                  renderer, ttfFont, &m->id, &m->data.text);
+                                break;
+                            case StreamMessageDataTag_chatMessage:
+                                updateChatDisplayFromMessage(
+                                  renderer,
+                                  ttfFont,
+                                  w,
+                                  h,
+                                  &m->id,
+                                  &m->data.chatMessage);
+                                break;
+                            case StreamMessageDataTag_chatLogs:
+                                updateChatDisplayFromList(renderer,
+                                                          ttfFont,
+                                                          w,
+                                                          h,
+                                                          &m->id,
+                                                          &m->data.chatLogs);
+                                break;
+                            case StreamMessageDataTag_image:
+                                updateImageDisplay(
+                                  renderer, &m->id, &m->data.image);
+                                break;
+                            default:
+                                printf("Cannot update display of stream '%s'\n",
+                                       StreamMessageDataTagToCharString(
+                                         m->data.tag));
+                                break;
+                        }
+                        StreamMessageFree(m);
+                        currentAllocator->free(m);
+                        renderDisplays();
+                    } break;
+                    default:
+                        break;
+                }
+            } break;
+            case SDL_DROPFILE: {
+                // Look for image stream
+                printf("Got dropped file: %s\n", e.drop.file);
+                int fd = -1;
+                char* ptr = NULL;
+                size_t size = 0;
+
+                FileExtension ext = { 0 };
+                if (!filenameToExtension(e.drop.file, &ext)) {
+                    puts("Failed to find file extension");
+                    goto endDropFile;
+                }
+                if (ext.tag == FileExtensionTag_font) {
+                    puts("Loading new font...");
+                    loadNewFont(e.drop.file, config->fontSize, &ttfFont);
+                    goto endDropFile;
+                }
+
+                if (!mapFile(e.drop.file, &fd, &ptr, &size, MapFileType_Read)) {
+                    fprintf(stderr,
+                            "Error opening file '%s': %s\n",
+                            e.drop.file,
+                            strerror(errno));
+                    goto endDropFile;
+                }
+
+                Bytes fileBytes = { .allocator = NULL,
+                                    .buffer = (uint8_t*)ptr,
+                                    .size = size,
+                                    .used = size };
+                const Stream* stream = NULL;
+                if (targetDisplay >= clientData.displays.used) {
+                    if (!GetStreamFromType(&clientData.allStreams,
+                                           FileExtenstionToStreamType(ext.tag),
+                                           &stream,
+                                           NULL)) {
+                        puts("No stream to send data too...");
+                        goto endDropFile;
                     }
+                } else {
                     const StreamDisplay* display =
                       &clientData.displays.buffer[targetDisplay];
-                    const Stream* stream = NULL;
                     if (!GetStreamFromGuid(&clientData.allStreams,
                                            &display->id,
                                            &stream,
                                            NULL)) {
-                        puts("No stream to text too...");
-                        break;
+                        puts("No stream to send data too...");
+                        goto endDropFile;
                     }
-                    switch (stream->type) {
-                        case StreamType_Text: {
-                            Message message = { 0 };
-                            message.tag = MessageTag_streamMessage;
-                            message.streamMessage.id = stream->id;
-                            message.streamMessage.data.tag =
-                              StreamMessageDataTag_text;
-                            message.streamMessage.data.text =
-                              TemLangStringCreate(e.drop.file,
-                                                  currentAllocator);
-                            MESSAGE_SERIALIZE(message, bytes);
-                            MessageFree(&message);
-                            ENetPacket* packet = BytesToPacket(&bytes, true);
-                            enet_peer_send(peer, CLIENT_CHANNEL, packet);
-                        } break;
-                        case StreamType_Chat: {
-                            Message message = { 0 };
-                            message.tag = MessageTag_streamMessage;
-                            message.streamMessage.id = stream->id;
-                            message.streamMessage.data.tag =
-                              StreamMessageDataTag_chatMessage;
-                            message.streamMessage.data.chatMessage.message =
-                              TemLangStringCreate(e.drop.file,
-                                                  currentAllocator);
-                            MESSAGE_SERIALIZE(message, bytes);
-                            MessageFree(&message);
-                            ENetPacket* packet = BytesToPacket(&bytes, true);
-                            enet_peer_send(peer, CLIENT_CHANNEL, packet);
-                        } break;
-                        default:
-                            printf("Cannot send text to '%s' stream\n",
-                                   StreamTypeToCharString(stream->type));
-                            break;
-                    }
-                    SDL_free(e.drop.file);
-                } break;
-                default:
-                    break;
-            }
-        }
-        handleUserInput(peer, &bytes);
-        result = enet_host_service(host, &event, 0);
-        if (result < 0) {
-            fprintf(stderr, "Connection error\n");
-            appDone = true;
-            break;
-        }
-        if (result == 0) {
-            goto doSleep;
-        }
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT: {
-                puts("Unexpected connect event from server");
-                appDone = true;
-            } break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-                puts("Disconnected from server");
-                appDone = true;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE: {
-                const Bytes packetBytes = { .allocator = currentAllocator,
-                                            .buffer = event.packet->data,
-                                            .size = event.packet->dataLength,
-                                            .used = event.packet->dataLength };
+                }
+
                 Message message = { 0 };
-                MESSAGE_DESERIALIZE(message, packetBytes);
-                // printReceivedPacket(event.packet);
-                clientHandleMessage(&message);
-                MessageFree(&message);
-                enet_packet_destroy(event.packet);
+                message.tag = MessageTag_streamMessage;
+                message.streamMessage.id = stream->id;
+                switch (ext.tag) {
+                    case FileExtensionTag_audio:
+                        message.streamMessage.data.tag =
+                          StreamMessageDataTag_audio;
+                        message.streamMessage.data.audio = fileBytes;
+                        break;
+                    case FileExtensionTag_video:
+                        message.streamMessage.data.tag =
+                          StreamMessageDataTag_video;
+                        message.streamMessage.data.video = fileBytes;
+                        break;
+                    default:
+                        message.streamMessage.data.tag =
+                          StreamMessageDataTag_image;
+                        message.streamMessage.data.image = fileBytes;
+                        break;
+                }
+                MESSAGE_SERIALIZE(message, bytes);
+                ENetPacket* packet = BytesToPacket(&bytes, true);
+                enqueuePacket(packet);
+                // Don't free message since it wasn't allocated
+            endDropFile:
+                unmapFile(fd, ptr, size);
+                SDL_free(e.drop.file);
             } break;
-            case ENET_EVENT_TYPE_NONE:
-                break;
+            case SDL_DROPTEXT: {
+                // Look for a text or chat stream
+                puts("Got dropped text");
+                if (targetDisplay >= clientData.displays.used) {
+                    puts("No stream to text too...");
+                    break;
+                }
+                const StreamDisplay* display =
+                  &clientData.displays.buffer[targetDisplay];
+                const Stream* stream = NULL;
+                if (!GetStreamFromGuid(
+                      &clientData.allStreams, &display->id, &stream, NULL)) {
+                    puts("No stream to text too...");
+                    break;
+                }
+                switch (stream->type) {
+                    case StreamType_Text: {
+                        Message message = { 0 };
+                        message.tag = MessageTag_streamMessage;
+                        message.streamMessage.id = stream->id;
+                        message.streamMessage.data.tag =
+                          StreamMessageDataTag_text;
+                        message.streamMessage.data.text =
+                          TemLangStringCreate(e.drop.file, currentAllocator);
+                        MESSAGE_SERIALIZE(message, bytes);
+                        MessageFree(&message);
+                        ENetPacket* packet = BytesToPacket(&bytes, true);
+                        enqueuePacket(packet);
+                    } break;
+                    case StreamType_Chat: {
+                        Message message = { 0 };
+                        message.tag = MessageTag_streamMessage;
+                        message.streamMessage.id = stream->id;
+                        message.streamMessage.data.tag =
+                          StreamMessageDataTag_chatMessage;
+                        message.streamMessage.data.chatMessage.message =
+                          TemLangStringCreate(e.drop.file, currentAllocator);
+                        MESSAGE_SERIALIZE(message, bytes);
+                        MessageFree(&message);
+                        ENetPacket* packet = BytesToPacket(&bytes, true);
+                        enqueuePacket(packet);
+                    } break;
+                    default:
+                        printf("Cannot send text to '%s' stream\n",
+                               StreamTypeToCharString(stream->type));
+                        break;
+                }
+                SDL_free(e.drop.file);
+            } break;
             default:
                 break;
         }
-    doSleep:
-        SDL_Delay(1);
     }
 
     result = EXIT_SUCCESS;
@@ -1921,27 +1982,12 @@ runClient(const AllConfiguration* configuration)
 end:
     appDone = true;
     // FontFree(&font);
+    for (size_t i = 0; i < sizeof(threads) / sizeof(SDL_Thread*); ++i) {
+        SDL_WaitThread(threads[i], NULL);
+    }
+    pENetPacketListFree(&outgoingPackets);
+    SDL_DestroyMutex(packetMutex);
     uint8_tListFree(&bytes);
-    if (peer != NULL) {
-        enet_peer_disconnect(peer, 0);
-        while (enet_host_service(host, &event, 3000) > 0) {
-            switch (event.type) {
-                case ENET_EVENT_TYPE_RECEIVE:
-                    enet_packet_destroy(event.packet);
-                    break;
-                case ENET_EVENT_TYPE_DISCONNECT:
-                    puts("Disconnected gracefully from server");
-                    goto endPeer;
-                default:
-                    break;
-            }
-        }
-    endPeer:
-        enet_peer_reset(peer);
-    }
-    if (host != NULL) {
-        enet_host_destroy(host);
-    }
     ClientDataFree(&clientData);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

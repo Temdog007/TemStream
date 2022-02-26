@@ -111,6 +111,11 @@ BytesToPacket(const Bytes*, bool);
 extern bool
 streamMessageIsReliable(const StreamMessage*);
 
+typedef ENetPacket* pENetPacket;
+
+MAKE_COPY_AND_FREE(pENetPacket);
+MAKE_DEFAULT_LIST(pENetPacket);
+
 #define SERVER_CHANNEL 0
 #define CLIENT_CHANNEL 1
 

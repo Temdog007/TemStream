@@ -22,10 +22,13 @@
 - [x] Packet loss (TCP merges packets, use ENET)
 
 ### Feb 26, 2022
-- [ ] Audio stream
+- [x] Add threads to client
+- [ ] Audio stream (allow playback and recording device to be selected)
 - [ ] Add no display mode
+- [ ] Show message box when fatal errors occur (ex. disconnect from server)
 
 ### Later
+- [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Allow for blacklist/whitelist for stream access
 - [ ] Allow owner to add/remove writers/readers
 - [ ] Play gifs (use FFMPEG)
@@ -33,7 +36,8 @@
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
-- [ ] Create an HTML page that allows browser GUI to send commands on behalf of the native version
 - [ ] Add websocket connection
 - [ ] SSL encryption (dtls)
+
+### Maybe
 - [ ] Add logging library (or make one)

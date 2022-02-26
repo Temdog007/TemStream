@@ -78,5 +78,5 @@ enum CustomEvent {
     AddTexture
     UpdateStreamDisplay
     SaveScreenshot
-    ClientCommand
+    Message
 }
