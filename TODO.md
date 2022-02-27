@@ -31,7 +31,7 @@
 - [x] Show message box when fatal errors occur (ex. disconnect from server)
 
 ### Feb 27, 2022 - Mar ??, 2022
-- [ ] Compress audio
+- [x] Compress audio
 - [ ] Check when to render scene
 - [ ] Include FFMPEG
     - [ ] Play gifs

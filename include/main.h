@@ -262,11 +262,8 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 #define HIGH_AUDIO 2
 #define AUDIO HIGH_AUDIO
 
-#define TEST_MIC 0
-
 typedef struct AudioPlaybackState
 {
-    Bytes compressedBytes;
     Bytes uncompressedBytes;
     SDL_AudioSpec spec;
     OpusDecoder* decoder;
@@ -275,7 +272,6 @@ typedef struct AudioPlaybackState
 
 typedef struct AudioRecordState
 {
-    Bytes uncompressedBytes;
     SDL_AudioSpec spec;
     OpusEncoder* encoder;
     Guid id;

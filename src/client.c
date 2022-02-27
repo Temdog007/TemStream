@@ -344,78 +344,168 @@ end:
     StreamListFree(&streams);
 }
 
+int
+audioLengthToFrames(const int frequency, const int duration)
+{
+    switch (duration) {
+        case OPUS_FRAMESIZE_2_5_MS:
+            return frequency / 400;
+        case OPUS_FRAMESIZE_5_MS:
+            return frequency / 200;
+        case OPUS_FRAMESIZE_10_MS:
+            return frequency / 100;
+        case OPUS_FRAMESIZE_20_MS:
+            return frequency / 50;
+        case OPUS_FRAMESIZE_40_MS:
+            return frequency / 25;
+        case OPUS_FRAMESIZE_60_MS:
+            return audioLengthToFrames(frequency, OPUS_FRAMESIZE_20_MS) * 3;
+        case OPUS_FRAMESIZE_80_MS:
+            return audioLengthToFrames(frequency, OPUS_FRAMESIZE_40_MS) * 2;
+        case OPUS_FRAMESIZE_100_MS:
+            return frequency / 10;
+        case OPUS_FRAMESIZE_120_MS:
+            return audioLengthToFrames(frequency, OPUS_FRAMESIZE_60_MS) * 2;
+        default:
+            return 0;
+    }
+}
+
+int
+closestValidFrameCount(const int frequency, const int frames)
+{
+    const int values[] = { OPUS_FRAMESIZE_120_MS, OPUS_FRAMESIZE_100_MS,
+                           OPUS_FRAMESIZE_80_MS,  OPUS_FRAMESIZE_60_MS,
+                           OPUS_FRAMESIZE_40_MS,  OPUS_FRAMESIZE_20_MS,
+                           OPUS_FRAMESIZE_10_MS,  OPUS_FRAMESIZE_5_MS,
+                           OPUS_FRAMESIZE_2_5_MS };
+    const int arrayLength = sizeof(values) / sizeof(int);
+    if (frames >= audioLengthToFrames(frequency, values[0])) {
+        return audioLengthToFrames(frequency, values[0]);
+    }
+    if (frames <= audioLengthToFrames(frequency, values[arrayLength - 1])) {
+        return audioLengthToFrames(frequency, values[arrayLength - 1]);
+    }
+    for (int i = 1; i < arrayLength; ++i) {
+        const int prev = audioLengthToFrames(frequency, values[i - 1]);
+        const int current = audioLengthToFrames(frequency, values[i]);
+        if (prev >= frames && frames >= current) {
+            return audioLengthToFrames(frequency, values[i]);
+        }
+    }
+    return audioLengthToFrames(frequency, values[arrayLength - 1]);
+}
+
+void
+storeOpusAudio(const Bytes* compressed)
+{
+    if (playbackState.id == 0) {
+        return;
+    }
+
+    const bool isFloat = playbackState.spec.format == AUDIO_F32;
+    const int pcmSize = isFloat ? sizeof(float) : sizeof(opus_int16);
+
+    void* uncompressed = currentAllocator->allocate(MAX_PACKET_SIZE);
+
+    int result;
+    if (isFloat) {
+        result = opus_decode_float(
+          playbackState.decoder,
+          (unsigned char*)compressed->buffer,
+          compressed->used,
+          (float*)uncompressed,
+          audioLengthToFrames(playbackState.spec.freq, OPUS_FRAMESIZE_120_MS),
+          0);
+    } else {
+        result = opus_decode(
+          playbackState.decoder,
+          (unsigned char*)compressed->buffer,
+          compressed->used,
+          (opus_int16*)uncompressed,
+          audioLengthToFrames(playbackState.spec.freq, OPUS_FRAMESIZE_120_MS),
+          0);
+    }
+
+    if (result < 0) {
+        fprintf(stderr, "Failed to decode audio: %s\n", opus_strerror(result));
+        goto end;
+    }
+
+    const int byteSize = result * playbackState.spec.channels * pcmSize;
+    SDL_LockAudioDevice(playbackState.id);
+    uint8_tListQuickAppend(
+      &playbackState.uncompressedBytes, uncompressed, byteSize);
+    SDL_UnlockAudioDevice(playbackState.id);
+
+end:
+    currentAllocator->free(uncompressed);
+}
+
 void
 audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
 {
-#if !TEST_MIC
-    uint8_tListQuickAppend(&state->uncompressedBytes, data, len);
-
     const bool isFloat = state->spec.format == AUDIO_F32;
-    int frame_size;
-    if (isFloat) {
-        frame_size = state->uncompressedBytes.used /
-                     (state->spec.channels * sizeof(float));
-    } else {
-        frame_size = state->uncompressedBytes.used /
-                     (state->spec.channels * sizeof(opus_int16));
-    }
-
-    const int duration = state->spec.freq / 400; // 2.5 ms
-    // const int duration = state->spec.freq / 100; // 10 ms
-    if (frame_size < duration) {
-        return;
-    }
+    const int pcmSize = (isFloat ? sizeof(float) : sizeof(opus_int16));
 
     Bytes converted = { .allocator = currentAllocator,
                         .buffer = currentAllocator->allocate(AUDIO_FRAME_SIZE),
                         .size = AUDIO_FRAME_SIZE,
                         .used = 0 };
     Bytes bytes = { .allocator = currentAllocator };
+    const int minDuration =
+      audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_2_5_MS);
 
     int result;
-    if (isFloat) {
-        result = opus_encode_float(state->encoder,
-                                   (float*)state->uncompressedBytes.buffer,
-                                   duration,
-                                   converted.buffer,
-                                   converted.size);
-    } else {
-        result = opus_encode(state->encoder,
-                             (opus_int16*)state->uncompressedBytes.buffer,
-                             duration,
-                             converted.buffer,
-                             converted.size);
-    }
-    if (result < 0) {
-        fprintf(stderr,
-                "Failed to encode recorded packet: %s; Frame size %d\n",
-                opus_strerror(result),
-                frame_size);
-        state->uncompressedBytes.used = 0;
-        goto end;
-    }
-    uint8_tListQuickRemove(&state->uncompressedBytes, 0, result);
-    converted.used = (size_t)result;
+    int offset = 0;
+    while (offset < len) {
+        int frame_size = (len - offset) / (state->spec.channels * pcmSize);
 
-    Message message = { 0 };
-    message.tag = MessageTag_streamMessage;
-    message.streamMessage.id = state->id;
-    message.streamMessage.data.tag = StreamMessageDataTag_audio;
-    message.streamMessage.data.audio = converted;
-    MESSAGE_SERIALIZE(message, bytes);
-    ENetPacket* packet = BytesToPacket(&bytes, false);
-    enqueuePacket(packet);
+        if (frame_size < minDuration) {
+            break;
+        }
 
-end:
-    // Don't free messages. Bytes weren't allocated
+        // Only certain durations are valid for encoding
+        frame_size = closestValidFrameCount(state->spec.freq, frame_size);
+
+        if (isFloat) {
+            result = opus_encode_float(state->encoder,
+                                       (float*)data + offset,
+                                       frame_size,
+                                       converted.buffer,
+                                       converted.size);
+        } else {
+            result = opus_encode(state->encoder,
+                                 (opus_int16*)data + offset,
+                                 frame_size,
+                                 converted.buffer,
+                                 converted.size);
+        }
+        if (result < 0) {
+            fprintf(stderr,
+                    "Failed to encode recorded packet: %s; Frame size %d\n",
+                    opus_strerror(result),
+                    frame_size);
+            break;
+        }
+
+        converted.used = (uint32_t)result;
+
+        offset += (frame_size * state->spec.freq * pcmSize);
+
+        Message message = { 0 };
+        message.tag = MessageTag_streamMessage;
+        message.streamMessage.id = state->id;
+        message.streamMessage.data.tag = StreamMessageDataTag_audio;
+        message.streamMessage.data.audio = converted;
+
+        MESSAGE_SERIALIZE(message, bytes);
+        ENetPacket* packet = BytesToPacket(&bytes, false);
+        enqueuePacket(packet);
+        // Don't free messages. Bytes weren't allocated
+    }
     uint8_tListFree(&bytes);
     uint8_tListFree(&converted);
-#else
-    (void)state;
-    SDL_LockAudioDevice(playbackState.id);
-    uint8_tListQuickAppend(&playbackState.uncompressedBytes, data, len);
-    SDL_UnlockAudioDevice(playbackState.id);
-#endif
 }
 
 void
@@ -423,86 +513,14 @@ audioPlaybackCallback(pAudioPlaybackState state,
                       uint8_t* audioStream,
                       const int len)
 {
-#if !TEST_MIC
-    const bool isFloat = state->spec.format == AUDIO_F32;
-
-    int frame_size;
-    if (isFloat) {
-        frame_size =
-          state->compressedBytes.size / (state->spec.channels * sizeof(float));
-    } else {
-        frame_size = state->compressedBytes.size /
-                     (state->spec.channels * sizeof(opus_int16));
-    }
-
-    int result;
     size_t sLen = len;
-    sLen = SDL_min(sLen, state->compressedBytes.used);
+    sLen = SDL_min(sLen, state->uncompressedBytes.used);
     if (sLen > 0) {
-        if (isFloat) {
-            result =
-              opus_decode_float(state->decoder,
-                                (unsigned char*)state->compressedBytes.buffer,
-                                sLen,
-                                (float*)state->uncompressedBytes.buffer,
-                                frame_size,
-                                0);
-        } else {
-            result = opus_decode(state->decoder,
-                                 (unsigned char*)state->compressedBytes.buffer,
-                                 sLen,
-                                 (opus_int16*)state->uncompressedBytes.buffer,
-                                 frame_size,
-                                 0);
-        }
-        if (result > 0) {
-            const size_t size = result * state->spec.channels *
-                                (isFloat ? sizeof(float) : sizeof(opus_int16));
-            state->uncompressedBytes.used = size;
-            uint8_tListQuickRemove(&state->compressedBytes, 0, size);
-        }
+        memcpy(audioStream, state->uncompressedBytes.buffer, sLen);
+        uint8_tListQuickRemove(&state->uncompressedBytes, 0, sLen);
     } else {
-        // If no packet, frame size must be a multiple of 2.5 ms
-        const int twoMs = state->spec.freq / 400;
-        frame_size -= frame_size % twoMs;
-        if (isFloat) {
-            result = opus_decode_float(state->decoder,
-                                       NULL,
-                                       0,
-                                       (float*)state->uncompressedBytes.buffer,
-                                       frame_size,
-                                       0);
-        } else {
-            result = opus_decode(state->decoder,
-                                 NULL,
-                                 0,
-                                 (opus_int16*)state->uncompressedBytes.buffer,
-                                 frame_size,
-                                 0);
-        }
+        memset(audioStream, 0, len);
     }
-
-    if (result < 0) {
-        fprintf(stderr,
-                "Failed to decode %zu bytes into an audio packet: %s; Frame "
-                "size: %d\n",
-                sLen,
-                opus_strerror(result),
-                frame_size);
-        memset(audioStream, state->spec.silence, len);
-    } else if (uint8_tListIsEmpty(&state->uncompressedBytes)) {
-        memset(audioStream, state->spec.silence, len);
-    } else {
-        const int size = MIN(state->uncompressedBytes.used, sLen);
-        memcpy(audioStream, state->uncompressedBytes.buffer, size);
-        uint8_tListQuickRemove(&state->uncompressedBytes, 0, size);
-    }
-#else
-    (void)state;
-    const size_t size = MIN(state->uncompressedBytes.used, (size_t)len);
-    memcpy(audioStream, state->uncompressedBytes.buffer, size);
-    uint8_tListQuickRemove(&state->uncompressedBytes, 0, size);
-#endif
 }
 
 int
@@ -521,13 +539,6 @@ audioRecordThread(pAudioRecordState state)
                     opus_strerror(error));
             goto end;
         }
-        if (state->uncompressedBytes.allocator == NULL) {
-            state->uncompressedBytes.allocator = currentAllocator;
-            state->uncompressedBytes.buffer =
-              currentAllocator->allocate(AUDIO_FRAME_SIZE);
-            state->uncompressedBytes.size = AUDIO_FRAME_SIZE;
-            state->uncompressedBytes.used = 0;
-        }
 #if _DEBUG
         printf("Encoder: %p (%d)\n", state->encoder, size);
 #endif
@@ -544,7 +555,6 @@ end:
         currentAllocator->free(state->encoder);
         state->encoder = NULL;
     }
-    uint8_tListFree(&state->uncompressedBytes);
 
     currentAllocator->free(state);
     SDL_AtomicDecRef(&runningThreads);
@@ -1920,20 +1930,13 @@ displayError(SDL_Window* window, const char* e)
 void
 startPlayback(const char* name)
 {
-    if (playbackState.decoder != NULL) {
-        currentAllocator->free(playbackState.decoder);
-        playbackState.decoder = NULL;
-    }
     if (playbackState.id != 0) {
         SDL_CloseAudioDevice(playbackState.id);
         playbackState.id = 0;
     }
-    if (playbackState.compressedBytes.allocator == NULL) {
-        playbackState.compressedBytes.allocator = currentAllocator;
-        playbackState.compressedBytes.buffer =
-          currentAllocator->allocate(AUDIO_FRAME_SIZE);
-        playbackState.compressedBytes.size = AUDIO_FRAME_SIZE;
-        playbackState.compressedBytes.used = 0;
+    if (playbackState.decoder != NULL) {
+        currentAllocator->free(playbackState.decoder);
+        playbackState.decoder = NULL;
     }
     if (playbackState.uncompressedBytes.allocator == NULL) {
         playbackState.uncompressedBytes.allocator = currentAllocator;
@@ -2346,17 +2349,9 @@ runClient(const AllConfiguration* configuration)
                                 updateImageDisplay(
                                   renderer, &m->id, &m->data.image);
                                 break;
-                            case StreamMessageDataTag_audio: {
-                                if (playbackState.id == 0) {
-                                    break;
-                                }
-                                SDL_LockAudioDevice(playbackState.id);
-                                uint8_tListQuickAppend(
-                                  &playbackState.compressedBytes,
-                                  m->data.audio.buffer,
-                                  m->data.audio.used);
-                                SDL_UnlockAudioDevice(playbackState.id);
-                            } break;
+                            case StreamMessageDataTag_audio:
+                                storeOpusAudio(&m->data.audio);
+                                break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
                                        StreamMessageDataTagToCharString(
@@ -2520,6 +2515,9 @@ end:
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
     }
+    for (size_t i = 0; i < outgoingPackets.used; ++i) {
+        enet_packet_destroy(outgoingPackets.buffer[i]);
+    }
     pENetPacketListFree(&outgoingPackets);
     AudioRecordStatePtrListFree(&audioRecordings);
     if (playbackState.id != 0) {
@@ -2530,7 +2528,6 @@ end:
         currentAllocator->free(playbackState.decoder);
         playbackState.decoder = NULL;
     }
-    uint8_tListFree(&playbackState.compressedBytes);
     uint8_tListFree(&playbackState.uncompressedBytes);
     SDL_DestroyMutex(packetMutex);
     uint8_tListFree(&bytes);
