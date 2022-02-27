@@ -1937,37 +1937,34 @@ startPlayback(const char* name)
     const SDL_AudioSpec desired =
       makeAudioSpec((SDL_AudioCallback)NULL, &playbackState);
 
-    playbackState.id = SDL_OpenAudioDevice(name,
-                                           SDL_FALSE,
-                                           &desired,
-                                           &playbackState.spec,
-                                           SDL_AUDIO_ALLOW_ANY_CHANGE);
+    playbackState.id =
+      SDL_OpenAudioDevice(name, SDL_FALSE, &desired, &playbackState.spec, 0);
     if (playbackState.id == 0) {
         fprintf(stderr,
                 "Failed to open playback device. No audio will be played\n");
-    } else {
-        puts("Playback audio specification");
-        printAudioSpec(&playbackState.spec);
-
-        const int size = opus_decoder_get_size(playbackState.spec.channels);
-        playbackState.decoder = currentAllocator->allocate(size);
-        const int error = opus_decoder_init(playbackState.decoder,
-                                            playbackState.spec.freq,
-                                            playbackState.spec.channels);
-        if (error < 0) {
-            fprintf(stderr,
-                    "Failed to initialize decoder: %s\n",
-                    opus_strerror(error));
-        } else {
-            SDL_PauseAudioDevice(playbackState.id, SDL_FALSE);
-        }
-#if _DEBUG
-        printf("Playback id: %u; decoder: %p (%d)\n",
-               playbackState.id,
-               playbackState.decoder,
-               size);
-#endif
+        return;
     }
+
+    puts("Playback audio specification");
+    printAudioSpec(&playbackState.spec);
+
+    const int size = opus_decoder_get_size(playbackState.spec.channels);
+    playbackState.decoder = currentAllocator->allocate(size);
+    const int error = opus_decoder_init(playbackState.decoder,
+                                        playbackState.spec.freq,
+                                        playbackState.spec.channels);
+    if (error < 0) {
+        fprintf(
+          stderr, "Failed to initialize decoder: %s\n", opus_strerror(error));
+    } else {
+        SDL_PauseAudioDevice(playbackState.id, SDL_FALSE);
+    }
+#if _DEBUG
+    printf("Playback id: %u; decoder: %p (%d)\n",
+           playbackState.id,
+           playbackState.decoder,
+           size);
+#endif
 }
 
 int

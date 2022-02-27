@@ -36,6 +36,7 @@
 - [x] Make left over audio bytes for capture audio
 
 ### Feb 28, 2022
+- [ ] Ensure each audio stream has its own playback device id (remove global playback)
 - [ ] Include FFMPEG
     - [ ] Play gifs
     - [ ] Record windows
