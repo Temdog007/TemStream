@@ -262,6 +262,8 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 #define HIGH_AUDIO 2
 #define AUDIO HIGH_AUDIO
 
+#define TEST_MIC 0
+
 typedef struct AudioPlaybackState
 {
     Bytes uncompressedBytes;

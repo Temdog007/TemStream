@@ -500,8 +500,18 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
         message.streamMessage.data.audio = converted;
 
         MESSAGE_SERIALIZE(message, bytes);
+#if TEST_MIC
+        SDL_Event e = { 0 };
+        e.type = SDL_USEREVENT;
+        e.user.code = CustomEvent_HandleMessage;
+        pMessage ptr = currentAllocator->allocate(sizeof(Message));
+        MessageCopy(ptr, &message, currentAllocator);
+        e.user.data1 = ptr;
+        SDL_PushEvent(&e);
+#else
         ENetPacket* packet = BytesToPacket(&bytes, false);
         enqueuePacket(packet);
+#endif
         // Don't free messages. Bytes weren't allocated
     }
     uint8_tListFree(&bytes);
@@ -513,13 +523,12 @@ audioPlaybackCallback(pAudioPlaybackState state,
                       uint8_t* audioStream,
                       const int len)
 {
+    memset(audioStream, 0, len);
     size_t sLen = len;
     sLen = SDL_min(sLen, state->uncompressedBytes.used);
     if (sLen > 0) {
         memcpy(audioStream, state->uncompressedBytes.buffer, sLen);
         uint8_tListQuickRemove(&state->uncompressedBytes, 0, sLen);
-    } else {
-        memset(audioStream, 0, len);
     }
 }
 
@@ -2109,8 +2118,16 @@ runClient(const AllConfiguration* configuration)
     size_t targetDisplay = UINT32_MAX;
     MoveMode moveMode = MoveMode_None;
     bool hasTarget = false;
+    bool needRender = true;
 
     while (!appDone) {
+        if (needRender) {
+            int w, h;
+            SDL_GetWindowSize(window, &w, &h);
+            drawTextures(
+              renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
+            needRender = false;
+        }
         for (size_t i = 0; i < audioRecordings.used; ++i) {
             AudioRecordStatePtr ptr = audioRecordings.buffer[i];
             if (GetStreamFromGuid(
@@ -2136,7 +2153,7 @@ runClient(const AllConfiguration* configuration)
                 appDone = true;
                 break;
             case SDL_WINDOWEVENT:
-                renderDisplays();
+                needRender = true;
                 break;
             case SDL_KEYDOWN:
                 switch (e.key.keysym.sym) {
@@ -2182,14 +2199,14 @@ runClient(const AllConfiguration* configuration)
                 if (findDisplayFromPoint(&point, &targetDisplay)) {
                     hasTarget = true;
                     SDL_SetWindowGrab(window, true);
-                    renderDisplays();
+                    needRender = true;
                 }
             } break;
             case SDL_MOUSEBUTTONUP: {
                 hasTarget = false;
                 targetDisplay = UINT32_MAX;
                 SDL_SetWindowGrab(window, false);
-                renderDisplays();
+                needRender = true;
             } break;
             case SDL_MOUSEMOTION: {
                 if (hasTarget) {
@@ -2226,7 +2243,7 @@ runClient(const AllConfiguration* configuration)
                       display->dstRect.x, 0.f, w - display->dstRect.w);
                     display->dstRect.y = SDL_clamp(
                       display->dstRect.y, 0.f, h - display->dstRect.h);
-                    renderDisplays();
+                    needRender = true;
                 } else {
                     SDL_FPoint point = { 0 };
                     int x;
@@ -2236,7 +2253,7 @@ runClient(const AllConfiguration* configuration)
                     point.y = (float)y;
                     targetDisplay = UINT_MAX;
                     findDisplayFromPoint(&point, &targetDisplay);
-                    renderDisplays();
+                    needRender = true;
                 }
             } break;
             case SDL_MOUSEWHEEL: {
@@ -2270,7 +2287,7 @@ runClient(const AllConfiguration* configuration)
                     default:
                         break;
                 }
-                renderDisplays();
+                needRender = true;
             } break;
             case SDL_USEREVENT: {
                 int w;
@@ -2278,10 +2295,7 @@ runClient(const AllConfiguration* configuration)
                 SDL_GetWindowSize(window, &w, &h);
                 switch (e.user.code) {
                     case CustomEvent_Render:
-                        drawTextures(renderer,
-                                     targetDisplay,
-                                     (float)w - 32.f,
-                                     (float)h - 32.f);
+                        needRender = true;
                         break;
                     case CustomEvent_SaveScreenshot:
                         saveScreenshot(renderer, (const Guid*)e.user.data1);
@@ -2319,7 +2333,7 @@ runClient(const AllConfiguration* configuration)
                         // Create texture once data is received
                         StreamDisplayListAppend(&clientData.displays, &s);
                         currentAllocator->free(e.user.data1);
-                        renderDisplays();
+                        needRender = true;
                     } break;
                     case CustomEvent_UpdateStreamDisplay: {
                         pStreamMessage m = e.user.data1;
@@ -2360,7 +2374,7 @@ runClient(const AllConfiguration* configuration)
                         }
                         StreamMessageFree(m);
                         currentAllocator->free(m);
-                        renderDisplays();
+                        needRender = true;
                     } break;
                     default:
                         break;

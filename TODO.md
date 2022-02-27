@@ -32,7 +32,7 @@
 
 ### Feb 27, 2022 - Mar ??, 2022
 - [x] Compress audio
-- [ ] Check when to render scene
+- [x] Check when to render scene
 - [ ] Include FFMPEG
     - [ ] Play gifs
     - [ ] Record windows
