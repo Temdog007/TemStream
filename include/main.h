@@ -9,6 +9,8 @@
 #include <enet/enet.h>
 #endif
 
+#include <opus/opus.h>
+
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -26,11 +28,6 @@
 #include <generated/data.h>
 
 #define MAX_PACKET_SIZE KB(64)
-
-#define LOW_AUDIO 0
-#define MED_AUDIO 1
-#define HIGH_AUDIO 2
-#define AUDIO HIGH_AUDIO
 
 const extern Guid ZeroGuid;
 
@@ -254,9 +251,33 @@ filenameToExtension(const char*, pFileExtension);
 
 extern StreamType FileExtenstionToStreamType(FileExtensionTag);
 
+extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
+
+// Audio
+
+#define AUDIO_FRAME_SIZE KB(64)
+
+#define LOW_AUDIO 0
+#define MED_AUDIO 1
+#define HIGH_AUDIO 2
+#define AUDIO HIGH_AUDIO
+
+#define TEST_MIC 0
+
+typedef struct AudioPlaybackState
+{
+    Bytes compressedBytes;
+    Bytes uncompressedBytes;
+    SDL_AudioSpec spec;
+    OpusDecoder* decoder;
+    SDL_AudioDeviceID id;
+} AudioPlaybackState, *pAudioPlaybackState;
+
 typedef struct AudioRecordState
 {
+    Bytes uncompressedBytes;
     SDL_AudioSpec spec;
+    OpusEncoder* encoder;
     Guid id;
     SDL_AudioDeviceID deviceId;
     SDL_bool running;
@@ -266,8 +287,6 @@ typedef pAudioRecordState AudioRecordStatePtr;
 
 MAKE_COPY_AND_FREE(AudioRecordStatePtr);
 MAKE_DEFAULT_LIST(AudioRecordStatePtr);
-
-extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 
 // Font
 typedef struct Character

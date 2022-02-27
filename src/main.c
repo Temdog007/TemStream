@@ -113,11 +113,12 @@ int
 printVersion()
 {
     const ENetVersion version = enet_linked_version();
-    return printf("TemStream %d.%d.%d\nENet %x\n",
+    return printf("TemStream %d.%d.%d\nENet %x\nOpus %s\n",
                   VERSION_MAJOR,
                   VERSION_MINOR,
                   VERSION_PATCH,
-                  version);
+                  version,
+                  opus_get_version_string());
 }
 
 void

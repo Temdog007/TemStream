@@ -30,20 +30,24 @@
 - [x] Add no display mode
 - [x] Show message box when fatal errors occur (ex. disconnect from server)
 
-### Later
-- [ ] Implement stream recording and playback (need to timestamp messages)
-- [ ] Allow for blacklist/whitelist for stream access
-- [ ] Allow owner to add/remove writers/readers
+### Feb 27, 2022 - Mar ??, 2022
+- [ ] Compress audio
+- [ ] Check when to render scene
 - [ ] Include FFMPEG
     - [ ] Play gifs
-    - [ ] Compress audio
     - [ ] Record windows
     - [ ] Record screen
     - [ ] Record webcam
+
+### Later
+- [ ] Ensure textures can be hidden
+- [ ] Implement stream recording and playback (need to timestamp messages)
+- [ ] Allow for blacklist/whitelist for stream access
+- [ ] Allow owner to add/remove writers/readers
 - [ ] Mix audio properply
 - [ ] Display audio mixer
 - [ ] Include press to talk
-- [ ] Create web page for GUI
+- [ ] Create web page for GUI for native version
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects

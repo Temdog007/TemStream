@@ -435,14 +435,14 @@ SDL_AudioSpec
 makeAudioSpec(SDL_AudioCallback callback, void* userdata)
 {
 #if AUDIO == HIGH_AUDIO
-    return (SDL_AudioSpec){ .freq = 44100,
+    return (SDL_AudioSpec){ .freq = 48000,
                             .format = AUDIO_F32,
                             .channels = 2,
                             .samples = 4096,
                             .callback = callback,
                             .userdata = userdata };
 #elif AUDIO == MED_AUDIO
-    return (SDL_AudioSpec){ .freq = 22050,
+    return (SDL_AudioSpec){ .freq = 16000,
                             .format = AUDIO_S16,
                             .channels = 1,
                             .samples = 2048,
