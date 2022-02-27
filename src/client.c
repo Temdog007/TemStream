@@ -433,10 +433,7 @@ storeOpusAudio(const Bytes* compressed)
     }
 
     const int byteSize = result * playbackState.spec.channels * pcmSize;
-    SDL_LockAudioDevice(playbackState.id);
-    uint8_tListQuickAppend(
-      &playbackState.uncompressedBytes, uncompressed, byteSize);
-    SDL_UnlockAudioDevice(playbackState.id);
+    SDL_QueueAudio(playbackState.id, uncompressed, byteSize);
 
 end:
     currentAllocator->free(uncompressed);
@@ -516,20 +513,6 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
     }
     uint8_tListFree(&bytes);
     uint8_tListFree(&converted);
-}
-
-void
-audioPlaybackCallback(pAudioPlaybackState state,
-                      uint8_t* audioStream,
-                      const int len)
-{
-    memset(audioStream, 0, len);
-    size_t sLen = len;
-    sLen = SDL_min(sLen, state->uncompressedBytes.used);
-    if (sLen > 0) {
-        memcpy(audioStream, state->uncompressedBytes.buffer, sLen);
-        uint8_tListQuickRemove(&state->uncompressedBytes, 0, sLen);
-    }
 }
 
 int
@@ -1947,15 +1930,8 @@ startPlayback(const char* name)
         currentAllocator->free(playbackState.decoder);
         playbackState.decoder = NULL;
     }
-    if (playbackState.uncompressedBytes.allocator == NULL) {
-        playbackState.uncompressedBytes.allocator = currentAllocator;
-        playbackState.uncompressedBytes.buffer =
-          currentAllocator->allocate(AUDIO_FRAME_SIZE);
-        playbackState.uncompressedBytes.size = AUDIO_FRAME_SIZE;
-        playbackState.uncompressedBytes.used = 0;
-    }
     const SDL_AudioSpec desired =
-      makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, &playbackState);
+      makeAudioSpec((SDL_AudioCallback)NULL, &playbackState);
 
     playbackState.id = SDL_OpenAudioDevice(name,
                                            SDL_FALSE,
@@ -2542,7 +2518,6 @@ end:
         currentAllocator->free(playbackState.decoder);
         playbackState.decoder = NULL;
     }
-    uint8_tListFree(&playbackState.uncompressedBytes);
     SDL_DestroyMutex(packetMutex);
     uint8_tListFree(&bytes);
     ClientDataFree(&clientData);

@@ -266,7 +266,6 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 
 typedef struct AudioPlaybackState
 {
-    Bytes uncompressedBytes;
     SDL_AudioSpec spec;
     OpusDecoder* decoder;
     SDL_AudioDeviceID id;
