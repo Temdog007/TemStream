@@ -273,6 +273,7 @@ typedef struct AudioPlaybackState
 
 typedef struct AudioRecordState
 {
+    Bytes audio;
     SDL_AudioSpec spec;
     OpusEncoder* encoder;
     Guid id;

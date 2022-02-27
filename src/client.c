@@ -442,6 +442,8 @@ end:
 void
 audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
 {
+    uint8_tListQuickAppend(&state->audio, data, len);
+
     const bool isFloat = state->spec.format == AUDIO_F32;
     const int pcmSize = (isFloat ? sizeof(float) : sizeof(opus_int16));
 
@@ -454,9 +456,8 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
       audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_2_5_MS);
 
     int result;
-    int offset = 0;
-    while (offset < len) {
-        int frame_size = (len - offset) / (state->spec.channels * pcmSize);
+    while (!uint8_tListIsEmpty(&state->audio)) {
+        int frame_size = state->audio.used / (state->spec.channels * pcmSize);
 
         if (frame_size < minDuration) {
             break;
@@ -467,13 +468,13 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
 
         if (isFloat) {
             result = opus_encode_float(state->encoder,
-                                       (float*)data + offset,
+                                       (float*)state->audio.buffer,
                                        frame_size,
                                        converted.buffer,
                                        converted.size);
         } else {
             result = opus_encode(state->encoder,
-                                 (opus_int16*)data + offset,
+                                 (opus_int16*)state->audio.buffer,
                                  frame_size,
                                  converted.buffer,
                                  converted.size);
@@ -488,7 +489,8 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
 
         converted.used = (uint32_t)result;
 
-        offset += (frame_size * state->spec.freq * pcmSize);
+        size_t bytesUsed = (frame_size * state->spec.freq * pcmSize);
+        uint8_tListQuickRemove(&state->audio, 0, bytesUsed);
 
         Message message = { 0 };
         message.tag = MessageTag_streamMessage;
@@ -535,6 +537,7 @@ audioRecordThread(pAudioRecordState state)
         printf("Encoder: %p (%d)\n", state->encoder, size);
 #endif
     }
+    state->audio.allocator = currentAllocator;
     SDL_PauseAudioDevice(state->deviceId, SDL_FALSE);
     while (!appDone && state->running == SDL_TRUE) {
         SDL_Delay(100);
@@ -543,6 +546,7 @@ end:
     printf("Closing audio device: %u\n", state->deviceId);
     SDL_CloseAudioDevice(state->deviceId);
 
+    uint8_tListFree(&state->audio);
     if (state->encoder != NULL) {
         currentAllocator->free(state->encoder);
         state->encoder = NULL;

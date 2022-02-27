@@ -30,9 +30,12 @@
 - [x] Add no display mode
 - [x] Show message box when fatal errors occur (ex. disconnect from server)
 
-### Feb 27, 2022 - Mar ??, 2022
+### Feb 27, 2022
 - [x] Compress audio
 - [x] Check when to render scene
+- [x] Make left over audio bytes for capture audio
+
+### Feb 28, 2022
 - [ ] Include FFMPEG
     - [ ] Play gifs
     - [ ] Record windows
