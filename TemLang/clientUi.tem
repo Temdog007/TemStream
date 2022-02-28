@@ -83,3 +83,9 @@ enum CustomEvent {
     ShowSimpleMessage
     CheckAddedStream
 }
+
+enum AudioStreamSource {
+    Microphone
+    File
+    Window
+}

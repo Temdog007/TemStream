@@ -13,6 +13,12 @@ AudioStatePtrList audioStates = { 0 };
 
 SDL_atomic_t runningThreads = { 0 };
 
+void
+sendAudioPackets(OpusEncoder* encoder,
+                 pBytes audio,
+                 const SDL_AudioSpec spec,
+                 const Guid*);
+
 bool
 enqueuePacket(pBytes bytes, const bool reliable)
 {
@@ -444,38 +450,39 @@ audioPlaybackCallback(AudioStatePtr state, uint8_t* data, int len)
 }
 
 void
-audioCaptureCallback(pAudioState state, uint8_t* data, int len)
+sendAudioPackets(OpusEncoder* encoder,
+                 pBytes audio,
+                 const SDL_AudioSpec spec,
+                 const Guid* guid)
 {
-    uint8_tListQuickAppend(&state->audio, data, len);
-
     Bytes converted = { .allocator = currentAllocator,
                         .buffer = currentAllocator->allocate(AUDIO_FRAME_SIZE),
                         .size = AUDIO_FRAME_SIZE,
                         .used = 0 };
     Bytes bytes = { .allocator = currentAllocator };
     const int minDuration =
-      audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_2_5_MS);
+      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_2_5_MS);
 
-    while (!uint8_tListIsEmpty(&state->audio)) {
-        int frame_size = state->audio.used / (state->spec.channels * PCM_SIZE);
+    while (!uint8_tListIsEmpty(audio)) {
+        int frame_size = audio->used / (spec.channels * PCM_SIZE);
 
         if (frame_size < minDuration) {
             break;
         }
 
         // Only certain durations are valid for encoding
-        frame_size = closestValidFrameCount(state->spec.freq, frame_size);
+        frame_size = closestValidFrameCount(spec.freq, frame_size);
 
         const int result =
 #if HIGH_QUALITY_AUDIO
-          opus_encode_float(state->encoder,
-                            (float*)state->audio.buffer,
+          opus_encode_float(encoder,
+                            (float*)audio->buffer,
                             frame_size,
                             converted.buffer,
                             converted.size);
 #else
           opus_encode(state->encoder,
-                      (opus_int16*)state->audio.buffer,
+                      (opus_int16*)audio->buffer,
                       frame_size,
                       converted.buffer,
                       converted.size);
@@ -490,12 +497,12 @@ audioCaptureCallback(pAudioState state, uint8_t* data, int len)
 
         converted.used = (uint32_t)result;
 
-        const size_t bytesUsed = (frame_size * state->spec.channels * PCM_SIZE);
-        uint8_tListQuickRemove(&state->audio, 0, bytesUsed);
+        const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
+        uint8_tListQuickRemove(audio, 0, bytesUsed);
 
         Message message = { 0 };
         message.tag = MessageTag_streamMessage;
-        message.streamMessage.id = state->id;
+        message.streamMessage.id = *guid;
         message.streamMessage.data.tag = StreamMessageDataTag_audio;
         message.streamMessage.data.audio = converted;
 
@@ -515,6 +522,14 @@ audioCaptureCallback(pAudioState state, uint8_t* data, int len)
     }
     uint8_tListFree(&bytes);
     uint8_tListFree(&converted);
+}
+
+void
+audioCaptureCallback(pAudioState state, uint8_t* data, int len)
+{
+    uint8_tListQuickAppend(&state->audio, data, len);
+
+    sendAudioPackets(state->encoder, &state->audio, state->spec, &state->id);
 }
 
 int
@@ -543,7 +558,123 @@ audioStateCheckThread(AudioStatePtr state)
 }
 
 void
-startRecording(const Guid* guid)
+streamWAVFile(const void* ptr, const size_t size, const Guid* guid)
+{
+    puts("Streaming wav file...");
+    OpusEncoder* encoder = NULL;
+    uint8_t* buffer = NULL;
+    uint32_t bufLen = 0;
+    SDL_RWops* rwops = SDL_RWFromConstMem(ptr, size);
+    if (rwops == NULL) {
+        fprintf(stderr, "Failed to create memory: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    SDL_AudioSpec spec = { 0 };
+    if (SDL_LoadWAV_RW(rwops, 0, &spec, &buffer, &bufLen) != &spec) {
+        fprintf(stderr, "Failed to load wav file: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    SDL_AudioSpec desired = makeAudioSpec(NULL, NULL);
+    SDL_AudioCVT cvt;
+    if (SDL_BuildAudioCVT(&cvt,
+                          spec.format,
+                          spec.channels,
+                          spec.freq,
+                          desired.format,
+                          desired.channels,
+                          desired.freq) < 0) {
+        fprintf(
+          stderr, "Failed to build audio converter: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    const size_t eSize = opus_encoder_get_size(desired.channels);
+    encoder = currentAllocator->allocate(eSize);
+    const int error = opus_encoder_init(
+      encoder, desired.freq, desired.channels, OPUS_APPLICATION_VOIP);
+    if (error < 0) {
+        fprintf(
+          stderr, "Failed to create audio encoder: %s\n", opus_strerror(error));
+        goto end;
+    }
+
+    if (cvt.needed) {
+        const uint32_t newLen = bufLen * cvt.len_mult;
+        Bytes bytes = { .allocator = currentAllocator,
+                        .buffer = currentAllocator->allocate(newLen),
+                        .used = newLen,
+                        .size = newLen };
+        cvt.len = bufLen;
+        cvt.buf = bytes.buffer;
+        SDL_ConvertAudio(&cvt);
+        bytes.used = (uint32_t)cvt.len_cvt;
+        sendAudioPackets(encoder, &bytes, desired, guid);
+        uint8_tListFree(&bytes);
+    } else {
+        Bytes bytes = {
+            .allocator = NULL, .buffer = buffer, .size = bufLen, .used = bufLen
+        };
+        sendAudioPackets(encoder, &bytes, desired, guid);
+    }
+
+end:
+    if (encoder != NULL) {
+        currentAllocator->free(encoder);
+    }
+    SDL_FreeWAV(buffer);
+    puts("Done streaming wav file");
+}
+
+void
+startRecording(SDL_Window* window, const Guid* guid);
+
+void
+selectAudioStreamSource(SDL_Window* window, const Guid* guid)
+{
+    SDL_MessageBoxButtonData buttons[AudioStreamSource_Length] = { 0 };
+    for (AudioStreamSource i = 0; i < AudioStreamSource_Length; ++i) {
+        buttons[i].buttonid = i;
+        buttons[i].flags = 0;
+        buttons[i].text = AudioStreamSourceToCharString(i);
+    }
+
+    const SDL_MessageBoxData data = { .flags = SDL_MESSAGEBOX_INFORMATION,
+                                      .window = window,
+                                      .title = "Audio recording",
+                                      .message =
+                                        "Select an audio device to stream",
+                                      .numbuttons = AudioStreamSource_Length,
+                                      .buttons = buttons,
+                                      .colorScheme = NULL };
+    int selected;
+    if (SDL_ShowMessageBox(&data, &selected) != 0) {
+        fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    switch (selected) {
+        case AudioStreamSource_File:
+            puts("Drag and drop file into window to start streaming it...");
+            break;
+        case AudioStreamSource_Microphone:
+            startRecording(window, guid);
+            break;
+        case AudioStreamSource_Window:
+            fprintf(stderr, "Window audio streaming not implemented\n");
+            break;
+        default:
+            fprintf(stderr, "Unknown option: %d\n", selected);
+            break;
+    }
+
+end:
+    return;
+}
+
+void
+startRecording(SDL_Window* window, const Guid* guid)
 {
     const int devices = SDL_GetNumAudioDevices(SDL_TRUE);
     if (devices == 0) {
@@ -567,7 +698,7 @@ startRecording(const Guid* guid)
     }
 
     const SDL_MessageBoxData data = { .flags = SDL_MESSAGEBOX_INFORMATION,
-                                      .window = NULL,
+                                      .window = window,
                                       .title = "Audio recording",
                                       .message =
                                         "Select an audio device to stream",
@@ -634,7 +765,7 @@ audioStartEnd:
 }
 
 void
-startPlayback(const Guid* guid)
+startPlayback(SDL_Window* window, const Guid* guid)
 {
     const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
     if (devices == 0) {
@@ -659,7 +790,7 @@ startPlayback(const Guid* guid)
 
     const SDL_MessageBoxData data = {
         .flags = SDL_MESSAGEBOX_INFORMATION,
-        .window = NULL,
+        .window = window,
         .title = "Audio playback",
         .message = "Select an audio device to play audio from",
         .numbuttons = devices,
@@ -1261,7 +1392,7 @@ handleClientCommand(const ClientCommand command, pBytes bytes)
 }
 
 void
-clientHandleMessage(pMessage message)
+clientHandleMessage(SDL_Window* window, pMessage message)
 {
     switch (message->tag) {
         case MessageTag_authenticateAck: {
@@ -1342,7 +1473,7 @@ clientHandleMessage(pMessage message)
                     SDL_PushEvent(&e);
 
                     if (streamMessage->data.tag == StreamMessageDataTag_audio) {
-                        startPlayback(guid);
+                        startPlayback(window, guid);
                     }
 
                     GuidListAppend(&clientData.connectedStreams, guid);
@@ -2120,16 +2251,8 @@ runClient(const AllConfiguration* configuration)
     size_t targetDisplay = UINT32_MAX;
     MoveMode moveMode = MoveMode_None;
     bool hasTarget = false;
-    bool needRender = true;
 
     while (!appDone) {
-        if (needRender) {
-            int w, h;
-            SDL_GetWindowSize(window, &w, &h);
-            drawTextures(
-              renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
-            needRender = false;
-        }
         for (size_t i = 0; i < audioStates.used; ++i) {
             AudioStatePtr ptr = audioStates.buffer[i];
             if (ptr->isRecording) {
@@ -2163,7 +2286,7 @@ runClient(const AllConfiguration* configuration)
                 appDone = true;
                 break;
             case SDL_WINDOWEVENT:
-                needRender = true;
+                renderDisplays();
                 break;
             case SDL_KEYDOWN:
                 switch (e.key.keysym.sym) {
@@ -2209,14 +2332,14 @@ runClient(const AllConfiguration* configuration)
                 if (findDisplayFromPoint(&point, &targetDisplay)) {
                     hasTarget = true;
                     SDL_SetWindowGrab(window, true);
-                    needRender = true;
+                    renderDisplays();
                 }
             } break;
             case SDL_MOUSEBUTTONUP: {
                 hasTarget = false;
                 targetDisplay = UINT32_MAX;
                 SDL_SetWindowGrab(window, false);
-                needRender = true;
+                renderDisplays();
             } break;
             case SDL_MOUSEMOTION: {
                 if (hasTarget) {
@@ -2253,7 +2376,7 @@ runClient(const AllConfiguration* configuration)
                       display->dstRect.x, 0.f, w - display->dstRect.w);
                     display->dstRect.y = SDL_clamp(
                       display->dstRect.y, 0.f, h - display->dstRect.h);
-                    needRender = true;
+                    renderDisplays();
                 } else {
                     SDL_FPoint point = { 0 };
                     int x;
@@ -2263,7 +2386,7 @@ runClient(const AllConfiguration* configuration)
                     point.y = (float)y;
                     targetDisplay = UINT_MAX;
                     findDisplayFromPoint(&point, &targetDisplay);
-                    needRender = true;
+                    renderDisplays();
                 }
             } break;
             case SDL_MOUSEWHEEL: {
@@ -2297,7 +2420,7 @@ runClient(const AllConfiguration* configuration)
                     default:
                         break;
                 }
-                needRender = true;
+                renderDisplays();
             } break;
             case SDL_USEREVENT: {
                 int w;
@@ -2305,7 +2428,10 @@ runClient(const AllConfiguration* configuration)
                 SDL_GetWindowSize(window, &w, &h);
                 switch (e.user.code) {
                     case CustomEvent_Render:
-                        needRender = true;
+                        drawTextures(renderer,
+                                     targetDisplay,
+                                     (float)w - 32.f,
+                                     (float)h - 32.f);
                         break;
                     case CustomEvent_SaveScreenshot:
                         saveScreenshot(renderer, (const Guid*)e.user.data1);
@@ -2313,7 +2439,7 @@ runClient(const AllConfiguration* configuration)
                         break;
                     case CustomEvent_HandleMessage: {
                         pMessage message = e.user.data1;
-                        clientHandleMessage(message);
+                        clientHandleMessage(window, message);
                         MessageFree(message);
                         currentAllocator->free(e.user.data1);
                     } break;
@@ -2329,7 +2455,7 @@ runClient(const AllConfiguration* configuration)
                         if (GetStreamFromGuid(
                               &clientData.allStreams, guid, &stream, NULL) &&
                             stream->type == StreamType_Audio) {
-                            startRecording(guid);
+                            selectAudioStreamSource(window, guid);
                         }
                         currentAllocator->free(guid);
                     } break;
@@ -2343,7 +2469,7 @@ runClient(const AllConfiguration* configuration)
                         // Create texture once data is received
                         StreamDisplayListAppend(&clientData.displays, &s);
                         currentAllocator->free(e.user.data1);
-                        needRender = true;
+                        renderDisplays();
                     } break;
                     case CustomEvent_UpdateStreamDisplay: {
                         pStreamMessage m = e.user.data1;
@@ -2394,7 +2520,7 @@ runClient(const AllConfiguration* configuration)
                         }
                         StreamMessageFree(m);
                         currentAllocator->free(m);
-                        needRender = true;
+                        renderDisplays();
                     } break;
                     default:
                         break;
@@ -2456,14 +2582,18 @@ runClient(const AllConfiguration* configuration)
                     }
                 }
 
+                bool sendMessage = false;
                 Message message = { 0 };
                 message.tag = MessageTag_streamMessage;
                 message.streamMessage.id = stream->id;
                 switch (ext.tag) {
                     case FileExtensionTag_audio:
-                        message.streamMessage.data.tag =
-                          StreamMessageDataTag_audio;
-                        message.streamMessage.data.audio = fileBytes;
+                        if (ext.audio == AudioExtension_WAV) {
+                            streamWAVFile(ptr, size, &stream->id);
+                        } else {
+                            fprintf(stderr,
+                                    "Only .WAV files can be streamed\n");
+                        }
                         break;
                     case FileExtensionTag_video:
                         message.streamMessage.data.tag =
@@ -2474,10 +2604,13 @@ runClient(const AllConfiguration* configuration)
                         message.streamMessage.data.tag =
                           StreamMessageDataTag_image;
                         message.streamMessage.data.image = fileBytes;
+                        sendMessage = true;
                         break;
                 }
-                MESSAGE_SERIALIZE(message, bytes);
-                enqueuePacket(&bytes, true);
+                if (sendMessage) {
+                    MESSAGE_SERIALIZE(message, bytes);
+                    enqueuePacket(&bytes, true);
+                }
                 // Don't free message since it wasn't allocated
             endDropFile:
                 unmapFile(fd, ptr, size);

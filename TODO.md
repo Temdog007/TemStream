@@ -37,11 +37,11 @@
 
 ### Feb 28, 2022
 - [x] Ensure each audio stream has its own playback device id (remove global playback)
-- [ ] Add audio file streaming
+- [ ] use FFMPEG for audio stuff to handle streaming/converting to PCM
 - [ ] Display audio mixer
-- [ ] Play gifs
 
-### Mar 1, 2022
+### Mar 1, 2022 - Mar ??, 2022
+- [ ] Play gifs
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam
