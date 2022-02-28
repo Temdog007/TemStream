@@ -254,6 +254,12 @@ StreamTypeEquals(const Stream* stream, const StreamType* type)
 }
 
 bool
+AudioStateGuidEquals(const AudioState* state, const Guid* guid)
+{
+    return GuidEquals(&state->id, guid);
+}
+
+bool
 StreamMessageGuidEquals(const StreamMessage* message, const Guid* guid)
 {
     return GuidEquals(&message->id, guid);
@@ -307,6 +313,27 @@ GetStreamMessageFromGuid(const StreamMessageList* streams,
       guid,
       stream,
       index);
+}
+
+bool
+GetPlaybackAudioStateFromGuid(const AudioStatePtrList* list,
+                              const Guid* guid,
+                              const AudioStatePtr** ptr,
+                              size_t* index)
+{
+    for (size_t i = 0; i < list->used; ++i) {
+        const AudioStatePtr p = list->buffer[i];
+        if (AudioStateGuidEquals(p, guid) && p->isRecording == SDL_FALSE) {
+            if (ptr != NULL) {
+                *ptr = &p;
+            }
+            if (index != NULL) {
+                *index = i;
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 bool
@@ -434,25 +461,18 @@ streamTypeMatchesMessage(const StreamType type, const StreamMessageDataTag tag)
 SDL_AudioSpec
 makeAudioSpec(SDL_AudioCallback callback, void* userdata)
 {
-#if AUDIO == HIGH_AUDIO
+#if HIGH_QUALITY_AUDIO
     return (SDL_AudioSpec){ .freq = 48000,
                             .format = AUDIO_F32,
                             .channels = 2,
                             .samples = 4096,
                             .callback = callback,
                             .userdata = userdata };
-#elif AUDIO == MED_AUDIO
+#else
     return (SDL_AudioSpec){ .freq = 16000,
                             .format = AUDIO_S16,
                             .channels = 1,
                             .samples = 2048,
-                            .callback = callback,
-                            .userdata = userdata };
-#else
-    return (SDL_AudioSpec){ .freq = 8000,
-                            .format = AUDIO_S8,
-                            .channels = 1,
-                            .samples = 1024,
                             .callback = callback,
                             .userdata = userdata };
 #endif

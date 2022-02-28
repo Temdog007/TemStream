@@ -36,20 +36,21 @@
 - [x] Make left over audio bytes for capture audio
 
 ### Feb 28, 2022
-- [ ] Ensure each audio stream has its own playback device id (remove global playback)
-- [ ] Include FFMPEG
-    - [ ] Play gifs
-    - [ ] Record windows
-    - [ ] Record screen
-    - [ ] Record webcam
+- [x] Ensure each audio stream has its own playback device id (remove global playback)
+- [ ] Add audio file streaming
+- [ ] Display audio mixer
+- [ ] Play gifs
+
+### Mar 1, 2022
+- [ ] Record windows
+- [ ] Record screen
+- [ ] Record webcam
 
 ### Later
-- [ ] Ensure textures can be hidden
+- [ ] Ensure textures can be hidden for a stream
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Allow for blacklist/whitelist for stream access
 - [ ] Allow owner to add/remove writers/readers
-- [ ] Mix audio properply
-- [ ] Display audio mixer
 - [ ] Include press to talk
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

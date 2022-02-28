@@ -257,34 +257,43 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 
 #define AUDIO_FRAME_SIZE KB(64)
 
-#define LOW_AUDIO 0
-#define MED_AUDIO 1
-#define HIGH_AUDIO 2
-#define AUDIO HIGH_AUDIO
+#define HIGH_QUALITY_AUDIO 1
+#if HIGH_QUALITY_AUDIO
+#define PCM_SIZE sizeof(float)
+#else
+#define PCM_SIZE sizeof(opus_int16)
+#endif
 
 #define TEST_MIC 0
 
-typedef struct AudioPlaybackState
+typedef struct AudioState
 {
     SDL_AudioSpec spec;
-    OpusDecoder* decoder;
-    SDL_AudioDeviceID id;
-} AudioPlaybackState, *pAudioPlaybackState;
-
-typedef struct AudioRecordState
-{
     Bytes audio;
-    SDL_AudioSpec spec;
-    OpusEncoder* encoder;
     Guid id;
+    union
+    {
+        OpusEncoder* encoder;
+        OpusDecoder* decoder;
+    };
     SDL_AudioDeviceID deviceId;
     SDL_bool running;
-} AudioRecordState, *pAudioRecordState;
+    SDL_bool isRecording;
+} AudioState, *pAudioState;
 
-typedef pAudioRecordState AudioRecordStatePtr;
+typedef pAudioState AudioStatePtr;
 
-MAKE_COPY_AND_FREE(AudioRecordStatePtr);
-MAKE_DEFAULT_LIST(AudioRecordStatePtr);
+MAKE_COPY_AND_FREE(AudioStatePtr);
+MAKE_DEFAULT_LIST(AudioStatePtr);
+
+extern bool
+GetPlaybackAudioStateFromGuid(const AudioStatePtrList*,
+                              const Guid*,
+                              const AudioStatePtr**,
+                              size_t*);
+
+extern bool
+AudioStateGuidEquals(const AudioState*, const Guid*);
 
 // Font
 typedef struct Character

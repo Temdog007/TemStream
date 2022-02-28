@@ -176,6 +176,9 @@ copyMessageToClients(ENetHost* server,
                         s.data.tag = StreamMessageDataTag_text;
                         s.data.text.allocator = currentAllocator;
                         break;
+                    case StreamMessageDataTag_audio:
+                        s.data.tag = StreamMessageDataTag_audio;
+                        s.data.audio.allocator = currentAllocator;
                     default:
                         s.data.tag = StreamMessageDataTag_none;
                         s.data.none = NULL;
@@ -202,6 +205,9 @@ copyMessageToClients(ENetHost* server,
                                     currentAllocator);
                     break;
                 case StreamMessageDataTag_audio:
+                    // Keep initial audio empty. This is just to signal
+                    // to client that they have connected to an audio stream
+                    // and should prepare for playback
                     break;
                 default:
                     printf("Unexpected message type: %s\n",
@@ -418,6 +424,14 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                         m.id = newStream.id;
                         m.data.tag = StreamMessageDataTag_image;
                         m.data.image.allocator = currentAllocator;
+                        StreamMessageListAppend(&serverData.storage, &m);
+                        StreamMessageFree(&m);
+                    } break;
+                    case StreamType_Audio: {
+                        StreamMessage m = { 0 };
+                        m.id = newStream.id;
+                        m.data.tag = StreamMessageDataTag_audio;
+                        m.data.audio.allocator = currentAllocator;
                         StreamMessageListAppend(&serverData.storage, &m);
                         StreamMessageFree(&m);
                     } break;

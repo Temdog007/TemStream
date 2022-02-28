@@ -9,14 +9,9 @@ SDL_mutex* packetMutex = NULL;
 
 pENetPacketList outgoingPackets = { 0 };
 
-AudioRecordStatePtrList audioRecordings = { 0 };
+AudioStatePtrList audioStates = { 0 };
 
 SDL_atomic_t runningThreads = { 0 };
-
-AudioPlaybackState playbackState = { 0 };
-
-void
-startPlayback(const char* name);
 
 bool
 enqueuePacket(ENetPacket* packet)
@@ -397,55 +392,44 @@ closestValidFrameCount(const int frequency, const int frames)
 }
 
 void
-storeOpusAudio(const Bytes* compressed)
+storeOpusAudio(pAudioState state, const Bytes* compressed)
 {
-    if (playbackState.id == 0) {
-        return;
-    }
-
-    const bool isFloat = playbackState.spec.format == AUDIO_F32;
-    const int pcmSize = isFloat ? sizeof(float) : sizeof(opus_int16);
-
     void* uncompressed = currentAllocator->allocate(MAX_PACKET_SIZE);
 
-    int result;
-    if (isFloat) {
-        result = opus_decode_float(
-          playbackState.decoder,
-          (unsigned char*)compressed->buffer,
-          compressed->used,
-          (float*)uncompressed,
-          audioLengthToFrames(playbackState.spec.freq, OPUS_FRAMESIZE_120_MS),
-          0);
-    } else {
-        result = opus_decode(
-          playbackState.decoder,
-          (unsigned char*)compressed->buffer,
-          compressed->used,
-          (opus_int16*)uncompressed,
-          audioLengthToFrames(playbackState.spec.freq, OPUS_FRAMESIZE_120_MS),
-          0);
-    }
+    const int result =
+#if HIGH_QUALITY_AUDIO
+      opus_decode_float(
+        state->decoder,
+        (unsigned char*)compressed->buffer,
+        compressed->used,
+        (float*)uncompressed,
+        audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
+        0);
+#else
+      opus_decode(state->decoder,
+                  (unsigned char*)compressed->buffer,
+                  compressed->used,
+                  (opus_int16*)uncompressed,
+                  audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
+                  0);
+#endif
 
     if (result < 0) {
         fprintf(stderr, "Failed to decode audio: %s\n", opus_strerror(result));
         goto end;
     }
 
-    const int byteSize = result * playbackState.spec.channels * pcmSize;
-    SDL_QueueAudio(playbackState.id, uncompressed, byteSize);
+    const int byteSize = result * state->spec.channels * PCM_SIZE;
+    SDL_QueueAudio(state->deviceId, uncompressed, byteSize);
 
 end:
     currentAllocator->free(uncompressed);
 }
 
 void
-audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
+audioCaptureCallback(pAudioState state, uint8_t* data, int len)
 {
     uint8_tListQuickAppend(&state->audio, data, len);
-
-    const bool isFloat = state->spec.format == AUDIO_F32;
-    const int pcmSize = (isFloat ? sizeof(float) : sizeof(opus_int16));
 
     Bytes converted = { .allocator = currentAllocator,
                         .buffer = currentAllocator->allocate(AUDIO_FRAME_SIZE),
@@ -455,9 +439,8 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
     const int minDuration =
       audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_2_5_MS);
 
-    int result;
     while (!uint8_tListIsEmpty(&state->audio)) {
-        int frame_size = state->audio.used / (state->spec.channels * pcmSize);
+        int frame_size = state->audio.used / (state->spec.channels * PCM_SIZE);
 
         if (frame_size < minDuration) {
             break;
@@ -466,19 +449,20 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
         // Only certain durations are valid for encoding
         frame_size = closestValidFrameCount(state->spec.freq, frame_size);
 
-        if (isFloat) {
-            result = opus_encode_float(state->encoder,
-                                       (float*)state->audio.buffer,
-                                       frame_size,
-                                       converted.buffer,
-                                       converted.size);
-        } else {
-            result = opus_encode(state->encoder,
-                                 (opus_int16*)state->audio.buffer,
-                                 frame_size,
-                                 converted.buffer,
-                                 converted.size);
-        }
+        const int result =
+#if HIGH_QUALITY_AUDIO
+          opus_encode_float(state->encoder,
+                            (float*)state->audio.buffer,
+                            frame_size,
+                            converted.buffer,
+                            converted.size);
+#else
+          opus_encode(state->encoder,
+                      (opus_int16*)state->audio.buffer,
+                      frame_size,
+                      converted.buffer,
+                      converted.size);
+#endif
         if (result < 0) {
             fprintf(stderr,
                     "Failed to encode recorded packet: %s; Frame size %d\n",
@@ -489,7 +473,7 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
 
         converted.used = (uint32_t)result;
 
-        size_t bytesUsed = (frame_size * state->spec.freq * pcmSize);
+        const size_t bytesUsed = (frame_size * state->spec.channels * PCM_SIZE);
         uint8_tListQuickRemove(&state->audio, 0, bytesUsed);
 
         Message message = { 0 };
@@ -497,8 +481,8 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
         message.streamMessage.id = state->id;
         message.streamMessage.data.tag = StreamMessageDataTag_audio;
         message.streamMessage.data.audio = converted;
-
         MESSAGE_SERIALIZE(message, bytes);
+
 #if TEST_MIC
         SDL_Event e = { 0 };
         e.type = SDL_USEREVENT;
@@ -518,43 +502,35 @@ audioCaptureCallback(pAudioRecordState state, uint8_t* data, int len)
 }
 
 int
-audioRecordThread(pAudioRecordState state)
+audioStateCheckThread(AudioStatePtr state)
 {
-    {
-        const int size = opus_encoder_get_size(state->spec.channels);
-        state->encoder = currentAllocator->allocate(size);
-        const int error = opus_encoder_init(state->encoder,
-                                            state->spec.freq,
-                                            state->spec.channels,
-                                            OPUS_APPLICATION_VOIP);
-        if (error < 0) {
-            fprintf(stderr,
-                    "Failed to create voice encoder: %s\n",
-                    opus_strerror(error));
-            goto end;
-        }
-#if _DEBUG
-        printf("Encoder: %p (%d)\n", state->encoder, size);
-#endif
-    }
     state->audio.allocator = currentAllocator;
+    state->running = SDL_TRUE;
     SDL_PauseAudioDevice(state->deviceId, SDL_FALSE);
     while (!appDone && state->running == SDL_TRUE) {
         SDL_Delay(100);
     }
-end:
+
     printf("Closing audio device: %u\n", state->deviceId);
     SDL_CloseAudioDevice(state->deviceId);
 
     uint8_tListFree(&state->audio);
-    if (state->encoder != NULL) {
-        currentAllocator->free(state->encoder);
-        state->encoder = NULL;
+    if (state->isRecording) {
+        if (state->encoder != NULL) {
+            currentAllocator->free(state->encoder);
+            state->encoder = NULL;
+        }
+        puts("Ending audio recording thread");
+    } else {
+        if (state->decoder != NULL) {
+            currentAllocator->free(state->decoder);
+            state->decoder = NULL;
+        }
+        puts("Ending audio playback thread");
     }
 
     currentAllocator->free(state);
     SDL_AtomicDecRef(&runningThreads);
-    puts("Ending audio recording thread");
     return EXIT_SUCCESS;
 }
 
@@ -567,8 +543,8 @@ startRecording(const Guid* guid)
         return;
     }
 
-    AudioRecordStatePtr state =
-      currentAllocator->allocate(sizeof(AudioRecordState));
+    AudioStatePtr state = currentAllocator->allocate(sizeof(AudioState));
+    state->isRecording = SDL_TRUE;
     state->id = *guid;
     SDL_MessageBoxButtonData* buttons =
       currentAllocator->allocate(devices * sizeof(SDL_MessageBoxButtonData));
@@ -602,7 +578,7 @@ startRecording(const Guid* guid)
                           SDL_TRUE,
                           &desiredRecordingSpec,
                           &state->spec,
-                          SDL_AUDIO_ALLOW_ANY_CHANGE);
+                          0);
     if (state->deviceId == 0) {
         fprintf(stderr, "Failed to start recording: %s\n", SDL_GetError());
         goto audioStartEnd;
@@ -610,11 +586,25 @@ startRecording(const Guid* guid)
     puts("Recording audio specification");
     printAudioSpec(&state->spec);
 
-    printf("Open audio device: %u\n", state->deviceId);
+    printf("Opened recording audio device: %u\n", state->deviceId);
 
-    state->running = SDL_TRUE;
+    const int size = opus_encoder_get_size(state->spec.channels);
+    state->encoder = currentAllocator->allocate(size);
+    const int error = opus_encoder_init(state->encoder,
+                                        state->spec.freq,
+                                        state->spec.channels,
+                                        OPUS_APPLICATION_VOIP);
+    if (error < 0) {
+        fprintf(
+          stderr, "Failed to create voice encoder: %s\n", opus_strerror(error));
+        goto audioStartEnd;
+    }
+#if _DEBUG
+    printf("Encoder: %p (%d)\n", state->encoder, size);
+#endif
+
     SDL_Thread* thread = SDL_CreateThread(
-      (SDL_ThreadFunction)audioRecordThread, "audio", (void*)state);
+      (SDL_ThreadFunction)audioStateCheckThread, "record", (void*)state);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
         goto audioStartEnd;
@@ -622,11 +612,102 @@ startRecording(const Guid* guid)
     SDL_AtomicIncRef(&runningThreads);
     SDL_DetachThread(thread);
 
-    AudioRecordStatePtrListAppend(&audioRecordings, &state);
+    AudioStatePtrListAppend(&audioStates, &state);
     state = NULL;
 audioStartEnd:
     if (state != NULL) {
         SDL_CloseAudioDevice(state->deviceId);
+        currentAllocator->free(state->encoder);
+        currentAllocator->free(state);
+    }
+    for (int i = 0; i < devices; ++i) {
+        currentAllocator->free((char*)buttons[i].text);
+    }
+    currentAllocator->free(buttons);
+}
+
+void
+startPlayback(const Guid* guid)
+{
+    const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
+    if (devices == 0) {
+        fprintf(stderr, "No playback devices found to play audio\n");
+        return;
+    }
+
+    AudioStatePtr state = currentAllocator->allocate(sizeof(AudioState));
+    state->isRecording = SDL_FALSE;
+    state->id = *guid;
+    SDL_MessageBoxButtonData* buttons =
+      currentAllocator->allocate(devices * sizeof(SDL_MessageBoxButtonData));
+    for (int i = 0; i < devices; ++i) {
+        buttons[i].buttonid = i;
+        buttons[i].flags = 0;
+        const char* name = SDL_GetAudioDeviceName(i, SDL_FALSE);
+        const size_t len = strlen(name);
+        char* ptr = currentAllocator->allocate(sizeof(char) * (len + 1));
+        memcpy(ptr, name, len);
+        buttons[i].text = ptr;
+    }
+
+    const SDL_MessageBoxData data = {
+        .flags = SDL_MESSAGEBOX_INFORMATION,
+        .window = NULL,
+        .title = "Audio playback",
+        .message = "Select an audio device to play audio from",
+        .numbuttons = devices,
+        .buttons = buttons,
+        .colorScheme = NULL
+    };
+    int selected;
+    if (SDL_ShowMessageBox(&data, &selected) != 0) {
+        fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
+        goto audioStartEnd;
+    }
+    const SDL_AudioSpec desiredRecordingSpec = makeAudioSpec(NULL, NULL);
+    state->deviceId =
+      SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_FALSE),
+                          SDL_FALSE,
+                          &desiredRecordingSpec,
+                          &state->spec,
+                          0);
+    if (state->deviceId == 0) {
+        fprintf(stderr, "Failed to start playback: %s\n", SDL_GetError());
+        goto audioStartEnd;
+    }
+    puts("Playback audio specification");
+    printAudioSpec(&state->spec);
+
+    printf("Opened playback audio device: %u\n", state->deviceId);
+
+    const int size = opus_decoder_get_size(state->spec.channels);
+    state->decoder = currentAllocator->allocate(size);
+    const int error =
+      opus_decoder_init(state->decoder, state->spec.freq, state->spec.channels);
+    if (error < 0) {
+        fprintf(
+          stderr, "Failed to create voice decoder: %s\n", opus_strerror(error));
+        goto audioStartEnd;
+    }
+#if _DEBUG
+    printf("Decoder: %p (%d)\n", state->decoder, size);
+#endif
+
+    SDL_Thread* thread = SDL_CreateThread(
+      (SDL_ThreadFunction)audioStateCheckThread, "playback", (void*)state);
+    if (thread == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        goto audioStartEnd;
+    }
+    SDL_AtomicIncRef(&runningThreads);
+    SDL_DetachThread(thread);
+
+    AudioStatePtrListAppend(&audioStates, &state);
+    state = NULL;
+audioStartEnd:
+    if (state != NULL) {
+        SDL_CloseAudioDevice(state->deviceId);
+        currentAllocator->free(state->decoder);
         currentAllocator->free(state);
     }
     for (int i = 0; i < devices; ++i) {
@@ -1094,28 +1175,6 @@ userInputThread(void* ptr)
             saveEnd:
                 StreamListFree(&streams);
             } break;
-            case ClientCommand_ChangePlaybackDevice: {
-                const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
-                if (devices == 0) {
-                    puts("No playback devices detected");
-                    break;
-                }
-                uint32_t index = 0;
-                if (devices != 1) {
-                    askQuestion("Select a playback device");
-                    for (int i = 0; i < devices; ++i) {
-                        printf("%d) %s\n",
-                               i + 1,
-                               SDL_GetAudioDeviceName(i, SDL_FALSE));
-                    }
-                    if (getIndexFromUser(inputfd, &bytes, devices, &index) !=
-                        UserInputResult_Input) {
-                        puts("Cancel changing playback device");
-                        break;
-                    }
-                }
-                startPlayback(SDL_GetAudioDeviceName(index, SDL_FALSE));
-            } break;
             case ClientCommand_ConnectToStream:
             case ClientCommand_ShowAllStreams:
             case ClientCommand_ShowConnectedStreams:
@@ -1275,6 +1334,12 @@ clientHandleMessage(pMessage message)
                     *guid = streamMessage->id;
                     e.user.data1 = guid;
                     SDL_PushEvent(&e);
+
+                    if (streamMessage->data.tag == StreamMessageDataTag_audio) {
+                        startPlayback(guid);
+                    }
+
+                    GuidListAppend(&clientData.connectedStreams, guid);
 
                     switch (streamMessage->data.tag) {
                         case StreamMessageDataTag_text:
@@ -1923,50 +1988,6 @@ displayError(SDL_Window* window, const char* e)
       SDL_MESSAGEBOX_ERROR, "SDL error", e, window);
 }
 
-void
-startPlayback(const char* name)
-{
-    if (playbackState.id != 0) {
-        SDL_CloseAudioDevice(playbackState.id);
-        playbackState.id = 0;
-    }
-    if (playbackState.decoder != NULL) {
-        currentAllocator->free(playbackState.decoder);
-        playbackState.decoder = NULL;
-    }
-    const SDL_AudioSpec desired =
-      makeAudioSpec((SDL_AudioCallback)NULL, &playbackState);
-
-    playbackState.id =
-      SDL_OpenAudioDevice(name, SDL_FALSE, &desired, &playbackState.spec, 0);
-    if (playbackState.id == 0) {
-        fprintf(stderr,
-                "Failed to open playback device. No audio will be played\n");
-        return;
-    }
-
-    puts("Playback audio specification");
-    printAudioSpec(&playbackState.spec);
-
-    const int size = opus_decoder_get_size(playbackState.spec.channels);
-    playbackState.decoder = currentAllocator->allocate(size);
-    const int error = opus_decoder_init(playbackState.decoder,
-                                        playbackState.spec.freq,
-                                        playbackState.spec.channels);
-    if (error < 0) {
-        fprintf(
-          stderr, "Failed to initialize decoder: %s\n", opus_strerror(error));
-    } else {
-        SDL_PauseAudioDevice(playbackState.id, SDL_FALSE);
-    }
-#if _DEBUG
-    printf("Playback id: %u; decoder: %p (%d)\n",
-           playbackState.id,
-           playbackState.decoder,
-           size);
-#endif
-}
-
 int
 runClient(const AllConfiguration* configuration)
 {
@@ -2016,7 +2037,7 @@ runClient(const AllConfiguration* configuration)
     }
 
     outgoingPackets.allocator = currentAllocator;
-    audioRecordings.allocator = currentAllocator;
+    audioStates.allocator = currentAllocator;
 
     if (!config->noGui) {
         window = SDL_CreateWindow(
@@ -2054,8 +2075,6 @@ runClient(const AllConfiguration* configuration)
             SDL_GetRendererInfo(renderer, &info);
             printf("Current renderer: %s\n", info.name);
         }
-
-        startPlayback(NULL);
     }
 
     // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
@@ -2105,14 +2124,22 @@ runClient(const AllConfiguration* configuration)
               renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
             needRender = false;
         }
-        for (size_t i = 0; i < audioRecordings.used; ++i) {
-            AudioRecordStatePtr ptr = audioRecordings.buffer[i];
-            if (GetStreamFromGuid(
-                  &clientData.allStreams, &ptr->id, NULL, NULL)) {
-                continue;
+        for (size_t i = 0; i < audioStates.used; ++i) {
+            AudioStatePtr ptr = audioStates.buffer[i];
+            if (ptr->isRecording) {
+                if (GetStreamFromGuid(
+                      &clientData.allStreams, &ptr->id, NULL, NULL)) {
+                    continue;
+                }
+            } else {
+                if (GuidListFind(
+                      &clientData.connectedStreams, &ptr->id, NULL, NULL)) {
+                    continue;
+                }
             }
             ptr->running = SDL_FALSE;
-            AudioRecordStatePtrListRemove(&audioRecordings, i);
+            AudioStatePtrListRemove(&audioStates, i);
+            break;
         }
         switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
             case -1:
@@ -2340,9 +2367,19 @@ runClient(const AllConfiguration* configuration)
                                 updateImageDisplay(
                                   renderer, &m->id, &m->data.image);
                                 break;
-                            case StreamMessageDataTag_audio:
-                                storeOpusAudio(&m->data.audio);
-                                break;
+                            case StreamMessageDataTag_audio: {
+                                size_t index;
+                                if (!GetPlaybackAudioStateFromGuid(
+                                      &audioStates, &m->id, NULL, &index)) {
+#if _DEBUG
+                                    puts("Got audio from stream that has no "
+                                         "playback");
+#endif
+                                    break;
+                                }
+                                storeOpusAudio(audioStates.buffer[index],
+                                               &m->data.audio);
+                            } break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
                                        StreamMessageDataTagToCharString(
@@ -2510,15 +2547,7 @@ end:
         enet_packet_destroy(outgoingPackets.buffer[i]);
     }
     pENetPacketListFree(&outgoingPackets);
-    AudioRecordStatePtrListFree(&audioRecordings);
-    if (playbackState.id != 0) {
-        SDL_CloseAudioDevice(playbackState.id);
-        playbackState.id = 0;
-    }
-    if (playbackState.decoder != NULL) {
-        currentAllocator->free(playbackState.decoder);
-        playbackState.decoder = NULL;
-    }
+    AudioStatePtrListFree(&audioStates);
     SDL_DestroyMutex(packetMutex);
     uint8_tListFree(&bytes);
     ClientDataFree(&clientData);
