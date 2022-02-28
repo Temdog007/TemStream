@@ -9,7 +9,6 @@ enum StreamType {
     Image
     Video
     Audio
-    File
     Replay
 }
 

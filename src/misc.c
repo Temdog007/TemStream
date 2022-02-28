@@ -477,3 +477,11 @@ makeAudioSpec(SDL_AudioCallback callback, void* userdata)
                             .userdata = userdata };
 #endif
 }
+
+void
+AudioStateFree(pAudioState state)
+{
+    SDL_CloseAudioDevice(state->deviceId);
+    uint8_tListFree(&state->audio);
+    currentAllocator->free(state->decoder);
+}

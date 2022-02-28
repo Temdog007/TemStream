@@ -113,12 +113,24 @@ int
 printVersion()
 {
     const ENetVersion version = enet_linked_version();
-    return printf("TemStream %d.%d.%d\nENet %x\nOpus %s\n",
-                  VERSION_MAJOR,
-                  VERSION_MINOR,
-                  VERSION_PATCH,
-                  version,
-                  opus_get_version_string());
+    SDL_version linkedSdl;
+    SDL_GetVersion(&linkedSdl);
+    SDL_version compiledSdl;
+    SDL_VERSION(&compiledSdl);
+    return printf(
+      "TemStream %d.%d.%d\nSDL compiled %u.%u.%u\nSDL linked %u.%u.%u\nENet "
+      "%x\nOpus %s\n",
+      VERSION_MAJOR,
+      VERSION_MINOR,
+      VERSION_PATCH,
+      compiledSdl.major,
+      compiledSdl.minor,
+      compiledSdl.patch,
+      linkedSdl.major,
+      linkedSdl.minor,
+      linkedSdl.patch,
+      version,
+      opus_get_version_string());
 }
 
 void

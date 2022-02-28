@@ -14,8 +14,9 @@ AudioStatePtrList audioStates = { 0 };
 SDL_atomic_t runningThreads = { 0 };
 
 bool
-enqueuePacket(ENetPacket* packet)
+enqueuePacket(pBytes bytes, const bool reliable)
 {
+    ENetPacket* packet = BytesToPacket(bytes, reliable);
     bool result;
     IN_MUTEX(packetMutex, end, {
         result = pENetPacketListAppend(&outgoingPackets, &packet);
@@ -295,8 +296,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
     message.connectToStream = clientData.allStreams.buffer[i].id;
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    enqueuePacket(packet);
+    enqueuePacket(bytes, true);
 }
 
 void
@@ -333,8 +333,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
     message.disconnectFromStream = streams.buffer[i].id;
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    enqueuePacket(packet);
+    enqueuePacket(bytes, true);
 end:
     StreamListFree(&streams);
 }
@@ -420,10 +419,28 @@ storeOpusAudio(pAudioState state, const Bytes* compressed)
     }
 
     const int byteSize = result * state->spec.channels * PCM_SIZE;
+#if DELAY_AUDIO_QUEUE
+    SDL_LockAudioDevice(state->deviceId);
+    uint8_tListQuickAppend(&state->audio, uncompressed, byteSize);
+    SDL_UnlockAudioDevice(state->deviceId);
+#else
     SDL_QueueAudio(state->deviceId, uncompressed, byteSize);
+#endif
 
 end:
     currentAllocator->free(uncompressed);
+}
+
+void
+audioPlaybackCallback(AudioStatePtr state, uint8_t* data, int len)
+{
+    memset(data, 0, len);
+    size_t sLen = (size_t)len;
+    sLen = SDL_min(sLen, state->audio.used);
+    if (sLen > 0) {
+        memcpy(data, state->audio.buffer, sLen);
+        uint8_tListQuickRemove(&state->audio, 0, sLen);
+    }
 }
 
 void
@@ -481,7 +498,6 @@ audioCaptureCallback(pAudioState state, uint8_t* data, int len)
         message.streamMessage.id = state->id;
         message.streamMessage.data.tag = StreamMessageDataTag_audio;
         message.streamMessage.data.audio = converted;
-        MESSAGE_SERIALIZE(message, bytes);
 
 #if TEST_MIC
         SDL_Event e = { 0 };
@@ -492,8 +508,8 @@ audioCaptureCallback(pAudioState state, uint8_t* data, int len)
         e.user.data1 = ptr;
         SDL_PushEvent(&e);
 #else
-        ENetPacket* packet = BytesToPacket(&bytes, false);
-        enqueuePacket(packet);
+        MESSAGE_SERIALIZE(message, bytes);
+        enqueuePacket(&bytes, false);
 #endif
         // Don't free messages. Bytes weren't allocated
     }
@@ -514,21 +530,13 @@ audioStateCheckThread(AudioStatePtr state)
     printf("Closing audio device: %u\n", state->deviceId);
     SDL_CloseAudioDevice(state->deviceId);
 
-    uint8_tListFree(&state->audio);
     if (state->isRecording) {
-        if (state->encoder != NULL) {
-            currentAllocator->free(state->encoder);
-            state->encoder = NULL;
-        }
         puts("Ending audio recording thread");
     } else {
-        if (state->decoder != NULL) {
-            currentAllocator->free(state->decoder);
-            state->decoder = NULL;
-        }
         puts("Ending audio playback thread");
     }
 
+    AudioStateFree(state);
     currentAllocator->free(state);
     SDL_AtomicDecRef(&runningThreads);
     return EXIT_SUCCESS;
@@ -616,8 +624,7 @@ startRecording(const Guid* guid)
     state = NULL;
 audioStartEnd:
     if (state != NULL) {
-        SDL_CloseAudioDevice(state->deviceId);
-        currentAllocator->free(state->encoder);
+        AudioStateFree(state);
         currentAllocator->free(state);
     }
     for (int i = 0; i < devices; ++i) {
@@ -664,7 +671,12 @@ startPlayback(const Guid* guid)
         fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
         goto audioStartEnd;
     }
+#if DELAY_AUDIO_QUEUE
+    const SDL_AudioSpec desiredRecordingSpec =
+      makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, state);
+#else
     const SDL_AudioSpec desiredRecordingSpec = makeAudioSpec(NULL, NULL);
+#endif
     state->deviceId =
       SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_FALSE),
                           SDL_FALSE,
@@ -706,8 +718,7 @@ startPlayback(const Guid* guid)
     state = NULL;
 audioStartEnd:
     if (state != NULL) {
-        SDL_CloseAudioDevice(state->deviceId);
-        currentAllocator->free(state->decoder);
+        AudioStateFree(state);
         currentAllocator->free(state);
     }
     for (int i = 0; i < devices; ++i) {
@@ -770,8 +781,7 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes)
     printf("\nCreating '%s' stream named '%s'...\n",
            StreamTypeToCharString(message.startStreaming.type),
            message.startStreaming.name.buffer);
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    enqueuePacket(packet);
+    enqueuePacket(bytes, true);
     MessageFree(&message);
 }
 
@@ -813,8 +823,7 @@ selectStreamToStop(struct pollfd inputfd, pBytes bytes)
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
 
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    enqueuePacket(packet);
+    enqueuePacket(bytes, true);
 
 end:
     StreamListFree(&streams);
@@ -887,8 +896,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
     message.tag = MessageTag_streamMessage;
     MESSAGE_SERIALIZE(message, (*bytes));
     MessageFree(&message);
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    enqueuePacket(packet);
+    enqueuePacket(bytes, true);
 
 end:
     StreamListFree(&streams);
@@ -994,8 +1002,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
         memset(&message, 0, sizeof(message));
     }
 
-    ENetPacket* packet = BytesToPacket(bytes, true);
-    enqueuePacket(packet);
+    enqueuePacket(bytes, true);
     puts("Sent file");
 end:
     unmapFile(fd, ptr, size);
@@ -1126,8 +1133,7 @@ userInputThread(void* ptr)
                 message.tag = MessageTag_getClients;
                 message.getClients = NULL;
                 MESSAGE_SERIALIZE(message, bytes);
-                ENetPacket* packet = BytesToPacket(&bytes, true);
-                enqueuePacket(packet);
+                enqueuePacket(&bytes, true);
             } break;
             case ClientCommand_Quit:
                 appDone = true;
@@ -2471,8 +2477,7 @@ runClient(const AllConfiguration* configuration)
                         break;
                 }
                 MESSAGE_SERIALIZE(message, bytes);
-                ENetPacket* packet = BytesToPacket(&bytes, true);
-                enqueuePacket(packet);
+                enqueuePacket(&bytes, true);
                 // Don't free message since it wasn't allocated
             endDropFile:
                 unmapFile(fd, ptr, size);
@@ -2504,8 +2509,7 @@ runClient(const AllConfiguration* configuration)
                           TemLangStringCreate(e.drop.file, currentAllocator);
                         MESSAGE_SERIALIZE(message, bytes);
                         MessageFree(&message);
-                        ENetPacket* packet = BytesToPacket(&bytes, true);
-                        enqueuePacket(packet);
+                        enqueuePacket(&bytes, true);
                     } break;
                     case StreamType_Chat: {
                         Message message = { 0 };
@@ -2517,8 +2521,7 @@ runClient(const AllConfiguration* configuration)
                           TemLangStringCreate(e.drop.file, currentAllocator);
                         MESSAGE_SERIALIZE(message, bytes);
                         MessageFree(&message);
-                        ENetPacket* packet = BytesToPacket(&bytes, true);
-                        enqueuePacket(packet);
+                        enqueuePacket(&bytes, true);
                     } break;
                     default:
                         printf("Cannot send text to '%s' stream\n",

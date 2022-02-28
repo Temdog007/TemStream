@@ -255,7 +255,7 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 
 // Audio
 
-#define AUDIO_FRAME_SIZE KB(64)
+#define AUDIO_FRAME_SIZE KB(128)
 
 #define HIGH_QUALITY_AUDIO 1
 #if HIGH_QUALITY_AUDIO
@@ -264,6 +264,7 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 #define PCM_SIZE sizeof(opus_int16)
 #endif
 
+#define DELAY_AUDIO_QUEUE 0
 #define TEST_MIC 0
 
 typedef struct AudioState
@@ -280,6 +281,8 @@ typedef struct AudioState
     SDL_bool running;
     SDL_bool isRecording;
 } AudioState, *pAudioState;
+
+extern void AudioStateFree(pAudioState);
 
 typedef pAudioState AudioStatePtr;
 
