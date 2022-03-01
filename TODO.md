@@ -39,7 +39,7 @@
 - [x] Ensure each audio stream has its own playback device id (remove global playback)
 
 ### Mar 1, 2022
-- [ ] Don't send audio packets to main thread/ handle immediately
+- [x] Don't send audio packets to main thread/handle immediately
 - [x] Communicate with user input thread to prompt user for input
 
 ### Later

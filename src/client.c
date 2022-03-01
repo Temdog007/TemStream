@@ -5,23 +5,31 @@
 
 ClientData clientData = { 0 };
 
+// Packets
 SDL_mutex* packetMutex = NULL;
-
 pENetPacketList outgoingPackets = { 0 };
+// End Packets
 
+// Audio States
+SDL_mutex* audioStateMutex = NULL;
 AudioStatePtrList audioStates = { 0 };
+// End Audio States
 
 SDL_atomic_t runningThreads = { 0 };
 
+// User input
 SDL_mutex* userInputMutex = NULL;
-
 UserInputQuestionList userInputQuestions = { 0 };
+// End user input
 
 void
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
                  const SDL_AudioSpec spec,
                  const Guid*);
+
+void
+consumeAudio(const Bytes*, const Guid*);
 
 bool
 enqueuePacket(pBytes bytes, const bool reliable)
@@ -470,6 +478,18 @@ audioPlaybackCallback(AudioStatePtr state, uint8_t* data, int len)
 }
 
 void
+consumeAudio(const Bytes* audio, const Guid* id)
+{
+    IN_MUTEX(audioStateMutex, end, {
+        size_t i;
+        if (!GetPlaybackAudioStateFromGuid(&audioStates, id, NULL, &i)) {
+            goto end;
+        }
+        storeOpusAudio(audioStates.buffer[i], audio);
+    });
+}
+
+void
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
                  const SDL_AudioSpec spec,
@@ -767,7 +787,9 @@ startRecording(struct pollfd inputfd, pBytes bytes, const Guid* guid)
     SDL_AtomicIncRef(&runningThreads);
     SDL_DetachThread(thread);
 
-    AudioStatePtrListAppend(&audioStates, &state);
+    IN_MUTEX(audioStateMutex, fend, {
+        AudioStatePtrListAppend(&audioStates, &state);
+    });
     state = NULL;
 audioStartEnd:
     if (state != NULL) {
@@ -844,7 +866,9 @@ startPlayback(struct pollfd inputfd, pBytes bytes, const Guid* guid)
     SDL_AtomicIncRef(&runningThreads);
     SDL_DetachThread(thread);
 
-    AudioStatePtrListAppend(&audioStates, &state);
+    IN_MUTEX(audioStateMutex, fend, {
+        AudioStatePtrListAppend(&audioStates, &state);
+    });
     state = NULL;
 audioStartEnd:
     if (state != NULL) {
@@ -2094,14 +2118,24 @@ clientConnectionThread(const AllConfiguration* configuration)
                                             .buffer = event.packet->data,
                                             .size = event.packet->dataLength,
                                             .used = event.packet->dataLength };
-                pMessage message = currentAllocator->allocate(sizeof(Message));
-                MESSAGE_DESERIALIZE((*message), packetBytes);
-                SDL_Event e = { 0 };
-                e.type = SDL_USEREVENT;
-                e.user.code = CustomEvent_HandleMessage;
-                e.user.data1 = message;
-                SDL_PushEvent(&e);
+                Message message = { 0 };
+                MESSAGE_DESERIALIZE(message, packetBytes);
+                // If audio packet, handle immediately
+                if (message.tag == MessageTag_streamMessage &&
+                    message.streamMessage.data.tag ==
+                      StreamMessageDataTag_audio) {
+                    consumeAudio(&message.streamMessage.data.audio,
+                                 &message.streamMessage.id);
+                } else {
+                    SDL_Event e = { 0 };
+                    e.type = SDL_USEREVENT;
+                    e.user.code = CustomEvent_HandleMessage;
+                    e.user.data1 = currentAllocator->allocate(sizeof(Message));
+                    MessageCopy(e.user.data1, &message, currentAllocator);
+                    SDL_PushEvent(&e);
+                }
                 enet_packet_destroy(event.packet);
+                MessageFree(&message);
             } break;
             case ENET_EVENT_TYPE_NONE:
                 break;
@@ -2206,7 +2240,14 @@ runClient(const AllConfiguration* configuration)
 
     userInputMutex = SDL_CreateMutex();
     if (userInputMutex == NULL) {
-        fprintf(stderr, "");
+        fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
+        displayError(window, "Failed to start", showWindow);
+        goto end;
+    }
+
+    audioStateMutex = SDL_CreateMutex();
+    if (audioStateMutex == NULL) {
+        fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
         displayError(window, "Failed to start", showWindow);
         goto end;
     }
@@ -2292,22 +2333,35 @@ runClient(const AllConfiguration* configuration)
     bool hasTarget = false;
 
     while (!appDone) {
-        for (size_t i = 0; i < audioStates.used; ++i) {
-            AudioStatePtr ptr = audioStates.buffer[i];
-            if (ptr->isRecording) {
-                if (GetStreamFromGuid(
-                      &clientData.allStreams, &ptr->id, NULL, NULL)) {
-                    continue;
+        switch (SDL_TryLockMutex(audioStateMutex)) {
+            case 0:
+                for (size_t i = 0; i < audioStates.used; ++i) {
+                    AudioStatePtr ptr = audioStates.buffer[i];
+                    if (ptr->isRecording) {
+                        if (GetStreamFromGuid(
+                              &clientData.allStreams, &ptr->id, NULL, NULL)) {
+                            continue;
+                        }
+                    } else {
+                        if (GuidListFind(&clientData.connectedStreams,
+                                         &ptr->id,
+                                         NULL,
+                                         NULL)) {
+                            continue;
+                        }
+                    }
+                    ptr->running = SDL_FALSE;
+                    AudioStatePtrListRemove(&audioStates, i);
+                    break;
                 }
-            } else {
-                if (GuidListFind(
-                      &clientData.connectedStreams, &ptr->id, NULL, NULL)) {
-                    continue;
-                }
-            }
-            ptr->running = SDL_FALSE;
-            AudioStatePtrListRemove(&audioStates, i);
-            break;
+                SDL_UnlockMutex(audioStateMutex);
+                break;
+            case -1:
+                fprintf(stderr, "Failed to lock mutex: %s\n", SDL_GetError());
+                appDone = true;
+                break;
+            default:
+                break;
         }
         switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
             case -1:
@@ -2544,17 +2598,9 @@ runClient(const AllConfiguration* configuration)
                                 updateImageDisplay(
                                   renderer, &m->id, &m->data.image);
                                 break;
-                            case StreamMessageDataTag_audio: {
-                                size_t index;
-                                if (!GetPlaybackAudioStateFromGuid(
-                                      &audioStates, &m->id, NULL, &index)) {
-                                    // puts("Got audio from stream that has no "
-                                    //      "playback");
-                                    break;
-                                }
-                                storeOpusAudio(audioStates.buffer[index],
-                                               &m->data.audio);
-                            } break;
+                            case StreamMessageDataTag_audio:
+                                consumeAudio(&m->data.audio, &m->id);
+                                break;
                             default:
                                 printf("Cannot update display of stream '%s'\n",
                                        StreamMessageDataTagToCharString(
@@ -2730,6 +2776,7 @@ end:
     UserInputQuestionListFree(&userInputQuestions);
     SDL_DestroyMutex(packetMutex);
     SDL_DestroyMutex(userInputMutex);
+    SDL_DestroyMutex(audioStateMutex);
     uint8_tListFree(&bytes);
     ClientDataFree(&clientData);
     SDL_DestroyRenderer(renderer);
