@@ -1997,6 +1997,9 @@ findDisplayFromPoint(const SDL_FPoint* point, size_t* targetDisplay)
 {
     for (int64_t i = (int64_t)clientData.displays.used - 1LL; i >= 0LL; --i) {
         pStreamDisplay display = &clientData.displays.buffer[i];
+        if (display->texture == NULL) {
+            continue;
+        }
         if (!SDL_PointInFRect(point, (const SDL_FRect*)&display->dstRect)) {
             continue;
         }
@@ -2391,6 +2394,13 @@ runClient(const AllConfiguration* configuration)
                         printf("Memory: %zu / %zu\n",
                                currentAllocator->used(),
                                currentAllocator->totalSize());
+                        break;
+                    case SDLK_F3:
+                        if (hasTarget) {
+                            printf("Target display: %zu\n", targetDisplay);
+                        } else {
+                            puts("No target display");
+                        }
                         break;
                     case SDLK_v: {
                         if ((e.key.keysym.mod & KMOD_CTRL) == 0) {

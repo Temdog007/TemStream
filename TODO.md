@@ -41,9 +41,11 @@
 ### Mar 1, 2022
 - [x] Don't send audio packets to main thread/handle immediately
 - [x] Communicate with user input thread to prompt user for input
+- [x] Fix user input stops working when playing audio
+- [ ] Fix audio not working when long delay between audio packets
+- [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM
 
 ### Later
-- [ ] use FFMPEG for audio stuff to handle streaming/converting to PCM
 - [ ] Display audio mixer
 - [ ] Play gifs
 - [ ] Record windows

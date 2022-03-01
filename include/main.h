@@ -263,7 +263,7 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 #define PCM_SIZE sizeof(opus_int16)
 #endif
 
-#define DELAY_AUDIO_QUEUE 0
+#define DELAY_AUDIO_QUEUE 1
 #define TEST_MIC 0
 
 typedef struct AudioState
