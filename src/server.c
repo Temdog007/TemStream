@@ -5,11 +5,13 @@ typedef struct ServerData
     SDL_mutex* mutex;
     SDL_cond* cond;
 
-    bool needToUpdateClients;
     StreamList streams;
     ServerIncomingList incoming;
     ServerOutgoingList outgoing;
     StreamMessageList storage;
+
+    uint32_t maxStreams;
+    bool needToUpdateClients;
 } ServerData, *pServerData;
 
 ServerData serverData = { 0 };
@@ -139,16 +141,20 @@ copyMessageToClients(ENetHost* server,
     const bool reliable = streamMessageIsReliable(message);
     IN_MUTEX(serverData.mutex, endMutex, {
         const Stream* stream = NULL;
-        if (!StreamListFindIf(&serverData.streams,
-                              (StreamListFindFunc)StreamGuidEquals,
-                              &message->id,
-                              &stream,
-                              NULL)) {
+        size_t streamIndex = 0;
+        if (!GetStreamFromGuid(
+              &serverData.streams, &message->id, &stream, &streamIndex)) {
 #if _DEBUG
             puts("Got stream message that doesn't belong to a stream");
 #endif
             goto endMutex;
         }
+
+#if DYNAMIC_CHANNEL_INDEX
+        ++streamIndex; // don't send on client channel
+#else 
+        streamIndex = 1;
+#endif
 
         if (!streamTypeMatchesMessage(stream->type, message->data.tag) ||
             !clientHasWriteAccess(writer, stream)) {
@@ -231,7 +237,7 @@ copyMessageToClients(ENetHost* server,
                 continue;
             }
             ENetPacket* packet = BytesToPacket(bytes, reliable);
-            enet_peer_send(peer, SERVER_CHANNEL, packet);
+            PEER_SEND(peer, streamIndex, packet);
         }
         serverData.needToUpdateClients = false;
     });
@@ -242,6 +248,7 @@ defaultServerConfiguration()
 {
     return (ServerConfiguration){
         .maxClients = 1024,
+        .maxStreams = ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT,
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none }
     };
 }
@@ -258,6 +265,8 @@ parseServerConfiguration(const int argc,
         const char* value = argv[i + 1];
         STR_EQUALS(key, "-C", keyLen, { goto parseMaxClients; });
         STR_EQUALS(key, "--clients", keyLen, { goto parseMaxClients; });
+        STR_EQUALS(key, "-S", keyLen, { goto parseStreams; });
+        STR_EQUALS(key, "-streams", keyLen, { goto parseStreams; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Server", key, value);
             return false;
@@ -265,8 +274,14 @@ parseServerConfiguration(const int argc,
         continue;
 
     parseMaxClients : {
-        char* end = NULL;
-        server->maxClients = (uint32_t)strtoul(value, &end, 10);
+        const uint32_t i = (uint32_t)atoi(value);
+        server->maxClients = SDL_clamp(i, 1U, UINT32_MAX);
+        continue;
+    }
+    parseStreams : {
+        const uint32_t i = (uint32_t)atoi(value);
+        server->maxStreams =
+          SDL_clamp(i, 1U, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT);
         continue;
     }
     }
@@ -394,6 +409,12 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
             sendServerDataToClient(client);
         } break;
         case MessageTag_startStreaming: {
+            if (serverData.streams.used >= serverData.maxStreams) {
+                rMessage->tag = MessageTag_startStreamingAck;
+                rMessage->startStreamingAck.none = NULL;
+                rMessage->startStreamingAck.tag = OptionalGuidTag_none;
+                goto startStreamEnd;
+            }
             const Stream* stream = NULL;
             GetStreamFromName(&serverData.streams,
                               &message->startStreaming.name,
@@ -443,16 +464,18 @@ serverHandleMessage(pClient client, const Message* message, pRandomState rs)
                 rMessage->startStreamingAck.guid = newStream.id;
                 rMessage->startStreamingAck.tag = OptionalGuidTag_guid;
                 serverData.needToUpdateClients = true;
-            } else {
-#if _DEBUG
-                printf("Client '%s' tried to add duplicate stream '%s'\n",
-                       client->name.buffer,
-                       stream->name.buffer);
-#endif
-                rMessage->tag = MessageTag_startStreamingAck;
-                rMessage->startStreamingAck.none = NULL;
-                rMessage->startStreamingAck.tag = OptionalGuidTag_none;
+                goto startStreamEnd;
             }
+#if _DEBUG
+            printf("Client '%s' tried to add duplicate stream '%s'\n",
+                   client->name.buffer,
+                   stream->name.buffer);
+#endif
+            rMessage->tag = MessageTag_startStreamingAck;
+            rMessage->startStreamingAck.none = NULL;
+            rMessage->startStreamingAck.tag = OptionalGuidTag_none;
+
+        startStreamEnd:
             sendResponse(&outgoing);
             sendServerDataToClient(client);
         } break;
@@ -604,6 +627,7 @@ runServer(const AllConfiguration* configuration)
     appDone = false;
 
     const ServerConfiguration* config = &configuration->configuration.server;
+    serverData.maxStreams = config->maxStreams;
 
     {
         char* end = NULL;
@@ -611,7 +635,11 @@ runServer(const AllConfiguration* configuration)
         enet_address_set_host(&address, configuration->address.ip.buffer);
         address.port =
           (uint16_t)SDL_strtoul(configuration->address.port.buffer, &end, 10);
-        server = enet_host_create(&address, config->maxClients, 2, 0, 0);
+        server = enet_host_create(&address,
+                                  config->maxClients,
+                                  ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT,
+                                  0,
+                                  0);
     }
     if (server == NULL) {
         fprintf(stderr, "Failed to create server\n");
@@ -729,12 +757,29 @@ runServer(const AllConfiguration* configuration)
                         ENetPeer* peer = FindPeerFromData(server->peers,
                                                           server->peerCount,
                                                           so->response.client);
-                        if (peer != NULL) {
-                            MESSAGE_SERIALIZE(so->response.message, bytes);
-                            ENetPacket* packet = BytesToPacket(&bytes, true);
-                            // printSendingPacket(packet);
-                            enet_peer_send(peer, SERVER_CHANNEL, packet);
+                        if (peer == NULL) {
+                            break;
                         }
+                        MESSAGE_SERIALIZE(so->response.message, bytes);
+                        ENetPacket* packet = BytesToPacket(&bytes, true);
+                        // printSendingPacket(packet);
+#if DYNAMIC_CHANNEL_INDEX
+                        size_t streamIndex = 0;
+                        if (so->response.message.tag ==
+                            MessageTag_streamMessage) {
+                            if (GetStreamFromGuid(
+                                  &serverData.streams,
+                                  &so->response.message.streamMessage.id,
+                                  NULL,
+                                  &streamIndex)) {
+                                ++streamIndex; // don't send on client
+                                               // channel
+                            }
+                        }
+#else
+                        size_t streamIndex = 1;
+#endif
+                        PEER_SEND(peer, streamIndex, packet);
                     } break;
                     case ServerOutgoingTag_getClients: {
                         pClient target = so->getClients;
@@ -757,7 +802,7 @@ runServer(const AllConfiguration* configuration)
                             MESSAGE_SERIALIZE(message, bytes);
                             ENetPacket* packet = BytesToPacket(&bytes, true);
                             // printSendingPacket(packet);
-                            enet_peer_send(peer, SERVER_CHANNEL, packet);
+                            PEER_SEND(peer, CLIENT_CHANNEL, packet);
                         }
                         MessageFree(&message);
                     } break;

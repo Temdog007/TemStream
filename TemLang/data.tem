@@ -96,6 +96,7 @@ struct ClientConfiguration {
 
 struct ServerConfiguration {
     u32 maxClients
+    u32 maxStreams
     ServerAuthentication authentication
 }
 

@@ -343,7 +343,10 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
     for (uint32_t i = 0; i < streamNum; ++i) {
         const Guid guid = clientData.connectedStreams.buffer[i];
         if (GetStreamFromGuid(&clientData.allStreams, &guid, &stream, NULL)) {
-            printf("%u) %s\n", i + 1U, stream->name.buffer);
+            printf("%u) %s (%s)\n",
+                   i + 1U,
+                   stream->name.buffer,
+                   StreamTypeToCharString(stream->type));
             StreamListAppend(&streams, stream);
         }
     }
@@ -427,6 +430,7 @@ closestValidFrameCount(const int frequency, const int frames)
 void
 storeOpusAudio(pAudioState state, const Bytes* compressed)
 {
+    SDL_LockAudioDevice(state->deviceId);
     void* uncompressed = currentAllocator->allocate(MAX_PACKET_SIZE);
 
     const int result =
@@ -453,21 +457,57 @@ storeOpusAudio(pAudioState state, const Bytes* compressed)
     }
 
     const int byteSize = result * state->spec.channels * PCM_SIZE;
-#if DELAY_AUDIO_QUEUE
-    SDL_LockAudioDevice(state->deviceId);
     uint8_tListQuickAppend(&state->audio, uncompressed, byteSize);
-    SDL_UnlockAudioDevice(state->deviceId);
-#else
-    SDL_QueueAudio(state->deviceId, uncompressed, byteSize);
-#endif
 
 end:
     currentAllocator->free(uncompressed);
+    SDL_UnlockAudioDevice(state->deviceId);
 }
 
 void
 audioPlaybackCallback(AudioStatePtr state, uint8_t* data, int len)
 {
+    if (uint8_tListIsEmpty(&state->audio)) {
+
+        puts("Input silence due to packet loss");
+        // Give the decoder empty packets so it can still decode future packets
+        int frame_size = len / (state->spec.channels * PCM_SIZE);
+
+        // Only certain durations are valid for encoding
+        frame_size = closestValidFrameCount(state->spec.freq, frame_size);
+
+        const uint32_t byteSize = frame_size * PCM_SIZE * state->spec.channels;
+        if (state->audio.size < byteSize) {
+            state->audio.buffer =
+              currentAllocator->reallocate(state->audio.buffer, byteSize);
+        }
+
+        const int result =
+#if HIGH_QUALITY_AUDIO
+          opus_decode_float(state->decoder,
+                            NULL,
+                            0,
+                            (float*)state->audio.buffer,
+                            frame_size,
+                            0);
+#else
+          opus_decode(state->decoder,
+                      NULL,
+                      0,
+                      (opus_int16*)state->audio.buffer,
+                      frame_size,
+                      0);
+#endif
+        if (result < 0) {
+            fprintf(
+              stderr, "Failed to decode silence: %s\n", opus_strerror(result));
+        } else {
+            state->audio.used =
+              (uint32_t)result * state->spec.channels * PCM_SIZE;
+            printf("Silence: %u\n", state->audio.used);
+        }
+    }
+
     memset(data, 0, len);
     size_t sLen = (size_t)len;
     sLen = SDL_min(sLen, state->audio.used);
@@ -822,12 +862,8 @@ startPlayback(struct pollfd inputfd, pBytes bytes, const Guid* guid)
         goto audioStartEnd;
     }
 
-#if DELAY_AUDIO_QUEUE
     const SDL_AudioSpec desiredRecordingSpec =
       makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, state);
-#else
-    const SDL_AudioSpec desiredRecordingSpec = makeAudioSpec(NULL, NULL);
-#endif
 
     state->deviceId =
       SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_FALSE),
@@ -2031,7 +2067,8 @@ clientConnectionThread(const AllConfiguration* configuration)
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
 
-    host = enet_host_create(NULL, 1, 2, 0, 0);
+    // Plus one for the client channel
+    host = enet_host_create(NULL, 1, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT, 0, 0);
     if (host == NULL) {
         fprintf(stderr, "Failed to create client host\n");
         appDone = true;
@@ -2043,7 +2080,8 @@ clientConnectionThread(const AllConfiguration* configuration)
         char* end = NULL;
         address.port =
           (uint16_t)strtoul(configuration->address.port.buffer, &end, 10);
-        peer = enet_host_connect(host, &address, 2, 0);
+        peer = enet_host_connect(
+          host, &address, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT, 0);
         char buffer[512] = { 0 };
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));
         printf("Connecting to server: %s:%u...\n", buffer, address.port);
@@ -2071,7 +2109,7 @@ clientConnectionThread(const AllConfiguration* configuration)
                         .size = sizeof(buffer) };
         MESSAGE_SERIALIZE(message, bytes);
         ENetPacket* packet = BytesToPacket(&bytes, true);
-        enet_peer_send(peer, CLIENT_CHANNEL, packet);
+        PEER_SEND(peer, CLIENT_CHANNEL, packet);
     } else {
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
@@ -2083,7 +2121,7 @@ clientConnectionThread(const AllConfiguration* configuration)
     while (!appDone) {
         IN_MUTEX(packetMutex, end2, {
             for (size_t i = 0; i < outgoingPackets.used; ++i) {
-                enet_peer_send(peer, CLIENT_CHANNEL, outgoingPackets.buffer[i]);
+                PEER_SEND(peer, CLIENT_CHANNEL, outgoingPackets.buffer[i]);
             }
             outgoingPackets.used = 0;
         });

@@ -27,7 +27,7 @@ main(int argc, char** argv)
     ENetPeer* peer = NULL;
     Message message = { 0 };
 
-    host = enet_host_create(NULL, 1, 2, 0, 0);
+    host = enet_host_create(NULL, 1, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT, 0, 0);
     if (host == NULL) {
         fprintf(stderr, "Failed to create client host\n");
         goto end;
@@ -65,7 +65,7 @@ main(int argc, char** argv)
         MESSAGE_SERIALIZE(message, bytes);
         ENetPacket* packet = BytesToPacket(&bytes, true);
         // printSendingPacket(packet);
-        enet_peer_send(peer, CLIENT_CHANNEL, packet);
+        PEER_SEND(peer, CLIENT_CHANNEL, packet);
     } else {
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
@@ -129,7 +129,7 @@ main(int argc, char** argv)
                             MESSAGE_SERIALIZE(newMessage, bytes);
                             // printf("Sending message #%d\n", i);
                             ENetPacket* packet = BytesToPacket(&bytes, true);
-                            enet_peer_send(peer, CLIENT_CHANNEL, packet);
+                            PEER_SEND(peer, CLIENT_CHANNEL, packet);
                         }
                         puts("Done sending messages");
                         MessageFree(&newMessage);

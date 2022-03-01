@@ -118,8 +118,17 @@ typedef ENetPacket* pENetPacket;
 MAKE_COPY_AND_FREE(pENetPacket);
 MAKE_DEFAULT_LIST(pENetPacket);
 
-#define SERVER_CHANNEL 0
-#define CLIENT_CHANNEL 1
+#define CLIENT_CHANNEL 0
+
+#define DYNAMIC_CHANNEL_INDEX 1
+
+#define PEER_SEND(peer, channelID, packet)                                     \
+    if (enet_peer_send(peer, channelID, packet) == -1) {                       \
+        fprintf(stderr,                                                        \
+                "Failed to send packet to channel ID: %u\n",                   \
+                (uint8_t)channelID);                                           \
+        enet_packet_destroy(packet);                                           \
+    }
 
 // Printing
 
@@ -263,7 +272,6 @@ extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 #define PCM_SIZE sizeof(opus_int16)
 #endif
 
-#define DELAY_AUDIO_QUEUE 1
 #define TEST_MIC 0
 
 typedef struct AudioState
