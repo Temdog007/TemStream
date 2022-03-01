@@ -266,7 +266,9 @@ parseServerConfiguration(const int argc,
         STR_EQUALS(key, "-C", keyLen, { goto parseMaxClients; });
         STR_EQUALS(key, "--clients", keyLen, { goto parseMaxClients; });
         STR_EQUALS(key, "-S", keyLen, { goto parseStreams; });
-        STR_EQUALS(key, "-streams", keyLen, { goto parseStreams; });
+        STR_EQUALS(key, "--streams", keyLen, { goto parseStreams; });
+        STR_EQUALS(key, "-M", keyLen, { continue; });
+        STR_EQUALS(key, "--memory", keyLen, { continue; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Server", key, value);
             return false;

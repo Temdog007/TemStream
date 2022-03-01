@@ -285,9 +285,14 @@ typedef struct AudioState
         OpusDecoder* decoder;
     };
     SDL_AudioDeviceID deviceId;
+    uint32_t packetLoss;
     SDL_bool running;
     SDL_bool isRecording;
 } AudioState, *pAudioState;
+
+#define MAX_AUDIO_PACKET_LOSS 10
+#define ENCODE_AUDIO 1
+#define ENABLE_FEC 0
 
 extern void AudioStateFree(pAudioState);
 

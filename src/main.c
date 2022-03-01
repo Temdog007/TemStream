@@ -27,7 +27,7 @@ main(const int argc, const char** argv)
     {
         // Look for -M or --memory
         uint64_t memory = MB(256);
-        for (int i = 1; i < argc - 1; i += 2) {
+        for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-M", argv[i]) != 0 &&
                 strcmp("--memory", argv[i]) != 0) {
                 continue;

@@ -142,6 +142,8 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
+        STR_EQUALS(key, "-M", keyLen, { continue; });
+        STR_EQUALS(key, "--memory", keyLen, { continue; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;
@@ -431,6 +433,8 @@ void
 storeOpusAudio(pAudioState state, const Bytes* compressed)
 {
     SDL_LockAudioDevice(state->deviceId);
+
+#if ENCODE_AUDIO
     void* uncompressed = currentAllocator->allocate(MAX_PACKET_SIZE);
 
     const int result =
@@ -441,14 +445,14 @@ storeOpusAudio(pAudioState state, const Bytes* compressed)
         compressed->used,
         (float*)uncompressed,
         audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
-        0);
+        ENABLE_FEC);
 #else
       opus_decode(state->decoder,
                   (unsigned char*)compressed->buffer,
                   compressed->used,
                   (opus_int16*)uncompressed,
                   audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
-                  0);
+                  ENABLE_FEC);
 #endif
 
     if (result < 0) {
@@ -461,53 +465,16 @@ storeOpusAudio(pAudioState state, const Bytes* compressed)
 
 end:
     currentAllocator->free(uncompressed);
+#else
+    uint8_tListQuickAppend(&state->audio, compressed->buffer, compressed->used);
+#endif
+
     SDL_UnlockAudioDevice(state->deviceId);
 }
 
 void
 audioPlaybackCallback(AudioStatePtr state, uint8_t* data, int len)
 {
-    if (uint8_tListIsEmpty(&state->audio)) {
-
-        puts("Input silence due to packet loss");
-        // Give the decoder empty packets so it can still decode future packets
-        int frame_size = len / (state->spec.channels * PCM_SIZE);
-
-        // Only certain durations are valid for encoding
-        frame_size = closestValidFrameCount(state->spec.freq, frame_size);
-
-        const uint32_t byteSize = frame_size * PCM_SIZE * state->spec.channels;
-        if (state->audio.size < byteSize) {
-            state->audio.buffer =
-              currentAllocator->reallocate(state->audio.buffer, byteSize);
-        }
-
-        const int result =
-#if HIGH_QUALITY_AUDIO
-          opus_decode_float(state->decoder,
-                            NULL,
-                            0,
-                            (float*)state->audio.buffer,
-                            frame_size,
-                            0);
-#else
-          opus_decode(state->decoder,
-                      NULL,
-                      0,
-                      (opus_int16*)state->audio.buffer,
-                      frame_size,
-                      0);
-#endif
-        if (result < 0) {
-            fprintf(
-              stderr, "Failed to decode silence: %s\n", opus_strerror(result));
-        } else {
-            state->audio.used =
-              (uint32_t)result * state->spec.channels * PCM_SIZE;
-            printf("Silence: %u\n", state->audio.used);
-        }
-    }
-
     memset(data, 0, len);
     size_t sLen = (size_t)len;
     sLen = SDL_min(sLen, state->audio.used);
@@ -541,9 +508,14 @@ sendAudioPackets(OpusEncoder* encoder,
                         .used = 0 };
     Bytes bytes = { .allocator = currentAllocator };
     const int minDuration =
-      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_2_5_MS);
+      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 
+    Message message = { 0 };
+    message.tag = MessageTag_streamMessage;
+    message.streamMessage.id = *guid;
+    message.streamMessage.data.tag = StreamMessageDataTag_audio;
     while (!uint8_tListIsEmpty(audio)) {
+#if ENCODE_AUDIO
         int frame_size = audio->used / (spec.channels * PCM_SIZE);
 
         if (frame_size < minDuration) {
@@ -561,7 +533,7 @@ sendAudioPackets(OpusEncoder* encoder,
                             converted.buffer,
                             converted.size);
 #else
-          opus_encode(state->encoder,
+          opus_encode(encoder,
                       (opus_int16*)audio->buffer,
                       frame_size,
                       converted.buffer,
@@ -579,12 +551,13 @@ sendAudioPackets(OpusEncoder* encoder,
 
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
         uint8_tListQuickRemove(audio, 0, bytesUsed);
-
-        Message message = { 0 };
-        message.tag = MessageTag_streamMessage;
-        message.streamMessage.id = *guid;
-        message.streamMessage.data.tag = StreamMessageDataTag_audio;
         message.streamMessage.data.audio = converted;
+#else
+        (void)minDuration;
+        (void)encoder;
+        message.streamMessage.data.audio = *audio;
+        audio->used = 0;
+#endif
 
 #if TEST_MIC
         SDL_Event e = { 0 };
@@ -850,6 +823,7 @@ startPlayback(struct pollfd inputfd, pBytes bytes, const Guid* guid)
     askQuestion("Select a audio device to play audio from");
     AudioStatePtr state = currentAllocator->allocate(sizeof(AudioState));
     state->isRecording = SDL_FALSE;
+    state->packetLoss = 0u;
     state->id = *guid;
     for (int i = 0; i < devices; ++i) {
         printf("%d) %s\n", i + 1, SDL_GetAudioDeviceName(i, SDL_FALSE));
