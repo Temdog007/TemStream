@@ -240,11 +240,10 @@ authenticateClient(pClient client,
     MessageFree(&message);                                                     \
     MessageDeserialize(&message, &bytes, 0, true)
 
+#define POLL_FOREVER (-1)
 #define CLIENT_POLL_WAIT 100
 #define SERVER_POLL_WAIT 1000
 #define LONG_POLL_WAIT 5000
-
-#define USER_INPUT_TIMEOUT 3000
 
 extern bool
 filenameToExtension(const char*, pFileExtension);

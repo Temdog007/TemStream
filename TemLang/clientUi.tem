@@ -89,3 +89,10 @@ enum AudioStreamSource {
     File
     Window
 }
+
+variant UserInputQuestion {
+    Guid audioStreamSource
+    Guid playbackDestination
+}
+
+inlineC "MAKE_DEFAULT_LIST(UserInputQuestion);"

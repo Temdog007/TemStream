@@ -90,6 +90,7 @@ struct ClientConfiguration {
     i32 windowWidth
     i32 windowHeight
     bool noGui
+    bool noAudio
     bool fullscreen
 }
 

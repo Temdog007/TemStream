@@ -37,16 +37,19 @@
 
 ### Feb 28, 2022
 - [x] Ensure each audio stream has its own playback device id (remove global playback)
+
+### Mar 1, 2022
+- [ ] Don't send audio packets to main thread/ handle immediately
+- [x] Communicate with user input thread to prompt user for input
+
+### Later
 - [ ] use FFMPEG for audio stuff to handle streaming/converting to PCM
 - [ ] Display audio mixer
-
-### Mar 1, 2022 - Mar ??, 2022
 - [ ] Play gifs
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam
 
-### Later
 - [ ] Ensure textures can be hidden for a stream
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Allow for blacklist/whitelist for stream access

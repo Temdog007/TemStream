@@ -13,6 +13,10 @@ AudioStatePtrList audioStates = { 0 };
 
 SDL_atomic_t runningThreads = { 0 };
 
+SDL_mutex* userInputMutex = NULL;
+
+UserInputQuestionList userInputQuestions = { 0 };
+
 void
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
@@ -96,6 +100,7 @@ defaultClientConfiguration()
         .windowHeight = 600,
         .fontSize = 48,
         .noGui = false,
+        .noAudio = false,
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
     };
@@ -125,8 +130,10 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--token", keyLen, { goto parseToken; });
         STR_EQUALS(key, "-C", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "--credentials", keyLen, { goto parseCredentials; });
-        STR_EQUALS(key, "-N", keyLen, { goto parseNoGui; });
+        STR_EQUALS(key, "-NG", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
+        STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
+        STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;
@@ -167,6 +174,10 @@ parseClientConfiguration(const int argc,
     }
     parseNoGui : {
         client->noGui = atoi(value);
+        continue;
+    }
+    parseNoAudio : {
+        client->noAudio = atoi(value);
         continue;
     }
     }
@@ -246,15 +257,24 @@ UserInputResult
 getIndexFromUser(struct pollfd inputfd,
                  pBytes bytes,
                  const uint32_t max,
-                 uint32_t* index)
+                 uint32_t* index,
+                 const bool keepPolling)
 {
+    if (max < 2) {
+        *index = 0;
+        return UserInputResult_Input;
+    }
     ssize_t size = 0;
     while (!appDone) {
         switch (getUserInput(inputfd, bytes, &size, CLIENT_POLL_WAIT)) {
             case UserInputResult_Error:
                 return UserInputResult_Error;
             case UserInputResult_NoInput:
-                continue;
+                if (keepPolling) {
+                    continue;
+                } else {
+                    return UserInputResult_NoInput;
+                }
             default:
                 break;
         }
@@ -291,7 +311,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streamNum == 1) {
         puts("Connecting to only stream available");
-    } else if (getIndexFromUser(inputfd, bytes, streamNum, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streamNum, &i, true) !=
                UserInputResult_Input) {
         puts("Canceling connecting to stream");
         return;
@@ -328,7 +348,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1) {
         puts("Disconnecting from only stream available");
-    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i, true) !=
                UserInputResult_Input) {
         puts("Canceled disconnecting from stream");
         goto end;
@@ -628,38 +648,49 @@ end:
 }
 
 void
-startRecording(SDL_Window* window, const Guid* guid);
+startRecording(struct pollfd inputfd, pBytes bytes, const Guid* guid);
 
 void
-selectAudioStreamSource(SDL_Window* window, const Guid* guid)
+selectAudioStreamSource(struct pollfd inputfd, pBytes bytes, const Guid* guid)
 {
-    SDL_MessageBoxButtonData buttons[AudioStreamSource_Length] = { 0 };
+    askQuestion("Select audio source to stream from");
     for (AudioStreamSource i = 0; i < AudioStreamSource_Length; ++i) {
-        buttons[i].buttonid = i;
-        buttons[i].flags = 0;
-        buttons[i].text = AudioStreamSourceToCharString(i);
+        printf("%d) %s\n", i + 1, AudioStreamSourceToCharString(i));
     }
 
-    const SDL_MessageBoxData data = { .flags = SDL_MESSAGEBOX_INFORMATION,
-                                      .window = window,
-                                      .title = "Audio recording",
-                                      .message =
-                                        "Select an audio device to stream",
-                                      .numbuttons = AudioStreamSource_Length,
-                                      .buttons = buttons,
-                                      .colorScheme = NULL };
-    int selected;
-    if (SDL_ShowMessageBox(&data, &selected) != 0) {
-        fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
-        goto end;
+    uint32_t selected;
+    if (getIndexFromUser(
+          inputfd, bytes, AudioStreamSource_Length, &selected, true) !=
+        UserInputResult_Input) {
+        puts("Canceled audio streaming seleciton");
+        return;
     }
 
     switch (selected) {
-        case AudioStreamSource_File:
-            puts("Drag and drop file into window to start streaming it...");
-            break;
+        case AudioStreamSource_File: {
+            askQuestion("Enter file to stream");
+            while (!appDone) {
+                switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
+                    case UserInputResult_Input: {
+                        SDL_Event e = { 0 };
+                        e.type = SDL_DROPFILE;
+                        char* c = SDL_malloc(bytes->used + 1);
+                        memcpy(c, bytes->buffer, bytes->used);
+                        c[bytes->used] = '\0';
+                        e.drop.file = c;
+                        e.drop.timestamp = SDL_GetTicks();
+                        SDL_PushEvent(&e);
+                    } break;
+                    case UserInputResult_NoInput:
+                        continue;
+                    default:
+                        puts("Canceled audio streaming file");
+                        goto end;
+                }
+            }
+        } break;
         case AudioStreamSource_Microphone:
-            startRecording(window, guid);
+            startRecording(inputfd, bytes, guid);
             break;
         case AudioStreamSource_Window:
             fprintf(stderr, "Window audio streaming not implemented\n");
@@ -668,13 +699,12 @@ selectAudioStreamSource(SDL_Window* window, const Guid* guid)
             fprintf(stderr, "Unknown option: %d\n", selected);
             break;
     }
-
 end:
     return;
 }
 
 void
-startRecording(SDL_Window* window, const Guid* guid)
+startRecording(struct pollfd inputfd, pBytes bytes, const Guid* guid)
 {
     const int devices = SDL_GetNumAudioDevices(SDL_TRUE);
     if (devices == 0) {
@@ -685,29 +715,15 @@ startRecording(SDL_Window* window, const Guid* guid)
     AudioStatePtr state = currentAllocator->allocate(sizeof(AudioState));
     state->isRecording = SDL_TRUE;
     state->id = *guid;
-    SDL_MessageBoxButtonData* buttons =
-      currentAllocator->allocate(devices * sizeof(SDL_MessageBoxButtonData));
+    askQuestion("Select a device to record from");
     for (int i = 0; i < devices; ++i) {
-        buttons[i].buttonid = i;
-        buttons[i].flags = 0;
-        const char* name = SDL_GetAudioDeviceName(i, SDL_TRUE);
-        const size_t len = strlen(name);
-        char* ptr = currentAllocator->allocate(sizeof(char) * (len + 1));
-        memcpy(ptr, name, len);
-        buttons[i].text = ptr;
+        printf("%d) %s\n", i + 1, SDL_GetAudioDeviceName(i, SDL_TRUE));
     }
 
-    const SDL_MessageBoxData data = { .flags = SDL_MESSAGEBOX_INFORMATION,
-                                      .window = window,
-                                      .title = "Audio recording",
-                                      .message =
-                                        "Select an audio device to stream",
-                                      .numbuttons = devices,
-                                      .buttons = buttons,
-                                      .colorScheme = NULL };
-    int selected;
-    if (SDL_ShowMessageBox(&data, &selected) != 0) {
-        fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
+    uint32_t selected;
+    if (getIndexFromUser(inputfd, bytes, devices, &selected, true) !=
+        UserInputResult_Input) {
+        puts("Canceled recording selection");
         goto audioStartEnd;
     }
     const SDL_AudioSpec desiredRecordingSpec =
@@ -758,14 +774,10 @@ audioStartEnd:
         AudioStateFree(state);
         currentAllocator->free(state);
     }
-    for (int i = 0; i < devices; ++i) {
-        currentAllocator->free((char*)buttons[i].text);
-    }
-    currentAllocator->free(buttons);
 }
 
 void
-startPlayback(SDL_Window* window, const Guid* guid)
+startPlayback(struct pollfd inputfd, pBytes bytes, const Guid* guid)
 {
     const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
     if (devices == 0) {
@@ -773,41 +785,28 @@ startPlayback(SDL_Window* window, const Guid* guid)
         return;
     }
 
+    askQuestion("Select a audio device to play audio from");
     AudioStatePtr state = currentAllocator->allocate(sizeof(AudioState));
     state->isRecording = SDL_FALSE;
     state->id = *guid;
-    SDL_MessageBoxButtonData* buttons =
-      currentAllocator->allocate(devices * sizeof(SDL_MessageBoxButtonData));
     for (int i = 0; i < devices; ++i) {
-        buttons[i].buttonid = i;
-        buttons[i].flags = 0;
-        const char* name = SDL_GetAudioDeviceName(i, SDL_FALSE);
-        const size_t len = strlen(name);
-        char* ptr = currentAllocator->allocate(sizeof(char) * (len + 1));
-        memcpy(ptr, name, len);
-        buttons[i].text = ptr;
+        printf("%d) %s\n", i + 1, SDL_GetAudioDeviceName(i, SDL_FALSE));
     }
 
-    const SDL_MessageBoxData data = {
-        .flags = SDL_MESSAGEBOX_INFORMATION,
-        .window = window,
-        .title = "Audio playback",
-        .message = "Select an audio device to play audio from",
-        .numbuttons = devices,
-        .buttons = buttons,
-        .colorScheme = NULL
-    };
-    int selected;
-    if (SDL_ShowMessageBox(&data, &selected) != 0) {
-        fprintf(stderr, "Failed to show message box: %s\n", SDL_GetError());
+    uint32_t selected;
+    if (getIndexFromUser(inputfd, bytes, devices, &selected, true) !=
+        UserInputResult_Input) {
+        puts("Playback canceled");
         goto audioStartEnd;
     }
+
 #if DELAY_AUDIO_QUEUE
     const SDL_AudioSpec desiredRecordingSpec =
       makeAudioSpec((SDL_AudioCallback)audioPlaybackCallback, state);
 #else
     const SDL_AudioSpec desiredRecordingSpec = makeAudioSpec(NULL, NULL);
 #endif
+
     state->deviceId =
       SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_FALSE),
                           SDL_FALSE,
@@ -852,10 +851,6 @@ audioStartEnd:
         AudioStateFree(state);
         currentAllocator->free(state);
     }
-    for (int i = 0; i < devices; ++i) {
-        currentAllocator->free((char*)buttons[i].text);
-    }
-    currentAllocator->free(buttons);
 }
 
 void
@@ -868,7 +863,7 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes)
     puts("");
 
     uint32_t index;
-    if (getIndexFromUser(inputfd, bytes, StreamType_Length, &index) !=
+    if (getIndexFromUser(inputfd, bytes, StreamType_Length, &index, true) !=
         UserInputResult_Input) {
         puts("Canceling start stream");
         return;
@@ -941,7 +936,7 @@ selectStreamToStop(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1U) {
         puts("Stopping to only stream available");
-    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i, true) !=
                UserInputResult_Input) {
         puts("Canceled stopping stream");
         goto end;
@@ -984,7 +979,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1) {
         puts("Sending text to only stream available");
-    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i, true) !=
                UserInputResult_Input) {
         puts("Canceling text send");
         goto end;
@@ -1062,7 +1057,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
     uint32_t i = 0;
     if (streams.used == 1U) {
         puts("Sending data to only stream available");
-    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i) !=
+    } else if (getIndexFromUser(inputfd, bytes, streams.used, &i, true) !=
                UserInputResult_Input) {
         puts("Canceling file upload");
         goto end;
@@ -1243,9 +1238,26 @@ userInputThread(void* ptr)
                               .revents = 0,
                               .fd = STDIN_FILENO };
     while (!appDone) {
+        IN_MUTEX(userInputMutex, fend, {
+            for (size_t i = 0; i < userInputQuestions.used; ++i) {
+                const UserInputQuestion q = userInputQuestions.buffer[i];
+                switch (q.tag) {
+                    case UserInputQuestionTag_audioStreamSource:
+                        selectAudioStreamSource(
+                          inputfd, &bytes, &q.audioStreamSource);
+                        break;
+                    case UserInputQuestionTag_playbackDestination:
+                        startPlayback(inputfd, &bytes, &q.playbackDestination);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            userInputQuestions.used = 0;
+        });
         uint32_t index = 0;
-        switch (
-          getIndexFromUser(inputfd, &bytes, ClientCommand_Length, &index)) {
+        switch (getIndexFromUser(
+          inputfd, &bytes, ClientCommand_Length, &index, false)) {
             case UserInputResult_Input:
                 break;
             case UserInputResult_Error:
@@ -1297,7 +1309,7 @@ userInputThread(void* ptr)
                 } else if (streams.used == 1) {
                     puts("Taking screenshot from only available stream");
                 } else if (getIndexFromUser(
-                             inputfd, &bytes, streams.used, &i) !=
+                             inputfd, &bytes, streams.used, &i, true) !=
                            UserInputResult_Input) {
                     puts("Canceling screenshot");
                     goto saveEnd;
@@ -1392,7 +1404,7 @@ handleClientCommand(const ClientCommand command, pBytes bytes)
 }
 
 void
-clientHandleMessage(SDL_Window* window, pMessage message)
+clientHandleMessage(pMessage message)
 {
     switch (message->tag) {
         case MessageTag_authenticateAck: {
@@ -1473,7 +1485,13 @@ clientHandleMessage(SDL_Window* window, pMessage message)
                     SDL_PushEvent(&e);
 
                     if (streamMessage->data.tag == StreamMessageDataTag_audio) {
-                        startPlayback(window, guid);
+                        UserInputQuestion q = { 0 };
+                        q.tag = UserInputQuestionTag_playbackDestination;
+                        q.playbackDestination = streamMessage->id;
+                        IN_MUTEX(userInputMutex, efnd, {
+                            UserInputQuestionListAppend(&userInputQuestions,
+                                                        &q);
+                        });
                     }
 
                     GuidListAppend(&clientData.connectedStreams, guid);
@@ -2119,10 +2137,14 @@ continueEnd:
 }
 
 int
-displayError(SDL_Window* window, const char* e)
+displayError(SDL_Window* window, const char* e, const bool force)
 {
-    return SDL_ShowSimpleMessageBox(
-      SDL_MESSAGEBOX_ERROR, "SDL error", e, window);
+    if (window != NULL || force) {
+        return SDL_ShowSimpleMessageBox(
+          SDL_MESSAGEBOX_ERROR, "SDL error", e, window);
+    } else {
+        return 0;
+    }
 }
 
 int
@@ -2145,38 +2167,55 @@ runClient(const AllConfiguration* configuration)
                     .used = 0 };
 
     clientData.displays.allocator = currentAllocator;
-    if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
-        fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
-        displayError(window, "Failed to start");
-        goto end;
-    }
-
+    const bool showWindow = !config->noGui;
     {
-        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_WEBP;
-        if (IMG_Init(flags) != flags) {
-            fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
-            displayError(window, "Failed to start");
+        uint32_t flags = 0;
+        if (showWindow) {
+            flags |= SDL_INIT_VIDEO;
+        }
+        if (!config->noAudio) {
+            flags |= SDL_INIT_AUDIO;
+        }
+        if (SDL_Init(flags) != 0) {
+            fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
+            displayError(window, "Failed to start", showWindow);
             goto end;
         }
     }
 
-    if (TTF_Init() == -1) {
-        fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
-        displayError(window, "Failed to start");
-        goto end;
+    if (showWindow) {
+        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_WEBP;
+        if (IMG_Init(flags) != flags) {
+            fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
+            displayError(window, "Failed to start", showWindow);
+            goto end;
+        }
+        if (TTF_Init() == -1) {
+            fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
+            displayError(window, "Failed to start", showWindow);
+            goto end;
+        }
     }
 
     packetMutex = SDL_CreateMutex();
     if (packetMutex == NULL) {
         fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
-        displayError(window, "Failed to start");
+        displayError(window, "Failed to start", showWindow);
+        goto end;
+    }
+
+    userInputMutex = SDL_CreateMutex();
+    if (userInputMutex == NULL) {
+        fprintf(stderr, "");
+        displayError(window, "Failed to start", showWindow);
         goto end;
     }
 
     outgoingPackets.allocator = currentAllocator;
     audioStates.allocator = currentAllocator;
+    userInputQuestions.allocator = currentAllocator;
 
-    if (!config->noGui) {
+    if (showWindow) {
         window = SDL_CreateWindow(
           "TemStream Client",
           SDL_WINDOWPOS_UNDEFINED,
@@ -2187,7 +2226,7 @@ runClient(const AllConfiguration* configuration)
             (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
         if (window == NULL) {
             fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
-            displayError(window, "Failed to start");
+            displayError(window, "Failed to start", showWindow);
             goto end;
         }
 
@@ -2205,27 +2244,27 @@ runClient(const AllConfiguration* configuration)
             if (renderer == NULL) {
                 fprintf(
                   stderr, "Failed to create renderer: %s\n", SDL_GetError());
-                displayError(window, "Failed to start");
+                displayError(window, "Failed to start", showWindow);
                 goto end;
             }
 
             SDL_GetRendererInfo(renderer, &info);
             printf("Current renderer: %s\n", info.name);
         }
-    }
 
-    // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
-    // &font))
-    // {
-    //     fprintf(stderr, "Failed to load font\n");
-    //     goto end;
-    // }
+        // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
+        // &font))
+        // {
+        //     fprintf(stderr, "Failed to load font\n");
+        //     goto end;
+        // }
 
-    ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
-    if (ttfFont == NULL) {
-        fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
-        displayError(window, "Failed to start");
-        goto end;
+        ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
+        if (ttfFont == NULL) {
+            fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
+            displayError(window, "Failed to start", showWindow);
+            goto end;
+        }
     }
 
     appDone = false;
@@ -2233,14 +2272,14 @@ runClient(const AllConfiguration* configuration)
       (SDL_ThreadFunction)clientConnectionThread, "enet", (void*)configuration);
     if (threads[0] == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
-        displayError(window, "Failed to start");
+        displayError(window, "Failed to start", showWindow);
         goto end;
     }
     threads[1] = SDL_CreateThread(
       (SDL_ThreadFunction)userInputThread, "user", (void*)configuration);
     if (threads[1] == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
-        displayError(window, "Failed to start");
+        displayError(window, "Failed to start", showWindow);
         goto end;
     }
 
@@ -2273,7 +2312,7 @@ runClient(const AllConfiguration* configuration)
         switch (SDL_WaitEventTimeout(&e, CLIENT_POLL_WAIT)) {
             case -1:
                 fprintf(stderr, "Event error: %s\n", SDL_GetError());
-                displayError(window, "Failed to start");
+                displayError(window, "Failed to start", showWindow);
                 appDone = true;
                 continue;
             case 0:
@@ -2439,7 +2478,7 @@ runClient(const AllConfiguration* configuration)
                         break;
                     case CustomEvent_HandleMessage: {
                         pMessage message = e.user.data1;
-                        clientHandleMessage(window, message);
+                        clientHandleMessage(message);
                         MessageFree(message);
                         currentAllocator->free(e.user.data1);
                     } break;
@@ -2455,7 +2494,13 @@ runClient(const AllConfiguration* configuration)
                         if (GetStreamFromGuid(
                               &clientData.allStreams, guid, &stream, NULL) &&
                             stream->type == StreamType_Audio) {
-                            selectAudioStreamSource(window, guid);
+                            UserInputQuestion q = { 0 };
+                            q.tag = UserInputQuestionTag_audioStreamSource;
+                            q.audioStreamSource = *guid;
+                            IN_MUTEX(userInputMutex, checkAddedAnd, {
+                                UserInputQuestionListAppend(&userInputQuestions,
+                                                            &q);
+                            });
                         }
                         currentAllocator->free(guid);
                     } break;
@@ -2503,10 +2548,8 @@ runClient(const AllConfiguration* configuration)
                                 size_t index;
                                 if (!GetPlaybackAudioStateFromGuid(
                                       &audioStates, &m->id, NULL, &index)) {
-#if _DEBUG
-                                    puts("Got audio from stream that has no "
-                                         "playback");
-#endif
+                                    // puts("Got audio from stream that has no "
+                                    //      "playback");
                                     break;
                                 }
                                 storeOpusAudio(audioStates.buffer[index],
@@ -2684,7 +2727,9 @@ end:
     }
     pENetPacketListFree(&outgoingPackets);
     AudioStatePtrListFree(&audioStates);
+    UserInputQuestionListFree(&userInputQuestions);
     SDL_DestroyMutex(packetMutex);
+    SDL_DestroyMutex(userInputMutex);
     uint8_tListFree(&bytes);
     ClientDataFree(&clientData);
     SDL_DestroyRenderer(renderer);
