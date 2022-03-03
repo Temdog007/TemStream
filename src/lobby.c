@@ -69,11 +69,13 @@ handleLobbyMessage(const LobbyMessage* message,
             lobbyMessage.tag = LobbyMessageTag_allStreamsAck;
             lobbyMessage.allStreamsAck = streams;
             MESSAGE_SERIALIZE(Lobby, lobbyMessage, (*bytes));
+            sendBytes(peer, bytes, true);
             StreamListFree(&streams);
         } break;
         default:
             return false;
     }
+    return true;
 }
 
 int
@@ -86,7 +88,6 @@ runLobbyServer(const int argc, const char* argv, pConfiguration configuration)
 
     redisContext* ctx = NULL;
     ENetHost* server = NULL;
-    PayloadDataList payloads = { .allocator = currentAllocator };
     Bytes bytes = { .allocator = currentAllocator };
     if (SDL_Init(0) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
@@ -137,7 +138,6 @@ runLobbyServer(const int argc, const char* argv, pConfiguration configuration)
                            event.peer->address.port);
                     pClient client = currentAllocator->allocate(sizeof(Client));
                     client->joinTime = (int64_t)time(NULL);
-                    client->serverAuthentication = &config->authentication;
                     // name and id will be set after parsing authentication
                     // message
                     event.peer->data = client;
@@ -150,16 +150,33 @@ runLobbyServer(const int argc, const char* argv, pConfiguration configuration)
                     currentAllocator->free(client);
                 } break;
                 case ENET_EVENT_TYPE_RECEIVE: {
+                    pClient client =
+                      (pClient)
+                        event.peer->data; // printReceivedPacket(event.packet);
                     const Bytes temp = { .allocator = currentAllocator,
                                          .buffer = event.packet->data,
                                          .size = event.packet->dataLength,
                                          .used = event.packet->dataLength };
-                    Message message = { 0 };
-                    MESSAGE_DESERIALIZE(message, temp);
-                    // printReceivedPacket(event.packet);
-                    pClient client = (pClient)event.peer->data;
+                    Payload payload = { 0 };
+                    MESSAGE_DESERIALIZE(Payload, payload, temp);
+                    LobbyMessage message = { 0 };
+
+                    switch (parsePayload(&payload, client)) {
+                        case PayloadParseResult_UsePayload:
+                            MESSAGE_DESERIALIZE(
+                              LobbyMessage, message, payload.fullData);
+                            break;
+                        case PayloadParseResult_Done:
+                            MESSAGE_DESERIALIZE(
+                              LobbyMessage, message, client->payload);
+                            break;
+                        default:
+                            goto fend;
+                    }
+
                     switch (handleClientAuthentication(
                       client,
+                      &config->authentication,
                       &message.general,
                       message.tag == LobbyMessageTag_general,
                       &bytes,
@@ -176,6 +193,8 @@ runLobbyServer(const int argc, const char* argv, pConfiguration configuration)
                             enet_peer_disconnect(event.peer, 0);
                             break;
                     }
+                fend:
+                    PayloadFree(&payload);
                     LobbyMessageFree(&message);
                     enet_packet_destroy(event.packet);
                 } break;
@@ -191,7 +210,6 @@ end:
     appDone = true;
     redisFree(ctx);
     cleanupServer(server);
-    PayloadDataListFree(&payloads);
     uint8_tListFree(&bytes);
     SDL_Quit();
     return result;

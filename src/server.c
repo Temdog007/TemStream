@@ -6,10 +6,10 @@ cleanupServer(ENetHost*);
 // Assigns client a name and id also
 bool
 authenticateClient(pClient client,
+                   const ServerAuthentication* sAuth,
                    const ClientAuthentication* cAuth,
                    pRandomState rs)
 {
-    const ServerAuthentication* sAuth = client->serverAuthentication;
     switch (sAuth->tag) {
         case ServerAuthenticationTag_file:
             fprintf(stderr, "Failed authentication is not implemented\n");
@@ -25,11 +25,16 @@ authenticateClient(pClient client,
                     fprintf(stderr,
                             "Token authentication is not implemented\n");
                     return false;
-                default:
+                case ClientAuthenticationTag_none:
                     // Give client random name and id
                     client->name = RandomClientName(rs);
                     client->id = randomGuid(rs);
-                    break;
+                    return true;
+                default:
+#if _DEBUG
+                    puts("Unknown authentication type from client");
+#endif
+                    return false;
             }
             return true;
     }
@@ -213,6 +218,7 @@ printLobbyConfiguration(const LobbyConfiguration* configuration)
 
 AuthenticateResult
 handleClientAuthentication(pClient client,
+                           const ServerAuthentication* sAuth,
                            const GeneralMessage* message,
                            const bool isGeneral,
                            pBytes bytes,
@@ -220,7 +226,7 @@ handleClientAuthentication(pClient client,
 {
     if (GuidEquals(&client->id, &ZeroGuid)) {
         if (isGeneral && message->tag == GeneralMessageTag_authenticate) {
-            if (authenticateClient(client, &message->authenticate, rs)) {
+            if (authenticateClient(client, sAuth, &message->authenticate, rs)) {
                 char buffer[128];
                 getGuidString(&client->id, buffer);
                 printf("Client assigned name '%s' (%s)\n",
@@ -254,5 +260,50 @@ cleanupServer(ENetHost* server)
     }
     if (server != NULL) {
         enet_host_destroy(server);
+    }
+}
+
+PayloadParseResult
+parsePayload(const Payload* payload, pClient client)
+{
+    switch (payload->tag) {
+        case PayloadTag_dataStart:
+            client->payload.used = 0;
+            break;
+        case PayloadTag_dataEnd:
+            return PayloadParseResult_Done;
+        case PayloadTag_dataChunk:
+            uint8_tListQuickAppend(&client->payload,
+                                   payload->dataChunk.buffer,
+                                   payload->dataChunk.used);
+            break;
+        case PayloadTag_fullData:
+            return PayloadParseResult_UsePayload;
+        default:
+            break;
+    }
+    return PayloadParseResult_Continuing;
+}
+
+void
+sendBytes(ENetPeer* peer, const Bytes* bytes, const bool reliable)
+{
+    if (bytes->used > peer->mtu) {
+        size_t offset = 0;
+        for (const size_t n = bytes->used - peer->mtu; offset < n;
+             offset += peer->mtu) {
+            ENetPacket* packet = BytesToPacket(
+              bytes->buffer + offset, bytes->used - offset, reliable);
+            PEER_SEND(peer, SERVER_CHANNEL, packet);
+        }
+        if (offset < bytes->used) {
+            ENetPacket* packet = BytesToPacket(
+              bytes->buffer + offset, bytes->used - offset, reliable);
+            PEER_SEND(peer, SERVER_CHANNEL, packet);
+        }
+    } else {
+        ENetPacket* packet =
+          BytesToPacket(bytes->buffer, bytes->used, reliable);
+        PEER_SEND(peer, SERVER_CHANNEL, packet);
     }
 }

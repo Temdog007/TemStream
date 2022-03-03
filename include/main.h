@@ -35,9 +35,9 @@ const extern Guid ZeroGuid;
 typedef struct Client
 {
     TemLangString name;
+    Bytes payload;
     Guid id;
     int64_t joinTime;
-    const ServerAuthentication* serverAuthentication;
 } Client, *pClient;
 
 extern void ClientFree(pClient);
@@ -46,10 +46,6 @@ extern bool
 ClientGuidEquals(const pClient*, const Guid*);
 
 extern TemLangString RandomClientName(pRandomState);
-
-// Assigns client a name and id also
-bool
-authenticateClient(pClient, const ClientAuthentication*, pRandomState);
 
 extern TemLangString
 RandomString(pRandomState, size_t min, size_t max);
@@ -110,13 +106,16 @@ extern ENetPeer*
 FindPeerFromData(ENetPeer*, size_t, const void*);
 
 extern ENetPacket*
-BytesToPacket(const Bytes*, bool);
+BytesToPacket(const void* data, const size_t length, const bool);
 
 extern void
-sendBytes(ENetPeer*, const Bytes* bytes);
+sendBytes(ENetPeer*, const Bytes* bytes, const bool);
 
 extern void
 cleanupServer(ENetHost*);
+
+extern PayloadParseResult
+parsePayload(const Payload*, pClient);
 
 typedef ENetPacket* pENetPacket;
 
@@ -235,9 +234,6 @@ extern bool
 GetStreamFromType(const StreamList*, StreamType, const Stream**, size_t*);
 
 extern bool
-GetStreamFromGuid(const StreamList*, const Guid*, const Stream**, size_t*);
-
-extern bool
 GetStreamDisplayFromGuid(const StreamDisplayList*,
                          const Guid*,
                          const StreamDisplay**,
@@ -256,17 +252,26 @@ GetClientFromGuid(const pClientList*, const Guid*, const pClient**, size_t*);
     SDL_UnlockMutex(mutex);
 
 extern bool
-authenticateClient(pClient client,
-                   const ClientAuthentication* cAuth,
-                   pRandomState rs);
+authenticateClient(pClient,
+                   const ServerAuthentication*,
+                   const ClientAuthentication*,
+                   pRandomState);
 
-#define MESSAGE_SERIALIZE(message, bytes)                                      \
+extern AuthenticateResult
+handleClientAuthentication(pClient,
+                           const ServerAuthentication* sAuth,
+                           const GeneralMessage*,
+                           const bool,
+                           pBytes,
+                           pRandomState);
+
+#define MESSAGE_SERIALIZE(name, message, bytes)                                \
     bytes.used = 0;                                                            \
-    MessageSerialize(&message, &bytes, true)
+    name##Serialize(&message, &bytes, true)
 
-#define MESSAGE_DESERIALIZE(message, bytes)                                    \
-    MessageFree(&message);                                                     \
-    MessageDeserialize(&message, &bytes, 0, true)
+#define MESSAGE_DESERIALIZE(name, message, bytes)                              \
+    name##Free(&message);                                                      \
+    name##Deserialize(&message, &bytes, 0, true)
 
 #define POLL_FOREVER (-1)
 #define CLIENT_POLL_WAIT 100

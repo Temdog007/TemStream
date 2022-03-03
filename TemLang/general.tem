@@ -96,19 +96,11 @@ variant Payload {
     null dataEnd
 }
 
-struct Message {
-    Payload payload
-    Guid id
+enum PayloadParseResult {
+    Continuing
+    Done
+    UsePayload
 }
-
-inlineC "MAKE_DEFAULT_LIST(Message);"
-
-struct PayloadData {
-    Guid id
-    [0 u8] data
-}
-
-inlineC "MAKE_DEFAULT_LIST(PayloadData);"
 
 variant Access {
     null anyone
@@ -119,7 +111,6 @@ struct Stream {
     Access readers
     Access writers
     string name
-    Guid id
     i64 creationDate
     u64 address
     u32 timeout

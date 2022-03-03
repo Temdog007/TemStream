@@ -150,10 +150,10 @@ FindPeerFromData(ENetPeer* peers, const size_t count, const void* data)
 }
 
 ENetPacket*
-BytesToPacket(const Bytes* bytes, const bool reliable)
+BytesToPacket(const void* data, const size_t length, const bool reliable)
 {
-    return enet_packet_create(bytes->buffer,
-                              bytes->used,
+    return enet_packet_create(data,
+                              length,
                               (reliable
                                  ? ENET_PACKET_FLAG_RELIABLE
                                  : (ENET_PACKET_FLAG_UNSEQUENCED |
@@ -195,12 +195,8 @@ printIpAddress(const IpAddress* address)
 int
 printStream(const Stream* stream)
 {
-    char guid[128];
-    getGuidString(&stream->id, guid);
-    return printf("%s: %s (%s)\n",
-                  guid,
-                  stream->name.buffer,
-                  StreamTypeToCharString(stream->type));
+    return printf(
+      "%s (%s)\n", stream->name.buffer, StreamTypeToCharString(stream->type));
 }
 
 int
@@ -213,12 +209,6 @@ printAudioSpec(const SDL_AudioSpec* spec)
                   spec->silence,
                   spec->samples,
                   spec->size);
-}
-
-bool
-StreamGuidEquals(const Stream* stream, const Guid* guid)
-{
-    return GuidEquals(&stream->id, guid);
 }
 
 bool
