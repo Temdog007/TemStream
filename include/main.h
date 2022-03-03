@@ -54,12 +54,6 @@ MAKE_COPY_AND_FREE(pClient);
 MAKE_DEFAULT_LIST(pClient);
 
 extern bool
-StreamTypeMatchStreamMessage(const StreamType, const StreamMessageDataTag);
-
-extern bool
-StreamGuidEquals(const Stream*, const Guid*);
-
-extern bool
 StreamNameEquals(const Stream*, const TemLangString*);
 
 extern bool
@@ -109,7 +103,7 @@ extern ENetPacket*
 BytesToPacket(const void* data, const size_t length, const bool);
 
 extern void
-sendBytes(ENetPeer*, const Bytes* bytes, const bool);
+sendBytes(ENetPeer*, size_t peerCount, size_t mtu, const Bytes*, const bool);
 
 extern void
 cleanupServer(ENetHost*);
@@ -199,23 +193,56 @@ parseCredentials(const char*, pCredentials);
 extern int
 runApp(const int, const char**);
 
-extern int
-runLobbyServer(const int, const char*, pConfiguration);
+typedef struct ServerFunctions
+{
+    int (*parseConfiguration)(int, const char**, pConfiguration);
+
+    void (*serializeMessage)(const void*, pBytes);
+    void* (*deserializeMessage)(const Bytes*);
+    const GeneralMessage* (*getGeneralMessage)(void*);
+    bool (*handleMessage)(void*, pBytes, ENetPeer*, redisContext*);
+    void (*freeMessage)(void*);
+
+    bool (*init)(redisContext*);
+    void (*close)(redisContext*);
+    const char* name;
+} ServerFunctions, *pServerFunctions;
 
 extern int
-runTextServer(const int, const char**, pConfiguration);
-
-extern int
-runChatServer(const int, const char**, pConfiguration);
-
-extern int
-runImageServer(const int, const char**, pConfiguration);
-
-extern int
-runAudioServer(const int, const char**, pConfiguration);
+runServer(const int, const char*, pConfiguration, ServerFunctions);
 
 extern int
 runClient(const Configuration*);
+
+#define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
+
+// Lobby
+
+extern bool
+initLobby(redisContext*);
+
+extern void
+closeLobby(redisContext*);
+
+extern bool
+parseLobbyConfiguration(const int argc,
+                        const char** argv,
+                        pConfiguration configuration);
+
+extern void
+serializeLobbyMessage(const void*, pBytes bytes);
+
+extern void*
+deserializeLobbyMessage(const Bytes* bytes);
+
+extern bool
+handleLobbyMessage(const void*, pBytes, ENetPeer*, redisContext*);
+
+extern const GeneralMessage*
+getGeneralMessageFromLobby(const void*);
+
+extern void
+freeLobbyMessage(void*);
 
 // Parse failures
 
@@ -261,7 +288,6 @@ extern AuthenticateResult
 handleClientAuthentication(pClient,
                            const ServerAuthentication* sAuth,
                            const GeneralMessage*,
-                           const bool,
                            pBytes,
                            pRandomState);
 

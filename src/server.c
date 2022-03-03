@@ -88,6 +88,8 @@ defaultServerConfiguration()
 {
     return (ServerConfiguration){
         .maxClients = 1024u,
+        .redisIp = TemLangStringCreate("localhost", currentAllocator),
+        .redisPort = 6379,
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
     };
@@ -101,12 +103,26 @@ parseServerConfiguration(const char* key,
     const size_t keyLen = strlen(key);
     STR_EQUALS(key, "-C", keyLen, { goto parseMaxClients; });
     STR_EQUALS(key, "--max-clients", keyLen, { goto parseMaxClients; });
+    STR_EQUALS(key, "-RI", keyLen, { goto parseIp; });
+    STR_EQUALS(key, "--redis-ip", keyLen, { goto parseIp; });
+    STR_EQUALS(key, "-RP", keyLen, { goto parsePort; });
+    STR_EQUALS(key, "--redis-port", keyLen, { goto parsePort; });
     // TODO: parse authentication
     return false;
 
 parseMaxClients : {
     const int i = atoi(value);
     config->maxClients = SDL_max(i, 1);
+    return true;
+}
+parseIp : {
+    TemLangStringFree(&config->redisIp);
+    config->redisIp = TemLangStringCreate(value, currentAllocator);
+    return true;
+}
+parsePort : {
+    const int i = atoi(value);
+    config->redisPort = SDL_clamp(value, 1000, 60000);
     return true;
 }
 }
@@ -220,12 +236,11 @@ AuthenticateResult
 handleClientAuthentication(pClient client,
                            const ServerAuthentication* sAuth,
                            const GeneralMessage* message,
-                           const bool isGeneral,
                            pBytes bytes,
                            pRandomState rs)
 {
     if (GuidEquals(&client->id, &ZeroGuid)) {
-        if (isGeneral && message->tag == GeneralMessageTag_authenticate) {
+        if (message != NULL && message->tag == GeneralMessageTag_authenticate) {
             if (authenticateClient(client, sAuth, &message->authenticate, rs)) {
                 char buffer[128];
                 getGuidString(&client->id, buffer);
@@ -243,7 +258,8 @@ handleClientAuthentication(pClient client,
             return AuthenticateResult_Failed;
         }
     }
-    return AuthenticateResult_NotNeeded;
+    return message == NULL ? AuthenticateResult_Failed
+                           : AuthenticateResult_NotNeeded;
 }
 
 void
@@ -286,24 +302,177 @@ parsePayload(const Payload* payload, pClient client)
 }
 
 void
-sendBytes(ENetPeer* peer, const Bytes* bytes, const bool reliable)
+sendBytes(ENetPeer* peers,
+          const size_t peerCount,
+          const size_t mtu,
+          const Bytes* bytes,
+          const bool reliable)
 {
-    if (bytes->used > peer->mtu) {
+    if (bytes->used > mtu) {
         size_t offset = 0;
-        for (const size_t n = bytes->used - peer->mtu; offset < n;
-             offset += peer->mtu) {
+        for (const size_t n = bytes->used - mtu; offset < n; offset += mtu) {
             ENetPacket* packet = BytesToPacket(
               bytes->buffer + offset, bytes->used - offset, reliable);
-            PEER_SEND(peer, SERVER_CHANNEL, packet);
+            for (size_t i = 0; i < peerCount; ++i) {
+                PEER_SEND(&peers[i], SERVER_CHANNEL, packet);
+            }
         }
         if (offset < bytes->used) {
             ENetPacket* packet = BytesToPacket(
               bytes->buffer + offset, bytes->used - offset, reliable);
-            PEER_SEND(peer, SERVER_CHANNEL, packet);
+            for (size_t i = 0; i < peerCount; ++i) {
+                PEER_SEND(&peers[i], SERVER_CHANNEL, packet);
+            }
         }
     } else {
         ENetPacket* packet =
           BytesToPacket(bytes->buffer, bytes->used, reliable);
-        PEER_SEND(peer, SERVER_CHANNEL, packet);
+        for (size_t i = 0; i < peerCount; ++i) {
+            PEER_SEND(&peers[i], SERVER_CHANNEL, packet);
+        }
     }
+}
+
+int
+runServer(const int argc,
+          const char* argv,
+          pConfiguration configuration,
+          ServerFunctions funcs)
+{
+    int result = funcs.parseConfiguration(argc, argv, configuration);
+    if (result != EXIT_SUCCESS) {
+        return result;
+    }
+
+    redisContext* ctx = NULL;
+    ENetHost* server = NULL;
+    Bytes bytes = { .allocator = currentAllocator };
+    if (SDL_Init(0) != 0) {
+        fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    printf("Running %s server", funcs.name);
+    printAllConfiguration(configuration);
+
+    appDone = false;
+
+    const ServerConfiguration* config = &configuration->data.server;
+    {
+        char* end = NULL;
+        ENetAddress address = { 0 };
+        enet_address_set_host(&address, configuration->address.ip.buffer);
+        address.port =
+          (uint16_t)SDL_strtoul(configuration->address.port.buffer, &end, 10);
+        server = enet_host_create(&address, config->maxClients, 2, 0, 0);
+    }
+    if (server == NULL) {
+        fprintf(stderr, "Failed to create server\n");
+        goto end;
+    }
+
+    ctx = redisConnect(config->redisIp.buffer, config->redisPort);
+    if (ctx == NULL || ctx->err) {
+        if (ctx == NULL) {
+            fprintf(stderr, "Can't make redis context\n");
+        } else {
+            fprintf(stderr, "Error: %s\n", ctx->errstr);
+        }
+        goto end;
+    }
+
+    if (!funcs.init(ctx)) {
+        goto end;
+    }
+
+    RandomState rs = makeRandomState();
+    ENetEvent event = { 0 };
+    while (!appDone) {
+        while (enet_host_service(server, &event, 100U) > 0) {
+            switch (event.type) {
+                case ENET_EVENT_TYPE_CONNECT: {
+                    char buffer[512] = { 0 };
+                    enet_address_get_host_ip(
+                      &event.peer->address, buffer, sizeof(buffer));
+                    printf("New client from %s:%u\n",
+                           buffer,
+                           event.peer->address.port);
+                    pClient client = currentAllocator->allocate(sizeof(Client));
+                    client->joinTime = (int64_t)time(NULL);
+                    // name and id will be set after parsing authentication
+                    // message
+                    event.peer->data = client;
+                } break;
+                case ENET_EVENT_TYPE_DISCONNECT: {
+                    pClient client = (pClient)event.peer->data;
+                    printf("%s disconnected\n", client->name.buffer);
+                    event.peer->data = NULL;
+                    ClientFree(client);
+                    currentAllocator->free(client);
+                } break;
+                case ENET_EVENT_TYPE_RECEIVE: {
+                    pClient client =
+                      (pClient)
+                        event.peer->data; // printReceivedPacket(event.packet);
+                    const Bytes temp = { .allocator = currentAllocator,
+                                         .buffer = event.packet->data,
+                                         .size = event.packet->dataLength,
+                                         .used = event.packet->dataLength };
+                    Payload payload = { 0 };
+                    MESSAGE_DESERIALIZE(Payload, payload, temp);
+
+                    void* message = NULL;
+
+                    switch (parsePayload(&payload, client)) {
+                        case PayloadParseResult_UsePayload:
+                            message =
+                              funcs.deserializeMessage(&payload.fullData);
+                            break;
+                        case PayloadParseResult_Done:
+                            message =
+                              funcs.deserializeMessage(&client->payload);
+                            break;
+                        default:
+                            goto fend;
+                    }
+
+                    switch (handleClientAuthentication(
+                      client,
+                      &config->authentication,
+                      funcs.getGeneralMessage(message),
+                      &bytes,
+                      &rs)) {
+                        case AuthenticateResult_Success:
+                            break;
+                        case AuthenticateResult_NotNeeded:
+                            if (!funcs.handleMessage(
+                                  message, &bytes, event.peer, ctx)) {
+                                enet_peer_disconnect(event.peer, 0);
+                            }
+                            break;
+                        default:
+                            enet_peer_disconnect(event.peer, 0);
+                            break;
+                    }
+                fend:
+                    PayloadFree(&payload);
+                    funcs.freeMessage(message);
+                    enet_packet_destroy(event.packet);
+                } break;
+                case ENET_EVENT_TYPE_NONE:
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+end:
+    appDone = true;
+    funcs.close(ctx);
+    redisFree(ctx);
+    cleanupServer(server);
+    uint8_tListFree(&bytes);
+    SDL_Quit();
+    return result;
 }

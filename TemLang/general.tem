@@ -2,8 +2,6 @@ inlineCHeaders
 
 inlineFile "TemLang/guid.tem"
 
-inlineFile "TemLang/client.tem"
-
 enum StreamType {
     Lobby
     Text
@@ -12,6 +10,11 @@ enum StreamType {
     Video
     Audio
     Replay
+}
+
+struct Credentials {
+    string username
+    string password
 }
 
 variant ClientAuthentication {
@@ -48,8 +51,6 @@ variant OptionalSecureIpAddress {
 }
 
 struct LobbyConfiguration {
-    string redisIp
-    i32 redisPort
     u32 maxStreams
     u16 nextPort
     u16 minPort
@@ -74,19 +75,9 @@ variant ServerConfigurationData {
 struct ServerConfiguration {
     ServerConfigurationData data
     ServerAuthentication authentication
+    string redisIp
+    i32 redisPort
     u32 maxClients
-}
-
-variant ConfigurationData {
-    null none
-    ClientConfiguration client
-    ServerConfiguration server
-}
-
-struct Configuration {
-    ConfigurationData data
-    IpAddress address
-    OptionalSecureIpAddress secure
 }
 
 variant Payload {
@@ -131,8 +122,6 @@ variant OptionalGuid {
     null none
 }
 
-inlineC "MAKE_DEFAULT_LIST(AllServerStreams);"
-
 variant StringOrGuid{
     string name
     Guid id
@@ -162,6 +151,8 @@ struct Chat {
     i64 timestamp
 }
 
+inlineC "MAKE_DEFAULT_LIST(Chat);"
+
 variant ChatMessage {
     GeneralMessage general
     string message
@@ -184,4 +175,19 @@ variant ImageMessage {
 variant AudioMessage {
     GeneralMessage general
     [0 u8] audio
+}
+
+inlineFile "TemLang/client.tem"
+
+variant ConfigurationData {
+    null none
+    ClientConfiguration client
+    ServerConfiguration server
+}
+
+struct Configuration {
+    ConfigurationData data
+    IpAddress address
+    OptionalSecureIpAddress secure
+    null runCommand
 }

@@ -256,16 +256,6 @@ GetStreamFromType(const StreamList* streams,
 }
 
 bool
-GetStreamFromGuid(const StreamList* streams,
-                  const Guid* guid,
-                  const Stream** stream,
-                  size_t* index)
-{
-    return StreamListFindIf(
-      streams, (StreamListFindFunc)StreamGuidEquals, guid, stream, index);
-}
-
-bool
 GetPlaybackAudioStateFromGuid(const AudioStatePtrList* list,
                               const Guid* guid,
                               const AudioStatePtr** ptr,

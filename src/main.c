@@ -26,7 +26,7 @@ main(const int argc, const char** argv)
     }
     {
         // Look for -M or --memory
-        uint64_t memory = MB(32);
+        uint64_t memory = MB(8);
         for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-M", argv[i]) != 0 &&
                 strcmp("--memory", argv[i]) != 0) {
@@ -75,6 +75,7 @@ int
 runApp(const int argc, const char** argv)
 {
     Configuration configuration = defaultConfiguration();
+    configuration.runCommand = argv[0];
     int result = EXIT_FAILURE;
 
     const char* streamType = argv[1];
@@ -92,23 +93,34 @@ runApp(const int argc, const char** argv)
     STR_EQUALS(streamType, "audio", len, { goto runAudio; });
 
 runLobby : {
-    result = runLobbyServer(argc, argv, &configuration);
+    result = runServer(
+      argc,
+      argv,
+      &configuration,
+      (ServerFunctions){ .name = "Lobby",
+                         .parseConfiguration = parseLobbyConfiguration,
+                         .serializeMessage = serializeLobbyMessage,
+                         .deserializeMessage = deserializeLobbyMessage,
+                         .handleMessage = handleLobbyMessage,
+                         .freeMessage = freeLobbyMessage,
+                         .init = initLobby,
+                         .close = closeLobby });
     goto end;
 }
 runText : {
-    result = runTextServer(argc, argv, &configuration);
+    // result = runTextServer(argc, argv, &configuration);
     goto end;
 }
 runChat : {
-    result = runChatServer(argc, argv, &configuration);
+    // result = runChatServer(argc, argv, &configuration);
     goto end;
 }
 runImage : {
-    result = runImageServer(argc, argv, &configuration);
+    // result = runImageServer(argc, argv, &configuration);
     goto end;
 }
 runAudio : {
-    result = runAudioServer(argc, argv, &configuration);
+    // result = runAudioServer(argc, argv, &configuration);
     goto end;
 }
 

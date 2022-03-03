@@ -146,8 +146,3 @@ variant FileExtension {
     ImageExtension image
     null font
 }
-
-struct Credentials {
-    string username
-    string password
-}
