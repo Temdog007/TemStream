@@ -42,7 +42,12 @@
 - [x] Don't send audio packets to main thread/handle immediately
 - [x] Communicate with user input thread to prompt user for input
 - [x] Fix user input stops working when playing audio
+
+### Mar 2, 2022
+- [ ] Rewriet message protocol to send data in chunks
 - [ ] Fix audio not working when long delay between audio packets
+
+### Mar 3, 2022
 - [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM
 
 ### Later

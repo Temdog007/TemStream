@@ -160,18 +160,6 @@ BytesToPacket(const Bytes* bytes, const bool reliable)
                                     ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT)));
 }
 
-bool
-streamMessageIsReliable(const StreamMessage* m)
-{
-    switch (m->data.tag) {
-        case StreamMessageDataTag_audio:
-        case StreamMessageDataTag_Invalid:
-            return false;
-        default:
-            return true;
-    }
-}
-
 int
 printBytes(const uint8_t* bytes, const size_t size)
 {
@@ -228,14 +216,6 @@ printAudioSpec(const SDL_AudioSpec* spec)
 }
 
 bool
-StreamTypeMatchStreamMessage(const StreamType type,
-                             const StreamMessageDataTag tag)
-{
-    return (type == StreamType_Text && tag == StreamMessageDataTag_text) ||
-           (type == StreamType_Chat && tag == StreamMessageDataTag_chatMessage);
-}
-
-bool
 StreamGuidEquals(const Stream* stream, const Guid* guid)
 {
     return GuidEquals(&stream->id, guid);
@@ -257,12 +237,6 @@ bool
 AudioStateGuidEquals(const AudioState* state, const Guid* guid)
 {
     return GuidEquals(&state->id, guid);
-}
-
-bool
-StreamMessageGuidEquals(const StreamMessage* message, const Guid* guid)
-{
-    return GuidEquals(&message->id, guid);
 }
 
 bool
@@ -299,20 +273,6 @@ GetStreamFromGuid(const StreamList* streams,
 {
     return StreamListFindIf(
       streams, (StreamListFindFunc)StreamGuidEquals, guid, stream, index);
-}
-
-bool
-GetStreamMessageFromGuid(const StreamMessageList* streams,
-                         const Guid* guid,
-                         const StreamMessage** stream,
-                         size_t* index)
-{
-    return StreamMessageListFindIf(
-      streams,
-      (StreamMessageListFindFunc)StreamMessageGuidEquals,
-      guid,
-      stream,
-      index);
 }
 
 bool
@@ -394,6 +354,21 @@ tsReallocate(void* ptr, const size_t size)
     return data;
 }
 
+void*
+tsCalloc(const size_t count, const size_t size)
+{
+    return tsAllocate(count * size);
+}
+
+const char*
+tsStrDup(const char* c)
+{
+    size_t len = strlen(c);
+    char* rval = tsAllocate(len + 1);
+    memcpy(rval, c, len);
+    return rval;
+}
+
 void
 tsFree(void* data)
 {
@@ -428,6 +403,14 @@ makeTSAllocator(const size_t memory)
     a = make_TemStreamAllocator_allocator();
     tsAllocator.allocator = &a;
     tsAllocator.mutex = SDL_CreateMutex();
+    hiredisAllocFuncs funcs = {
+        .mallocFn = tsAllocate,
+        .reallocFn = tsReallocate,
+        .freeFn = tsFree,
+        .callocFn = tsCalloc,
+        .strdupFn = tsStrDup,
+    };
+    hiredisSetAllocators(&funcs);
     return (Allocator){ .allocate = tsAllocate,
                         .free = tsFree,
                         .reallocate = tsReallocate,
@@ -439,23 +422,6 @@ void
 freeTSAllocator()
 {
     FreeListAllocatorDelete(&TemStreamAllocator);
-}
-
-bool
-streamTypeMatchesMessage(const StreamType type, const StreamMessageDataTag tag)
-{
-    switch (type) {
-        case StreamType_Audio:
-            return tag == StreamMessageDataTag_audio;
-        case StreamType_Text:
-            return tag == StreamMessageDataTag_text;
-        case StreamType_Chat:
-            return tag == StreamMessageDataTag_chatMessage;
-        case StreamType_Image:
-            return tag == StreamMessageDataTag_image;
-        default:
-            return false;
-    }
 }
 
 SDL_AudioSpec

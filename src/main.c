@@ -26,7 +26,7 @@ main(const int argc, const char** argv)
     }
     {
         // Look for -M or --memory
-        uint64_t memory = MB(256);
+        uint64_t memory = MB(32);
         for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-M", argv[i]) != 0 &&
                 strcmp("--memory", argv[i]) != 0) {
@@ -74,38 +74,47 @@ main(const int argc, const char** argv)
 int
 runApp(const int argc, const char** argv)
 {
-    AllConfiguration allConfiguration = defaultAllConfiguration();
-    const char c = argv[1][0];
+    Configuration configuration = defaultConfiguration();
     int result = EXIT_FAILURE;
-    switch (c) {
-        case 'c':
-        case 'C':
-            allConfiguration.configuration.tag = ConfigurationTag_client;
-            allConfiguration.configuration.client =
-              defaultClientConfiguration();
-            if (!parseClientConfiguration(argc, argv, &allConfiguration)) {
-                result = EXIT_FAILURE;
-                break;
-            }
-            result = runClient(&allConfiguration);
-            break;
-        case 's':
-        case 'S':
-            allConfiguration.configuration.tag = ConfigurationTag_server;
-            allConfiguration.configuration.server =
-              defaultServerConfiguration();
-            if (!parseServerConfiguration(argc, argv, &allConfiguration)) {
-                result = EXIT_FAILURE;
-                break;
-            }
-            result = runServer(&allConfiguration);
-            break;
-        default:
-            fprintf(
-              stderr, "Expected C or S as the first argument. Got %c\n", c);
-            break;
-    }
-    AllConfigurationFree(&allConfiguration);
+
+    const char* streamType = argv[1];
+    const size_t len = strlen(streamType);
+
+    STR_EQUALS(streamType, "L", len, { goto runLobby; });
+    STR_EQUALS(streamType, "lobby", len, { goto runLobby; });
+    STR_EQUALS(streamType, "T", len, { goto runText; });
+    STR_EQUALS(streamType, "text", len, { goto runText; });
+    STR_EQUALS(streamType, "C", len, { goto runChat; });
+    STR_EQUALS(streamType, "chat", len, { goto runChat; });
+    STR_EQUALS(streamType, "I", len, { goto runImage; });
+    STR_EQUALS(streamType, "image", len, { goto runImage; });
+    STR_EQUALS(streamType, "A", len, { goto runAudio; });
+    STR_EQUALS(streamType, "audio", len, { goto runAudio; });
+
+runLobby : {
+    result = runLobbyServer(argc, argv, &configuration);
+    goto end;
+}
+runText : {
+    result = runTextServer(argc, argv, &configuration);
+    goto end;
+}
+runChat : {
+    result = runChatServer(argc, argv, &configuration);
+    goto end;
+}
+runImage : {
+    result = runImageServer(argc, argv, &configuration);
+    goto end;
+}
+runAudio : {
+    result = runAudioServer(argc, argv, &configuration);
+    goto end;
+}
+
+    result = runClient(&configuration);
+end:
+    ConfigurationFree(&configuration);
     return result;
 }
 
@@ -145,17 +154,11 @@ signalHandler(int signal)
 Configuration
 defaultConfiguration()
 {
-    return (Configuration){ .tag = ConfigurationTag_none, .none = NULL };
-}
-
-AllConfiguration
-defaultAllConfiguration()
-{
-    return (AllConfiguration){
+    return (Configuration){
         .address = { .ip = TemLangStringCreate("localhost", currentAllocator),
                      .port = TemLangStringCreate("10000", currentAllocator) },
         .secure = { .tag = OptionalSecureIpAddressTag_none, .none = NULL },
-        .configuration = defaultConfiguration()
+        .data = { .none = NULL, .tag = ConfigurationDataTag_none }
     };
 }
 
@@ -172,7 +175,7 @@ parseFailure(const char* type, const char* arg1, const char* arg2)
 bool
 parseCommonConfiguration(const char* key,
                          const char* value,
-                         pAllConfiguration configuration)
+                         pConfiguration configuration)
 {
     const size_t keyLen = strlen(key);
     STR_EQUALS(key, "-A", keyLen, {
@@ -181,21 +184,21 @@ parseCommonConfiguration(const char* key,
     STR_EQUALS(key, "--address", keyLen, {
         return parseIpAddress(value, &configuration->address);
     });
+    STR_EQUALS(key, "-M", keyLen, { return true; });
+    STR_EQUALS(key, "--memory", keyLen, { return true; });
     return false;
 }
 
 int
-printAllConfiguration(const AllConfiguration* configuration)
+printConfiguration(const Configuration* configuration)
 {
     int output = printIpAddress(&configuration->address);
-    switch (configuration->configuration.tag) {
-        case ConfigurationTag_client:
-            output +=
-              printClientConfiguration(&configuration->configuration.client);
+    switch (configuration->data.tag) {
+        case ConfigurationDataTag_client:
+            output += printClientConfiguration(&configuration->data.client);
             break;
-        case ConfigurationTag_server:
-            output +=
-              printServerConfiguration(&configuration->configuration.server);
+        case ConfigurationDataTag_server:
+            output += printServerConfiguration(&configuration->data.server);
             break;
         default:
             break;

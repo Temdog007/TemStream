@@ -7,6 +7,7 @@
 #include <emscripten.h>
 #else
 #include <enet/enet.h>
+#include <hiredis.h>
 #endif
 
 #include <opus/opus.h>
@@ -25,7 +26,7 @@
 #include <DefaultExternalFunctions.h>
 #include <IO.h>
 
-#include <generated/data.h>
+#include <generated/general.h>
 
 #define MAX_PACKET_SIZE KB(64)
 
@@ -33,9 +34,9 @@ const extern Guid ZeroGuid;
 
 typedef struct Client
 {
-    Guid id;
     TemLangString name;
-    GuidList connectedStreams;
+    Guid id;
+    int64_t joinTime;
     const ServerAuthentication* serverAuthentication;
 } Client, *pClient;
 
@@ -45,6 +46,10 @@ extern bool
 ClientGuidEquals(const pClient*, const Guid*);
 
 extern TemLangString RandomClientName(pRandomState);
+
+// Assigns client a name and id also
+bool
+authenticateClient(pClient, const ClientAuthentication*, pRandomState);
 
 extern TemLangString
 RandomString(pRandomState, size_t min, size_t max);
@@ -63,9 +68,6 @@ StreamNameEquals(const Stream*, const TemLangString*);
 
 extern bool
 StreamTypeEquals(const Stream*, const StreamType*);
-
-extern bool
-StreamMessageGuidEquals(const StreamMessage*, const Guid*);
 
 extern bool
 StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
@@ -96,11 +98,11 @@ defaultClientConfiguration();
 extern ServerConfiguration
 defaultServerConfiguration();
 
+extern LobbyConfiguration
+defaultLobbyConfiguration();
+
 extern Configuration
 defaultConfiguration();
-
-extern AllConfiguration
-defaultAllConfiguration();
 
 // ENet
 
@@ -110,8 +112,11 @@ FindPeerFromData(ENetPeer*, size_t, const void*);
 extern ENetPacket*
 BytesToPacket(const Bytes*, bool);
 
-extern bool
-streamMessageIsReliable(const StreamMessage*);
+extern void
+sendBytes(ENetPeer*, const Bytes* bytes);
+
+extern void
+cleanupServer(ENetHost*);
 
 typedef ENetPacket* pENetPacket;
 
@@ -119,8 +124,7 @@ MAKE_COPY_AND_FREE(pENetPacket);
 MAKE_DEFAULT_LIST(pENetPacket);
 
 #define CLIENT_CHANNEL 0
-
-#define DYNAMIC_CHANNEL_INDEX 1
+#define SERVER_CHANNEL 1
 
 #define PEER_SEND(peer, channelID, packet)                                     \
     if (enet_peer_send(peer, channelID, packet) == -1) {                       \
@@ -136,13 +140,25 @@ extern int
 printIpAddress(const IpAddress*);
 
 extern int
-printAllConfiguration(const AllConfiguration*);
+printConfiguration(const Configuration*);
 
 extern int
 printClientConfiguration(const ClientConfiguration*);
 
 extern int
 printServerConfiguration(const ServerConfiguration*);
+
+extern int
+printLobbyConfiguration(const LobbyConfiguration*);
+
+extern int
+printTextConfiguration(const TextConfiguration*);
+
+extern int
+printChatConfiguration(const ChatConfiguration*);
+
+extern int
+printAuthenticate(const ServerAuthentication*);
 
 extern int
 printStream(const Stream*);
@@ -162,19 +178,16 @@ printAudioSpec(const SDL_AudioSpec*);
 // Parsing
 
 extern bool
-parseProducerConfiguration(const int, const char**, pAllConfiguration);
+parseClientConfiguration(const int, const char**, pConfiguration);
 
 extern bool
-parseClientConfiguration(const int, const char**, pAllConfiguration);
+parseServerConfiguration(const char*, const char*, pServerConfiguration);
 
 extern bool
-parseServerConfiguration(const int, const char**, pAllConfiguration);
+parseConfiguration(const int, const char**, pConfiguration);
 
 extern bool
-parseAllConfiguration(const int, const char**, pAllConfiguration);
-
-extern bool
-parseCommonConfiguration(const char*, const char*, pAllConfiguration);
+parseCommonConfiguration(const char*, const char*, pConfiguration);
 
 extern bool
 parseIpAddress(const char*, pIpAddress);
@@ -188,10 +201,22 @@ extern int
 runApp(const int, const char**);
 
 extern int
-runClient(const AllConfiguration*);
+runLobbyServer(const int, const char*, pConfiguration);
 
 extern int
-runServer(const AllConfiguration*);
+runTextServer(const int, const char**, pConfiguration);
+
+extern int
+runChatServer(const int, const char**, pConfiguration);
+
+extern int
+runImageServer(const int, const char**, pConfiguration);
+
+extern int
+runAudioServer(const int, const char**, pConfiguration);
+
+extern int
+runClient(const Configuration*);
 
 // Parse failures
 
@@ -211,12 +236,6 @@ GetStreamFromType(const StreamList*, StreamType, const Stream**, size_t*);
 
 extern bool
 GetStreamFromGuid(const StreamList*, const Guid*, const Stream**, size_t*);
-
-extern bool
-GetStreamMessageFromGuid(const StreamMessageList*,
-                         const Guid*,
-                         const StreamMessage**,
-                         size_t*);
 
 extern bool
 GetStreamDisplayFromGuid(const StreamDisplayList*,
@@ -258,8 +277,6 @@ extern bool
 filenameToExtension(const char*, pFileExtension);
 
 extern StreamType FileExtenstionToStreamType(FileExtensionTag);
-
-extern bool streamTypeMatchesMessage(StreamType, StreamMessageDataTag);
 
 // Audio
 
@@ -385,3 +402,11 @@ extern Allocator makeTSAllocator(size_t);
 
 extern void
 freeTSAllocator();
+
+// Redis
+
+extern StreamList
+getStreams(redisContext*);
+
+extern bool
+addStream(redisContext*, const Stream*);

@@ -142,8 +142,6 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
-        STR_EQUALS(key, "-M", keyLen, { continue; });
-        STR_EQUALS(key, "--memory", keyLen, { continue; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;

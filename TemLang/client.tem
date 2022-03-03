@@ -14,6 +14,17 @@ enum ClientCommand {
     Quit
 }
 
+struct ClientConfiguration {
+    ClientAuthentication authentication
+    string ttfFile
+    i32 fontSize
+    i32 windowWidth
+    i32 windowHeight
+    bool noGui
+    bool noAudio
+    bool fullscreen
+}
+
 struct Rect {
     i32 x
     i32 y
@@ -40,7 +51,7 @@ enum MoveMode {
 }
 
 struct StreamDisplayChat {
-    [0 ChatMessage] logs
+    [0 Chat] logs
     u32 offset
     u32 count
 }
@@ -68,7 +79,6 @@ inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
 struct ClientData {
     [0 Stream] allStreams
     [0 Guid] ownStreams
-    [0 Guid] connectedStreams
     [0 StreamDisplay] displays
     string name
     Guid id
@@ -96,3 +106,48 @@ variant UserInputQuestion {
 }
 
 inlineC "MAKE_DEFAULT_LIST(UserInputQuestion);"
+
+
+enum ImageExtension {
+    ICO
+    CUR
+    BMP
+    JPG
+    JPEG 
+    LBM
+    PCX
+    PNG
+    PNM 
+    SVG
+    TGA
+    WEBP
+    XCF 
+    XPM 
+    XV 
+}
+
+enum VideoExtension {
+    WMV
+    MP4
+    MPV
+    GIF
+}
+
+enum AudioExtension {
+    MP3
+    OGG
+    FLAC
+    WAV
+}
+
+variant FileExtension {
+    VideoExtension video
+    AudioExtension audio
+    ImageExtension image
+    null font
+}
+
+struct Credentials {
+    string username
+    string password
+}

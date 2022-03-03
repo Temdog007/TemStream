@@ -25,9 +25,9 @@ main(int argc, char** argv)
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
-    Message message = { 0 };
+    ServerMessage message = { 0 };
 
-    host = enet_host_create(NULL, 1, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT, 0, 0);
+    host = enet_host_create(NULL, 1, 2, 0, 0);
     if (host == NULL) {
         fprintf(stderr, "Failed to create client host\n");
         goto end;
@@ -103,7 +103,7 @@ main(int argc, char** argv)
                             goto end2;
                         }
 
-                        Message newMessage = { 0 };
+                        ServerMessage newMessage = { 0 };
                         newMessage.tag = MessageTag_streamMessage;
                         newMessage.streamMessage.id = stream->id;
                         newMessage.streamMessage.data.tag =

@@ -1,0 +1,196 @@
+inlineCHeaders
+
+inlineFile "TemLang/guid.tem"
+
+inlineFile "TemLang/client.tem"
+
+enum StreamType {
+    Lobby
+    Text
+    Chat
+    Image
+    Video
+    Audio
+    Replay
+}
+
+variant ClientAuthentication {
+    null none
+    string token
+    Credentials credentials
+}
+
+variant ServerAuthentication {
+    null none
+    string file
+}
+
+enum AuthenticateResult {
+    Success
+    Failed
+    NotNeeded
+}
+
+struct IpAddress {
+    string ip
+    string port
+}
+
+struct SecureIpAddress {
+    string certFile
+    string keyFile
+    IpAddress address
+}
+
+variant OptionalSecureIpAddress {
+    SecureIpAddress address 
+    null none
+}
+
+struct LobbyConfiguration {
+    string redisIp
+    i32 redisPort
+    u32 maxStreams
+    u16 nextPort
+    u16 minPort
+    u16 maxPort
+}
+
+struct TextConfiguration {
+    u32 maxLength
+}
+
+struct ChatConfiguration {
+    u32 chatInterval
+}
+
+variant ServerConfigurationData {
+    null none
+    LobbyConfiguration lobby
+    TextConfiguration text
+    ChatConfiguration chat
+}
+
+struct ServerConfiguration {
+    ServerConfigurationData data
+    ServerAuthentication authentication
+    u32 maxClients
+}
+
+variant ConfigurationData {
+    null none
+    ClientConfiguration client
+    ServerConfiguration server
+}
+
+struct Configuration {
+    ConfigurationData data
+    IpAddress address
+    OptionalSecureIpAddress secure
+}
+
+variant Payload {
+    [0 u8] fullData
+    null dataStart
+    [0 u8] dataChunk
+    null dataEnd
+}
+
+struct Message {
+    Payload payload
+    Guid id
+}
+
+inlineC "MAKE_DEFAULT_LIST(Message);"
+
+struct PayloadData {
+    Guid id
+    [0 u8] data
+}
+
+inlineC "MAKE_DEFAULT_LIST(PayloadData);"
+
+variant Access {
+    null anyone
+    [ 0 string ] list
+}
+
+struct Stream {
+    Access readers
+    Access writers
+    string name
+    Guid id
+    i64 creationDate
+    u64 address
+    u32 timeout
+    u32 passcode
+    StreamType type
+    bool record
+}
+
+variant OptionalStream {
+    Stream stream
+    null none
+}
+
+inlineC "MAKE_DEFAULT_LIST(Stream);"
+
+variant OptionalGuid {
+    Guid guid
+    null none
+}
+
+inlineC "MAKE_DEFAULT_LIST(AllServerStreams);"
+
+variant StringOrGuid{
+    string name
+    Guid id
+}
+
+// Messages for all streams
+variant GeneralMessage {
+    ClientAuthentication authenticate
+    string authenticateAck
+    null getClients
+    [0 string] getClientsAck
+}
+
+variant LobbyMessage {
+    GeneralMessage general
+    Stream startStreaming
+    OptionalStream startStreamingAck
+    Guid stopStreaming
+    OptionalGuid stopStreamingAck
+    null allStreams
+    [0 Stream] allStreamsAck
+}
+
+struct Chat {
+    string message
+    string author
+    i64 timestamp
+}
+
+variant ChatMessage {
+    GeneralMessage general
+    string message
+    u32 messageAck
+    null logs
+    [ 0 Chat ] logsAck
+    null messageRejected
+}
+
+variant TextMessage {
+    GeneralMessage general
+    string text
+}
+
+variant ImageMessage {
+    GeneralMessage general
+    [0 u8] image
+}
+
+variant AudioMessage {
+    GeneralMessage general
+    [0 u8] audio
+}
