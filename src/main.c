@@ -1,5 +1,6 @@
 #include <include/main.h>
 
+#include "base64.c"
 #include "client.c"
 #include "lobby.c"
 #include "misc.c"
@@ -93,19 +94,17 @@ runApp(const int argc, const char** argv)
     goto end;
 
 runLobby : {
-    result = runServer(
-      argc,
-      argv,
-      &configuration,
-      (ServerFunctions){ .name = "Lobby",
+    result = runServer(argc,
+                       argv,
+                       &configuration,
+                       (ServerFunctions){
                          .parseConfiguration = parseLobbyConfiguration,
                          .serializeMessage = serializeLobbyMessage,
                          .deserializeMessage = deserializeLobbyMessage,
                          .handleMessage = handleLobbyMessage,
                          .freeMessage = freeLobbyMessage,
                          .getGeneralMessage = getGeneralMessageFromLobby,
-                         .init = initLobby,
-                         .close = closeLobby });
+                       });
     goto end;
 }
 runText : {

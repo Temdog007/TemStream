@@ -107,18 +107,18 @@ filenameToExtension(const char* filename, pFileExtension f)
     return false;
 }
 
-StreamType
+ServerConfigurationDataTag
 FileExtenstionToStreamType(const FileExtensionTag tag)
 {
     switch (tag) {
         case FileExtensionTag_audio:
-            return StreamType_Audio;
-        case FileExtensionTag_video:
-            return StreamType_Video;
+            return ServerConfigurationDataTag_audio;
+        // case FileExtensionTag_video:
+        // return ServerConfigurationDataTag_video;
         case FileExtensionTag_image:
-            return StreamType_Image;
+            return ServerConfigurationDataTag_image;
         default:
-            return StreamType_Invalid;
+            return ServerConfigurationDataTag_none;
     }
 }
 
@@ -170,13 +170,6 @@ printReceivedPacket(const ENetPacket* packet)
 }
 
 int
-printStream(const Stream* stream)
-{
-    return printf(
-      "%s (%s)\n", stream->name.buffer, StreamTypeToCharString(stream->type));
-}
-
-int
 printServerAuthentication(const ServerAuthentication* auth)
 {
     int offset = printf("Server Authentication: ");
@@ -204,38 +197,6 @@ printAudioSpec(const SDL_AudioSpec* spec)
 }
 
 bool
-StreamNameEquals(const Stream* stream, const TemLangString* name)
-{
-    return TemLangStringsAreEqual(&stream->name, name);
-}
-
-bool
-StreamTypeEquals(const Stream* stream, const StreamType* type)
-{
-    return stream->type == *type;
-}
-
-bool
-GetStreamFromName(const StreamList* streams,
-                  const TemLangString* name,
-                  const Stream** stream,
-                  size_t* index)
-{
-    return StreamListFindIf(
-      streams, (StreamListFindFunc)StreamNameEquals, name, stream, index);
-}
-
-bool
-GetStreamFromType(const StreamList* streams,
-                  const StreamType type,
-                  const Stream** stream,
-                  size_t* index)
-{
-    return StreamListFindIf(
-      streams, (StreamListFindFunc)StreamTypeEquals, &type, stream, index);
-}
-
-bool
 GetClientFromGuid(const pClientList* list,
                   const Guid* guid,
                   const pClient** client,
@@ -243,6 +204,48 @@ GetClientFromGuid(const pClientList* list,
 {
     return pClientListFindIf(
       list, (pClientListFindFunc)ClientGuidEquals, guid, client, index);
+}
+
+bool
+GetStreamFromName(const ServerConfigurationList* list,
+                  const TemLangString* name,
+                  const ServerConfiguration** s,
+                  size_t* i)
+{
+    return ServerConfigurationListFindIf(
+      list,
+      (ServerConfigurationListFindFunc)ServerConfigurationNameEquals,
+      name,
+      s,
+      i);
+}
+
+bool
+GetStreamFromType(const ServerConfigurationList* list,
+                  const ServerConfigurationDataTag tag,
+                  const ServerConfiguration** s,
+                  size_t* i)
+{
+    return ServerConfigurationListFindIf(
+      list,
+      (ServerConfigurationListFindFunc)ServerConfigurationTagEquals,
+      &tag,
+      s,
+      i);
+}
+
+bool
+ServerConfigurationNameEquals(const ServerConfiguration* c,
+                              const TemLangString* s)
+{
+    return TemLangStringsAreEqual(&c->name, s);
+}
+
+bool
+ServerConfigurationTagEquals(const ServerConfiguration* c,
+                             const ServerConfigurationDataTag* tag)
+{
+    return c->data.tag == *tag;
 }
 
 bool

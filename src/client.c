@@ -241,7 +241,7 @@ getIndexFromUser(struct pollfd inputfd,
 }
 
 void
-sendAuthentication(ENetPeer* peer, const StreamType type)
+sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
 {
     uint8_t buffer[KB(2)] = { 0 };
     Bytes bytes = { .allocator = currentAllocator,
@@ -249,7 +249,7 @@ sendAuthentication(ENetPeer* peer, const StreamType type)
                     .used = 0,
                     .size = sizeof(buffer) };
     switch (type) {
-        case StreamType_Lobby: {
+        case ServerConfigurationDataTag_lobby: {
             LobbyMessage message = { 0 };
             message.tag = LobbyMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
@@ -257,7 +257,7 @@ sendAuthentication(ENetPeer* peer, const StreamType type)
               *(pClientAuthentication)clientData.authentication;
             MESSAGE_SERIALIZE(LobbyMessage, message, bytes);
         } break;
-        case StreamType_Chat: {
+        case ServerConfigurationDataTag_chat: {
             ChatMessage message = { 0 };
             message.tag = ChatMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
@@ -265,7 +265,7 @@ sendAuthentication(ENetPeer* peer, const StreamType type)
               *(pClientAuthentication)clientData.authentication;
             MESSAGE_SERIALIZE(ChatMessage, message, bytes);
         } break;
-        case StreamType_Text: {
+        case ServerConfigurationDataTag_text: {
             TextMessage message = { 0 };
             message.tag = TextMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
@@ -273,7 +273,7 @@ sendAuthentication(ENetPeer* peer, const StreamType type)
               *(pClientAuthentication)clientData.authentication;
             MESSAGE_SERIALIZE(TextMessage, message, bytes);
         } break;
-        case StreamType_Audio: {
+        case ServerConfigurationDataTag_audio: {
             AudioMessage message = { 0 };
             message.tag = AudioMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
@@ -281,7 +281,7 @@ sendAuthentication(ENetPeer* peer, const StreamType type)
               *(pClientAuthentication)clientData.authentication;
             MESSAGE_SERIALIZE(AudioMessage, message, bytes);
         } break;
-        case StreamType_Image: {
+        case ServerConfigurationDataTag_image: {
             ImageMessage message = { 0 };
             message.tag = ImageMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
@@ -299,7 +299,7 @@ sendAuthentication(ENetPeer* peer, const StreamType type)
 int
 streamConnectionThread(void* ptr)
 {
-    pStream stream = (pStream)ptr;
+    pServerConfiguration config = (pServerConfiguration)ptr;
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
@@ -311,11 +311,13 @@ streamConnectionThread(void* ptr)
         goto end;
     }
     {
-        ENetAddress* address = (ENetAddress*)&stream->address;
-        peer = enet_host_connect(host, address, 2, stream->type);
+        ENetAddress address = { 0 };
+        enet_address_set_host(&address, config->hostname.buffer);
+        address.port = config->minPort;
+        peer = enet_host_connect(host, &address, 2, config->data.tag);
         char buffer[512] = { 0 };
-        enet_address_get_host_ip(address, buffer, sizeof(buffer));
-        printf("Connecting to server: %s:%u...\n", buffer, address->port);
+        enet_address_get_host_ip(&address, buffer, sizeof(buffer));
+        printf("Connecting to server: %s:%u...\n", buffer, address.port);
     }
     if (peer == NULL) {
         fprintf(stderr, "Failed to connect to server\n");
@@ -326,12 +328,12 @@ streamConnectionThread(void* ptr)
     ENetEvent event = { 0 };
     if (enet_host_service(host, &event, 5000U) > 0 &&
         event.type == ENET_EVENT_TYPE_CONNECT &&
-        event.data == (uint32_t)stream->type) {
+        event.data == (uint32_t)config->data.tag) {
         char buffer[KB(1)] = { 0 };
         enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
         printf(
           "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-        sendAuthentication(peer, stream->type);
+        sendAuthentication(peer, config->data.tag);
     } else {
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
@@ -344,14 +346,16 @@ streamConnectionThread(void* ptr)
         while (enet_host_service(host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
-                    printf("Unexpected connect message from '%s(%s)' stream",
-                           stream->name.buffer,
-                           StreamTypeToCharString(stream->type));
+                    printf(
+                      "Unexpected connect message from '%s(%s)' stream",
+                      config->name.buffer,
+                      ServerConfigurationDataTagToCharString(config->data.tag));
                     goto end;
                 case ENET_EVENT_TYPE_DISCONNECT:
-                    printf("Disconnect from '%s(%s)' stream",
-                           stream->name.buffer,
-                           StreamTypeToCharString(stream->type));
+                    printf(
+                      "Disconnect from '%s(%s)' stream",
+                      config->name.buffer,
+                      ServerConfigurationDataTagToCharString(config->data.tag));
                     goto end;
                 case ENET_EVENT_TYPE_RECEIVE: {
                 } break;
@@ -364,8 +368,8 @@ streamConnectionThread(void* ptr)
     }
 
 end:
-    StreamFree(stream);
-    currentAllocator->free(stream);
+    ServerConfigurationFree(config);
+    currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
     SDL_AtomicDecRef(&runningThreads);
     return EXIT_SUCCESS;
@@ -382,9 +386,9 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
 
     askQuestion("Select a stream to connect to");
     for (uint32_t i = 0; i < streamNum; ++i) {
-        const Stream* stream = &clientData.allStreams.buffer[i];
+        const ServerConfiguration* stream = &clientData.allStreams.buffer[i];
         printf("%u) ", i + 1U);
-        printStream(stream);
+        printServerConfigurationForClient(stream);
     }
     puts("");
 
@@ -397,18 +401,20 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
         return;
     }
 
-    pStream s = currentAllocator->allocate(sizeof(Stream));
-    StreamCopy(s, &clientData.allStreams.buffer[i], currentAllocator);
+    pServerConfiguration s =
+      currentAllocator->allocate(sizeof(ServerConfiguration));
+    ServerConfigurationCopy(
+      s, &clientData.allStreams.buffer[i], currentAllocator);
     SDL_Thread* thread =
       SDL_CreateThread((SDL_ThreadFunction)streamConnectionThread, "stream", s);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
-        StreamFree(s);
+        ServerConfigurationFree(s);
         currentAllocator->free(s);
+    } else {
+        SDL_AtomicIncRef(&runningThreads);
+        SDL_DetachThread(thread);
     }
-
-    SDL_AtomicIncRef(&runningThreads);
-    SDL_DetachThread(thread);
 }
 
 void
@@ -423,7 +429,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
     askQuestion("Select a stream to disconnect from");
     for (uint32_t i = 0; i < list->used; ++i) {
         printf("%u) ", i + 1U);
-        printStream(&list->buffer[i].stream);
+        printServerConfigurationForClient(&list->buffer[i].stream);
     }
     puts("");
 
@@ -754,13 +760,14 @@ void
 selectStreamToStart(struct pollfd inputfd, pBytes bytes, ENetPeer* peer)
 {
     askQuestion("Select the type of stream to create");
-    for (uint32_t i = 0; i < StreamType_Length; ++i) {
-        printf("%u) %s\n", i + 1U, StreamTypeToCharString(i));
+    for (uint32_t i = 0; i < ServerConfigurationDataTag_Length; ++i) {
+        printf("%u) %s\n", i + 1U, ServerConfigurationDataTagToCharString(i));
     }
     puts("");
 
     uint32_t index;
-    if (getIndexFromUser(inputfd, bytes, StreamType_Length, &index, true) !=
+    if (getIndexFromUser(
+          inputfd, bytes, ServerConfigurationDataTag_Length, &index, true) !=
         UserInputResult_Input) {
         puts("Canceling start stream");
         return;
@@ -768,7 +775,27 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes, ENetPeer* peer)
 
     LobbyMessage message = { 0 };
     message.tag = LobbyMessageTag_startStreaming;
-    message.startStreaming.type = (StreamType)index;
+    message.startStreaming.data.tag = (ServerConfigurationDataTag)index;
+    switch (index) {
+        case ServerConfigurationDataTag_lobby:
+            message.startStreaming.data.lobby = defaultLobbyConfiguration();
+            break;
+        case ServerConfigurationDataTag_text:
+            message.startStreaming.data.text = defaultTextConfiguration();
+            break;
+        case ServerConfigurationDataTag_chat:
+            message.startStreaming.data.chat = defaultChatConfiguration();
+            break;
+        case ServerConfigurationDataTag_image:
+            message.startStreaming.data.image = defaultImageConfiguration();
+            break;
+        case ServerConfigurationDataTag_audio:
+            message.startStreaming.data.audio = defaultAudioConfiguration();
+            break;
+        default:
+            puts("Canceling start stream");
+            return;
+    }
 
     askQuestion("What's the name of the stream?");
     if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
@@ -801,9 +828,10 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes, ENetPeer* peer)
     }
 
     MESSAGE_SERIALIZE(LobbyMessage, message, (*bytes));
-    printf("\nCreating '%s' stream named '%s'...\n",
-           StreamTypeToCharString(message.startStreaming.type),
-           message.startStreaming.name.buffer);
+    printf(
+      "\nCreating '%s' stream named '%s'...\n",
+      ServerConfigurationDataTagToCharString(message.startStreaming.data.tag),
+      message.startStreaming.name.buffer);
     sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, bytes, true);
     TemLangStringListAppend(&clientData.ownStreams,
                             &message.startStreaming.name);
@@ -821,13 +849,13 @@ selectStreamToStop(struct pollfd inputfd, pBytes bytes)
 
     askQuestion("Select a stream to stop");
     for (uint32_t i = 0; i < clientData.ownStreams.used; ++i) {
-        const Stream* stream = NULL;
+        const ServerConfiguration* stream = NULL;
         if (GetStreamFromName(&clientData.allStreams,
                               &clientData.ownStreams.buffer[i],
                               &stream,
                               NULL)) {
             printf("%u) ", i + 1U);
-            printStream(stream);
+            printServerConfigurationForClient(stream);
         }
     }
     puts("");
@@ -856,9 +884,10 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
 
     askQuestion("Send text to which stream?");
     for (uint32_t i = 0; i < clientData.displays.used; ++i) {
-        const Stream* stream = &clientData.displays.buffer[i].stream;
+        const ServerConfiguration* stream =
+          &clientData.displays.buffer[i].stream;
         printf("%u) ", i + 1U);
-        printStream(stream);
+        printServerConfigurationForClient(stream);
     }
     puts("");
 
@@ -892,7 +921,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
     for (size_t i = 0; i < clientData.displays.used; ++i) {
         const StreamDisplay* display = &clientData.displays.buffer[i];
         printf("%zu) ", i + 1U);
-        printStream(&display->stream);
+        printServerConfigurationForClient(&display->stream);
     }
     puts("");
 
@@ -934,7 +963,7 @@ saveScreenshot(SDL_Renderer* renderer, const StreamDisplay* display)
     SDL_Surface* surface = NULL;
 
     if (display->texture == NULL) {
-        puts("Stream display has no texture");
+        puts("ServerConfiguration display has no texture");
         goto end;
     }
 
@@ -1048,18 +1077,19 @@ checkUserInput(SDL_Renderer* renderer, pBytes bytes, ENetPeer* peer)
         case ClientCommand_ShowAllStreams:
             askQuestion("All Streams");
             for (size_t i = 0; i < clientData.allStreams.used; ++i) {
-                printStream(&clientData.allStreams.buffer[i]);
+                printServerConfigurationForClient(
+                  &clientData.allStreams.buffer[i]);
             }
             break;
         case ClientCommand_ShowOwnStreams: {
             askQuestion("Own Streams");
-            const Stream* stream = NULL;
+            const ServerConfiguration* stream = NULL;
             for (size_t i = 0; i < clientData.ownStreams.used; ++i) {
                 if (GetStreamFromName(&clientData.allStreams,
                                       &clientData.ownStreams.buffer[i],
                                       &stream,
                                       NULL)) {
-                    printStream(stream);
+                    printServerConfigurationForClient(stream);
                 }
             }
         } break;
@@ -1073,7 +1103,7 @@ checkUserInput(SDL_Renderer* renderer, pBytes bytes, ENetPeer* peer)
             for (size_t i = 0; i < clientData.displays.used; ++i) {
                 const StreamDisplay* display = &list->buffer[i];
                 printf("%zu) ", i + 1U);
-                printStream(&display->stream);
+                printServerConfigurationForClient(&display->stream);
             }
             puts("");
 
@@ -1562,9 +1592,10 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                 IN_MUTEX(clientData.mutex, f, {
                     switch (message.tag) {
                         case LobbyMessageTag_allStreamsAck:
-                            result = StreamListCopy(&clientData.allStreams,
-                                                    &message.allStreamsAck,
-                                                    currentAllocator);
+                            result = ServerConfigurationListCopy(
+                              &clientData.allStreams,
+                              &message.allStreamsAck,
+                              currentAllocator);
                             goto f;
                         case LobbyMessageTag_general:
                             switch (message.general.tag) {
@@ -1747,7 +1778,8 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
         ENetAddress address = { 0 };
         enet_address_set_host(&address, configuration->client.hostname.buffer);
         address.port = configuration->client.port;
-        peer = enet_host_connect(host, &address, 2, StreamType_Lobby);
+        peer = enet_host_connect(
+          host, &address, 2, ServerConfigurationDataTag_lobby);
         char buffer[512] = { 0 };
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));
         printf("Connecting to server: %s:%u...\n", buffer, address.port);
@@ -1761,19 +1793,19 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
     ENetEvent event = { 0 };
     if (enet_host_service(host, &event, 5000U) > 0 &&
         event.type == ENET_EVENT_TYPE_CONNECT &&
-        event.data == StreamType_Lobby) {
+        event.data == (uint32_t)ServerConfigurationDataTag_lobby) {
         char buffer[KB(1)] = { 0 };
         enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
         printf(
           "Connected to server: %s:%u\n", buffer, event.peer->address.port);
         displayUserOptions();
-        sendAuthentication(peer, StreamType_Lobby);
+        sendAuthentication(peer, ServerConfigurationDataTag_lobby);
     } else {
         if (event.type == ENET_EVENT_TYPE_CONNECT) {
             fprintf(stderr,
-                    "Failed to connect to server. Got %u when expecting %u\n",
+                    "Failed to connect to server. Got %u when expecting %d\n",
                     event.data,
-                    StreamType_Lobby);
+                    ServerConfigurationDataTag_lobby);
         } else {
             fprintf(stderr, "Failed to connect to server\n");
         }
@@ -2002,7 +2034,7 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
                                         .buffer = (uint8_t*)ptr,
                                         .size = size,
                                         .used = size };
-                    const Stream* stream = NULL;
+                    const ServerConfiguration* stream = NULL;
                     if (targetDisplay >= clientData.displays.used) {
                         if (!GetStreamFromType(
                               &clientData.allStreams,
@@ -2041,7 +2073,7 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
                     }
                     const StreamDisplay* display =
                       &clientData.displays.buffer[targetDisplay];
-                    const Stream* stream = NULL;
+                    const ServerConfiguration* stream = NULL;
                     if (!GetStreamFromName(&clientData.allStreams,
                                            &display->stream.name,
                                            &stream,

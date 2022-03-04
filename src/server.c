@@ -57,15 +57,27 @@ clientHasAccess(const Client* client, const Access* access)
 }
 
 bool
-clientHasReadAccess(const Client* client, const Stream* stream)
+clientHasReadAccess(const Client* client, const ServerConfiguration* config)
 {
-    return clientHasAccess(client, &stream->readers);
+    return clientHasAccess(client, &config->readers);
 }
 
 bool
-clientHasWriteAccess(const Client* client, const Stream* stream)
+clientHasWriteAccess(const Client* client, const ServerConfiguration* config)
 {
-    return clientHasAccess(client, &stream->writers);
+    return clientHasAccess(client, &config->writers);
+}
+
+ImageConfiguration
+defaultImageConfiguration()
+{
+    return (ImageConfiguration){ .none = NULL };
+}
+
+AudioConfiguration
+defaultAudioConfiguration()
+{
+    return (AudioConfiguration){ .none = NULL };
 }
 
 TextConfiguration
@@ -84,12 +96,13 @@ ServerConfiguration
 defaultServerConfiguration()
 {
     return (ServerConfiguration){
-        .maxClients = 1024u,
+        .name = TemLangStringCreate("server", currentAllocator),
         .redisIp = TemLangStringCreate("localhost", currentAllocator),
         .redisPort = 6379,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .minPort = 10000u,
         .maxPort = 10255u,
+        .maxClients = 1024u,
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
     };
@@ -247,6 +260,14 @@ printServerConfiguration(const ServerConfiguration* configuration)
             break;
     }
     return offset;
+}
+
+int
+printServerConfigurationForClient(const ServerConfiguration* config)
+{
+    return printf("%s (%s)",
+                  config->name.buffer,
+                  ServerConfigurationDataTagToCharString(config->data.tag));
 }
 
 int
@@ -449,7 +470,7 @@ runServer(const int argc,
         goto end;
     }
 
-    printf("Running %s server\n", funcs.name);
+    printf("Running %s server\n", configuration->server.name.buffer);
     printConfiguration(configuration);
 
     appDone = false;
@@ -476,12 +497,14 @@ continueServer:
         if (ctx == NULL) {
             fprintf(stderr, "Can't make redis context\n");
         } else {
-            fprintf(stderr, "Error: %s\n", ctx->errstr);
+            fprintf(stderr, "Redis error: %s\n", ctx->errstr);
         }
         goto end;
     }
 
-    if (!funcs.init(ctx)) {
+    if (config->data.tag != ServerConfigurationDataTag_lobby &&
+        !writeConfigurationToRedis(ctx, config)) {
+        fprintf(stderr, "Failed to write to redis\n");
         goto end;
     }
 
@@ -571,7 +594,7 @@ continueServer:
 
 end:
     appDone = true;
-    funcs.close(ctx);
+    removeConfigurationFromRedis(ctx, config);
     redisFree(ctx);
     cleanupServer(server);
     uint8_tListFree(&bytes);
@@ -579,10 +602,89 @@ end:
     return result;
 }
 
-StreamList
+#define TEM_STREAM_SERVER_KEY "TemStream Server"
+
+ServerConfigurationList
 getStreams(redisContext* ctx)
 {
-    StreamList list = { .allocator = currentAllocator };
-    (void)ctx;
+    ServerConfigurationList list = { .allocator = currentAllocator };
+    redisReply* reply =
+      redisCommand(ctx, "LRANGE %s 0 -1", TEM_STREAM_SERVER_KEY);
+    if (reply->type != REDIS_REPLY_ARRAY) {
+        if (reply->type == REDIS_REPLY_ERROR) {
+            fprintf(stderr, "Redis error: %s\n", reply->str);
+        } else {
+            fprintf(stderr, "Failed to get list from redis\n");
+        }
+        goto end;
+    }
+
+    for (size_t i = 0; i < reply->elements; ++i) {
+        redisReply* r = reply->element[i];
+        if (r->type != REDIS_REPLY_STRING) {
+            continue;
+        }
+        TemLangString str = { .allocator = currentAllocator };
+        if (!b64_decode(r->str, &str)) {
+            continue;
+        }
+        Bytes bytes = { .allocator = currentAllocator,
+                        .buffer = (uint8_t*)str.buffer,
+                        .size = str.size,
+                        .used = str.used };
+
+        ServerConfiguration s = { 0 };
+        ServerConfigurationDeserialize(&s, &bytes, 0, true);
+        ServerConfigurationListAppend(&list, &s);
+        ServerConfigurationFree(&s);
+    }
+end:
+    freeReplyObject(reply);
     return list;
+}
+
+bool
+writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
+{
+    Bytes bytes = { .allocator = currentAllocator };
+    ServerConfigurationSerialize(c, &bytes, true);
+
+    TemLangString str = b64_encode((unsigned char*)bytes.buffer, bytes.used);
+
+    redisReply* reply =
+      redisCommand(ctx, "LPUSH %s %s", TEM_STREAM_SERVER_KEY, str.buffer);
+
+    const bool result =
+      reply->type == REDIS_REPLY_INTEGER && reply->integer == 1LL;
+    if (!result && reply->type == REDIS_REPLY_ERROR) {
+        fprintf(stderr, "Redis error: %s\n", reply->str);
+    }
+
+    freeReplyObject(reply);
+    TemLangStringFree(&str);
+    uint8_tListFree(&bytes);
+    return result;
+}
+
+bool
+removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
+{
+    Bytes bytes = { .allocator = currentAllocator };
+    ServerConfigurationSerialize(c, &bytes, true);
+
+    TemLangString str = b64_encode((unsigned char*)bytes.buffer, bytes.used);
+
+    redisReply* reply =
+      redisCommand(ctx, "LEM 0 %s", TEM_STREAM_SERVER_KEY, str.buffer);
+
+    const bool result =
+      reply->type == REDIS_REPLY_INTEGER && reply->integer == 1LL;
+    if (!result && reply->type == REDIS_REPLY_ERROR) {
+        fprintf(stderr, "Redis error: %s\n", reply->str);
+    }
+
+    freeReplyObject(reply);
+    TemLangStringFree(&str);
+    uint8_tListFree(&bytes);
+    return result;
 }

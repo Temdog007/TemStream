@@ -63,7 +63,7 @@ variant StreamDisplayData {
 }
 
 resource StreamDisplay {
-    Stream stream
+    ServerConfiguration stream
     StreamDisplayData data
     FRect dstRect
     OptionalRect srcRect
@@ -77,7 +77,7 @@ resource StreamDisplay {
 inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
 
 resource ClientData {
-    [0 Stream] allStreams
+    [0 ServerConfiguration] allStreams
     [0 string] ownStreams
     [0 StreamDisplay] displays
     string name

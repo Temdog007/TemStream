@@ -54,12 +54,6 @@ MAKE_COPY_AND_FREE(pClient);
 MAKE_DEFAULT_LIST(pClient);
 
 extern bool
-StreamNameEquals(const Stream*, const TemLangString*);
-
-extern bool
-StreamTypeEquals(const Stream*, const StreamType*);
-
-extern bool
 StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
 
 #define VERSION_MAJOR 0
@@ -90,6 +84,18 @@ defaultServerConfiguration();
 
 extern LobbyConfiguration
 defaultLobbyConfiguration();
+
+extern TextConfiguration
+defaultTextConfiguration();
+
+extern ImageConfiguration
+defaultImageConfiguration();
+
+extern AudioConfiguration
+defaultAudioConfiguration();
+
+extern ChatConfiguration
+defaultChatConfiguration();
 
 extern Configuration
 defaultConfiguration();
@@ -147,6 +153,9 @@ extern int
 printServerConfiguration(const ServerConfiguration*);
 
 extern int
+printServerConfigurationForClient(const ServerConfiguration*);
+
+extern int
 printLobbyConfiguration(const LobbyConfiguration*);
 
 extern int
@@ -157,9 +166,6 @@ printChatConfiguration(const ChatConfiguration*);
 
 extern int
 printAuthenticate(const ServerAuthentication*);
-
-extern int
-printStream(const Stream*);
 
 extern int
 printSendingPacket(const ENetPacket*);
@@ -211,10 +217,6 @@ typedef struct ServerFunctions
                           redisContext*,
                           const ServerConfiguration*);
     void (*freeMessage)(void*);
-
-    bool (*init)(redisContext*);
-    void (*close)(redisContext*);
-    const char* name;
 } ServerFunctions, *pServerFunctions;
 
 extern int
@@ -229,12 +231,6 @@ extern bool
 handleGeneralMessage(const GeneralMessage*, ENetPeer*, pGeneralMessage);
 
 // Lobby
-
-extern bool
-initLobby(redisContext*);
-
-extern void
-closeLobby(redisContext*);
 
 extern bool
 parseLobbyConfiguration(const int argc,
@@ -268,15 +264,6 @@ parseFailure(const char* type, const char* arg1, const char* arg2);
 // Searches
 
 extern bool
-GetStreamFromName(const StreamList*,
-                  const TemLangString*,
-                  const Stream**,
-                  size_t*);
-
-extern bool
-GetStreamFromType(const StreamList*, StreamType, const Stream**, size_t*);
-
-extern bool
 GetStreamDisplayFromGuid(const StreamDisplayList*,
                          const Guid*,
                          const StreamDisplay**,
@@ -284,6 +271,25 @@ GetStreamDisplayFromGuid(const StreamDisplayList*,
 
 extern bool
 GetClientFromGuid(const pClientList*, const Guid*, const pClient**, size_t*);
+
+extern bool
+GetStreamFromName(const ServerConfigurationList*,
+                  const TemLangString*,
+                  const ServerConfiguration**,
+                  size_t*);
+
+extern bool
+GetStreamFromType(const ServerConfigurationList*,
+                  const ServerConfigurationDataTag,
+                  const ServerConfiguration**,
+                  size_t*);
+
+extern bool
+ServerConfigurationNameEquals(const ServerConfiguration*, const TemLangString*);
+
+extern bool
+ServerConfigurationTagEquals(const ServerConfiguration*,
+                             const ServerConfigurationDataTag*);
 
 // Misc
 
@@ -322,7 +328,7 @@ handleClientAuthentication(pClient,
 extern bool
 filenameToExtension(const char*, pFileExtension);
 
-extern StreamType FileExtenstionToStreamType(FileExtensionTag);
+extern ServerConfigurationDataTag FileExtenstionToStreamType(FileExtensionTag);
 
 extern void
 cleanupServer(ENetHost*);
@@ -434,8 +440,25 @@ freeTSAllocator();
 
 // Redis
 
-extern StreamList
+extern ServerConfigurationList
 getStreams(redisContext*);
 
 extern bool
-addStream(redisContext*, const Stream*);
+streamExists(const ServerConfiguration*);
+
+extern bool
+writeConfigurationToRedis(redisContext*, const ServerConfiguration*);
+
+extern bool
+removeConfigurationFromRedis(redisContext*, const ServerConfiguration*);
+
+// Base 64
+
+size_t
+b64_encoded_size(const size_t);
+
+TemLangString
+b64_encode(const unsigned char* in, size_t len);
+
+size_t
+b64_decoded_size(const char*);

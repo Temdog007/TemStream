@@ -2,16 +2,6 @@ inlineCHeaders
 
 inlineFile "TemLang/guid.tem"
 
-enum StreamType {
-    Lobby
-    Text
-    Chat
-    Image
-    Video
-    Audio
-    Replay
-}
-
 struct Credentials {
     string username
     string password
@@ -46,24 +36,45 @@ struct ChatConfiguration {
     u32 chatInterval
 }
 
+struct AudioConfiguration {
+    null none
+}
+
+struct ImageConfiguration {
+    null none
+}
+
 variant ServerConfigurationData {
     null none
     LobbyConfiguration lobby
     TextConfiguration text
     ChatConfiguration chat
+    AudioConfiguration audio
+    ImageConfiguration image
 }
 
 struct ServerConfiguration {
     ServerConfigurationData data
+    Access writers
+    Access readers
     ServerAuthentication authentication
     string redisIp
     string hostname
+    string name
     null runCommand
     i32 redisPort
     u32 maxClients
     u16 minPort
     u16 maxPort
+    bool record
 }
+
+variant OptionalServerConfiguration {
+    ServerConfiguration configuration
+    null none
+}
+
+inlineC "MAKE_DEFAULT_LIST(ServerConfiguration);"
 
 variant Payload {
     [0 u8] fullData
@@ -82,25 +93,6 @@ variant Access {
     null anyone
     [ 0 string ] list
 }
-
-struct Stream {
-    Access readers
-    Access writers
-    string name
-    i64 creationDate
-    u64 address
-    u32 timeout
-    u32 passcode
-    StreamType type
-    bool record
-}
-
-variant OptionalStream {
-    Stream stream
-    null none
-}
-
-inlineC "MAKE_DEFAULT_LIST(Stream);"
 
 variant OptionalGuid {
     Guid guid
@@ -122,10 +114,10 @@ variant GeneralMessage {
 
 variant LobbyMessage {
     GeneralMessage general
-    Stream startStreaming
-    OptionalStream startStreamingAck
+    ServerConfiguration startStreaming
+    OptionalServerConfiguration startStreamingAck
     null allStreams
-    [0 Stream] allStreamsAck
+    [0 ServerConfiguration] allStreamsAck
 }
 
 struct Chat {

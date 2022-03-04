@@ -1,18 +1,5 @@
 #include <include/main.h>
 
-bool
-initLobby(redisContext* c)
-{
-    (void)c;
-    return true;
-}
-
-void
-closeLobby(redisContext* c)
-{
-    (void)c;
-}
-
 LobbyConfiguration
 defaultLobbyConfiguration()
 {
@@ -90,19 +77,19 @@ handleLobbyMessage(const void* ptr,
     CAST_MESSAGE(LobbyMessage, ptr);
     switch (message->tag) {
         case LobbyMessageTag_allStreams: {
-            StreamList streams = getStreams(ctx);
+            ServerConfigurationList streams = getStreams(ctx);
             LobbyMessage lobbyMessage = { 0 };
             lobbyMessage.tag = LobbyMessageTag_allStreamsAck;
             lobbyMessage.allStreamsAck = streams;
             MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
             sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
-            StreamListFree(&streams);
+            ServerConfigurationListFree(&streams);
             return true;
         } break;
         case LobbyMessageTag_startStreaming: {
             ServerConfiguration newConfig = { 0 };
-            StreamList streams = getStreams(ctx);
-            const Stream* newStream = &message->startStreaming;
+            ServerConfigurationList streams = getStreams(ctx);
+            const ServerConfiguration* newStream = &message->startStreaming;
             pClient client = peer->data;
             if (!GetStreamFromName(&streams, &newStream->name, NULL, NULL)) {
 #if _DEBUG
@@ -113,26 +100,29 @@ handleLobbyMessage(const void* ptr,
                 LobbyMessage lobbyMessage = { 0 };
                 lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
                 lobbyMessage.startStreamingAck.none = NULL;
-                lobbyMessage.startStreamingAck.tag = OptionalStreamTag_none;
+                lobbyMessage.startStreamingAck.tag =
+                  OptionalServerConfigurationTag_none;
                 MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
                 sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
                 goto ssEnd;
             }
 
             ServerConfigurationCopy(&newConfig, s, currentAllocator);
-            switch (newStream->type) {
-                case StreamType_Text: {
+            switch (newStream->data.tag) {
+                case ServerConfigurationDataTag_text: {
                 } break;
                 default: {
                     fprintf(
                       stderr,
                       "Client '%s' tried to make unknown stream type: %s\n",
                       client->name.buffer,
-                      StreamTypeToCharString(newStream->type));
+                      ServerConfigurationDataTagToCharString(
+                        newStream->data.tag));
                     LobbyMessage lobbyMessage = { 0 };
                     lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
                     lobbyMessage.startStreamingAck.none = NULL;
-                    lobbyMessage.startStreamingAck.tag = OptionalStreamTag_none;
+                    lobbyMessage.startStreamingAck.tag =
+                      OptionalServerConfigurationTag_none;
                     MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
                     sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
                     goto ssEnd;
@@ -141,7 +131,7 @@ handleLobbyMessage(const void* ptr,
 
         ssEnd:
             ServerConfigurationFree(&newConfig);
-            StreamListFree(&streams);
+            ServerConfigurationListFree(&streams);
             return true;
         } break;
         case LobbyMessageTag_general: {
