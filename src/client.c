@@ -1556,7 +1556,67 @@ loadNewFont(const char* filename, const int fontSize, TTF_Font** ttfFont)
 }
 
 bool
-checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
+clientHandleLobbyMessage(const LobbyMessage* message,
+                         ENetPeer* peer,
+                         pBytes bytes,
+                         pClient client)
+{
+    bool result = false;
+    switch (message->tag) {
+        case LobbyMessageTag_allStreamsAck:
+            result = ServerConfigurationListCopy(&clientData.allStreams,
+                                                 &message->allStreamsAck,
+                                                 currentAllocator);
+            goto end;
+        case LobbyMessageTag_general:
+            switch (message->general.tag) {
+                case GeneralMessageTag_getClientsAck:
+                    askQuestion("Clients");
+                    for (size_t i = 0; i < message->general.getClientsAck.used;
+                         ++i) {
+                        puts(message->general.getClientsAck.buffer[i].buffer);
+                    }
+                    puts("");
+                    result = true;
+                    goto end;
+                case GeneralMessageTag_authenticateAck:
+                    result =
+                      TemLangStringCopy(&client->name,
+                                        &message->general.authenticateAck,
+                                        currentAllocator);
+                    printf("Client authenticated: %s\n", client->name.buffer);
+                    LobbyMessage lm = { 0 };
+
+                    lm.tag = LobbyMessageTag_general;
+                    lm.general.getClients = NULL;
+                    lm.general.tag = GeneralMessageTag_getClients;
+                    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
+                    sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, bytes, true);
+
+                    lm.tag = LobbyMessageTag_allStreams;
+                    lm.allStreams = NULL;
+                    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
+                    sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, bytes, true);
+                    goto end;
+                default:
+                    break;
+            }
+            break;
+        default:
+            break;
+    }
+    printf("Unexpected message from lobby server: %s\n",
+           LobbyMessageTagToCharString(message->tag));
+    appDone = true;
+end:
+    return result;
+}
+
+bool
+checkForMessagesFromLobby(ENetHost* host,
+                          ENetEvent* event,
+                          pBytes bytes,
+                          pClient client)
 {
     bool result = false;
     while (!appDone && enet_host_service(host, event, 0U) >= 0) {
@@ -1580,7 +1640,7 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                                      .used = event->packet->dataLength };
                 Payload payload = { 0 };
                 MESSAGE_DESERIALIZE(Payload, payload, temp);
-                puts("Received payload");
+
                 LobbyMessage message = { 0 };
                 switch (parsePayload(&payload, client)) {
                     case PayloadParseResult_UsePayload:
@@ -1596,33 +1656,8 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                 }
 
                 IN_MUTEX(clientData.mutex, f, {
-                    switch (message.tag) {
-                        case LobbyMessageTag_allStreamsAck:
-                            result = ServerConfigurationListCopy(
-                              &clientData.allStreams,
-                              &message.allStreamsAck,
-                              currentAllocator);
-                            goto f;
-                        case LobbyMessageTag_general:
-                            switch (message.general.tag) {
-                                case GeneralMessageTag_authenticateAck:
-                                    result = TemLangStringCopy(
-                                      &client->name,
-                                      &message.general.authenticateAck,
-                                      currentAllocator);
-                                    printf("Client authenticated: %s\n",
-                                           client->name.buffer);
-                                    goto f;
-                                default:
-                                    break;
-                            }
-                            break;
-                        default:
-                            break;
-                    }
-                    printf("Unexpected message from lobby server: %s\n",
-                           LobbyMessageTagToCharString(message.tag));
-                    appDone = true;
+                    result = clientHandleLobbyMessage(
+                      &message, event->peer, bytes, client);
                 });
 
             fend:
@@ -1815,7 +1850,7 @@ runClient(const Configuration* configuration)
     }
 
     while (!appDone) {
-        if (!checkForMessagesFromLobby(host, &event, &client)) {
+        if (!checkForMessagesFromLobby(host, &event, &bytes, &client)) {
             appDone = true;
             break;
         }

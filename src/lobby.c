@@ -130,12 +130,9 @@ handleLobbyMessage(const void* ptr,
             result = true;
             break;
         case LobbyMessageTag_general:
-            if (!handleGeneralMessage(
-                  &message->general, peer, &lobbyMessage.general)) {
-                break;
-            }
             lobbyMessage.tag = LobbyMessageTag_general;
-            result = true;
+            result = handleGeneralMessage(
+              &message->general, peer, &lobbyMessage.general);
             break;
         case LobbyMessageTag_startStreaming: {
             lobbyMessage.tag = LobbyMessageTag_startStreamingAck;

@@ -345,8 +345,7 @@ handleClientAuthentication(pClient client,
             return AuthenticateResult_Failed;
         }
     }
-    return message == NULL ? AuthenticateResult_Failed
-                           : AuthenticateResult_NotNeeded;
+    return AuthenticateResult_NotNeeded;
 }
 
 void
@@ -571,6 +570,8 @@ continueServer:
                         case AuthenticateResult_NotNeeded:
                             if (!funcs.handleMessage(
                                   message, &bytes, event.peer, ctx, config)) {
+                                printf("Disconnecting %s\n",
+                                       client->name.buffer);
                                 enet_peer_disconnect(event.peer, 0);
                             }
                             break;
