@@ -395,7 +395,7 @@ makeAudioSpec(SDL_AudioCallback callback, void* userdata)
 void
 closeHostAndPeer(ENetHost* host, ENetPeer* peer)
 {
-    if (peer != NULL) {
+    if (peer != NULL && peer->state != ENET_PEER_STATE_DISCONNECTED) {
         enet_peer_disconnect(peer, 0);
         ENetEvent event = { 0 };
         while (enet_host_service(host, &event, 3000U) > 0) {

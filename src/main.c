@@ -13,10 +13,6 @@ int
 main(const int argc, const char** argv)
 {
     printVersion();
-    if (argc < 2) {
-        fprintf(stderr, "Expected C or S as the first argument\n");
-        return EXIT_FAILURE;
-    }
 
     {
         struct sigaction action;
@@ -79,19 +75,23 @@ runApp(const int argc, const char** argv)
     configuration.runCommand = (void*)argv[0];
     int result = EXIT_FAILURE;
 
-    const char* streamType = argv[1];
-    const size_t len = strlen(streamType);
+    if (argc > 1) {
+        const char* streamType = argv[1];
+        const size_t len = strlen(streamType);
 
-    STR_EQUALS(streamType, "L", len, { goto runLobby; });
-    STR_EQUALS(streamType, "lobby", len, { goto runLobby; });
-    STR_EQUALS(streamType, "T", len, { goto runText; });
-    STR_EQUALS(streamType, "text", len, { goto runText; });
-    STR_EQUALS(streamType, "C", len, { goto runChat; });
-    STR_EQUALS(streamType, "chat", len, { goto runChat; });
-    STR_EQUALS(streamType, "I", len, { goto runImage; });
-    STR_EQUALS(streamType, "image", len, { goto runImage; });
-    STR_EQUALS(streamType, "A", len, { goto runAudio; });
-    STR_EQUALS(streamType, "audio", len, { goto runAudio; });
+        STR_EQUALS(streamType, "L", len, { goto runLobby; });
+        STR_EQUALS(streamType, "lobby", len, { goto runLobby; });
+        STR_EQUALS(streamType, "T", len, { goto runText; });
+        STR_EQUALS(streamType, "text", len, { goto runText; });
+        STR_EQUALS(streamType, "C", len, { goto runChat; });
+        STR_EQUALS(streamType, "chat", len, { goto runChat; });
+        STR_EQUALS(streamType, "I", len, { goto runImage; });
+        STR_EQUALS(streamType, "image", len, { goto runImage; });
+        STR_EQUALS(streamType, "A", len, { goto runAudio; });
+        STR_EQUALS(streamType, "audio", len, { goto runAudio; });
+    }
+    result = runClient(argc, argv, &configuration);
+    goto end;
 
 runLobby : {
     result = runServer(
@@ -104,6 +104,7 @@ runLobby : {
                          .deserializeMessage = deserializeLobbyMessage,
                          .handleMessage = handleLobbyMessage,
                          .freeMessage = freeLobbyMessage,
+                         .getGeneralMessage = getGeneralMessageFromLobby,
                          .init = initLobby,
                          .close = closeLobby });
     goto end;
@@ -125,7 +126,6 @@ runAudio : {
     goto end;
 }
 
-    result = runClient(argc, argv, &configuration);
 end:
     ConfigurationFree(&configuration);
     return result;

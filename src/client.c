@@ -60,6 +60,8 @@ parseClientConfiguration(const int argc,
                          const char** argv,
                          pConfiguration configuration)
 {
+    configuration->data.tag = ConfigurationDataTag_client;
+    configuration->data.client = defaultClientConfiguration();
     pClientConfiguration client = &configuration->data.client;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
@@ -812,7 +814,7 @@ void
 selectStreamToStop(struct pollfd inputfd, pBytes bytes)
 {
     const StreamDisplayList* list = &clientData.displays;
-    if (!StreamDisplayListIsEmpty(list)) {
+    if (StreamDisplayListIsEmpty(list)) {
         puts("No streams to stop");
         return;
     }
@@ -847,7 +849,7 @@ void
 selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
 {
     const StreamDisplayList* list = &clientData.displays;
-    if (!StreamDisplayListIsEmpty(list)) {
+    if (StreamDisplayListIsEmpty(list)) {
         puts("No streams to send text to");
         return;
     }
@@ -877,7 +879,7 @@ void
 selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
 {
     const StreamDisplayList* list = &clientData.displays;
-    if (!StreamDisplayListIsEmpty(list)) {
+    if (StreamDisplayListIsEmpty(list)) {
         puts("No streams to upload file to");
         return;
     }
@@ -1521,7 +1523,7 @@ bool
 checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
 {
     bool result = false;
-    while (enet_host_service(host, event, 0U) > 0) {
+    while (enet_host_service(host, event, 0U) >= 0) {
         switch (event->type) {
             case ENET_EVENT_TYPE_CONNECT:
                 puts("Unexpected connect event from server");
@@ -1563,12 +1565,24 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                             result = StreamListCopy(&clientData.allStreams,
                                                     &message.allStreamsAck,
                                                     currentAllocator);
+                            goto f;
+                        case LobbyMessageTag_general:
+                            switch (message.general.tag) {
+                                case GeneralMessageTag_authenticateAck:
+                                    result = TemLangStringCopy(
+                                      &client->name,
+                                      &message.general.authenticateAck,
+                                      currentAllocator);
+                                    goto f;
+                                default:
+                                    break;
+                            }
                             break;
                         default:
-                            printf("Unexpected message from lobby server: %s\n",
-                                   LobbyMessageTagToCharString(message.tag));
                             break;
                     }
+                    printf("Unexpected message from lobby server: %s\n",
+                           LobbyMessageTagToCharString(message.tag));
                 });
 
             fend:
@@ -1601,6 +1615,7 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
     if (!parseClientConfiguration(argc, argv, configuration)) {
         return EXIT_FAILURE;
     }
+    clientData.authentication = &configuration->data.client.authentication;
 
     int result = EXIT_FAILURE;
     puts("Running client");
@@ -1636,7 +1651,7 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
         }
     }
 
-    clientData.mutex = SDL_CreateMutex;
+    clientData.mutex = SDL_CreateMutex();
     if (clientData.mutex == NULL) {
         fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
         goto end;
@@ -1756,7 +1771,14 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
         displayUserOptions();
         sendAuthentication(peer, StreamType_Lobby);
     } else {
-        fprintf(stderr, "Failed to connect to server\n");
+        if (event.type == ENET_EVENT_TYPE_CONNECT) {
+            fprintf(stderr,
+                    "Failed to connect to server. Got %u when expecting %u\n",
+                    event.data,
+                    StreamType_Lobby);
+        } else {
+            fprintf(stderr, "Failed to connect to server\n");
+        }
         enet_peer_reset(peer);
         peer = NULL;
         appDone = true;

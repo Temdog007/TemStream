@@ -210,7 +210,7 @@ typedef struct ServerFunctions
 
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
-    const GeneralMessage* (*getGeneralMessage)(void*);
+    const GeneralMessage* (*getGeneralMessage)(const void*);
     bool (*handleMessage)(const void*, pBytes, ENetPeer*, redisContext*);
     void (*freeMessage)(void*);
 

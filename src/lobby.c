@@ -91,11 +91,19 @@ freeLobbyMessage(void* ptr)
     currentAllocator->free(message);
 }
 
+const GeneralMessage*
+getGeneralMessageFromLobby(const void* ptr)
+{
+    CAST_MESSAGE(LobbyMessage, ptr);
+    return message->tag == LobbyMessageTag_general ? &message->general : NULL;
+}
+
 bool
 handleLobbyMessage(const void* ptr,
                    pBytes bytes,
                    ENetPeer* peer,
-                   redisContext* ctx)
+                   redisContext* ctx,
+                   pServerConfiguration s)
 {
     CAST_MESSAGE(LobbyMessage, ptr);
     switch (message->tag) {
@@ -106,6 +114,22 @@ handleLobbyMessage(const void* ptr,
             lobbyMessage.allStreamsAck = streams;
             MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
             sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+            StreamListFree(&streams);
+        } break;
+        case LobbyMessageTag_startStreaming: {
+            StreamList streams = getStreams(ctx);
+            const Stream* newStream = &message->startStreaming;
+            if (!GetStreamFromName(&streams, &newStream->name, NULL, NULL)) {
+                LobbyMessage lobbyMessage = { 0 };
+                lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
+                lobbyMessage.startStreamingAck.none = NULL;
+                lobbyMessage.startStreamingAck.tag = OptionalStreamTag_none;
+                MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
+                sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+                goto ssEnd;
+            }
+
+        ssEnd:
             StreamListFree(&streams);
         } break;
         default:
