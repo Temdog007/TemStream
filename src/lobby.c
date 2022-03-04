@@ -16,12 +16,8 @@ closeLobby(redisContext* c)
 LobbyConfiguration
 defaultLobbyConfiguration()
 {
-    return (LobbyConfiguration){
-        .maxStreams = ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT,
-        .nextPort = 10001u,
-        .minPort = 10001u,
-        .maxPort = 10256u,
-    };
+    return (LobbyConfiguration){ .maxStreams =
+                                   ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT };
 }
 
 bool
@@ -29,19 +25,16 @@ parseLobbyConfiguration(const int argc,
                         const char** argv,
                         pConfiguration configuration)
 {
-    configuration->data.server.data.tag = ServerConfigurationDataTag_lobby;
-    pLobbyConfiguration lobby = &configuration->data.server.data.lobby;
+    configuration->server.data.tag = ServerConfigurationDataTag_lobby;
+    pLobbyConfiguration lobby = &configuration->server.data.lobby;
     *lobby = defaultLobbyConfiguration();
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
         const char* value = argv[i + 1];
         STR_EQUALS(key, "--max-streams", keyLen, { goto parseStreams; });
-        STR_EQUALS(key, "--min-port", keyLen, { goto parseMinPort; });
-        STR_EQUALS(key, "--max-port", keyLen, { goto parseMaxPort; });
         if (!parseCommonConfiguration(key, value, configuration) &&
-            !parseServerConfiguration(
-              key, value, &configuration->data.server)) {
+            !parseServerConfiguration(key, value, &configuration->server)) {
             parseFailure("Lobby", key, value);
             return false;
         }
@@ -51,17 +44,6 @@ parseLobbyConfiguration(const int argc,
         const uint32_t i = (uint32_t)atoi(value);
         lobby->maxStreams =
           SDL_clamp(i, 1U, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT);
-        continue;
-    }
-    parseMinPort : {
-        const int i = atoi(value);
-        lobby->minPort = SDL_clamp(i, 1000, 60000);
-        lobby->nextPort = lobby->minPort;
-        continue;
-    }
-    parseMaxPort : {
-        const int i = atoi(value);
-        lobby->maxPort = SDL_clamp(i, 1000, 60000);
         continue;
     }
     }
@@ -103,7 +85,7 @@ handleLobbyMessage(const void* ptr,
                    pBytes bytes,
                    ENetPeer* peer,
                    redisContext* ctx,
-                   pServerConfiguration s)
+                   const ServerConfiguration* s)
 {
     CAST_MESSAGE(LobbyMessage, ptr);
     switch (message->tag) {
@@ -115,11 +97,19 @@ handleLobbyMessage(const void* ptr,
             MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
             sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
             StreamListFree(&streams);
+            return true;
         } break;
         case LobbyMessageTag_startStreaming: {
+            ServerConfiguration newConfig = { 0 };
             StreamList streams = getStreams(ctx);
             const Stream* newStream = &message->startStreaming;
+            pClient client = peer->data;
             if (!GetStreamFromName(&streams, &newStream->name, NULL, NULL)) {
+#if _DEBUG
+                printf("Client '%s' attempted to make duplicate stream '%s'\n",
+                       client->name.buffer,
+                       newStream->name.buffer);
+#endif
                 LobbyMessage lobbyMessage = { 0 };
                 lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
                 lobbyMessage.startStreamingAck.none = NULL;
@@ -129,15 +119,49 @@ handleLobbyMessage(const void* ptr,
                 goto ssEnd;
             }
 
+            ServerConfigurationCopy(&newConfig, s, currentAllocator);
+            switch (newStream->type) {
+                case StreamType_Text: {
+                } break;
+                default: {
+                    fprintf(
+                      stderr,
+                      "Client '%s' tried to make unknown stream type: %s\n",
+                      client->name.buffer,
+                      StreamTypeToCharString(newStream->type));
+                    LobbyMessage lobbyMessage = { 0 };
+                    lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
+                    lobbyMessage.startStreamingAck.none = NULL;
+                    lobbyMessage.startStreamingAck.tag = OptionalStreamTag_none;
+                    MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
+                    sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+                    goto ssEnd;
+                }
+            }
+
         ssEnd:
+            ServerConfigurationFree(&newConfig);
             StreamListFree(&streams);
+            return true;
+        } break;
+        case LobbyMessageTag_general: {
+            LobbyMessage lobbyMessage = { 0 };
+            if (!handleGeneralMessage(
+                  &message->general, peer, &lobbyMessage.general)) {
+                break;
+            }
+            lobbyMessage.tag = LobbyMessageTag_general;
+            MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
+            sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+            LobbyMessageFree(&lobbyMessage);
+            return true;
         } break;
         default:
-#if _DEBUG
-            printf("Unexpected message '%s' from client\n",
-                   LobbyMessageTagToCharString(message->tag));
-#endif
-            return false;
+            break;
     }
-    return true;
+#if _DEBUG
+    printf("Unexpected message '%s' from client\n",
+           LobbyMessageTagToCharString(message->tag));
+#endif
+    return false;
 }

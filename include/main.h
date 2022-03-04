@@ -7,14 +7,14 @@
 #include <emscripten.h>
 #else
 #include <enet/enet.h>
+#include <errno.h>
 #include <hiredis.h>
+#include <poll.h>
+#include <signal.h>
 #endif
 
 #include <opus/opus.h>
 
-#include <errno.h>
-#include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -138,9 +138,6 @@ MAKE_DEFAULT_LIST(pENetPacket);
 // Printing
 
 extern int
-printIpAddress(const IpAddress*);
-
-extern int
 printConfiguration(const Configuration*);
 
 extern int
@@ -194,9 +191,6 @@ extern bool
 parseCommonConfiguration(const char*, const char*, pConfiguration);
 
 extern bool
-parseIpAddress(const char*, pIpAddress);
-
-extern bool
 parseCredentials(const char*, pCredentials);
 
 // Run
@@ -211,7 +205,11 @@ typedef struct ServerFunctions
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(const void*);
-    bool (*handleMessage)(const void*, pBytes, ENetPeer*, redisContext*);
+    bool (*handleMessage)(const void*,
+                          pBytes,
+                          ENetPeer*,
+                          redisContext*,
+                          const ServerConfiguration*);
     void (*freeMessage)(void*);
 
     bool (*init)(redisContext*);
@@ -226,6 +224,9 @@ extern int
 runClient(const int, const char** argv, pConfiguration);
 
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
+
+extern bool
+handleGeneralMessage(const GeneralMessage*, ENetPeer*, pGeneralMessage);
 
 // Lobby
 
@@ -247,7 +248,11 @@ extern void*
 deserializeLobbyMessage(const Bytes* bytes);
 
 extern bool
-handleLobbyMessage(const void*, pBytes, ENetPeer*, redisContext*);
+handleLobbyMessage(const void*,
+                   pBytes,
+                   ENetPeer*,
+                   redisContext*,
+                   const ServerConfiguration*);
 
 extern const GeneralMessage*
 getGeneralMessageFromLobby(const void*);
@@ -318,6 +323,9 @@ extern bool
 filenameToExtension(const char*, pFileExtension);
 
 extern StreamType FileExtenstionToStreamType(FileExtensionTag);
+
+extern void
+cleanupServer(ENetHost*);
 
 // Audio
 

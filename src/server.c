@@ -1,8 +1,5 @@
 #include <include/main.h>
 
-void
-cleanupServer(ENetHost*);
-
 // Assigns client a name and id also
 bool
 authenticateClient(pClient client,
@@ -90,6 +87,9 @@ defaultServerConfiguration()
         .maxClients = 1024u,
         .redisIp = TemLangStringCreate("localhost", currentAllocator),
         .redisPort = 6379,
+        .hostname = TemLangStringCreate("localhost", currentAllocator),
+        .minPort = 10000u,
+        .maxPort = 10255u,
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
     };
@@ -103,6 +103,12 @@ parseServerConfiguration(const char* key,
     const size_t keyLen = strlen(key);
     STR_EQUALS(key, "-C", keyLen, { goto parseMaxClients; });
     STR_EQUALS(key, "--max-clients", keyLen, { goto parseMaxClients; });
+    STR_EQUALS(key, "-H", keyLen, { goto parseHostname; });
+    STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
+    STR_EQUALS(key, "-mp", keyLen, { goto parseMinPort; });
+    STR_EQUALS(key, "--min-port", keyLen, { goto parseMinPort; });
+    STR_EQUALS(key, "-MP", keyLen, { goto parseMaxPort; });
+    STR_EQUALS(key, "--max-port", keyLen, { goto parseMaxPort; });
     STR_EQUALS(key, "-RI", keyLen, { goto parseIp; });
     STR_EQUALS(key, "--redis-ip", keyLen, { goto parseIp; });
     STR_EQUALS(key, "-RP", keyLen, { goto parsePort; });
@@ -110,6 +116,11 @@ parseServerConfiguration(const char* key,
     // TODO: parse authentication
     return false;
 
+parseHostname : {
+    TemLangStringFree(&config->hostname);
+    config->hostname = TemLangStringCreate(value, currentAllocator);
+    return true;
+}
 parseMaxClients : {
     const int i = atoi(value);
     config->maxClients = SDL_max(i, 1);
@@ -125,6 +136,16 @@ parsePort : {
     config->redisPort = SDL_clamp(i, 1000, 60000);
     return true;
 }
+parseMinPort : {
+    const int i = atoi(value);
+    config->minPort = SDL_clamp(i, 1000, 60000);
+    return true;
+}
+parseMaxPort : {
+    const int i = atoi(value);
+    config->maxPort = SDL_clamp(i, 1000, 60000);
+    return true;
+}
 }
 
 bool
@@ -132,8 +153,8 @@ parseTextConfiguration(const int argc,
                        const char** argv,
                        pConfiguration configuration)
 {
-    configuration->data.tag = ServerConfigurationDataTag_text;
-    pTextConfiguration text = &configuration->data.server.data.text;
+    configuration->tag = ServerConfigurationDataTag_text;
+    pTextConfiguration text = &configuration->server.data.text;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
@@ -141,8 +162,7 @@ parseTextConfiguration(const int argc,
         STR_EQUALS(key, "-L", keyLen, { goto parseLength; });
         STR_EQUALS(key, "--max-length", keyLen, { goto parseLength; });
         if (!parseCommonConfiguration(key, value, configuration) &&
-            !parseServerConfiguration(
-              key, value, &configuration->data.server)) {
+            !parseServerConfiguration(key, value, &configuration->server)) {
             parseFailure("Text", key, value);
             return false;
         }
@@ -162,8 +182,8 @@ parseChatConfiguration(const int argc,
                        const char** argv,
                        pConfiguration configuration)
 {
-    configuration->data.tag = ServerConfigurationDataTag_chat;
-    pChatConfiguration chat = &configuration->data.server.data.chat;
+    configuration->tag = ServerConfigurationDataTag_chat;
+    pChatConfiguration chat = &configuration->server.data.chat;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
@@ -171,8 +191,7 @@ parseChatConfiguration(const int argc,
         STR_EQUALS(key, "-I", keyLen, { goto parseInterval; });
         STR_EQUALS(key, "--interval", keyLen, { goto parseInterval; });
         if (!parseCommonConfiguration(key, value, configuration) &&
-            !parseServerConfiguration(
-              key, value, &configuration->data.server)) {
+            !parseServerConfiguration(key, value, &configuration->server)) {
             parseFailure("Chat", key, value);
             return false;
         }
@@ -205,8 +224,15 @@ printAuthenticate(const ServerAuthentication* auth)
 int
 printServerConfiguration(const ServerConfiguration* configuration)
 {
-    int offset = printf("Max clients: %u\n", configuration->maxClients) +
-                 printServerAuthentication(&configuration->authentication);
+    int offset =
+      printf("Hostname: %s\nPorts: %u-%u\nRedis: %s:%u\nMax clients: %u\n",
+             configuration->hostname.buffer,
+             configuration->minPort,
+             configuration->maxPort,
+             configuration->redisIp.buffer,
+             configuration->redisPort,
+             configuration->maxClients) +
+      printServerAuthentication(&configuration->authentication);
     switch (configuration->data.tag) {
         case ServerConfigurationDataTag_chat:
             offset += printChatConfiguration(&configuration->data.chat);
@@ -239,10 +265,36 @@ printChatConfiguration(const ChatConfiguration* configuration)
 int
 printLobbyConfiguration(const LobbyConfiguration* configuration)
 {
-    return printf("Lobby\nMax streams: %u\nMin port: %u\nMax port: %u\n",
-                  configuration->maxStreams,
-                  configuration->minPort,
-                  configuration->maxPort);
+    return printf("Lobby\nMax streams: %u\n", configuration->maxStreams);
+}
+
+bool
+handleGeneralMessage(const GeneralMessage* message,
+                     ENetPeer* peer,
+                     pGeneralMessage output)
+{
+    switch (message->tag) {
+        case GeneralMessageTag_getClients: {
+            output->tag = GeneralMessageTag_getClientsAck;
+            output->getClientsAck.allocator = currentAllocator;
+            ENetHost* host = peer->host;
+            for (size_t i = 0; i < host->peerCount; ++i) {
+                ENetPeer* p = &host->peers[i];
+                pClient client = p->data;
+                if (client == NULL) {
+                    continue;
+                }
+                TemLangStringListAppend(&output->getClientsAck, &client->name);
+            }
+        } break;
+        default:
+#if _DEBUG
+            printf("Unexpected message '%s' from client\n",
+                   LobbyMessageTagToCharString(message->tag));
+#endif
+            return false;
+    }
+    return true;
 }
 
 AuthenticateResult
@@ -381,8 +433,9 @@ runServer(const int argc,
           pConfiguration configuration,
           ServerFunctions funcs)
 {
-    configuration->data.tag = ConfigurationDataTag_server;
-    configuration->data.server = defaultServerConfiguration();
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    configuration->server.runCommand = (NullValue)argv[0];
     if (!funcs.parseConfiguration(argc, argv, configuration)) {
         return EXIT_FAILURE;
     }
@@ -401,20 +454,23 @@ runServer(const int argc,
 
     appDone = false;
 
-    const ServerConfiguration* config = &configuration->data.server;
+    const ServerConfiguration* config = &configuration->server;
     {
-        char* end = NULL;
         ENetAddress address = { 0 };
-        enet_address_set_host(&address, configuration->address.ip.buffer);
-        address.port =
-          (uint16_t)SDL_strtoul(configuration->address.port.buffer, &end, 10);
-        server = enet_host_create(&address, config->maxClients, 2, 0, 0);
-    }
-    if (server == NULL) {
+        enet_address_set_host(&address, configuration->server.hostname.buffer);
+        for (enet_uint16 port = config->minPort; port < config->maxPort;
+             ++port) {
+            address.port = port;
+            server = enet_host_create(&address, config->maxClients, 2, 0, 0);
+            if (server != NULL) {
+                goto continueServer;
+            }
+        }
         fprintf(stderr, "Failed to create server\n");
         goto end;
     }
 
+continueServer:
     ctx = redisConnect(config->redisIp.buffer, config->redisPort);
     if (ctx == NULL || ctx->err) {
         if (ctx == NULL) {
@@ -490,7 +546,7 @@ runServer(const int argc,
                             break;
                         case AuthenticateResult_NotNeeded:
                             if (!funcs.handleMessage(
-                                  message, &bytes, event.peer, ctx)) {
+                                  message, &bytes, event.peer, ctx, config)) {
                                 enet_peer_disconnect(event.peer, 0);
                             }
                             break;

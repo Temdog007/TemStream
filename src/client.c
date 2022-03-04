@@ -60,9 +60,9 @@ parseClientConfiguration(const int argc,
                          const char** argv,
                          pConfiguration configuration)
 {
-    configuration->data.tag = ConfigurationDataTag_client;
-    configuration->data.client = defaultClientConfiguration();
-    pClientConfiguration client = &configuration->data.client;
+    configuration->tag = ConfigurationTag_client;
+    configuration->client = defaultClientConfiguration();
+    pClientConfiguration client = &configuration->client;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
@@ -1615,13 +1615,13 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
     if (!parseClientConfiguration(argc, argv, configuration)) {
         return EXIT_FAILURE;
     }
-    clientData.authentication = &configuration->data.client.authentication;
+    clientData.authentication = &configuration->client.authentication;
 
     int result = EXIT_FAILURE;
     puts("Running client");
     printConfiguration(configuration);
 
-    const ClientConfiguration* config = &configuration->data.client;
+    const ClientConfiguration* config = &configuration->client;
 
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
@@ -1745,10 +1745,8 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
     }
     {
         ENetAddress address = { 0 };
-        enet_address_set_host(&address, configuration->address.ip.buffer);
-        char* end = NULL;
-        address.port =
-          (uint16_t)strtoul(configuration->address.port.buffer, &end, 10);
+        enet_address_set_host(&address, configuration->client.hostname.buffer);
+        address.port = configuration->client.port;
         peer = enet_host_connect(host, &address, 2, StreamType_Lobby);
         char buffer[512] = { 0 };
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));

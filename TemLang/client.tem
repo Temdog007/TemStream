@@ -15,9 +15,11 @@ enum ClientCommand {
 struct ClientConfiguration {
     ClientAuthentication authentication
     string ttfFile
+    string hostname
     i32 fontSize
     i32 windowWidth
     i32 windowHeight
+    u16 port
     bool noGui
     bool noAudio
     bool fullscreen

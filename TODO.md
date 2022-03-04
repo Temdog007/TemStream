@@ -43,11 +43,12 @@
 - [x] Communicate with user input thread to prompt user for input
 - [x] Fix user input stops working when playing audio
 
-### Mar 2, 2022
-- [ ] Rewriet message protocol to send data in chunks
-- [ ] Fix audio not working when long delay between audio packets
+### Mar 02, 2022 - Mar 04, 2022
+- [x] Rewrite message protocol to send data in chunks
+- [ ] Ensure each stream is its own process/thread ?
 
-### Mar 3, 2022
+### Mar 05, 2022
+- [ ] Fix audio not working when long delay between audio packets
 - [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM
 
 ### Later

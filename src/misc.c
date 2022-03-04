@@ -3,22 +3,6 @@
 const Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
 
 bool
-parseIpAddress(const char* str, pIpAddress address)
-{
-    const size_t len = strlen(str);
-    for (size_t i = 0; i < len; ++i) {
-        if (str[i] != ':') {
-            continue;
-        }
-
-        address->ip = TemLangStringCreateFromSize(str, i + 1, currentAllocator);
-        address->port = TemLangStringCreate(str + i + 1, currentAllocator);
-        return true;
-    }
-    return false;
-}
-
-bool
 parseCredentials(const char* str, pCredentials c)
 {
     const size_t len = strlen(str);
@@ -183,13 +167,6 @@ printReceivedPacket(const ENetPacket* packet)
 {
     return printf("Received %zu bytes: ", packet->dataLength) +
            printBytes(packet->data, packet->dataLength);
-}
-
-int
-printIpAddress(const IpAddress* address)
-{
-    return printf(
-      "Ip address: %s:%s\n", address->ip.buffer, address->port.buffer);
 }
 
 int

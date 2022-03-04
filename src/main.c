@@ -72,7 +72,6 @@ int
 runApp(const int argc, const char** argv)
 {
     Configuration configuration = defaultConfiguration();
-    configuration.runCommand = (void*)argv[0];
     int result = EXIT_FAILURE;
 
     if (argc > 1) {
@@ -167,12 +166,7 @@ signalHandler(int signal)
 Configuration
 defaultConfiguration()
 {
-    return (Configuration){
-        .address = { .ip = TemLangStringCreate("localhost", currentAllocator),
-                     .port = TemLangStringCreate("10000", currentAllocator) },
-        .secure = { .tag = OptionalSecureIpAddressTag_none, .none = NULL },
-        .data = { .none = NULL, .tag = ConfigurationDataTag_none }
-    };
+    return (Configuration){ .none = NULL, .tag = ConfigurationTag_none };
 }
 
 void
@@ -190,13 +184,9 @@ parseCommonConfiguration(const char* key,
                          const char* value,
                          pConfiguration configuration)
 {
+    (void)value;
+    (void)configuration;
     const size_t keyLen = strlen(key);
-    STR_EQUALS(key, "-A", keyLen, {
-        return parseIpAddress(value, &configuration->address);
-    });
-    STR_EQUALS(key, "--address", keyLen, {
-        return parseIpAddress(value, &configuration->address);
-    });
     STR_EQUALS(key, "-M", keyLen, { return true; });
     STR_EQUALS(key, "--memory", keyLen, { return true; });
     return false;
@@ -205,16 +195,15 @@ parseCommonConfiguration(const char* key,
 int
 printConfiguration(const Configuration* configuration)
 {
-    int output = printIpAddress(&configuration->address);
-    switch (configuration->data.tag) {
-        case ConfigurationDataTag_client:
-            output += printClientConfiguration(&configuration->data.client);
+    switch (configuration->tag) {
+        case ConfigurationTag_client:
+            return printClientConfiguration(&configuration->client);
             break;
-        case ConfigurationDataTag_server:
-            output += printServerConfiguration(&configuration->data.server);
+        case ConfigurationTag_server:
+            return printServerConfiguration(&configuration->server);
             break;
         default:
             break;
     }
-    return output;
+    return 0;
 }

@@ -34,27 +34,8 @@ enum AuthenticateResult {
     NotNeeded
 }
 
-struct IpAddress {
-    string ip
-    string port
-}
-
-struct SecureIpAddress {
-    string certFile
-    string keyFile
-    IpAddress address
-}
-
-variant OptionalSecureIpAddress {
-    SecureIpAddress address 
-    null none
-}
-
 struct LobbyConfiguration {
     u32 maxStreams
-    u16 nextPort
-    u16 minPort
-    u16 maxPort
 }
 
 struct TextConfiguration {
@@ -76,8 +57,12 @@ struct ServerConfiguration {
     ServerConfigurationData data
     ServerAuthentication authentication
     string redisIp
+    string hostname
+    null runCommand
     i32 redisPort
     u32 maxClients
+    u16 minPort
+    u16 maxPort
 }
 
 variant Payload {
@@ -177,15 +162,8 @@ variant AudioMessage {
 
 inlineFile "TemLang/client.tem"
 
-variant ConfigurationData {
+variant Configuration {
     null none
     ClientConfiguration client
     ServerConfiguration server
-}
-
-struct Configuration {
-    ConfigurationData data
-    IpAddress address
-    OptionalSecureIpAddress secure
-    null runCommand
 }
