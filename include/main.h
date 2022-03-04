@@ -210,6 +210,7 @@ typedef struct ServerFunctions
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(const void*);
+    void (*sendGeneral)(const GeneralMessage*, pBytes, ENetPeer*);
     bool (*handleMessage)(const void*,
                           pBytes,
                           ENetPeer*,
@@ -241,6 +242,9 @@ serializeLobbyMessage(const void*, pBytes bytes);
 
 extern void*
 deserializeLobbyMessage(const Bytes* bytes);
+
+extern void
+lobbySendGeneralMessage(const GeneralMessage*, pBytes, ENetPeer*);
 
 extern bool
 handleLobbyMessage(const void*,

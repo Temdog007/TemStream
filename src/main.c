@@ -170,6 +170,7 @@ runLobby : {
                              .serializeMessage = serializeLobbyMessage,
                              .deserializeMessage = deserializeLobbyMessage,
                              .handleMessage = handleLobbyMessage,
+                             .sendGeneral = lobbySendGeneralMessage,
                              .freeMessage = freeLobbyMessage,
                              .getGeneralMessage = getGeneralMessageFromLobby,
                            });

@@ -294,6 +294,8 @@ handleGeneralMessage(const GeneralMessage* message,
                      ENetPeer* peer,
                      pGeneralMessage output)
 {
+    // Authentication message should have been handled previosly.
+    // Don't handle here
     switch (message->tag) {
         case GeneralMessageTag_getClients: {
             output->tag = GeneralMessageTag_getClientsAck;
@@ -505,10 +507,10 @@ continueServer:
     RandomState rs = makeRandomState();
     ENetEvent event = { 0 };
     while (!appDone) {
-        while (enet_host_service(server, &event, 100U) > 0) {
+        while (!appDone && enet_host_service(server, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT: {
-                    char buffer[512] = { 0 };
+                    char buffer[KB(1)] = { 0 };
                     enet_address_get_host_ip(
                       &event.peer->address, buffer, sizeof(buffer));
                     printf("New client from %s:%u\n",
@@ -516,7 +518,7 @@ continueServer:
                            event.peer->address.port);
                     pClient client = currentAllocator->allocate(sizeof(Client));
                     client->payload.allocator = currentAllocator;
-                    client->joinTime = (int64_t)time(NULL);
+                    client->joinTime = SDL_GetTicks64();
                     // name and id will be set after parsing authentication
                     // message
                     event.peer->data = client;
@@ -529,9 +531,7 @@ continueServer:
                     currentAllocator->free(client);
                 } break;
                 case ENET_EVENT_TYPE_RECEIVE: {
-                    pClient client =
-                      (pClient)
-                        event.peer->data; // printReceivedPacket(event.packet);
+                    pClient client = (pClient)event.peer->data;
                     const Bytes temp = { .allocator = currentAllocator,
                                          .buffer = event.packet->data,
                                          .size = event.packet->dataLength,
@@ -559,8 +559,15 @@ continueServer:
                       &config->authentication,
                       funcs.getGeneralMessage(message),
                       &rs)) {
-                        case AuthenticateResult_Success:
-                            break;
+                        case AuthenticateResult_Success: {
+                            GeneralMessage gm = { 0 };
+                            gm.tag = GeneralMessageTag_authenticateAck;
+                            TemLangStringCopy(&gm.authenticateAck,
+                                              &client->name,
+                                              currentAllocator);
+                            funcs.sendGeneral(&gm, &bytes, event.peer);
+                            GeneralMessageFree(&gm);
+                        } break;
                         case AuthenticateResult_NotNeeded:
                             if (!funcs.handleMessage(
                                   message, &bytes, event.peer, ctx, config)) {
@@ -580,6 +587,25 @@ continueServer:
                     break;
                 default:
                     break;
+            }
+        }
+        const uint64_t now = SDL_GetTicks64();
+        for (size_t i = 0; i < server->peerCount; ++i) {
+            ENetPeer* peer = &server->peers[i];
+            pClient client = peer->data;
+            if (client == NULL) {
+                continue;
+            }
+            if (now - client->joinTime > 10000LL &&
+                GuidEquals(&client->id, &ZeroGuid)) {
+                char buffer[KB(1)] = { 0 };
+                enet_address_get_host_ip(
+                  &peer->address, buffer, sizeof(buffer));
+                printf("Removing client '%s:%u' because it failed to send "
+                       "authentication",
+                       buffer,
+                       peer->address.port);
+                enet_peer_disconnect(peer, 0);
             }
         }
     }

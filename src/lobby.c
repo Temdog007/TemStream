@@ -102,6 +102,16 @@ startNewServer(const ServerConfiguration* c)
     }
 }
 
+void
+lobbySendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
+{
+    LobbyMessage lm = { 0 };
+    lm.tag = LobbyMessageTag_general;
+    lm.general = *m;
+    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
+    sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+}
+
 bool
 handleLobbyMessage(const void* ptr,
                    pBytes bytes,

@@ -772,7 +772,10 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
 }
 
 void
-selectStreamToStart(struct pollfd inputfd, pBytes bytes, ENetPeer* peer)
+selectStreamToStart(struct pollfd inputfd,
+                    pBytes bytes,
+                    ENetPeer* peer,
+                    pClient client)
 {
     askQuestion("Select the type of stream to create");
     for (uint32_t i = 0; i < ServerConfigurationDataTag_Length; ++i) {
@@ -822,25 +825,10 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes, ENetPeer* peer)
     message.startStreaming.name =
       TemLangStringCreate((char*)bytes->buffer, currentAllocator);
 
-    askQuestion("Do want the stream to be recorded on the server (y or n)?");
-    while (!appDone) {
-        if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
-            goto write_Y_N_error;
-        }
-        switch ((char)bytes->buffer[0]) {
-            case 'y':
-                message.startStreaming.record = true;
-                break;
-            case 'n':
-                message.startStreaming.record = false;
-                break;
-            default:
-                goto write_Y_N_error;
-        }
-        break;
-    write_Y_N_error:
-        puts("Enter y or n");
-    }
+    message.startStreaming.writers.tag = AccessTag_list;
+    message.startStreaming.writers.list.allocator = currentAllocator;
+    TemLangStringListAppend(&message.startStreaming.writers.list,
+                            &client->name);
 
     MESSAGE_SERIALIZE(LobbyMessage, message, (*bytes));
     printf(
@@ -1081,7 +1069,7 @@ checkUserInput(SDL_Renderer* renderer,
             appDone = true;
             break;
         case ClientCommand_StartStreaming:
-            selectStreamToStart(inputfd, bytes, peer);
+            selectStreamToStart(inputfd, bytes, peer, client);
             break;
         case ClientCommand_StopStreaming:
             selectStreamToStop(inputfd, bytes);
@@ -1571,7 +1559,7 @@ bool
 checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
 {
     bool result = false;
-    while (enet_host_service(host, event, 0U) >= 0) {
+    while (!appDone && enet_host_service(host, event, 0U) >= 0) {
         switch (event->type) {
             case ENET_EVENT_TYPE_CONNECT:
                 puts("Unexpected connect event from server");
@@ -1618,12 +1606,12 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                         case LobbyMessageTag_general:
                             switch (message.general.tag) {
                                 case GeneralMessageTag_authenticateAck:
-                                    printf("Client authenticated: %s\n",
-                                           client->name.buffer);
                                     result = TemLangStringCopy(
                                       &client->name,
                                       &message.general.authenticateAck,
                                       currentAllocator);
+                                    printf("Client authenticated: %s\n",
+                                           client->name.buffer);
                                     goto f;
                                 default:
                                     break;
@@ -1634,6 +1622,7 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                     }
                     printf("Unexpected message from lobby server: %s\n",
                            LobbyMessageTagToCharString(message.tag));
+                    appDone = true;
                 });
 
             fend:
