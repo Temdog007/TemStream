@@ -25,7 +25,6 @@ main(int argc, char** argv)
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
-    ServerMessage message = { 0 };
 
     host = enet_host_create(NULL, 1, 2, 0, 0);
     if (host == NULL) {
@@ -73,7 +72,7 @@ main(int argc, char** argv)
         goto end;
     }
 
-    while (enet_host_service(host, &event, 500) >= 0) {
+    while (enet_host_service(host, &event, 500U) >= 0) {
         switch (event.type) {
             case ENET_EVENT_TYPE_DISCONNECT:
                 puts("Disconnecting...");

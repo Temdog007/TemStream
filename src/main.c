@@ -1,6 +1,7 @@
 #include <include/main.h>
 
 #include "client.c"
+#include "lobby.c"
 #include "misc.c"
 #include "rendering.c"
 #include "server.c"
@@ -75,7 +76,7 @@ int
 runApp(const int argc, const char** argv)
 {
     Configuration configuration = defaultConfiguration();
-    configuration.runCommand = argv[0];
+    configuration.runCommand = (void*)argv[0];
     int result = EXIT_FAILURE;
 
     const char* streamType = argv[1];
@@ -124,7 +125,7 @@ runAudio : {
     goto end;
 }
 
-    result = runClient(&configuration);
+    result = runClient(argc, argv, &configuration);
 end:
     ConfigurationFree(&configuration);
     return result;

@@ -29,7 +29,7 @@ parseLobbyConfiguration(const int argc,
                         const char** argv,
                         pConfiguration configuration)
 {
-    configuration->data.tag = ServerConfigurationDataTag_lobby;
+    configuration->data.server.data.tag = ServerConfigurationDataTag_lobby;
     pLobbyConfiguration lobby = &configuration->data.server.data.lobby;
     *lobby = defaultLobbyConfiguration();
     for (int i = 2; i < argc - 1; i += 2) {
@@ -104,8 +104,8 @@ handleLobbyMessage(const void* ptr,
             LobbyMessage lobbyMessage = { 0 };
             lobbyMessage.tag = LobbyMessageTag_allStreamsAck;
             lobbyMessage.allStreamsAck = streams;
-            MESSAGE_SERIALIZE(Lobby, lobbyMessage, (*bytes));
-            sendBytes(peer, 1, peer->mtu, bytes, true);
+            MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
+            sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
             StreamListFree(&streams);
         } break;
         default:

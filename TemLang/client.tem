@@ -1,9 +1,7 @@
 enum ClientCommand {
     PrintName
     ShowAllStreams
-    ShowConnectedStreams
     ShowOwnStreams
-    GetClients
     ConnectToStream
     DisconnectFromStream
     StartStreaming
@@ -63,11 +61,11 @@ variant StreamDisplayData {
 }
 
 resource StreamDisplay {
+    Stream stream
     StreamDisplayData data
     FRect dstRect
     OptionalRect srcRect
     null texture
-    Guid id
 } r {
     inlineC "
         SDL_DestroyTexture(r.texture);
@@ -76,22 +74,22 @@ resource StreamDisplay {
 
 inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
 
-struct ClientData {
+resource ClientData {
     [0 Stream] allStreams
-    [0 Guid] ownStreams
+    [0 string] ownStreams
     [0 StreamDisplay] displays
     string name
     Guid id
+    null authentication
+    null mutex
+} c {
+    inlineC "SDL_DestroyMutex(c.mutex);"
 }
-
+ 
 enum CustomEvent {
     Render
-    AddTexture
     UpdateStreamDisplay
-    SaveScreenshot
-    HandleMessage
     ShowSimpleMessage
-    CheckAddedStream
 }
 
 enum AudioStreamSource {

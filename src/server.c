@@ -122,7 +122,7 @@ parseIp : {
 }
 parsePort : {
     const int i = atoi(value);
-    config->redisPort = SDL_clamp(value, 1000, 60000);
+    config->redisPort = SDL_clamp(i, 1000, 60000);
     return true;
 }
 }
@@ -224,9 +224,22 @@ printServerConfiguration(const ServerConfiguration* configuration)
 }
 
 int
+printTextConfiguration(const TextConfiguration* configuration)
+{
+    return printf("Text\nMax length: %u\n", configuration->maxLength);
+}
+
+int
+printChatConfiguration(const ChatConfiguration* configuration)
+{
+    return printf("Chat\nMessage interval: %u second(s)\n",
+                  configuration->chatInterval);
+}
+
+int
 printLobbyConfiguration(const LobbyConfiguration* configuration)
 {
-    return printf("Max streams: %u\nMin port: %u\nMax port: %u\n",
+    return printf("Lobby\nMax streams: %u\nMin port: %u\nMax port: %u\n",
                   configuration->maxStreams,
                   configuration->minPort,
                   configuration->maxPort);
@@ -236,7 +249,6 @@ AuthenticateResult
 handleClientAuthentication(pClient client,
                            const ServerAuthentication* sAuth,
                            const GeneralMessage* message,
-                           pBytes bytes,
                            pRandomState rs)
 {
     if (GuidEquals(&client->id, &ZeroGuid)) {
@@ -254,7 +266,7 @@ handleClientAuthentication(pClient client,
             }
         } else {
             printf("Expected authentication from client. Got '%s'\n",
-                   MessageTagToCharString(message->tag));
+                   GeneralMessageTagToCharString(message->tag));
             return AuthenticateResult_Failed;
         }
     }
@@ -305,44 +317,76 @@ void
 sendBytes(ENetPeer* peers,
           const size_t peerCount,
           const size_t mtu,
+          const enet_uint32 channel,
           const Bytes* bytes,
           const bool reliable)
 {
+    Bytes newBytes = { .allocator = currentAllocator };
     if (bytes->used > mtu) {
+        {
+            Payload payload = { .tag = PayloadTag_dataStart,
+                                .dataStart = NULL };
+            MESSAGE_SERIALIZE(Payload, payload, newBytes);
+            ENetPacket* packet =
+              BytesToPacket(newBytes.buffer, newBytes.used, true);
+            for (size_t i = 0; i < peerCount; ++i) {
+                PEER_SEND(&peers[i], channel, packet);
+            }
+        }
+
         size_t offset = 0;
         for (const size_t n = bytes->used - mtu; offset < n; offset += mtu) {
-            ENetPacket* packet = BytesToPacket(
-              bytes->buffer + offset, bytes->used - offset, reliable);
+            Payload payload = { .tag = PayloadTag_dataChunk,
+                                .dataChunk = { .buffer = bytes->buffer + offset,
+                                               .used = bytes->used - offset } };
+            MESSAGE_SERIALIZE(Payload, payload, newBytes);
+            ENetPacket* packet =
+              BytesToPacket(newBytes.buffer, newBytes.used, reliable);
             for (size_t i = 0; i < peerCount; ++i) {
-                PEER_SEND(&peers[i], SERVER_CHANNEL, packet);
+                PEER_SEND(&peers[i], channel, packet);
             }
         }
         if (offset < bytes->used) {
             ENetPacket* packet = BytesToPacket(
               bytes->buffer + offset, bytes->used - offset, reliable);
             for (size_t i = 0; i < peerCount; ++i) {
-                PEER_SEND(&peers[i], SERVER_CHANNEL, packet);
+                PEER_SEND(&peers[i], channel, packet);
+            }
+        }
+
+        {
+            Payload payload = { .tag = PayloadTag_dataEnd, .dataEnd = NULL };
+            MESSAGE_SERIALIZE(Payload, payload, newBytes);
+            ENetPacket* packet =
+              BytesToPacket(newBytes.buffer, newBytes.used, true);
+            for (size_t i = 0; i < peerCount; ++i) {
+                PEER_SEND(&peers[i], channel, packet);
             }
         }
     } else {
+        Payload payload = { .tag = PayloadTag_fullData, .fullData = *bytes };
+        MESSAGE_SERIALIZE(Payload, payload, newBytes);
         ENetPacket* packet =
-          BytesToPacket(bytes->buffer, bytes->used, reliable);
+          BytesToPacket(newBytes.buffer, newBytes.used, reliable);
         for (size_t i = 0; i < peerCount; ++i) {
-            PEER_SEND(&peers[i], SERVER_CHANNEL, packet);
+            PEER_SEND(&peers[i], channel, packet);
         }
     }
+    uint8_tListFree(&newBytes);
 }
 
 int
 runServer(const int argc,
-          const char* argv,
+          const char** argv,
           pConfiguration configuration,
           ServerFunctions funcs)
 {
-    int result = funcs.parseConfiguration(argc, argv, configuration);
-    if (result != EXIT_SUCCESS) {
-        return result;
+    configuration->data.tag = ConfigurationDataTag_server;
+    configuration->data.server = defaultServerConfiguration();
+    if (!funcs.parseConfiguration(argc, argv, configuration)) {
+        return EXIT_FAILURE;
     }
+    int result = EXIT_FAILURE;
 
     redisContext* ctx = NULL;
     ENetHost* server = NULL;
@@ -352,8 +396,8 @@ runServer(const int argc,
         goto end;
     }
 
-    printf("Running %s server", funcs.name);
-    printAllConfiguration(configuration);
+    printf("Running %s server\n", funcs.name);
+    printConfiguration(configuration);
 
     appDone = false;
 
@@ -398,6 +442,7 @@ runServer(const int argc,
                            buffer,
                            event.peer->address.port);
                     pClient client = currentAllocator->allocate(sizeof(Client));
+                    client->payload.allocator = currentAllocator;
                     client->joinTime = (int64_t)time(NULL);
                     // name and id will be set after parsing authentication
                     // message
@@ -440,7 +485,6 @@ runServer(const int argc,
                       client,
                       &config->authentication,
                       funcs.getGeneralMessage(message),
-                      &bytes,
                       &rs)) {
                         case AuthenticateResult_Success:
                             break;
@@ -467,6 +511,8 @@ runServer(const int argc,
         }
     }
 
+    result = EXIT_SUCCESS;
+
 end:
     appDone = true;
     funcs.close(ctx);
@@ -475,4 +521,12 @@ end:
     uint8_tListFree(&bytes);
     SDL_Quit();
     return result;
+}
+
+StreamList
+getStreams(redisContext* ctx)
+{
+    StreamList list = { .allocator = currentAllocator };
+    (void)ctx;
+    return list;
 }

@@ -200,6 +200,21 @@ printStream(const Stream* stream)
 }
 
 int
+printServerAuthentication(const ServerAuthentication* auth)
+{
+    int offset = printf("Server Authentication: ");
+    switch (auth->tag) {
+        case ServerAuthenticationTag_file:
+            offset += printf("file: %s\n", auth->file.buffer);
+            break;
+        default:
+            offset += puts("none");
+            break;
+    }
+    return offset;
+}
+
+int
 printAudioSpec(const SDL_AudioSpec* spec)
 {
     return printf("Frequency: %d Hz\nChannels: %u\nSilence: %u\nSamples: "
@@ -224,18 +239,6 @@ StreamTypeEquals(const Stream* stream, const StreamType* type)
 }
 
 bool
-AudioStateGuidEquals(const AudioState* state, const Guid* guid)
-{
-    return GuidEquals(&state->id, guid);
-}
-
-bool
-StreamDisplayGuidEquals(const StreamDisplay* display, const Guid* guid)
-{
-    return GuidEquals(&display->id, guid);
-}
-
-bool
 GetStreamFromName(const StreamList* streams,
                   const TemLangString* name,
                   const Stream** stream,
@@ -253,41 +256,6 @@ GetStreamFromType(const StreamList* streams,
 {
     return StreamListFindIf(
       streams, (StreamListFindFunc)StreamTypeEquals, &type, stream, index);
-}
-
-bool
-GetPlaybackAudioStateFromGuid(const AudioStatePtrList* list,
-                              const Guid* guid,
-                              const AudioStatePtr** ptr,
-                              size_t* index)
-{
-    for (size_t i = 0; i < list->used; ++i) {
-        const AudioStatePtr p = list->buffer[i];
-        if (AudioStateGuidEquals(p, guid) && p->isRecording == SDL_FALSE) {
-            if (ptr != NULL) {
-                *ptr = &p;
-            }
-            if (index != NULL) {
-                *index = i;
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
-bool
-GetStreamDisplayFromGuid(const StreamDisplayList* displays,
-                         const Guid* guid,
-                         const StreamDisplay** display,
-                         size_t* index)
-{
-    return StreamDisplayListFindIf(
-      displays,
-      (StreamDisplayListFindFunc)StreamDisplayGuidEquals,
-      guid,
-      display,
-      index);
 }
 
 bool
@@ -340,7 +308,7 @@ tsCalloc(const size_t count, const size_t size)
     return tsAllocate(count * size);
 }
 
-const char*
+char*
 tsStrDup(const char* c)
 {
     size_t len = strlen(c);
@@ -425,9 +393,33 @@ makeAudioSpec(SDL_AudioCallback callback, void* userdata)
 }
 
 void
+closeHostAndPeer(ENetHost* host, ENetPeer* peer)
+{
+    if (peer != NULL) {
+        enet_peer_disconnect(peer, 0);
+        ENetEvent event = { 0 };
+        while (enet_host_service(host, &event, 3000U) > 0) {
+            switch (event.type) {
+                case ENET_EVENT_TYPE_RECEIVE:
+                    enet_packet_destroy(event.packet);
+                    break;
+                case ENET_EVENT_TYPE_DISCONNECT:
+                    puts("Disconnected gracefully from server");
+                    goto continueEnd;
+                default:
+                    break;
+            }
+        }
+        enet_peer_reset(peer);
+    }
+continueEnd:
+    if (host != NULL) {
+        enet_host_destroy(host);
+    }
+}
+
+void
 AudioStateFree(pAudioState state)
 {
     SDL_CloseAudioDevice(state->deviceId);
-    uint8_tListFree(&state->audio);
-    currentAllocator->free(state->decoder);
 }

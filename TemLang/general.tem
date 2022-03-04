@@ -139,8 +139,6 @@ variant LobbyMessage {
     GeneralMessage general
     Stream startStreaming
     OptionalStream startStreamingAck
-    Guid stopStreaming
-    OptionalGuid stopStreamingAck
     null allStreams
     [0 Stream] allStreamsAck
 }

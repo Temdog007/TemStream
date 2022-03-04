@@ -103,13 +103,21 @@ extern ENetPacket*
 BytesToPacket(const void* data, const size_t length, const bool);
 
 extern void
-sendBytes(ENetPeer*, size_t peerCount, size_t mtu, const Bytes*, const bool);
+sendBytes(ENetPeer*,
+          size_t peerCount,
+          size_t mtu,
+          const enet_uint32,
+          const Bytes*,
+          const bool);
 
 extern void
 cleanupServer(ENetHost*);
 
 extern PayloadParseResult
 parsePayload(const Payload*, pClient);
+
+extern void
+closeHostAndPeer(ENetHost*, ENetPeer*);
 
 typedef ENetPacket* pENetPacket;
 
@@ -168,6 +176,9 @@ printBytes(const uint8_t*, const size_t);
 extern int
 printAudioSpec(const SDL_AudioSpec*);
 
+extern int
+printServerAuthentication(const ServerAuthentication*);
+
 // Parsing
 
 extern bool
@@ -195,12 +206,12 @@ runApp(const int, const char**);
 
 typedef struct ServerFunctions
 {
-    int (*parseConfiguration)(int, const char**, pConfiguration);
+    bool (*parseConfiguration)(int, const char**, pConfiguration);
 
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(void*);
-    bool (*handleMessage)(void*, pBytes, ENetPeer*, redisContext*);
+    bool (*handleMessage)(const void*, pBytes, ENetPeer*, redisContext*);
     void (*freeMessage)(void*);
 
     bool (*init)(redisContext*);
@@ -209,10 +220,10 @@ typedef struct ServerFunctions
 } ServerFunctions, *pServerFunctions;
 
 extern int
-runServer(const int, const char*, pConfiguration, ServerFunctions);
+runServer(const int, const char**, pConfiguration, ServerFunctions);
 
 extern int
-runClient(const Configuration*);
+runClient(const int, const char** argv, pConfiguration);
 
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
@@ -288,7 +299,6 @@ extern AuthenticateResult
 handleClientAuthentication(pClient,
                            const ServerAuthentication* sAuth,
                            const GeneralMessage*,
-                           pBytes,
                            pRandomState);
 
 #define MESSAGE_SERIALIZE(name, message, bytes)                                \
@@ -312,6 +322,8 @@ extern StreamType FileExtenstionToStreamType(FileExtensionTag);
 // Audio
 
 #define AUDIO_FRAME_SIZE KB(128)
+#define MAX_AUDIO_PACKET_LOSS 10
+#define ENABLE_FEC 0
 
 #define HIGH_QUALITY_AUDIO 1
 #if HIGH_QUALITY_AUDIO
@@ -320,13 +332,9 @@ extern StreamType FileExtenstionToStreamType(FileExtensionTag);
 #define PCM_SIZE sizeof(opus_int16)
 #endif
 
-#define TEST_MIC 0
-
 typedef struct AudioState
 {
     SDL_AudioSpec spec;
-    Bytes audio;
-    Guid id;
     union
     {
         OpusEncoder* encoder;
@@ -338,25 +346,7 @@ typedef struct AudioState
     SDL_bool isRecording;
 } AudioState, *pAudioState;
 
-#define MAX_AUDIO_PACKET_LOSS 10
-#define ENCODE_AUDIO 1
-#define ENABLE_FEC 0
-
 extern void AudioStateFree(pAudioState);
-
-typedef pAudioState AudioStatePtr;
-
-MAKE_COPY_AND_FREE(AudioStatePtr);
-MAKE_DEFAULT_LIST(AudioStatePtr);
-
-extern bool
-GetPlaybackAudioStateFromGuid(const AudioStatePtrList*,
-                              const Guid*,
-                              const AudioStatePtr**,
-                              size_t*);
-
-extern bool
-AudioStateGuidEquals(const AudioState*, const Guid*);
 
 // Font
 typedef struct Character
