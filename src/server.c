@@ -449,17 +449,8 @@ sendBytes(ENetPeer* peers,
 }
 
 int
-runServer(const int argc,
-          const char** argv,
-          pConfiguration configuration,
-          ServerFunctions funcs)
+runServer(const Configuration* configuration, ServerFunctions funcs)
 {
-    configuration->tag = ConfigurationTag_server;
-    configuration->server = defaultServerConfiguration();
-    configuration->server.runCommand = (NullValue)argv[0];
-    if (!funcs.parseConfiguration(argc, argv, configuration)) {
-        return EXIT_FAILURE;
-    }
     int result = EXIT_FAILURE;
 
     redisContext* ctx = NULL;
@@ -479,11 +470,14 @@ runServer(const int argc,
     {
         ENetAddress address = { 0 };
         enet_address_set_host(&address, configuration->server.hostname.buffer);
-        for (enet_uint16 port = config->minPort; port < config->maxPort;
+        for (enet_uint16 port = config->minPort; port <= config->maxPort;
              ++port) {
             address.port = port;
             server = enet_host_create(&address, config->maxClients, 2, 0, 0);
             if (server != NULL) {
+                char buffer[1024] = { 0 };
+                enet_address_get_host_ip(&address, buffer, sizeof(buffer));
+                printf("Opened server at %s:%u\n", buffer, address.port);
                 goto continueServer;
             }
         }
@@ -675,7 +669,7 @@ removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
     TemLangString str = b64_encode((unsigned char*)bytes.buffer, bytes.used);
 
     redisReply* reply =
-      redisCommand(ctx, "LEM 0 %s", TEM_STREAM_SERVER_KEY, str.buffer);
+      redisCommand(ctx, "LREM %s 0 %s", TEM_STREAM_SERVER_KEY, str.buffer);
 
     const bool result =
       reply->type == REDIS_REPLY_INTEGER && reply->integer == 1LL;

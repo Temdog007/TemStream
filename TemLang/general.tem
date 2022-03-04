@@ -64,6 +64,7 @@ struct ServerConfiguration {
     null runCommand
     i32 redisPort
     u32 maxClients
+    u32 timeout
     u16 minPort
     u16 maxPort
     bool record

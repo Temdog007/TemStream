@@ -11,8 +11,13 @@ const Allocator* currentAllocator = NULL;
 bool appDone = true;
 
 int
+checkMemory();
+
+int
 main(const int argc, const char** argv)
 {
+    int result = EXIT_FAILURE;
+    Configuration configuration = { 0 };
     printVersion();
 
     {
@@ -24,8 +29,14 @@ main(const int argc, const char** argv)
     }
     {
         // Look for -M or --memory
+        int binaryIndex = -1;
         uint64_t memory = MB(8);
         for (int i = 1; i < argc - 1; ++i) {
+            if (strcmp("-B", argv[i]) == 0 ||
+                strcmp("--binary", argv[i]) == 0) {
+                binaryIndex = i;
+                continue;
+            }
             if (strcmp("-M", argv[i]) != 0 &&
                 strcmp("--memory", argv[i]) != 0) {
                 continue;
@@ -37,13 +48,31 @@ main(const int argc, const char** argv)
         }
         if (memory == 0) {
             fprintf(stderr, "Memory allocator cannot be sized at 0\n");
-            return EXIT_FAILURE;
+            goto end;
         }
 
         static Allocator allocator = { 0 };
         allocator = makeTSAllocator(memory);
         printf("Using %zu MB of memory\n", memory / (1024 * 1024));
         currentAllocator = &allocator;
+        if (binaryIndex == -1) {
+            configuration = defaultConfiguration();
+        } else {
+            TemLangString str = { .allocator = currentAllocator };
+            const bool result = b64_decode(argv[binaryIndex], &str);
+            Bytes bytes = { .allocator = currentAllocator,
+                            .buffer = (uint8_t*)str.buffer,
+                            .size = str.size,
+                            .used = str.used };
+            if (result) {
+                ConfigurationDeserialize(&configuration, &bytes, 0, true);
+            }
+            TemLangStringFree(&str);
+            if (!result) {
+                fprintf(stderr, "Failed to decode binary into configuration\n");
+                goto end;
+            }
+        }
     }
 
     const ENetCallbacks callbacks = { .free = tsFree,
@@ -51,28 +80,37 @@ main(const int argc, const char** argv)
                                       .no_memory = NULL };
     if (enet_initialize_with_callbacks(ENET_VERSION, &callbacks) != 0) {
         fprintf(stderr, "Failed to initialize ENet\n");
-        return EXIT_FAILURE;
+        goto end;
     }
 
-    const int result = runApp(argc, argv);
+    result = runApp(argc, argv, &configuration);
     enet_deinitialize();
 
+end:
+    ConfigurationFree(&configuration);
 #if _DEBUG
-    const size_t used = currentAllocator->used();
-    if (used == 0) {
-        printf("No memory leaked\n");
-    } else {
-        fprintf(stderr, "Leaked %zu bytes\n", used);
-    }
+    result = checkMemory();
 #endif
     freeTSAllocator();
     return result;
 }
 
 int
-runApp(const int argc, const char** argv)
+checkMemory()
 {
-    Configuration configuration = defaultConfiguration();
+    const size_t used = currentAllocator->used();
+    if (used == 0) {
+        printf("No memory leaked\n");
+        return EXIT_SUCCESS;
+    } else {
+        fprintf(stderr, "Leaked %zu bytes\n", used);
+        return EXIT_FAILURE;
+    }
+}
+
+int
+runApp(const int argc, const char** argv, pConfiguration configuration)
+{
     int result = EXIT_FAILURE;
 
     if (argc > 1) {
@@ -90,21 +128,52 @@ runApp(const int argc, const char** argv)
         STR_EQUALS(streamType, "A", len, { goto runAudio; });
         STR_EQUALS(streamType, "audio", len, { goto runAudio; });
     }
-    result = runClient(argc, argv, &configuration);
+    switch (configuration->tag) {
+        case ConfigurationTag_none:
+            if (parseClientConfiguration(argc, argv, configuration)) {
+                result = runClient(configuration);
+                break;
+            }
+            break;
+        case ConfigurationTag_client:
+            result = runClient(configuration);
+            break;
+        case ConfigurationTag_server:
+            switch (configuration->server.data.tag) {
+                case ServerConfigurationDataTag_audio:
+                    goto runAudio;
+                case ServerConfigurationDataTag_chat:
+                    goto runChat;
+                case ServerConfigurationDataTag_image:
+                    goto runImage;
+                case ServerConfigurationDataTag_text:
+                    goto runText;
+                case ServerConfigurationDataTag_lobby:
+                    goto runLobbySkipParsing;
+                default:
+                    break;
+            }
+            break;
+        default:
+            break;
+    }
     goto end;
 
 runLobby : {
-    result = runServer(argc,
-                       argv,
-                       &configuration,
-                       (ServerFunctions){
-                         .parseConfiguration = parseLobbyConfiguration,
-                         .serializeMessage = serializeLobbyMessage,
-                         .deserializeMessage = deserializeLobbyMessage,
-                         .handleMessage = handleLobbyMessage,
-                         .freeMessage = freeLobbyMessage,
-                         .getGeneralMessage = getGeneralMessageFromLobby,
-                       });
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    configuration->server.runCommand = (NullValue)argv[0];
+    if (parseLobbyConfiguration(argc, argv, configuration)) {
+    runLobbySkipParsing:
+        result = runServer(configuration,
+                           (ServerFunctions){
+                             .serializeMessage = serializeLobbyMessage,
+                             .deserializeMessage = deserializeLobbyMessage,
+                             .handleMessage = handleLobbyMessage,
+                             .freeMessage = freeLobbyMessage,
+                             .getGeneralMessage = getGeneralMessageFromLobby,
+                           });
+    }
     goto end;
 }
 runText : {
@@ -125,7 +194,6 @@ runAudio : {
 }
 
 end:
-    ConfigurationFree(&configuration);
     return result;
 }
 

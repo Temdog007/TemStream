@@ -80,8 +80,6 @@ resource ClientData {
     [0 ServerConfiguration] allStreams
     [0 string] ownStreams
     [0 StreamDisplay] displays
-    string name
-    Guid id
     null authentication
     null mutex
 } c {

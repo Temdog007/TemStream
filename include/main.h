@@ -11,6 +11,7 @@
 #include <hiredis.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/wait.h>
 #endif
 
 #include <opus/opus.h>
@@ -202,12 +203,10 @@ parseCredentials(const char*, pCredentials);
 // Run
 
 extern int
-runApp(const int, const char**);
+runApp(const int, const char**, pConfiguration);
 
 typedef struct ServerFunctions
 {
-    bool (*parseConfiguration)(int, const char**, pConfiguration);
-
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(const void*);
@@ -220,10 +219,10 @@ typedef struct ServerFunctions
 } ServerFunctions, *pServerFunctions;
 
 extern int
-runServer(const int, const char**, pConfiguration, ServerFunctions);
+runServer(const Configuration*, ServerFunctions);
 
 extern int
-runClient(const int, const char** argv, pConfiguration);
+runClient(const Configuration*);
 
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 

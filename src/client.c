@@ -50,6 +50,8 @@ defaultClientConfiguration()
         .fontSize = 48,
         .noGui = false,
         .noAudio = false,
+        .hostname = TemLangStringCreate("localhost", currentAllocator),
+        .port = 10000,
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
     };
@@ -85,6 +87,10 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
+        STR_EQUALS(key, "-H", keyLen, { goto parseHostname; });
+        STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
+        STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
+        STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;
@@ -129,6 +135,15 @@ parseClientConfiguration(const int argc,
     }
     parseNoAudio : {
         client->noAudio = atoi(value);
+        continue;
+    }
+    parseHostname : {
+        client->hostname = TemLangStringCreate(value, currentAllocator);
+        continue;
+    }
+    parsePort : {
+        const int i = atoi(value);
+        client->port = SDL_clamp(i, 1000, 60000);
         continue;
     }
     }
@@ -1037,7 +1052,10 @@ displayUserOptions()
 }
 
 void
-checkUserInput(SDL_Renderer* renderer, pBytes bytes, ENetPeer* peer)
+checkUserInput(SDL_Renderer* renderer,
+               pBytes bytes,
+               ENetPeer* peer,
+               pClient client)
 {
     struct pollfd inputfd = { .events = POLLIN,
                               .revents = 0,
@@ -1057,7 +1075,7 @@ checkUserInput(SDL_Renderer* renderer, pBytes bytes, ENetPeer* peer)
     SDL_LockMutex(clientData.mutex);
     switch (index) {
         case ClientCommand_PrintName:
-            printf("Client name: %s\n", clientData.name.buffer);
+            printf("Client name: %s\n", client->name.buffer);
             break;
         case ClientCommand_Quit:
             appDone = true;
@@ -1574,7 +1592,7 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                                      .used = event->packet->dataLength };
                 Payload payload = { 0 };
                 MESSAGE_DESERIALIZE(Payload, payload, temp);
-
+                puts("Received payload");
                 LobbyMessage message = { 0 };
                 switch (parsePayload(&payload, client)) {
                     case PayloadParseResult_UsePayload:
@@ -1600,6 +1618,8 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                         case LobbyMessageTag_general:
                             switch (message.general.tag) {
                                 case GeneralMessageTag_authenticateAck:
+                                    printf("Client authenticated: %s\n",
+                                           client->name.buffer);
                                     result = TemLangStringCopy(
                                       &client->name,
                                       &message.general.authenticateAck,
@@ -1641,12 +1661,10 @@ displayError(SDL_Window* window, const char* e, const bool force)
 }
 
 int
-runClient(const int argc, const char** argv, pConfiguration configuration)
+runClient(const Configuration* configuration)
 {
-    if (!parseClientConfiguration(argc, argv, configuration)) {
-        return EXIT_FAILURE;
-    }
-    clientData.authentication = &configuration->client.authentication;
+    clientData.authentication =
+      (NullValue)&configuration->client.authentication;
 
     int result = EXIT_FAILURE;
     puts("Running client");
@@ -1792,8 +1810,7 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
 
     ENetEvent event = { 0 };
     if (enet_host_service(host, &event, 5000U) > 0 &&
-        event.type == ENET_EVENT_TYPE_CONNECT &&
-        event.data == (uint32_t)ServerConfigurationDataTag_lobby) {
+        event.type == ENET_EVENT_TYPE_CONNECT) {
         char buffer[KB(1)] = { 0 };
         enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
         printf(
@@ -1801,14 +1818,7 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
         displayUserOptions();
         sendAuthentication(peer, ServerConfigurationDataTag_lobby);
     } else {
-        if (event.type == ENET_EVENT_TYPE_CONNECT) {
-            fprintf(stderr,
-                    "Failed to connect to server. Got %u when expecting %d\n",
-                    event.data,
-                    ServerConfigurationDataTag_lobby);
-        } else {
-            fprintf(stderr, "Failed to connect to server\n");
-        }
+        fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
         peer = NULL;
         appDone = true;
@@ -1820,8 +1830,8 @@ runClient(const int argc, const char** argv, pConfiguration configuration)
             appDone = true;
             break;
         }
-        checkUserInput(renderer, &bytes, peer);
-        while (SDL_PollEvent(&e)) {
+        checkUserInput(renderer, &bytes, peer, &client);
+        while (!appDone && SDL_PollEvent(&e)) {
             SDL_LockMutex(clientData.mutex);
             switch (e.type) {
                 case SDL_QUIT:

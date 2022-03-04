@@ -67,91 +67,133 @@ getGeneralMessageFromLobby(const void* ptr)
     return message->tag == LobbyMessageTag_general ? &message->general : NULL;
 }
 
+int
+waitForChildProcess(void* ptr)
+{
+    const size_t fs = (size_t)ptr;
+    const pid_t f = (pid_t)fs;
+    return waitpid(f, NULL, 0);
+}
+
+bool
+startNewServer(const ServerConfiguration* c)
+{
+    const pid_t f = fork();
+    if (f == 0) {
+        Bytes bytes = { .allocator = currentAllocator };
+        ServerConfigurationSerialize(c, &bytes, true);
+        TemLangString str =
+          b64_encode((unsigned char*)bytes.buffer, bytes.used);
+        const int result = execl(c->runCommand, "-B", str.buffer);
+        TemLangStringFree(&str);
+        uint8_tListFree(&bytes);
+        return result == EXIT_SUCCESS;
+    } else {
+        const size_t fs = (size_t)f;
+        SDL_Thread* thread = SDL_CreateThread(
+          (SDL_ThreadFunction)waitForChildProcess, "wait", (void*)fs);
+        if (thread == NULL) {
+            fprintf(
+              stderr, "Failed to create new thread: %s\n", SDL_GetError());
+            return false;
+        }
+        SDL_DetachThread(thread);
+        return true;
+    }
+}
+
 bool
 handleLobbyMessage(const void* ptr,
                    pBytes bytes,
                    ENetPeer* peer,
                    redisContext* ctx,
-                   const ServerConfiguration* s)
+                   const ServerConfiguration* serverConfig)
 {
+    LobbyMessage lobbyMessage = { 0 };
+    pClient client = peer->data;
+    bool result = false;
     CAST_MESSAGE(LobbyMessage, ptr);
     switch (message->tag) {
-        case LobbyMessageTag_allStreams: {
-            ServerConfigurationList streams = getStreams(ctx);
-            LobbyMessage lobbyMessage = { 0 };
+        case LobbyMessageTag_allStreams:
             lobbyMessage.tag = LobbyMessageTag_allStreamsAck;
-            lobbyMessage.allStreamsAck = streams;
-            MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-            sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
-            ServerConfigurationListFree(&streams);
-            return true;
-        } break;
-        case LobbyMessageTag_startStreaming: {
-            ServerConfiguration newConfig = { 0 };
-            ServerConfigurationList streams = getStreams(ctx);
-            const ServerConfiguration* newStream = &message->startStreaming;
-            pClient client = peer->data;
-            if (!GetStreamFromName(&streams, &newStream->name, NULL, NULL)) {
-#if _DEBUG
-                printf("Client '%s' attempted to make duplicate stream '%s'\n",
-                       client->name.buffer,
-                       newStream->name.buffer);
-#endif
-                LobbyMessage lobbyMessage = { 0 };
-                lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
-                lobbyMessage.startStreamingAck.none = NULL;
-                lobbyMessage.startStreamingAck.tag =
-                  OptionalServerConfigurationTag_none;
-                MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-                sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
-                goto ssEnd;
-            }
-
-            ServerConfigurationCopy(&newConfig, s, currentAllocator);
-            switch (newStream->data.tag) {
-                case ServerConfigurationDataTag_text: {
-                } break;
-                default: {
-                    fprintf(
-                      stderr,
-                      "Client '%s' tried to make unknown stream type: %s\n",
-                      client->name.buffer,
-                      ServerConfigurationDataTagToCharString(
-                        newStream->data.tag));
-                    LobbyMessage lobbyMessage = { 0 };
-                    lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
-                    lobbyMessage.startStreamingAck.none = NULL;
-                    lobbyMessage.startStreamingAck.tag =
-                      OptionalServerConfigurationTag_none;
-                    MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-                    sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
-                    goto ssEnd;
-                }
-            }
-
-        ssEnd:
-            ServerConfigurationFree(&newConfig);
-            ServerConfigurationListFree(&streams);
-            return true;
-        } break;
-        case LobbyMessageTag_general: {
-            LobbyMessage lobbyMessage = { 0 };
+            lobbyMessage.allStreamsAck = getStreams(ctx);
+            result = true;
+            break;
+        case LobbyMessageTag_general:
             if (!handleGeneralMessage(
                   &message->general, peer, &lobbyMessage.general)) {
                 break;
             }
             lobbyMessage.tag = LobbyMessageTag_general;
+            result = true;
+            break;
+        case LobbyMessageTag_startStreaming: {
+            lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
+            lobbyMessage.startStreamingAck.none = NULL;
+            lobbyMessage.startStreamingAck.tag =
+              OptionalServerConfigurationTag_none;
+
+            ServerConfigurationList streams = getStreams(ctx);
+            const ServerConfiguration* newConfig = &message->startStreaming;
+            if (!GetStreamFromName(&streams, &newConfig->name, NULL, NULL)) {
+#if _DEBUG
+                printf("Client '%s' attempted to make duplicate stream '%s'\n",
+                       client->name.buffer,
+                       newConfig->name.buffer);
+#endif
+                goto ssEnd;
+            }
+
+            switch (newConfig->data.tag) {
+                case ServerConfigurationDataTag_text:
+                case ServerConfigurationDataTag_chat:
+                case ServerConfigurationDataTag_audio:
+                case ServerConfigurationDataTag_image: {
+                    pServerConfiguration c =
+                      &lobbyMessage.startStreamingAck.configuration;
+                    lobbyMessage.startStreamingAck.tag =
+                      OptionalServerConfigurationTag_configuration;
+                    ServerConfigurationCopy(c, serverConfig, currentAllocator);
+                    TemLangStringCopy(
+                      &c->name, &newConfig->name, currentAllocator);
+                    AccessCopy(
+                      &c->readers, &newConfig->writers, currentAllocator);
+                    AccessCopy(
+                      &c->writers, &newConfig->readers, currentAllocator);
+                    ServerConfigurationDataCopy(
+                      &c->data, &newConfig->data, currentAllocator);
+                    if (!startNewServer(c)) {
+                        fprintf(stderr, "Failed to create new server\n");
+                        goto ssEnd;
+                    }
+                } break;
+                default:
+                    printf("Client '%s' tried to create a  '%s' stream \n",
+                           client->name.buffer,
+                           ServerConfigurationDataTagToCharString(
+                             newConfig->data.tag));
+                    break;
+            }
+
+        ssEnd:
             MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
             sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
             LobbyMessageFree(&lobbyMessage);
-            return true;
+            ServerConfigurationListFree(&streams);
+            result = true;
         } break;
         default:
             break;
     }
+    if (result) {
+        MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
+        sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+    } else {
 #if _DEBUG
-    printf("Unexpected message '%s' from client\n",
-           LobbyMessageTagToCharString(message->tag));
+        printf("Unexpected message '%s' from client\n",
+               LobbyMessageTagToCharString(message->tag));
 #endif
-    return false;
+    }
+    LobbyMessageFree(&lobbyMessage);
+    return result;
 }
