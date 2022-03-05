@@ -55,7 +55,13 @@ MAKE_COPY_AND_FREE(pClient);
 MAKE_DEFAULT_LIST(pClient);
 
 extern bool
-StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
+StreamDisplayNameEquals(const StreamDisplay*, const TemLangString*);
+
+extern bool
+StreamDisplayListNameEquals(const StreamDisplayList*,
+                            const TemLangString*,
+                            const StreamDisplay**,
+                            size_t*);
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 1
@@ -356,7 +362,7 @@ handleClientAuthentication(pClient,
 extern bool
 filenameToExtension(const char*, pFileExtension);
 
-extern ServerConfigurationDataTag FileExtenstionToStreamType(FileExtensionTag);
+extern bool CanSendFileToStream(FileExtensionTag, ServerConfigurationDataTag);
 
 extern void
 cleanupServer(ENetHost*);

@@ -62,8 +62,17 @@ variant StreamDisplayData {
     string text
 }
 
+variant UserInput {
+    null disconnect
+    string file
+    string text
+}
+
+inlineC "MAKE_DEFAULT_LIST(UserInput);"
+
 resource StreamDisplay {
-    ServerConfiguration stream
+    ServerConfiguration config
+    [0 UserInput] userInputs
     StreamDisplayData data
     FRect dstRect
     OptionalRect srcRect
@@ -78,7 +87,6 @@ inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
 
 resource ClientData {
     [0 ServerConfiguration] allStreams
-    [0 string] ownStreams
     [0 StreamDisplay] displays
     null authentication
     null mutex
@@ -97,14 +105,6 @@ enum AudioStreamSource {
     File
     Window
 }
-
-variant UserInputQuestion {
-    Guid audioStreamSource
-    Guid playbackDestination
-}
-
-inlineC "MAKE_DEFAULT_LIST(UserInputQuestion);"
-
 
 enum ImageExtension {
     ICO
@@ -143,4 +143,5 @@ variant FileExtension {
     AudioExtension audio
     ImageExtension image
     null font
+    null text
 }

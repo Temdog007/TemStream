@@ -86,6 +86,12 @@ filenameToExtension(const char* filename, pFileExtension f)
         return true;
     }
 
+    if (TemLangStringEquals(&str, "txt")) {
+        f->tag = FileExtensionTag_text;
+        f->text = NULL;
+        return true;
+    }
+
     f->image = ImageExtensionFromString(&str);
     if (f->image != ImageExtension_Invalid) {
         f->tag = FileExtensionTag_image;
@@ -107,18 +113,22 @@ filenameToExtension(const char* filename, pFileExtension f)
     return false;
 }
 
-ServerConfigurationDataTag
-FileExtenstionToStreamType(const FileExtensionTag tag)
+bool
+CanSendFileToStream(const FileExtensionTag tag,
+                    const ServerConfigurationDataTag s)
 {
-    switch (tag) {
-        case FileExtensionTag_audio:
-            return ServerConfigurationDataTag_audio;
-        // case FileExtensionTag_video:
-        // return ServerConfigurationDataTag_video;
-        case FileExtensionTag_image:
-            return ServerConfigurationDataTag_image;
+    switch (s) {
+        case ServerConfigurationDataTag_audio:
+            return tag == FileExtensionTag_audio;
+        case ServerConfigurationDataTag_video:
+            return tag == FileExtensionTag_video;
+        case ServerConfigurationDataTag_chat:
+        case ServerConfigurationDataTag_text:
+            return tag == FileExtensionTag_text;
+        case ServerConfigurationDataTag_image:
+            return tag == FileExtensionTag_image;
         default:
-            return ServerConfigurationDataTag_none;
+            return false;
     }
 }
 
@@ -251,6 +261,26 @@ GetStreamFromType(const ServerConfigurationList* list,
       &tag,
       s,
       i);
+}
+
+bool
+StreamDisplayNameEquals(const StreamDisplay* display, const TemLangString* name)
+{
+    return TemLangStringsAreEqual(&display->config.name, name);
+}
+
+bool
+StreamDisplayListNameEquals(const StreamDisplayList* list,
+                            const TemLangString* name,
+                            const StreamDisplay** display,
+                            size_t* index)
+{
+    return StreamDisplayListFindIf(
+      list,
+      (StreamDisplayListFindFunc)StreamDisplayNameEquals,
+      name,
+      display,
+      index);
 }
 
 bool

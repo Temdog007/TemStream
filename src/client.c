@@ -8,6 +8,17 @@ ClientData clientData = { 0 };
 
 SDL_atomic_t runningThreads = { 0 };
 
+#define USE_CONFIG(mutex, endLabel, configMissing, f)                          \
+    IN_MUTEX(mutex, endLabel, {                                                \
+        const ServerConfiguration* config = NULL;                              \
+        if (!GetStreamFromName(&clientData.allStreams, name, &config, NULL)) { \
+            configMissing = true;                                              \
+            goto endLabel;                                                     \
+        }                                                                      \
+        configMissing = false;                                                 \
+        f                                                                      \
+    });
+
 void
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
@@ -16,6 +27,12 @@ sendAudioPackets(OpusEncoder* encoder,
 
 void
 consumeAudio(const Bytes*, const Guid*);
+
+void
+handleUserInput(ENetPeer* peer,
+                pBytes,
+                const ServerConfigurationDataTag,
+                const UserInput*);
 
 void
 renderDisplays()
@@ -314,45 +331,53 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
 int
 streamConnectionThread(void* ptr)
 {
-    pServerConfiguration config = (pServerConfiguration)ptr;
+    pTemLangString name = (pTemLangString)ptr;
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
+    Bytes bytes = { .allocator = currentAllocator };
 
-    if (config->port.tag != PortTag_port) {
-        printf("Cannot opening connection to stream due to an invalid port\n");
-        goto end;
-    }
+    bool configMissing = false;
+    USE_CONFIG(clientData.mutex, fend, configMissing, {
+        if (config->port.tag != PortTag_port) {
+            printf(
+              "Cannot opening connection to stream due to an invalid port\n");
+            goto fend;
+        }
 
-    host = enet_host_create(NULL, 1, 2, 0, 0);
-    if (host == NULL) {
-        fprintf(stderr, "Failed to create client host\n");
-        appDone = true;
-        goto end;
-    }
-    {
-        ENetAddress address = { 0 };
-        enet_address_set_host(&address, config->hostname.buffer);
-        address.port = config->port.port;
-        peer = enet_host_connect(host, &address, 2, config->data.tag);
-        char buffer[512] = { 0 };
-        enet_address_get_host_ip(&address, buffer, sizeof(buffer));
-        printf("Connecting to server: %s:%u...\n", buffer, address.port);
-    }
-    if (peer == NULL) {
-        fprintf(stderr, "Failed to connect to server\n");
-        appDone = true;
+        host = enet_host_create(NULL, 1, 2, 0, 0);
+        if (host == NULL) {
+            fprintf(stderr, "Failed to create client host\n");
+            goto fend;
+        }
+        {
+            ENetAddress address = { 0 };
+            enet_address_set_host(&address, config->hostname.buffer);
+            address.port = config->port.port;
+            peer = enet_host_connect(host, &address, 2, config->data.tag);
+            char buffer[512] = { 0 };
+            enet_address_get_host_ip(&address, buffer, sizeof(buffer));
+            printf("Connecting to server: %s:%u...\n", buffer, address.port);
+        }
+        if (peer == NULL) {
+            fprintf(stderr, "Failed to connect to server\n");
+            goto fend;
+        }
+    });
+    if (host == NULL || peer == NULL) {
         goto end;
     }
 
     ENetEvent event = { 0 };
-    if (enet_host_service(host, &event, 5000U) > 0 &&
+    if (!appDone && enet_host_service(host, &event, 5000U) > 0 &&
         event.type == ENET_EVENT_TYPE_CONNECT) {
         char buffer[KB(1)] = { 0 };
         enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
         printf(
           "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-        sendAuthentication(peer, config->data.tag);
+        USE_CONFIG(clientData.mutex, fend2, configMissing, {
+            sendAuthentication(peer, config->data.tag);
+        });
     } else {
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
@@ -361,20 +386,25 @@ streamConnectionThread(void* ptr)
         goto end;
     }
 
-    while (!appDone) {
+    while (!appDone && !configMissing) {
         while (enet_host_service(host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
-                    printf(
-                      "Unexpected connect message from '%s(%s)' stream\n",
-                      config->name.buffer,
-                      ServerConfigurationDataTagToCharString(config->data.tag));
+                    USE_CONFIG(clientData.mutex, fend3, configMissing, {
+                        printf(
+                          "Unexpected connect message from '%s(%s)' stream\n",
+                          config->name.buffer,
+                          ServerConfigurationDataTagToCharString(
+                            config->data.tag));
+                    });
                     goto end;
                 case ENET_EVENT_TYPE_DISCONNECT:
-                    printf(
-                      "Disconnect from '%s(%s)' stream\n",
-                      config->name.buffer,
-                      ServerConfigurationDataTagToCharString(config->data.tag));
+                    USE_CONFIG(clientData.mutex, fend4, configMissing, {
+                        printf("Disconnect from '%s(%s)' stream\n",
+                               config->name.buffer,
+                               ServerConfigurationDataTagToCharString(
+                                 config->data.tag));
+                    });
                     goto end;
                 case ENET_EVENT_TYPE_RECEIVE: {
                 } break;
@@ -384,10 +414,28 @@ streamConnectionThread(void* ptr)
                     break;
             }
         }
+        if (SDL_TryLockMutex(clientData.mutex) == 0) {
+            size_t index = 0;
+            if (!StreamDisplayListNameEquals(
+                  &clientData.displays, name, NULL, &index)) {
+                goto endLabel;
+            }
+            pStreamDisplay display = &clientData.displays.buffer[index];
+            for (size_t i = 0; i < display->userInputs.used; ++i) {
+                handleUserInput(peer,
+                                &bytes,
+                                display->config.data.tag,
+                                &display->userInputs.buffer[i]);
+            }
+            display->userInputs.used = 0;
+        endLabel:
+            SDL_UnlockMutex(clientData.mutex);
+        }
     }
 
 end:
-    ServerConfigurationFree(config);
+    TemLangStringFree(name);
+    uint8_tListFree(&bytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
     SDL_AtomicDecRef(&runningThreads);
@@ -405,9 +453,9 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
 
     askQuestion("Select a stream to connect to");
     for (uint32_t i = 0; i < streamNum; ++i) {
-        const ServerConfiguration* stream = &clientData.allStreams.buffer[i];
+        const ServerConfiguration* config = &clientData.allStreams.buffer[i];
         printf("%u) ", i + 1U);
-        printServerConfigurationForClient(stream);
+        printServerConfigurationForClient(config);
     }
     puts("");
 
@@ -420,17 +468,22 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
         return;
     }
 
-    pServerConfiguration s =
-      currentAllocator->allocate(sizeof(ServerConfiguration));
-    ServerConfigurationCopy(
-      s, &clientData.allStreams.buffer[i], currentAllocator);
+    pTemLangString s = currentAllocator->allocate(sizeof(TemLangString));
+    TemLangStringCopy(
+      s, &clientData.allStreams.buffer[i].name, currentAllocator);
     SDL_Thread* thread =
       SDL_CreateThread((SDL_ThreadFunction)streamConnectionThread, "stream", s);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
-        ServerConfigurationFree(s);
+        TemLangStringFree(s);
         currentAllocator->free(s);
     } else {
+        StreamDisplay display = { 0 };
+        ServerConfigurationCopy(
+          &display.config, &clientData.allStreams.buffer[i], currentAllocator);
+        StreamDisplayListAppend(&clientData.displays, &display);
+        StreamDisplayFree(&display);
+
         SDL_AtomicIncRef(&runningThreads);
         SDL_DetachThread(thread);
     }
@@ -448,7 +501,7 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
     askQuestion("Select a stream to disconnect from");
     for (uint32_t i = 0; i < list->used; ++i) {
         printf("%u) ", i + 1U);
-        printServerConfigurationForClient(&list->buffer[i].stream);
+        printServerConfigurationForClient(&list->buffer[i].config);
     }
     puts("");
 
@@ -837,8 +890,6 @@ selectStreamToStart(struct pollfd inputfd,
       ServerConfigurationDataTagToCharString(message.startStreaming.data.tag),
       message.startStreaming.name.buffer);
     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
-    TemLangStringListAppend(&clientData.ownStreams,
-                            &message.startStreaming.name);
     LobbyMessageFree(&message);
 }
 
@@ -852,14 +903,14 @@ selectStreamToStop(struct pollfd inputfd, pBytes bytes)
     }
 
     askQuestion("Select a stream to stop");
-    for (uint32_t i = 0; i < clientData.ownStreams.used; ++i) {
-        const ServerConfiguration* stream = NULL;
+    for (uint32_t i = 0; i < clientData.displays.used; ++i) {
+        const ServerConfiguration* config = NULL;
         if (GetStreamFromName(&clientData.allStreams,
-                              &clientData.ownStreams.buffer[i],
-                              &stream,
+                              &clientData.displays.buffer[i].config.name,
+                              &config,
                               NULL)) {
             printf("%u) ", i + 1U);
-            printServerConfigurationForClient(stream);
+            printServerConfigurationForClient(config);
         }
     }
     puts("");
@@ -888,10 +939,10 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
 
     askQuestion("Send text to which stream?");
     for (uint32_t i = 0; i < clientData.displays.used; ++i) {
-        const ServerConfiguration* stream =
-          &clientData.displays.buffer[i].stream;
+        const ServerConfiguration* config =
+          &clientData.displays.buffer[i].config;
         printf("%u) ", i + 1U);
-        printServerConfigurationForClient(stream);
+        printServerConfigurationForClient(config);
     }
     puts("");
 
@@ -925,7 +976,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
     for (size_t i = 0; i < clientData.displays.used; ++i) {
         const StreamDisplay* display = &clientData.displays.buffer[i];
         printf("%zu) ", i + 1U);
-        printServerConfigurationForClient(&display->stream);
+        printServerConfigurationForClient(&display->config);
     }
     puts("");
 
@@ -1090,13 +1141,14 @@ checkUserInput(SDL_Renderer* renderer,
             break;
         case ClientCommand_ShowOwnStreams: {
             askQuestion("Own Streams");
-            const ServerConfiguration* stream = NULL;
-            for (size_t i = 0; i < clientData.ownStreams.used; ++i) {
-                if (GetStreamFromName(&clientData.allStreams,
-                                      &clientData.ownStreams.buffer[i],
-                                      &stream,
-                                      NULL)) {
-                    printServerConfigurationForClient(stream);
+            const ServerConfiguration* config = NULL;
+            for (size_t i = 0; i < clientData.displays.used; ++i) {
+                if (GetStreamFromName(
+                      &clientData.allStreams,
+                      &clientData.displays.buffer[i].config.name,
+                      &config,
+                      NULL)) {
+                    printServerConfigurationForClient(config);
                 }
             }
         } break;
@@ -1110,7 +1162,7 @@ checkUserInput(SDL_Renderer* renderer,
             for (size_t i = 0; i < clientData.displays.used; ++i) {
                 const StreamDisplay* display = &list->buffer[i];
                 printf("%zu) ", i + 1U);
-                printServerConfigurationForClient(&display->stream);
+                printServerConfigurationForClient(&display->config);
             }
             puts("");
 
@@ -1556,6 +1608,27 @@ loadNewFont(const char* filename, const int fontSize, TTF_Font** ttfFont)
     return true;
 }
 
+void
+refrehClients(ENetPeer* peer, pBytes bytes)
+{
+    LobbyMessage lm = { 0 };
+    lm.tag = LobbyMessageTag_general;
+    lm.general.getClients = NULL;
+    lm.general.tag = GeneralMessageTag_getClients;
+    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
+    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+}
+
+void
+refreshStreams(ENetPeer* peer, pBytes bytes)
+{
+    LobbyMessage lm = { 0 };
+    lm.tag = LobbyMessageTag_allStreams;
+    lm.allStreams = NULL;
+    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
+    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+}
+
 bool
 clientHandleLobbyMessage(const LobbyMessage* message,
                          ENetPeer* peer,
@@ -1572,11 +1645,11 @@ clientHandleLobbyMessage(const LobbyMessage* message,
         case LobbyMessageTag_startStreamingAck:
             result = true;
             if (message->startStreamingAck) {
-                puts("Started stream. Refresh stream list and connect to start "
-                     "streaming");
+                puts("Started stream.");
             } else {
                 puts("Failed to start stream");
             }
+            refreshStreams(peer, bytes);
             goto end;
         case LobbyMessageTag_general:
             switch (message->general.tag) {
@@ -1595,18 +1668,7 @@ clientHandleLobbyMessage(const LobbyMessage* message,
                                         &message->general.authenticateAck,
                                         currentAllocator);
                     printf("Client authenticated: %s\n", client->name.buffer);
-                    LobbyMessage lm = { 0 };
-
-                    lm.tag = LobbyMessageTag_general;
-                    lm.general.getClients = NULL;
-                    lm.general.tag = GeneralMessageTag_getClients;
-                    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
-
-                    lm.tag = LobbyMessageTag_allStreams;
-                    lm.allStreams = NULL;
-                    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                    refreshStreams(peer, bytes);
                     goto end;
                 default:
                     printf("Unexpected message from lobby server: %s\n",
@@ -1682,6 +1744,106 @@ displayError(SDL_Window* window, const char* e, const bool force)
     }
 }
 
+void
+handleUserInput(ENetPeer* peer,
+                pBytes bytes,
+                const ServerConfigurationDataTag serverType,
+                const UserInput* userInput)
+{
+    switch (userInput->tag) {
+        case UserInputTag_disconnect:
+            enet_peer_disconnect(peer, 0);
+            break;
+        case UserInputTag_text:
+            switch (serverType) {
+                case ServerConfigurationDataTag_text: {
+                    TextMessage message = { 0 };
+                    message.tag = TextMessageTag_text;
+                    message.text =
+                      TemLangStringClone(&userInput->text, currentAllocator);
+                    MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                    TextMessageFree(&message);
+                } break;
+                case ServerConfigurationDataTag_chat: {
+                    ChatMessage message = { 0 };
+                    message.tag = ChatMessageTag_message;
+                    message.message =
+                      TemLangStringClone(&userInput->text, currentAllocator);
+                    MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                    ChatMessageFree(&message);
+                } break;
+                default:
+                    fprintf(stderr,
+                            "Cannot send text to '%s' server\n",
+                            ServerConfigurationDataTagToCharString(serverType));
+                    break;
+            }
+            break;
+        case UserInputTag_file: {
+            int fd = -1;
+            char* ptr = NULL;
+            size_t size = 0;
+
+            FileExtension ext = { 0 };
+            if (!filenameToExtension(userInput->file.buffer, &ext)) {
+                puts("Failed to find file extension");
+                goto endDropFile;
+            }
+
+            if (!CanSendFileToStream(ext.tag, serverType)) {
+                fprintf(stderr,
+                        "Cannot send '%s' file to '%s' server\n",
+                        FileExtensionTagToCharString(ext.tag),
+                        ServerConfigurationDataTagToCharString(serverType));
+                goto endDropFile;
+            }
+
+            if (!mapFile(
+                  userInput->file.buffer, &fd, &ptr, &size, MapFileType_Read)) {
+                fprintf(stderr,
+                        "Error opening file '%s': %s\n",
+                        userInput->file.buffer,
+                        strerror(errno));
+                goto endDropFile;
+            }
+
+            switch (serverType) {
+                case ServerConfigurationDataTag_text: {
+                    TextMessage message = { 0 };
+                    message.tag = TextMessageTag_text;
+                    message.text =
+                      TemLangStringCreateFromSize(ptr, size, currentAllocator);
+                    MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                    TextMessageFree(&message);
+                } break;
+                case ServerConfigurationDataTag_chat: {
+                    ChatMessage message = { 0 };
+                    message.tag = ChatMessageTag_message;
+                    message.message =
+                      TemLangStringCreateFromSize(ptr, size, currentAllocator);
+                    MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                    ChatMessageFree(&message);
+                } break;
+                default:
+                    fprintf(stderr,
+                            "Sending '%s' not implemented\n",
+                            ServerConfigurationDataTagToCharString(serverType));
+                    break;
+            }
+
+            // Don't free message since it wasn't allocated
+        endDropFile:
+            unmapFile(fd, ptr, size);
+        } break;
+        default:
+            break;
+    }
+}
+
 int
 runClient(const Configuration* configuration)
 {
@@ -1704,7 +1866,6 @@ runClient(const Configuration* configuration)
                     .used = 0 };
 
     clientData.displays.allocator = currentAllocator;
-    clientData.ownStreams.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
     const bool showWindow = !config->noGui;
     {
@@ -2032,10 +2193,6 @@ runClient(const Configuration* configuration)
                 case SDL_DROPFILE: {
                     // Look for image stream
                     printf("Got dropped file: %s\n", e.drop.file);
-                    int fd = -1;
-                    char* ptr = NULL;
-                    size_t size = 0;
-
                     FileExtension ext = { 0 };
                     if (!filenameToExtension(e.drop.file, &ext)) {
                         puts("Failed to find file extension");
@@ -2052,67 +2209,61 @@ runClient(const Configuration* configuration)
                         }
                         goto endDropFile;
                     }
-
-                    if (!mapFile(
-                          e.drop.file, &fd, &ptr, &size, MapFileType_Read)) {
-                        fprintf(stderr,
-                                "Error opening file '%s': %s\n",
-                                e.drop.file,
-                                strerror(errno));
+                    pStreamDisplay display = NULL;
+                    if (targetDisplay < clientData.displays.used) {
+                        display = &clientData.displays.buffer[targetDisplay];
+                    } else {
+                        for (size_t i = 0; i < clientData.displays.used; ++i) {
+                            if (CanSendFileToStream(
+                                  ext.tag,
+                                  clientData.displays.buffer[i]
+                                    .config.data.tag)) {
+                                display = &clientData.displays.buffer[i];
+                                break;
+                            }
+                        }
+                    }
+                    if (display == NULL) {
+                        puts("No stream to send file too...");
                         goto endDropFile;
                     }
-
-                    Bytes fileBytes = { .allocator = NULL,
-                                        .buffer = (uint8_t*)ptr,
-                                        .size = size,
-                                        .used = size };
-                    const ServerConfiguration* stream = NULL;
-                    if (targetDisplay >= clientData.displays.used) {
-                        if (!GetStreamFromType(
-                              &clientData.allStreams,
-                              FileExtenstionToStreamType(ext.tag),
-                              &stream,
-                              NULL)) {
-                            puts("No stream to send data too...");
-                            goto endDropFile;
-                        }
-                    } else {
-                        const StreamDisplay* display =
-                          &clientData.displays.buffer[targetDisplay];
-                        if (!GetStreamFromName(&clientData.allStreams,
-                                               &display->stream.name,
-                                               &stream,
-                                               NULL)) {
-                            puts("No stream to send data too...");
-                            goto endDropFile;
-                        }
-                    }
-
-                    // TODO: Send bytes to stream
-                    (void)fileBytes;
-
-                    // Don't free message since it wasn't allocated
+                    UserInput userInput = { 0 };
+                    userInput.tag = UserInputTag_file;
+                    userInput.file =
+                      TemLangStringCreate(e.drop.file, currentAllocator);
+                    UserInputListAppend(&display->userInputs, &userInput);
+                    UserInputFree(&userInput);
                 endDropFile:
-                    unmapFile(fd, ptr, size);
                     SDL_free(e.drop.file);
                 } break;
                 case SDL_DROPTEXT: {
                     // Look for a text or chat stream
                     puts("Got dropped text");
-                    if (targetDisplay >= clientData.displays.used) {
-                        puts("No stream to text too...");
-                        break;
+                    pStreamDisplay display = NULL;
+                    if (targetDisplay < clientData.displays.used) {
+                        display = &clientData.displays.buffer[targetDisplay];
+                    } else {
+                        for (size_t i = 0; i < clientData.displays.used; ++i) {
+                            if (CanSendFileToStream(
+                                  FileExtensionTag_text,
+                                  clientData.displays.buffer[i]
+                                    .config.data.tag)) {
+                                display = &clientData.displays.buffer[i];
+                                break;
+                            }
+                        }
                     }
-                    const StreamDisplay* display =
-                      &clientData.displays.buffer[targetDisplay];
-                    const ServerConfiguration* stream = NULL;
-                    if (!GetStreamFromName(&clientData.allStreams,
-                                           &display->stream.name,
-                                           &stream,
-                                           NULL)) {
-                        puts("No stream to text too...");
-                        break;
+                    if (display == NULL) {
+                        puts("No stream to send text too...");
+                        goto endDropText;
                     }
+                    UserInput userInput = { 0 };
+                    userInput.tag = UserInputTag_text;
+                    userInput.text =
+                      TemLangStringCreate(e.drop.file, currentAllocator);
+                    UserInputListAppend(&display->userInputs, &userInput);
+                    UserInputFree(&userInput);
+                endDropText:
                     SDL_free(e.drop.file);
                 } break;
                 default:

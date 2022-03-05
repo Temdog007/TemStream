@@ -45,6 +45,10 @@ struct ImageConfiguration {
     null none
 }
 
+struct VideoConfiguration {
+    null none
+}
+
 variant ServerConfigurationData {
     null none
     LobbyConfiguration lobby
@@ -52,6 +56,7 @@ variant ServerConfigurationData {
     ChatConfiguration chat
     AudioConfiguration audio
     ImageConfiguration image
+    VideoConfiguration video
 }
 
 struct PortRange {
@@ -128,10 +133,8 @@ inlineC "MAKE_DEFAULT_LIST(Chat);"
 variant ChatMessage {
     GeneralMessage general
     string message
-    u32 messageAck
     null logs
     [ 0 Chat ] logsAck
-    null messageRejected
 }
 
 variant TextMessage {
@@ -147,6 +150,11 @@ variant ImageMessage {
 variant AudioMessage {
     GeneralMessage general
     [0 u8] audio
+}
+
+variant VideoMessage {
+    GeneralMessage general
+    [0 u8] video
 }
 
 inlineFile "TemLang/client.tem"
