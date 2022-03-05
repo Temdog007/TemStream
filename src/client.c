@@ -366,13 +366,13 @@ streamConnectionThread(void* ptr)
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     printf(
-                      "Unexpected connect message from '%s(%s)' stream",
+                      "Unexpected connect message from '%s(%s)' stream\n",
                       config->name.buffer,
                       ServerConfigurationDataTagToCharString(config->data.tag));
                     goto end;
                 case ENET_EVENT_TYPE_DISCONNECT:
                     printf(
-                      "Disconnect from '%s(%s)' stream",
+                      "Disconnect from '%s(%s)' stream\n",
                       config->name.buffer,
                       ServerConfigurationDataTagToCharString(config->data.tag));
                     goto end;

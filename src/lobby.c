@@ -196,11 +196,7 @@ handleLobbyMessage(const void* ptr,
             }
 
         ssEnd:
-            MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-            sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-            LobbyMessageFree(&lobbyMessage);
             ServerConfigurationListFree(&streams);
-            result = true;
         } break;
         default:
             break;
