@@ -96,6 +96,7 @@ defaultServerConfiguration()
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .port = { .port = 10000u, .tag = PortTag_port },
         .maxClients = 1024u,
+        .timeout = 10u * 1000u,
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
     };
@@ -247,7 +248,7 @@ printServerConfiguration(const ServerConfiguration* configuration)
 int
 printServerConfigurationForClient(const ServerConfiguration* config)
 {
-    return printf("%s (%s)",
+    return printf("%s (%s)\n",
                   config->name.buffer,
                   ServerConfigurationDataTagToCharString(config->data.tag));
 }
@@ -361,13 +362,16 @@ sendBytes(ENetPeer* peers,
 }
 
 #define CHECK_SERVER                                                           \
-    server = enet_host_create(&address, config->maxClients, 2, 0, 0);          \
+    server = enet_host_create(                                                 \
+      &address, config->maxClients, 2, currentAllocator->totalSize() / 4, 0);  \
     if (server != NULL) {                                                      \
         char buffer[1024] = { 0 };                                             \
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));            \
         printf("Opened server at %s:%u\n", buffer, address.port);              \
-        config->port.tag = PortTag_port;                                       \
-        config->port.port = address.port;                                      \
+        if (config->data.tag != ServerConfigurationDataTag_lobby) {            \
+            config->port.tag = PortTag_port;                                   \
+            config->port.port = address.port;                                  \
+        }                                                                      \
         goto continueServer;                                                   \
     }
 
@@ -523,12 +527,13 @@ continueServer:
                 enet_peer_disconnect(peer, 0);
             }
         }
-        if (connectedPeers == 0 && config->timeout > 0 &&
-            now - lastCheck > config->timeout) {
-            printf("Ending server due to no connected clients in %" PRIu64
-                   " seconds\n",
-                   config->timeout);
-            appDone = true;
+        if (connectedPeers == 0) {
+            if (config->timeout > 0 && now - lastCheck > config->timeout) {
+                printf("Ending server due to no connected clients in %" PRIu64
+                       " seconds\n",
+                       config->timeout);
+                appDone = true;
+            }
         } else {
             lastCheck = now;
         }
@@ -546,7 +551,7 @@ end:
     return result;
 }
 
-#define TEM_STREAM_SERVER_KEY "TemStream Server"
+#define TEM_STREAM_SERVER_KEY "TemStream Servers"
 
 ServerConfigurationList
 getStreams(redisContext* ctx)
@@ -568,17 +573,12 @@ getStreams(redisContext* ctx)
         if (r->type != REDIS_REPLY_STRING) {
             continue;
         }
-        TemLangString str = { .allocator = currentAllocator };
-        if (!b64_decode(r->str, &str)) {
+        Bytes bytes = { .allocator = currentAllocator };
+        if (!b64_decode(r->str, &bytes)) {
             continue;
         }
-        Bytes bytes = { .allocator = currentAllocator,
-                        .buffer = (uint8_t*)str.buffer,
-                        .size = str.size,
-                        .used = str.used };
-
         ServerConfiguration s = { 0 };
-        ServerConfigurationDeserialize(&s, &bytes, 0, true);
+        MESSAGE_DESERIALIZE(ServerConfiguration, s, bytes);
         ServerConfigurationListAppend(&list, &s);
         ServerConfigurationFree(&s);
     }
@@ -591,9 +591,9 @@ bool
 writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
 {
     Bytes bytes = { .allocator = currentAllocator };
-    ServerConfigurationSerialize(c, &bytes, true);
+    MESSAGE_SERIALIZE(ServerConfiguration, (*c), bytes);
 
-    TemLangString str = b64_encode((unsigned char*)bytes.buffer, bytes.used);
+    TemLangString str = b64_encode(&bytes);
 
     redisReply* reply =
       redisCommand(ctx, "LPUSH %s %s", TEM_STREAM_SERVER_KEY, str.buffer);
@@ -614,9 +614,9 @@ bool
 removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
 {
     Bytes bytes = { .allocator = currentAllocator };
-    ServerConfigurationSerialize(c, &bytes, true);
+    MESSAGE_SERIALIZE(ServerConfiguration, (*c), bytes);
 
-    TemLangString str = b64_encode((unsigned char*)bytes.buffer, bytes.used);
+    TemLangString str = b64_encode(&bytes);
 
     redisReply* reply =
       redisCommand(ctx, "LREM %s 0 %s", TEM_STREAM_SERVER_KEY, str.buffer);

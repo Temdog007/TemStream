@@ -67,19 +67,15 @@ main(const int argc, const char** argv)
         if (binaryIndex == -1) {
             configuration = defaultConfiguration();
         } else {
-            TemLangString str = { .allocator = currentAllocator };
-            const bool result = b64_decode(argv[binaryIndex], &str);
-            Bytes bytes = { .allocator = currentAllocator,
-                            .buffer = (uint8_t*)str.buffer,
-                            .size = str.size,
-                            .used = str.used };
+            Bytes bytes = { .allocator = currentAllocator };
+            const bool result = b64_decode(argv[binaryIndex], &bytes);
             if (result) {
-                ConfigurationDeserialize(&configuration, &bytes, 0, true);
+                MESSAGE_DESERIALIZE(Configuration, configuration, bytes);
                 printf("Configuration set to %s\n",
                        ServerConfigurationDataTagToCharString(
                          configuration.server.data.tag));
             }
-            TemLangStringFree(&str);
+            uint8_tListFree(&bytes);
             if (!result) {
                 fprintf(stderr, "Failed to decode binary into configuration\n");
                 goto end;

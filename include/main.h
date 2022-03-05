@@ -482,11 +482,8 @@ removeConfigurationFromRedis(redisContext*, const ServerConfiguration*);
 
 // Base 64
 
-size_t
-b64_encoded_size(const size_t);
-
 TemLangString
-b64_encode(const unsigned char* in, size_t len);
+b64_encode(const Bytes* bytes);
 
-size_t
-b64_decoded_size(const char*);
+bool
+b64_decode(const char* in, pBytes bytes);

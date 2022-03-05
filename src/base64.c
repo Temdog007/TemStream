@@ -19,13 +19,16 @@ const char b64chars[] =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 TemLangString
-b64_encode(const unsigned char* in, size_t len)
+b64_encode(const Bytes* bytes)
 {
     TemLangString str = { .allocator = currentAllocator };
 
-    if (in == NULL || len == 0) {
+    if (bytes == NULL || uint8_tListIsEmpty(bytes)) {
         goto end;
     }
+
+    const uint8_t* in = bytes->buffer;
+    const size_t len = bytes->used;
 
     str.used = b64_encoded_size(len);
     str.size = str.used + 1;
@@ -102,9 +105,9 @@ b64_isvalidchar(const char c)
 }
 
 bool
-b64_decode(const char* in, pTemLangString str)
+b64_decode(const char* in, pBytes bytes)
 {
-    if (in == NULL || str == NULL) {
+    if (in == NULL || bytes == NULL) {
         return false;
     }
 
@@ -114,11 +117,12 @@ b64_decode(const char* in, pTemLangString str)
     }
 
     const size_t desiredLen = b64_decoded_size(in);
-    if (str->size < desiredLen) {
-        str->buffer = currentAllocator->reallocate(str->buffer, desiredLen + 1);
-        str->size = desiredLen + 1;
+    if (bytes->size < desiredLen) {
+        bytes->buffer =
+          currentAllocator->reallocate(bytes->buffer, desiredLen + 1);
+        bytes->size = desiredLen;
     }
-    str->used = desiredLen;
+    bytes->used = desiredLen;
 
     for (size_t i = 0; i < len; i++) {
         if (!b64_isvalidchar(in[i])) {
@@ -132,15 +136,14 @@ b64_decode(const char* in, pTemLangString str)
         v = in[i + 2] == '=' ? v << 6 : (v << 6) | b64invs[in[i + 2] - 43];
         v = in[i + 3] == '=' ? v << 6 : (v << 6) | b64invs[in[i + 3] - 43];
 
-        str->buffer[j] = (v >> 16) & 0xFF;
+        bytes->buffer[j] = (v >> 16) & 0xFF;
         if (in[i + 2] != '=') {
-            str->buffer[j + 1] = (v >> 8) & 0xFF;
+            bytes->buffer[j + 1] = (v >> 8) & 0xFF;
         }
         if (in[i + 3] != '=') {
-            str->buffer[j + 2] = v & 0xFF;
+            bytes->buffer[j + 2] = v & 0xFF;
         }
     }
-    TemLangStringNullTerminate(str);
 
     return true;
 }

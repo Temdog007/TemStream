@@ -77,16 +77,17 @@ waitForChildProcess(void* ptr)
 }
 
 bool
-startNewServer(const ServerConfiguration* c)
+startNewServer(const ServerConfiguration* serverConfig)
 {
     const pid_t f = fork();
     if (f == 0) {
+        Configuration c = { .server = *serverConfig,
+                            .tag = ConfigurationTag_server };
         Bytes bytes = { .allocator = currentAllocator };
-        ServerConfigurationSerialize(c, &bytes, true);
-        TemLangString str =
-          b64_encode((unsigned char*)bytes.buffer, bytes.used);
-        const int result = execl(c->data.lobby.runCommand,
-                                 c->data.lobby.runCommand,
+        MESSAGE_SERIALIZE(Configuration, c, bytes);
+        TemLangString str = b64_encode(&bytes);
+        const int result = execl(serverConfig->data.lobby.runCommand,
+                                 serverConfig->data.lobby.runCommand,
                                  "-B",
                                  str.buffer,
                                  NULL);
@@ -95,6 +96,10 @@ startNewServer(const ServerConfiguration* c)
         exit(result);
         return false;
     } else {
+        printf("Server '%s(%s)' started has process %d\n",
+               serverConfig->name.buffer,
+               ServerConfigurationDataTagToCharString(serverConfig->data.tag),
+               f);
         const size_t fs = (size_t)f;
         SDL_Thread* thread = SDL_CreateThread(
           (SDL_ThreadFunction)waitForChildProcess, "wait", (void*)fs);

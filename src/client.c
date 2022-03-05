@@ -347,8 +347,7 @@ streamConnectionThread(void* ptr)
 
     ENetEvent event = { 0 };
     if (enet_host_service(host, &event, 5000U) > 0 &&
-        event.type == ENET_EVENT_TYPE_CONNECT &&
-        event.data == (uint32_t)config->data.tag) {
+        event.type == ENET_EVENT_TYPE_CONNECT) {
         char buffer[KB(1)] = { 0 };
         enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
         printf(
