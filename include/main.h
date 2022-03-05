@@ -111,8 +111,7 @@ BytesToPacket(const void* data, const size_t length, const bool);
 
 extern void
 sendBytes(ENetPeer*,
-          size_t peerCount,
-          size_t mtu,
+          const size_t peerCount,
           const enet_uint32,
           const Bytes*,
           const bool);
@@ -120,11 +119,11 @@ sendBytes(ENetPeer*,
 extern void
 cleanupServer(ENetHost*);
 
-extern PayloadParseResult
-parsePayload(const Payload*, pClient);
-
 extern void
 closeHostAndPeer(ENetHost*, ENetPeer*);
+
+extern void
+sendPacketToReaders(ENetHost*, ENetPacket*, const Access*);
 
 typedef ENetPacket* pENetPacket;
 
@@ -219,8 +218,7 @@ typedef struct ServerFunctions
     void (*freeMessage)(void*);
 } ServerFunctions, *pServerFunctions;
 
-extern int
-runServer(const Configuration*, ServerFunctions);
+extern int runServer(pConfiguration, ServerFunctions);
 
 extern int
 runClient(const Configuration*);
@@ -258,6 +256,33 @@ getGeneralMessageFromLobby(const void*);
 
 extern void
 freeLobbyMessage(void*);
+
+// Text
+
+extern bool
+parseTextConfiguration(const int, const char**, pConfiguration);
+
+extern void
+serializeTextMessage(const void*, pBytes bytes);
+
+extern void*
+deserializeTextMessage(const Bytes* bytes);
+
+extern void
+textSendGeneralMessage(const GeneralMessage*, pBytes, ENetPeer*);
+
+extern bool
+handleTextMessage(const void*,
+                  pBytes,
+                  ENetPeer*,
+                  redisContext*,
+                  const ServerConfiguration*);
+
+extern const GeneralMessage*
+getGeneralMessageFromText(const void*);
+
+extern void
+freeTextMessage(void*);
 
 // Parse failures
 

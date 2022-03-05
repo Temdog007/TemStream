@@ -185,6 +185,25 @@ printServerAuthentication(const ServerAuthentication* auth)
 }
 
 int
+printPort(const Port* port)
+{
+    int offset = printf("Port: ");
+    switch (port->tag) {
+        case PortTag_port:
+            offset += printf("%u\n", port->port);
+            break;
+        case PortTag_portRange:
+            offset += printf("min=%u;max=%u\n",
+                             port->portRange.minPort,
+                             port->portRange.maxPort);
+            break;
+        default:
+            break;
+    }
+    return offset;
+}
+
+int
 printAudioSpec(const SDL_AudioSpec* spec)
 {
     return printf("Frequency: %d Hz\nChannels: %u\nSilence: %u\nSamples: "

@@ -26,6 +26,7 @@ enum AuthenticateResult {
 
 struct LobbyConfiguration {
     u32 maxStreams
+    null runCommand
 }
 
 struct TextConfiguration {
@@ -53,6 +54,16 @@ variant ServerConfigurationData {
     ImageConfiguration image
 }
 
+struct PortRange {
+    u16 minPort
+    u16 maxPort
+}
+
+variant Port {
+    PortRange portRange
+    u16 port
+}
+
 struct ServerConfiguration {
     ServerConfigurationData data
     Access writers
@@ -61,12 +72,10 @@ struct ServerConfiguration {
     string redisIp
     string hostname
     string name
-    null runCommand
+    u64 timeout
     i32 redisPort
     u32 maxClients
-    u32 timeout
-    u16 minPort
-    u16 maxPort
+    Port port
     bool record
 }
 
@@ -76,19 +85,6 @@ variant OptionalServerConfiguration {
 }
 
 inlineC "MAKE_DEFAULT_LIST(ServerConfiguration);"
-
-variant Payload {
-    [0 u8] fullData
-    null dataStart
-    [0 u8] dataChunk
-    null dataEnd
-}
-
-enum PayloadParseResult {
-    Continuing
-    Done
-    UsePayload
-}
 
 variant Access {
     null anyone
@@ -116,7 +112,7 @@ variant GeneralMessage {
 variant LobbyMessage {
     GeneralMessage general
     ServerConfiguration startStreaming
-    OptionalServerConfiguration startStreamingAck
+    bool startStreamingAck
     null allStreams
     [0 ServerConfiguration] allStreamsAck
 }

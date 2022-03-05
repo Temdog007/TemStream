@@ -308,7 +308,7 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
             break;
     }
 
-    sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, &bytes, true);
+    sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
 }
 
 int
@@ -319,6 +319,11 @@ streamConnectionThread(void* ptr)
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
 
+    if (config->port.tag != PortTag_port) {
+        printf("Cannot opening connection to stream due to an invalid port\n");
+        goto end;
+    }
+
     host = enet_host_create(NULL, 1, 2, 0, 0);
     if (host == NULL) {
         fprintf(stderr, "Failed to create client host\n");
@@ -328,7 +333,7 @@ streamConnectionThread(void* ptr)
     {
         ENetAddress address = { 0 };
         enet_address_set_host(&address, config->hostname.buffer);
-        address.port = config->minPort;
+        address.port = config->port.port;
         peer = enet_host_connect(host, &address, 2, config->data.tag);
         char buffer[512] = { 0 };
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));
@@ -598,7 +603,7 @@ sendAudioPackets(OpusEncoder* encoder,
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
         uint8_tListQuickRemove(audio, 0, bytesUsed);
 
-        sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, &converted, false);
+        sendBytes(peer, 1, CLIENT_CHANNEL, &converted, false);
     }
 }
 
@@ -795,9 +800,6 @@ selectStreamToStart(struct pollfd inputfd,
     message.tag = LobbyMessageTag_startStreaming;
     message.startStreaming.data.tag = (ServerConfigurationDataTag)index;
     switch (index) {
-        case ServerConfigurationDataTag_lobby:
-            message.startStreaming.data.lobby = defaultLobbyConfiguration();
-            break;
         case ServerConfigurationDataTag_text:
             message.startStreaming.data.text = defaultTextConfiguration();
             break;
@@ -835,7 +837,7 @@ selectStreamToStart(struct pollfd inputfd,
       "\nCreating '%s' stream named '%s'...\n",
       ServerConfigurationDataTagToCharString(message.startStreaming.data.tag),
       message.startStreaming.name.buffer);
-    sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, bytes, true);
+    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
     TemLangStringListAppend(&clientData.ownStreams,
                             &message.startStreaming.name);
     LobbyMessageFree(&message);
@@ -1568,6 +1570,15 @@ clientHandleLobbyMessage(const LobbyMessage* message,
                                                  &message->allStreamsAck,
                                                  currentAllocator);
             goto end;
+        case LobbyMessageTag_startStreamingAck:
+            result = true;
+            if (message->startStreamingAck) {
+                puts("Started stream. Refresh stream list and connect to start "
+                     "streaming");
+            } else {
+                puts("Failed to start stream");
+            }
+            goto end;
         case LobbyMessageTag_general:
             switch (message->general.tag) {
                 case GeneralMessageTag_getClientsAck:
@@ -1591,15 +1602,18 @@ clientHandleLobbyMessage(const LobbyMessage* message,
                     lm.general.getClients = NULL;
                     lm.general.tag = GeneralMessageTag_getClients;
                     MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-                    sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, bytes, true);
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
 
                     lm.tag = LobbyMessageTag_allStreams;
                     lm.allStreams = NULL;
                     MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-                    sendBytes(peer, 1, peer->mtu, CLIENT_CHANNEL, bytes, true);
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
                     goto end;
                 default:
-                    break;
+                    printf("Unexpected message from lobby server: %s\n",
+                           GeneralMessageTagToCharString(message->general.tag));
+                    appDone = true;
+                    goto end;
             }
             break;
         default:
@@ -1638,31 +1652,16 @@ checkForMessagesFromLobby(ENetHost* host,
                                      .buffer = event->packet->data,
                                      .size = event->packet->dataLength,
                                      .used = event->packet->dataLength };
-                Payload payload = { 0 };
-                MESSAGE_DESERIALIZE(Payload, payload, temp);
 
                 LobbyMessage message = { 0 };
-                switch (parsePayload(&payload, client)) {
-                    case PayloadParseResult_UsePayload:
-                        MESSAGE_DESERIALIZE(
-                          LobbyMessage, message, payload.fullData);
-                        break;
-                    case PayloadParseResult_Done:
-                        MESSAGE_DESERIALIZE(
-                          LobbyMessage, message, client->payload);
-                        break;
-                    default:
-                        goto fend;
-                }
+                MESSAGE_DESERIALIZE(LobbyMessage, message, temp);
 
                 IN_MUTEX(clientData.mutex, f, {
                     result = clientHandleLobbyMessage(
                       &message, event->peer, bytes, client);
                 });
 
-            fend:
                 enet_packet_destroy(event->packet);
-                PayloadFree(&payload);
                 LobbyMessageFree(&message);
             } break;
             default:

@@ -80,12 +80,6 @@ defaultAudioConfiguration()
     return (AudioConfiguration){ .none = NULL };
 }
 
-TextConfiguration
-defaultTextConfiguration()
-{
-    return (TextConfiguration){ .maxLength = 4096 };
-}
-
 ChatConfiguration
 defaultChatConfiguration()
 {
@@ -100,8 +94,7 @@ defaultServerConfiguration()
         .redisIp = TemLangStringCreate("localhost", currentAllocator),
         .redisPort = 6379,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
-        .minPort = 10000u,
-        .maxPort = 10255u,
+        .port = { .port = 10000u, .tag = PortTag_port },
         .maxClients = 1024u,
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
@@ -122,10 +115,14 @@ parseServerConfiguration(const char* key,
     STR_EQUALS(key, "--min-port", keyLen, { goto parseMinPort; });
     STR_EQUALS(key, "-MP", keyLen, { goto parseMaxPort; });
     STR_EQUALS(key, "--max-port", keyLen, { goto parseMaxPort; });
+    STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
+    STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
     STR_EQUALS(key, "-RI", keyLen, { goto parseIp; });
     STR_EQUALS(key, "--redis-ip", keyLen, { goto parseIp; });
-    STR_EQUALS(key, "-RP", keyLen, { goto parsePort; });
-    STR_EQUALS(key, "--redis-port", keyLen, { goto parsePort; });
+    STR_EQUALS(key, "-RP", keyLen, { goto parseRedisPort; });
+    STR_EQUALS(key, "--redis-port", keyLen, { goto parseRedisPort; });
+    STR_EQUALS(key, "-T", keyLen, { goto parseTimeout; });
+    STR_EQUALS(key, "--timeout", keyLen, { goto parseTimeout; });
     // TODO: parse authentication
     return false;
 
@@ -144,50 +141,34 @@ parseIp : {
     config->redisIp = TemLangStringCreate(value, currentAllocator);
     return true;
 }
-parsePort : {
+parseRedisPort : {
     const int i = atoi(value);
     config->redisPort = SDL_clamp(i, 1000, 60000);
     return true;
 }
 parseMinPort : {
     const int i = atoi(value);
-    config->minPort = SDL_clamp(i, 1000, 60000);
+    config->port.tag = PortTag_portRange;
+    config->port.portRange.minPort = SDL_clamp(i, 1000, 60000);
     return true;
 }
 parseMaxPort : {
     const int i = atoi(value);
-    config->maxPort = SDL_clamp(i, 1000, 60000);
+    config->port.tag = PortTag_portRange;
+    config->port.portRange.maxPort = SDL_clamp(i, 1000, 60000);
     return true;
 }
-}
-
-bool
-parseTextConfiguration(const int argc,
-                       const char** argv,
-                       pConfiguration configuration)
-{
-    configuration->tag = ServerConfigurationDataTag_text;
-    pTextConfiguration text = &configuration->server.data.text;
-    for (int i = 2; i < argc - 1; i += 2) {
-        const char* key = argv[i];
-        const size_t keyLen = strlen(key);
-        const char* value = argv[i + 1];
-        STR_EQUALS(key, "-L", keyLen, { goto parseLength; });
-        STR_EQUALS(key, "--max-length", keyLen, { goto parseLength; });
-        if (!parseCommonConfiguration(key, value, configuration) &&
-            !parseServerConfiguration(key, value, &configuration->server)) {
-            parseFailure("Text", key, value);
-            return false;
-        }
-        continue;
-
-    parseLength : {
-        const int i = atoi(value);
-        text->maxLength = SDL_max(i, 32);
-        continue;
-    }
-    }
+parsePort : {
+    const int i = atoi(value);
+    config->port.tag = PortTag_port;
+    config->port.port = SDL_clamp(i, 1000, 60000);
     return true;
+}
+parseTimeout : {
+    const int i = atoi(value);
+    config->timeout = SDL_max(i, 0);
+    return true;
+}
 }
 
 bool
@@ -238,13 +219,14 @@ int
 printServerConfiguration(const ServerConfiguration* configuration)
 {
     int offset =
-      printf("Hostname: %s\nPorts: %u-%u\nRedis: %s:%u\nMax clients: %u\n",
+      printf("Hostname: %s\nRedis: %s:%u\nMax clients: %u\nTimeout: %" PRIu64
+             "\n",
              configuration->hostname.buffer,
-             configuration->minPort,
-             configuration->maxPort,
              configuration->redisIp.buffer,
              configuration->redisPort,
-             configuration->maxClients) +
+             configuration->maxClients,
+             configuration->timeout) +
+      printPort(&configuration->port) +
       printServerAuthentication(&configuration->authentication);
     switch (configuration->data.tag) {
         case ServerConfigurationDataTag_chat:
@@ -365,92 +347,32 @@ cleanupServer(ENetHost* server)
     }
 }
 
-PayloadParseResult
-parsePayload(const Payload* payload, pClient client)
-{
-    switch (payload->tag) {
-        case PayloadTag_dataStart:
-            client->payload.used = 0;
-            break;
-        case PayloadTag_dataEnd:
-            return PayloadParseResult_Done;
-        case PayloadTag_dataChunk:
-            uint8_tListQuickAppend(&client->payload,
-                                   payload->dataChunk.buffer,
-                                   payload->dataChunk.used);
-            break;
-        case PayloadTag_fullData:
-            return PayloadParseResult_UsePayload;
-        default:
-            break;
-    }
-    return PayloadParseResult_Continuing;
-}
-
 void
 sendBytes(ENetPeer* peers,
           const size_t peerCount,
-          const size_t mtu,
           const enet_uint32 channel,
           const Bytes* bytes,
           const bool reliable)
 {
-    Bytes newBytes = { .allocator = currentAllocator };
-    if (bytes->used > mtu) {
-        {
-            Payload payload = { .tag = PayloadTag_dataStart,
-                                .dataStart = NULL };
-            MESSAGE_SERIALIZE(Payload, payload, newBytes);
-            ENetPacket* packet =
-              BytesToPacket(newBytes.buffer, newBytes.used, true);
-            for (size_t i = 0; i < peerCount; ++i) {
-                PEER_SEND(&peers[i], channel, packet);
-            }
-        }
-
-        size_t offset = 0;
-        for (const size_t n = bytes->used - mtu; offset < n; offset += mtu) {
-            Payload payload = { .tag = PayloadTag_dataChunk,
-                                .dataChunk = { .buffer = bytes->buffer + offset,
-                                               .used = bytes->used - offset } };
-            MESSAGE_SERIALIZE(Payload, payload, newBytes);
-            ENetPacket* packet =
-              BytesToPacket(newBytes.buffer, newBytes.used, reliable);
-            for (size_t i = 0; i < peerCount; ++i) {
-                PEER_SEND(&peers[i], channel, packet);
-            }
-        }
-        if (offset < bytes->used) {
-            ENetPacket* packet = BytesToPacket(
-              bytes->buffer + offset, bytes->used - offset, reliable);
-            for (size_t i = 0; i < peerCount; ++i) {
-                PEER_SEND(&peers[i], channel, packet);
-            }
-        }
-
-        {
-            Payload payload = { .tag = PayloadTag_dataEnd, .dataEnd = NULL };
-            MESSAGE_SERIALIZE(Payload, payload, newBytes);
-            ENetPacket* packet =
-              BytesToPacket(newBytes.buffer, newBytes.used, true);
-            for (size_t i = 0; i < peerCount; ++i) {
-                PEER_SEND(&peers[i], channel, packet);
-            }
-        }
-    } else {
-        Payload payload = { .tag = PayloadTag_fullData, .fullData = *bytes };
-        MESSAGE_SERIALIZE(Payload, payload, newBytes);
-        ENetPacket* packet =
-          BytesToPacket(newBytes.buffer, newBytes.used, reliable);
-        for (size_t i = 0; i < peerCount; ++i) {
-            PEER_SEND(&peers[i], channel, packet);
-        }
+    ENetPacket* packet = BytesToPacket(bytes->buffer, bytes->used, reliable);
+    for (size_t i = 0; i < peerCount; ++i) {
+        PEER_SEND(&peers[i], channel, packet);
     }
-    uint8_tListFree(&newBytes);
 }
 
+#define CHECK_SERVER                                                           \
+    server = enet_host_create(&address, config->maxClients, 2, 0, 0);          \
+    if (server != NULL) {                                                      \
+        char buffer[1024] = { 0 };                                             \
+        enet_address_get_host_ip(&address, buffer, sizeof(buffer));            \
+        printf("Opened server at %s:%u\n", buffer, address.port);              \
+        config->port.tag = PortTag_port;                                       \
+        config->port.port = address.port;                                      \
+        goto continueServer;                                                   \
+    }
+
 int
-runServer(const Configuration* configuration, ServerFunctions funcs)
+runServer(pConfiguration configuration, ServerFunctions funcs)
 {
     int result = EXIT_FAILURE;
 
@@ -467,20 +389,25 @@ runServer(const Configuration* configuration, ServerFunctions funcs)
 
     appDone = false;
 
-    const ServerConfiguration* config = &configuration->server;
+    pServerConfiguration config = &configuration->server;
     {
         ENetAddress address = { 0 };
-        enet_address_set_host(&address, configuration->server.hostname.buffer);
-        for (enet_uint16 port = config->minPort; port <= config->maxPort;
-             ++port) {
-            address.port = port;
-            server = enet_host_create(&address, config->maxClients, 2, 0, 0);
-            if (server != NULL) {
-                char buffer[1024] = { 0 };
-                enet_address_get_host_ip(&address, buffer, sizeof(buffer));
-                printf("Opened server at %s:%u\n", buffer, address.port);
-                goto continueServer;
-            }
+        enet_address_set_host(&address, config->hostname.buffer);
+        switch (config->port.tag) {
+            case PortTag_port:
+                address.port = config->port.port;
+                CHECK_SERVER;
+                break;
+            case PortTag_portRange:
+                for (enet_uint16 port = config->port.portRange.minPort;
+                     port <= config->port.portRange.maxPort;
+                     ++port) {
+                    address.port = port;
+                    CHECK_SERVER;
+                }
+                break;
+            default:
+                break;
         }
         fprintf(stderr, "Failed to create server\n");
         goto end;
@@ -505,6 +432,7 @@ continueServer:
 
     RandomState rs = makeRandomState();
     ENetEvent event = { 0 };
+    uint64_t lastCheck = SDL_GetTicks64();
     while (!appDone) {
         while (!appDone && enet_host_service(server, &event, 100U) > 0) {
             switch (event.type) {
@@ -535,23 +463,8 @@ continueServer:
                                          .buffer = event.packet->data,
                                          .size = event.packet->dataLength,
                                          .used = event.packet->dataLength };
-                    Payload payload = { 0 };
-                    MESSAGE_DESERIALIZE(Payload, payload, temp);
 
-                    void* message = NULL;
-
-                    switch (parsePayload(&payload, client)) {
-                        case PayloadParseResult_UsePayload:
-                            message =
-                              funcs.deserializeMessage(&payload.fullData);
-                            break;
-                        case PayloadParseResult_Done:
-                            message =
-                              funcs.deserializeMessage(&client->payload);
-                            break;
-                        default:
-                            goto fend;
-                    }
+                    void* message = funcs.deserializeMessage(&temp);
 
                     switch (handleClientAuthentication(
                       client,
@@ -579,8 +492,7 @@ continueServer:
                             enet_peer_disconnect(event.peer, 0);
                             break;
                     }
-                fend:
-                    PayloadFree(&payload);
+
                     funcs.freeMessage(message);
                     enet_packet_destroy(event.packet);
                 } break;
@@ -591,12 +503,14 @@ continueServer:
             }
         }
         const uint64_t now = SDL_GetTicks64();
+        uint64_t connectedPeers = 0;
         for (size_t i = 0; i < server->peerCount; ++i) {
             ENetPeer* peer = &server->peers[i];
             pClient client = peer->data;
             if (client == NULL) {
                 continue;
             }
+            ++connectedPeers;
             if (now - client->joinTime > 10000LL &&
                 GuidEquals(&client->id, &ZeroGuid)) {
                 char buffer[KB(1)] = { 0 };
@@ -608,6 +522,15 @@ continueServer:
                        peer->address.port);
                 enet_peer_disconnect(peer, 0);
             }
+        }
+        if (connectedPeers == 0 && config->timeout > 0 &&
+            now - lastCheck > config->timeout) {
+            printf("Ending server due to no connected clients in %" PRIu64
+                   " seconds\n",
+                   config->timeout);
+            appDone = true;
+        } else {
+            lastCheck = now;
         }
     }
 
@@ -708,4 +631,17 @@ removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
     TemLangStringFree(&str);
     uint8_tListFree(&bytes);
     return result;
+}
+
+void
+sendPacketToReaders(ENetHost* host, ENetPacket* packet, const Access* acccess)
+{
+    for (size_t i = 0; i < host->peerCount; ++i) {
+        ENetPeer* peer = &host->peers[i];
+        pClient client = peer->data;
+        if (client == NULL || !clientHasAccess(client, acccess)) {
+            continue;
+        }
+        PEER_SEND(peer, SERVER_CHANNEL, packet);
+    }
 }

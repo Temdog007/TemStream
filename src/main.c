@@ -6,6 +6,7 @@
 #include "misc.c"
 #include "rendering.c"
 #include "server.c"
+#include "text.c"
 
 const Allocator* currentAllocator = NULL;
 bool appDone = true;
@@ -13,9 +14,17 @@ bool appDone = true;
 int
 checkMemory();
 
+#define PRINT_ARGS 0
+
 int
 main(const int argc, const char** argv)
 {
+#if PRINT_ARGS
+    puts("Arguments");
+    for (int i = 0; i < argc; ++i) {
+        printf("%d) %s\n", i, argv[i]);
+    }
+#endif
     int result = EXIT_FAILURE;
     Configuration configuration = { 0 };
     printVersion();
@@ -34,7 +43,7 @@ main(const int argc, const char** argv)
         for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-B", argv[i]) == 0 ||
                 strcmp("--binary", argv[i]) == 0) {
-                binaryIndex = i;
+                binaryIndex = i + 1;
                 continue;
             }
             if (strcmp("-M", argv[i]) != 0 &&
@@ -66,6 +75,9 @@ main(const int argc, const char** argv)
                             .used = str.used };
             if (result) {
                 ConfigurationDeserialize(&configuration, &bytes, 0, true);
+                printf("Configuration set to %s\n",
+                       ServerConfigurationDataTagToCharString(
+                         configuration.server.data.tag));
             }
             TemLangStringFree(&str);
             if (!result) {
@@ -147,7 +159,7 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
                 case ServerConfigurationDataTag_image:
                     goto runImage;
                 case ServerConfigurationDataTag_text:
-                    goto runText;
+                    goto runTextSkipParsing;
                 case ServerConfigurationDataTag_lobby:
                     goto runLobbySkipParsing;
                 default:
@@ -162,7 +174,6 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
 runLobby : {
     configuration->tag = ConfigurationTag_server;
     configuration->server = defaultServerConfiguration();
-    configuration->server.runCommand = (NullValue)argv[0];
     if (parseLobbyConfiguration(argc, argv, configuration)) {
     runLobbySkipParsing:
         result = runServer(configuration,
@@ -178,7 +189,20 @@ runLobby : {
     goto end;
 }
 runText : {
-    // result = runTextServer(argc, argv, &configuration);
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    if (parseTextConfiguration(argc, argv, configuration)) {
+    runTextSkipParsing:
+        result = runServer(configuration,
+                           (ServerFunctions){
+                             .serializeMessage = serializeTextMessage,
+                             .deserializeMessage = deserializeTextMessage,
+                             .handleMessage = handleTextMessage,
+                             .sendGeneral = textSendGeneralMessage,
+                             .freeMessage = freeTextMessage,
+                             .getGeneralMessage = getGeneralMessageFromText,
+                           });
+    }
     goto end;
 }
 runChat : {

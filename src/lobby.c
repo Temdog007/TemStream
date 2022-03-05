@@ -15,6 +15,7 @@ parseLobbyConfiguration(const int argc,
     configuration->server.data.tag = ServerConfigurationDataTag_lobby;
     pLobbyConfiguration lobby = &configuration->server.data.lobby;
     *lobby = defaultLobbyConfiguration();
+    lobby->runCommand = (NullValue)argv[0];
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
@@ -84,10 +85,15 @@ startNewServer(const ServerConfiguration* c)
         ServerConfigurationSerialize(c, &bytes, true);
         TemLangString str =
           b64_encode((unsigned char*)bytes.buffer, bytes.used);
-        const int result = execl(c->runCommand, "-B", str.buffer);
+        const int result = execl(c->data.lobby.runCommand,
+                                 c->data.lobby.runCommand,
+                                 "-B",
+                                 str.buffer,
+                                 NULL);
         TemLangStringFree(&str);
         uint8_tListFree(&bytes);
-        return result == EXIT_SUCCESS;
+        exit(result);
+        return false;
     } else {
         const size_t fs = (size_t)f;
         SDL_Thread* thread = SDL_CreateThread(
@@ -109,7 +115,7 @@ lobbySendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
     lm.tag = LobbyMessageTag_general;
     lm.general = *m;
     MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-    sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+    sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
 }
 
 bool
@@ -136,13 +142,12 @@ handleLobbyMessage(const void* ptr,
             break;
         case LobbyMessageTag_startStreaming: {
             lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
-            lobbyMessage.startStreamingAck.none = NULL;
-            lobbyMessage.startStreamingAck.tag =
-              OptionalServerConfigurationTag_none;
+            lobbyMessage.startStreamingAck = false;
+            result = true;
 
             ServerConfigurationList streams = getStreams(ctx);
             const ServerConfiguration* newConfig = &message->startStreaming;
-            if (!GetStreamFromName(&streams, &newConfig->name, NULL, NULL)) {
+            if (GetStreamFromName(&streams, &newConfig->name, NULL, NULL)) {
 #if _DEBUG
                 printf("Client '%s' attempted to make duplicate stream '%s'\n",
                        client->name.buffer,
@@ -156,20 +161,23 @@ handleLobbyMessage(const void* ptr,
                 case ServerConfigurationDataTag_chat:
                 case ServerConfigurationDataTag_audio:
                 case ServerConfigurationDataTag_image: {
-                    pServerConfiguration c =
-                      &lobbyMessage.startStreamingAck.configuration;
-                    lobbyMessage.startStreamingAck.tag =
-                      OptionalServerConfigurationTag_configuration;
-                    ServerConfigurationCopy(c, serverConfig, currentAllocator);
+                    ServerConfiguration c = { 0 };
+                    ServerConfigurationCopy(&c, serverConfig, currentAllocator);
                     TemLangStringCopy(
-                      &c->name, &newConfig->name, currentAllocator);
+                      &c.name, &newConfig->name, currentAllocator);
                     AccessCopy(
-                      &c->readers, &newConfig->writers, currentAllocator);
+                      &c.readers, &newConfig->writers, currentAllocator);
                     AccessCopy(
-                      &c->writers, &newConfig->readers, currentAllocator);
+                      &c.writers, &newConfig->readers, currentAllocator);
                     ServerConfigurationDataCopy(
-                      &c->data, &newConfig->data, currentAllocator);
-                    if (!startNewServer(c)) {
+                      &c.data, &newConfig->data, currentAllocator);
+                    c.data.lobby.runCommand =
+                      serverConfig->data.lobby.runCommand;
+                    const bool success = startNewServer(&c);
+                    ServerConfigurationFree(&c);
+                    if (success) {
+                        lobbyMessage.startStreamingAck = true;
+                    } else {
                         fprintf(stderr, "Failed to create new server\n");
                         goto ssEnd;
                     }
@@ -184,7 +192,7 @@ handleLobbyMessage(const void* ptr,
 
         ssEnd:
             MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-            sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+            sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
             LobbyMessageFree(&lobbyMessage);
             ServerConfigurationListFree(&streams);
             result = true;
@@ -194,7 +202,7 @@ handleLobbyMessage(const void* ptr,
     }
     if (result) {
         MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-        sendBytes(peer, 1, peer->mtu, SERVER_CHANNEL, bytes, true);
+        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
     } else {
 #if _DEBUG
         printf("Unexpected message '%s' from client\n",
