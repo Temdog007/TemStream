@@ -109,6 +109,7 @@ handleTextMessage(const void* ptr,
                 break;
             }
             if (clientHasWriteAccess(client, serverConfig)) {
+                printf("Text server updated with '%s'\n", message->text.buffer);
                 MESSAGE_SERIALIZE(TextMessage, (*message), (*bytes));
                 ENetPacket* packet =
                   BytesToPacket(bytes->buffer, bytes->used, true);

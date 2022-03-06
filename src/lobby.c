@@ -171,9 +171,9 @@ handleLobbyMessage(const void* ptr,
                     TemLangStringCopy(
                       &c.name, &newConfig->name, currentAllocator);
                     AccessCopy(
-                      &c.readers, &newConfig->writers, currentAllocator);
+                      &c.readers, &newConfig->readers, currentAllocator);
                     AccessCopy(
-                      &c.writers, &newConfig->readers, currentAllocator);
+                      &c.writers, &newConfig->writers, currentAllocator);
                     ServerConfigurationDataCopy(
                       &c.data, &newConfig->data, currentAllocator);
                     c.data.lobby.runCommand =

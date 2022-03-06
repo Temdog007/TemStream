@@ -97,6 +97,8 @@ defaultServerConfiguration()
         .port = { .port = 10000u, .tag = PortTag_port },
         .maxClients = 1024u,
         .timeout = 10u * 1000u,
+        .writers = { .anyone = NULL, .tag = AccessTag_anyone },
+        .readers = { .anyone = NULL, .tag = AccessTag_anyone },
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
     };
@@ -217,6 +219,26 @@ printAuthenticate(const ServerAuthentication* auth)
 }
 
 int
+printAccess(const Access* access)
+{
+    switch (access->tag) {
+        case AccessTag_anyone:
+            return puts("Anyone");
+        case AccessTag_list: {
+            int offset = 0;
+            for (size_t i = 0; i < access->list.used; ++i) {
+                offset += printf("%s%s",
+                                 access->list.buffer[i].buffer,
+                                 i == access->list.used - 1U ? "\n" : ", ");
+            }
+            return offset;
+        } break;
+        default:
+            return 0;
+    }
+}
+
+int
 printServerConfiguration(const ServerConfiguration* configuration)
 {
     int offset =
@@ -228,7 +250,9 @@ printServerConfiguration(const ServerConfiguration* configuration)
              configuration->maxClients,
              configuration->timeout) +
       printPort(&configuration->port) +
-      printServerAuthentication(&configuration->authentication);
+      printServerAuthentication(&configuration->authentication) +
+      printf("Read Access: ") + printAccess(&configuration->readers) +
+      printf("Write Access: ") + printAccess(&configuration->writers);
     switch (configuration->data.tag) {
         case ServerConfigurationDataTag_chat:
             offset += printChatConfiguration(&configuration->data.chat);
@@ -388,7 +412,10 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
         goto end;
     }
 
-    printf("Running %s server\n", configuration->server.name.buffer);
+    printf(
+      "Running server: '%s(%s)'\n",
+      configuration->server.name.buffer,
+      ServerConfigurationDataTagToCharString(configuration->server.data.tag));
     printConfiguration(configuration);
 
     appDone = false;

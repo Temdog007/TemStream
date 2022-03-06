@@ -368,6 +368,8 @@ clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
             display->data.tag = StreamDisplayDataTag_text;
             success = TemLangStringCopy(
               &display->data.text, &message.text, currentAllocator);
+            printf("Got text message: '%s'\n", message.text.buffer);
+            updateStreamDisplay(display);
         } break;
         case TextMessageTag_general:
             success = true;
@@ -481,13 +483,13 @@ streamConnectionThread(void* ptr)
                                           config->data.tag));
                                 break;
                         }
-                        enet_packet_destroy(event.packet);
                         if (!success) {
                             printf("Disconnecting from server: ");
                             printServerConfigurationForClient(config);
                             enet_peer_disconnect(event.peer, 0);
                         }
                     });
+                    enet_packet_destroy(event.packet);
                 } break;
                 case ENET_EVENT_TYPE_NONE:
                     break;
@@ -928,6 +930,8 @@ selectStreamToStart(struct pollfd inputfd,
                     ENetPeer* peer,
                     pClient client)
 {
+    LobbyMessage message = { 0 };
+
     askQuestion("Select the type of stream to create");
     for (uint32_t i = 0; i < ServerConfigurationDataTag_Length; ++i) {
         printf("%u) %s\n", i + 1U, ServerConfigurationDataTagToCharString(i));
@@ -939,10 +943,9 @@ selectStreamToStart(struct pollfd inputfd,
           inputfd, bytes, ServerConfigurationDataTag_Length, &index, true) !=
         UserInputResult_Input) {
         puts("Canceling start stream");
-        return;
+        goto end;
     }
 
-    LobbyMessage message = { 0 };
     message.tag = LobbyMessageTag_startStreaming;
     message.startStreaming.data.tag = (ServerConfigurationDataTag)index;
     switch (index) {
@@ -960,23 +963,55 @@ selectStreamToStart(struct pollfd inputfd,
             break;
         default:
             puts("Canceling start stream");
-            return;
+            goto end;
     }
 
     askQuestion("What's the name of the stream?");
     if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
         puts("Canceling start stream");
-        return;
+        goto end;
     }
     puts("");
 
     message.startStreaming.name =
       TemLangStringCreate((char*)bytes->buffer, currentAllocator);
 
-    message.startStreaming.writers.tag = AccessTag_list;
-    message.startStreaming.writers.list.allocator = currentAllocator;
-    TemLangStringListAppend(&message.startStreaming.writers.list,
-                            &client->name);
+    askQuestion("Do you want exclusive write access? (y or n)");
+    while (!appDone) {
+        switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
+            case UserInputResult_Input:
+                switch ((char)bytes->buffer[0]) {
+                    case 'y':
+                        index = 1;
+                        goto continueMessage;
+                    case 'n':
+                        index = 0;
+                        goto continueMessage;
+                    default:
+                        break;
+                }
+                break;
+            case UserInputResult_NoInput:
+                continue;
+            default:
+                break;
+        }
+        puts("Enter 'y' or 'n'");
+    }
+
+continueMessage:
+    if (index) {
+        message.startStreaming.writers.tag = AccessTag_list;
+        message.startStreaming.writers.list.allocator = currentAllocator;
+        TemLangStringListAppend(&message.startStreaming.writers.list,
+                                &client->name);
+    } else {
+        message.startStreaming.writers.tag = AccessTag_anyone;
+        message.startStreaming.writers.anyone = NULL;
+    }
+
+    message.startStreaming.readers.tag = AccessTag_anyone;
+    message.startStreaming.readers.anyone = NULL;
 
     MESSAGE_SERIALIZE(LobbyMessage, message, (*bytes));
     printf(
@@ -984,6 +1019,7 @@ selectStreamToStart(struct pollfd inputfd,
       ServerConfigurationDataTagToCharString(message.startStreaming.data.tag),
       message.startStreaming.name.buffer);
     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+end:
     LobbyMessageFree(&message);
 }
 
