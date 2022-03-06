@@ -419,6 +419,7 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
     printConfiguration(configuration);
 
     appDone = false;
+    SDL_AtomicSet(&runningThreads, 0);
 
     pServerConfiguration config = &configuration->server;
     {
@@ -572,6 +573,9 @@ continueServer:
 
 end:
     appDone = true;
+    while (SDL_AtomicGet(&runningThreads) > 0) {
+        SDL_Delay(1);
+    }
     removeConfigurationFromRedis(ctx, config);
     redisFree(ctx);
     cleanupServer(server);

@@ -11,8 +11,7 @@
 const Allocator* currentAllocator = NULL;
 bool appDone = true;
 
-int
-checkMemory();
+int checkMemory(pConfiguration);
 
 #define PRINT_ARGS 0
 
@@ -95,17 +94,22 @@ main(const int argc, const char** argv)
     enet_deinitialize();
 
 end:
-    ConfigurationFree(&configuration);
 #if _DEBUG
-    result = checkMemory();
+    result = checkMemory(&configuration);
+#else
+    ConfigurationFree(&configuration);
 #endif
     freeTSAllocator();
     return result;
 }
 
 int
-checkMemory()
+checkMemory(pConfiguration config)
 {
+    if (config->tag == ConfigurationTag_server) {
+        printf("Checking memory of server: '%s'\n", config->server.name.buffer);
+    }
+    ConfigurationFree(config);
     const size_t used = currentAllocator->used();
     if (used == 0) {
         printf("No memory leaked\n");

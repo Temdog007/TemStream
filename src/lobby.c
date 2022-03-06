@@ -73,7 +73,9 @@ waitForChildProcess(void* ptr)
 {
     const size_t fs = (size_t)ptr;
     const pid_t f = (pid_t)fs;
-    return waitpid(f, NULL, 0);
+    const int result = waitpid(f, NULL, 0);
+    SDL_AtomicDecRef(&runningThreads);
+    return result;
 }
 
 bool
@@ -108,6 +110,7 @@ startNewServer(const ServerConfiguration* serverConfig)
               stderr, "Failed to create new thread: %s\n", SDL_GetError());
             return false;
         }
+        SDL_AtomicIncRef(&runningThreads);
         SDL_DetachThread(thread);
         return true;
     }

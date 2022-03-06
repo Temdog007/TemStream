@@ -1,6 +1,7 @@
 #include <include/main.h>
 
 const Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
+SDL_atomic_t runningThreads = { 0 };
 
 bool
 parseCredentials(const char* str, pCredentials c)

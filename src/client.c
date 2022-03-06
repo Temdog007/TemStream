@@ -6,8 +6,6 @@
 SDL_mutex* clientMutex = NULL;
 ClientData clientData = { 0 };
 
-SDL_atomic_t runningThreads = { 0 };
-
 #define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
     IN_MUTEX(mutex, endLabel, {                                                \
         pStreamDisplay display = NULL;                                         \

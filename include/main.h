@@ -33,6 +33,8 @@
 
 const extern Guid ZeroGuid;
 
+extern SDL_atomic_t runningThreads;
+
 typedef struct Client
 {
     TemLangString name;
