@@ -277,7 +277,7 @@ getIndexFromUser(struct pollfd inputfd,
     }
     ssize_t size = 0;
     while (!appDone) {
-        switch (getUserInput(inputfd, bytes, &size, CLIENT_POLL_WAIT)) {
+        switch (getUserInput(inputfd, bytes, &size, 0)) {
             case UserInputResult_Error:
                 return UserInputResult_Error;
             case UserInputResult_NoInput:
@@ -510,7 +510,8 @@ streamConnectionThread(void* ptr)
                                 display->config.data.tag,
                                 &display->userInputs.buffer[i]);
             }
-            display->userInputs.used = 0;
+            UserInputListFree(&display->userInputs);
+            display->userInputs.allocator = currentAllocator;
         endLabel:
             SDL_UnlockMutex(clientData.mutex);
         }
@@ -521,9 +522,10 @@ end:
         size_t i = 0;
         const StreamDisplay* display = NULL;
         if (GetStreamDisplayFromGuid(&clientData.displays, id, &display, &i)) {
-            printf("Disconnecting from server %s(%s)\n",
-                   display->config.name.buffer,
-                   ServerConfigurationDataTagToCharString(display->data.tag));
+            printf(
+              "Disconnecting from server %s(%s)\n",
+              display->config.name.buffer,
+              ServerConfigurationDataTagToCharString(display->config.data.tag));
             StreamDisplayListSwapRemove(&clientData.displays, i);
         }
     });
@@ -561,6 +563,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
     }
 
     StreamDisplay display = { 0 };
+    display.userInputs.allocator = currentAllocator;
     display.id = randomGuid(rs);
     ServerConfigurationCopy(
       &display.config, &clientData.allStreams.buffer[i], currentAllocator);
@@ -1344,7 +1347,6 @@ updateTextDisplay(SDL_Renderer* renderer,
     }
     SDL_Surface* surface = NULL;
 
-    display->data.tag = StreamDisplayDataTag_none;
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;

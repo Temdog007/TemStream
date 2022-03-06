@@ -86,7 +86,7 @@ filenameToExtension(const char* filename, pFileExtension f)
         return true;
     }
 
-    if (TemLangStringEquals(&str, "txt")) {
+    if (TemLangStringEquals(&str, "TXT")) {
         f->tag = FileExtensionTag_text;
         f->text = NULL;
         return true;
