@@ -529,11 +529,11 @@ continueServer:
         }
         if (connectedPeers == 0) {
             if (config->timeout > 0 && now - lastCheck > config->timeout) {
-                printf(
-                  "Ending server '%s' due to no connected clients in %" PRIu64
-                  " seconds\n",
-                  config->name.buffer,
-                  config->timeout / 1000U);
+                printf("Ending server '%s(%s)' due to no connected clients in "
+                       "%" PRIu64 " seconds\n",
+                       config->name.buffer,
+                       ServerConfigurationDataTagToCharString(config->data.tag),
+                       config->timeout / 1000U);
                 appDone = true;
             }
         } else {

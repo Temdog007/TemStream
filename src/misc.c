@@ -270,15 +270,35 @@ StreamDisplayNameEquals(const StreamDisplay* display, const TemLangString* name)
 }
 
 bool
-StreamDisplayListNameEquals(const StreamDisplayList* list,
-                            const TemLangString* name,
-                            const StreamDisplay** display,
-                            size_t* index)
+StreamDisplayGuidEquals(const StreamDisplay* display, const Guid* id)
+{
+    return GuidEquals(&display->id, id);
+}
+
+bool
+GetStreamDisplayFromName(const StreamDisplayList* list,
+                         const TemLangString* name,
+                         const StreamDisplay** display,
+                         size_t* index)
 {
     return StreamDisplayListFindIf(
       list,
       (StreamDisplayListFindFunc)StreamDisplayNameEquals,
       name,
+      display,
+      index);
+}
+
+bool
+GetStreamDisplayFromGuid(const StreamDisplayList* list,
+                         const Guid* id,
+                         const StreamDisplay** display,
+                         size_t* index)
+{
+    return StreamDisplayListFindIf(
+      list,
+      (StreamDisplayListFindFunc)StreamDisplayGuidEquals,
+      id,
       display,
       index);
 }

@@ -58,10 +58,19 @@ extern bool
 StreamDisplayNameEquals(const StreamDisplay*, const TemLangString*);
 
 extern bool
-StreamDisplayListNameEquals(const StreamDisplayList*,
-                            const TemLangString*,
-                            const StreamDisplay**,
-                            size_t*);
+StreamDisplayGuidEquals(const StreamDisplay*, const Guid*);
+
+extern bool
+GetStreamDisplayFromName(const StreamDisplayList*,
+                         const TemLangString*,
+                         const StreamDisplay**,
+                         size_t*);
+
+extern bool
+GetStreamDisplayFromGuid(const StreamDisplayList*,
+                         const Guid*,
+                         const StreamDisplay**,
+                         size_t*);
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 1

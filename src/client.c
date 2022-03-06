@@ -8,14 +8,21 @@ ClientData clientData = { 0 };
 
 SDL_atomic_t runningThreads = { 0 };
 
-#define USE_CONFIG(mutex, endLabel, configMissing, f)                          \
+#define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
     IN_MUTEX(mutex, endLabel, {                                                \
+        pStreamDisplay display = NULL;                                         \
         const ServerConfiguration* config = NULL;                              \
-        if (!GetStreamFromName(&clientData.allStreams, name, &config, NULL)) { \
-            configMissing = true;                                              \
-            goto endLabel;                                                     \
+        {                                                                      \
+            size_t index = 0;                                                  \
+            if (!GetStreamDisplayFromGuid(                                     \
+                  &clientData.displays, id, NULL, &index)) {                   \
+                displayMissing = true;                                         \
+                goto endLabel;                                                 \
+            }                                                                  \
+            display = &clientData.displays.buffer[index];                      \
         }                                                                      \
-        configMissing = false;                                                 \
+        config = &display->config;                                             \
+        displayMissing = false;                                                \
         f                                                                      \
     });
 
@@ -34,12 +41,33 @@ handleUserInput(ENetPeer* peer,
                 const ServerConfigurationDataTag,
                 const UserInput*);
 
+bool
+clientHandleLobbyMessage(const LobbyMessage* message,
+                         ENetPeer* peer,
+                         pClient client);
+
+void
+clientHandleGeneralMessage(const GeneralMessage* message,
+                           pClient client,
+                           ENetPeer* peer);
+
 void
 renderDisplays()
 {
     SDL_Event e = { 0 };
     e.type = SDL_USEREVENT;
     e.user.code = CustomEvent_Render;
+    SDL_PushEvent(&e);
+}
+
+void
+updateStreamDisplay(const StreamDisplay* display)
+{
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_UpdateStreamDisplay;
+    e.user.data1 = (void*)(size_t)display->id.numbers[0];
+    e.user.data2 = (void*)(size_t)display->id.numbers[1];
     SDL_PushEvent(&e);
 }
 
@@ -328,17 +356,43 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
     sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
 }
 
+bool
+clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
+{
+    TextMessage message = { 0 };
+    MESSAGE_DESERIALIZE(TextMessage, message, (*bytes));
+    bool success = false;
+    switch (message.tag) {
+        case TextMessageTag_text: {
+            StreamDisplayDataFree(&display->data);
+            display->data.tag = StreamDisplayDataTag_text;
+            success = TemLangStringCopy(
+              &display->data.text, &message.text, currentAllocator);
+        } break;
+        case TextMessageTag_general:
+            success = true;
+            clientHandleGeneralMessage(&message.general, NULL, NULL);
+            break;
+        default:
+            printf("Unexpected text message: %s\n",
+                   TextMessageTagToCharString(message.tag));
+            break;
+    }
+    TextMessageFree(&message);
+    return success;
+}
+
 int
 streamConnectionThread(void* ptr)
 {
-    pTemLangString name = (pTemLangString)ptr;
+    const Guid* id = (const Guid*)ptr;
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
     Bytes bytes = { .allocator = currentAllocator };
 
-    bool configMissing = false;
-    USE_CONFIG(clientData.mutex, fend, configMissing, {
+    bool displayMissing = false;
+    USE_DISPLAY(clientData.mutex, fend, displayMissing, {
         if (config->port.tag != PortTag_port) {
             printf(
               "Cannot opening connection to stream due to an invalid port\n");
@@ -375,22 +429,22 @@ streamConnectionThread(void* ptr)
         enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
         printf(
           "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-        USE_CONFIG(clientData.mutex, fend2, configMissing, {
+        USE_DISPLAY(clientData.mutex, fend2, displayMissing, {
             sendAuthentication(peer, config->data.tag);
         });
     } else {
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
         peer = NULL;
-        appDone = true;
         goto end;
     }
 
-    while (!appDone && !configMissing) {
+    while (!appDone && !displayMissing) {
+        USE_DISPLAY(clientData.mutex, fend64, displayMissing, { goto fend64; });
         while (enet_host_service(host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
-                    USE_CONFIG(clientData.mutex, fend3, configMissing, {
+                    USE_DISPLAY(clientData.mutex, fend3, displayMissing, {
                         printf(
                           "Unexpected connect message from '%s(%s)' stream\n",
                           config->name.buffer,
@@ -399,14 +453,41 @@ streamConnectionThread(void* ptr)
                     });
                     goto end;
                 case ENET_EVENT_TYPE_DISCONNECT:
-                    USE_CONFIG(clientData.mutex, fend4, configMissing, {
-                        printf("Disconnect from '%s(%s)' stream\n",
+                    USE_DISPLAY(clientData.mutex, fend4, displayMissing, {
+                        printf("Disconnected from '%s(%s)' stream\n",
                                config->name.buffer,
                                ServerConfigurationDataTagToCharString(
                                  config->data.tag));
                     });
                     goto end;
                 case ENET_EVENT_TYPE_RECEIVE: {
+                    const Bytes packetBytes = { .allocator = currentAllocator,
+                                                .buffer = event.packet->data,
+                                                .size =
+                                                  event.packet->dataLength,
+                                                .used =
+                                                  event.packet->dataLength };
+                    USE_DISPLAY(clientData.mutex, fend5, displayMissing, {
+                        bool success = false;
+                        switch (config->data.tag) {
+                            case ServerConfigurationDataTag_text:
+                                success = clientHandleTextMessage(&packetBytes,
+                                                                  display);
+                                break;
+                            default:
+                                fprintf(stderr,
+                                        "Server '%s' not implemented\n",
+                                        ServerConfigurationDataTagToCharString(
+                                          config->data.tag));
+                                break;
+                        }
+                        enet_packet_destroy(event.packet);
+                        if (!success) {
+                            printf("Disconnecting from server: ");
+                            printServerConfigurationForClient(config);
+                            enet_peer_disconnect(event.peer, 0);
+                        }
+                    });
                 } break;
                 case ENET_EVENT_TYPE_NONE:
                     break;
@@ -416,8 +497,8 @@ streamConnectionThread(void* ptr)
         }
         if (SDL_TryLockMutex(clientData.mutex) == 0) {
             size_t index = 0;
-            if (!StreamDisplayListNameEquals(
-                  &clientData.displays, name, NULL, &index)) {
+            if (!GetStreamDisplayFromGuid(
+                  &clientData.displays, id, NULL, &index)) {
                 goto endLabel;
             }
             pStreamDisplay display = &clientData.displays.buffer[index];
@@ -434,7 +515,16 @@ streamConnectionThread(void* ptr)
     }
 
 end:
-    TemLangStringFree(name);
+    IN_MUTEX(clientData.mutex, fend645, {
+        size_t i = 0;
+        const StreamDisplay* display = NULL;
+        if (GetStreamDisplayFromGuid(&clientData.displays, id, &display, &i)) {
+            printf("Disconnecting from server %s(%s)\n",
+                   display->config.name.buffer,
+                   ServerConfigurationDataTagToCharString(display->data.tag));
+            StreamDisplayListSwapRemove(&clientData.displays, i);
+        }
+    });
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
@@ -443,7 +533,7 @@ end:
 }
 
 void
-selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
+selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
 {
     const uint32_t streamNum = clientData.allStreams.used;
     if (streamNum == 0) {
@@ -468,22 +558,22 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes)
         return;
     }
 
-    pTemLangString s = currentAllocator->allocate(sizeof(TemLangString));
-    TemLangStringCopy(
-      s, &clientData.allStreams.buffer[i].name, currentAllocator);
-    SDL_Thread* thread =
-      SDL_CreateThread((SDL_ThreadFunction)streamConnectionThread, "stream", s);
+    StreamDisplay display = { 0 };
+    display.id = randomGuid(rs);
+    ServerConfigurationCopy(
+      &display.config, &clientData.allStreams.buffer[i], currentAllocator);
+    StreamDisplayListAppend(&clientData.displays, &display);
+    pGuid id = currentAllocator->allocate(sizeof(Guid));
+    *id = display.id;
+    StreamDisplayFree(&display);
+
+    SDL_Thread* thread = SDL_CreateThread(
+      (SDL_ThreadFunction)streamConnectionThread, "stream", id);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
-        TemLangStringFree(s);
-        currentAllocator->free(s);
+        currentAllocator->free(id);
+        StreamDisplayListPop(&clientData.displays);
     } else {
-        StreamDisplay display = { 0 };
-        ServerConfigurationCopy(
-          &display.config, &clientData.allStreams.buffer[i], currentAllocator);
-        StreamDisplayListAppend(&clientData.displays, &display);
-        StreamDisplayFree(&display);
-
         SDL_AtomicIncRef(&runningThreads);
         SDL_DetachThread(thread);
     }
@@ -514,6 +604,10 @@ selectAStreamToDisconnectFrom(struct pollfd inputfd, pBytes bytes)
         return;
     }
 
+    printf(
+      "Disconnecting from %s(%s)...\n",
+      list->buffer[i].config.name.buffer,
+      ServerConfigurationDataTagToCharString(list->buffer[i].config.data.tag));
     StreamDisplayListSwapRemove(list, i);
 }
 
@@ -955,6 +1049,18 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
         goto end;
     }
 
+    askQuestion("Enter text to send");
+    if (getUserInput(inputfd, bytes, NULL, POLL_FOREVER) !=
+        UserInputResult_Input) {
+        puts("Canceling text send");
+        goto end;
+    }
+    UserInput userInput = { 0 };
+    userInput.text =
+      TemLangStringCreate((char*)bytes->buffer, currentAllocator);
+    userInput.tag = UserInputTag_text;
+    UserInputListAppend(&list->buffer[i].userInputs, &userInput);
+    UserInputFree(&userInput);
 end:
     return;
 }
@@ -1095,7 +1201,8 @@ void
 checkUserInput(SDL_Renderer* renderer,
                pBytes bytes,
                ENetPeer* peer,
-               pClient client)
+               pClient client,
+               pRandomState rs)
 {
     struct pollfd inputfd = { .events = POLLIN,
                               .revents = 0,
@@ -1127,20 +1234,20 @@ checkUserInput(SDL_Renderer* renderer,
             selectStreamToStop(inputfd, bytes);
             break;
         case ClientCommand_ConnectToStream:
-            selectAStreamToConnectTo(inputfd, bytes);
+            selectAStreamToConnectTo(inputfd, bytes, rs);
             break;
         case ClientCommand_DisconnectFromStream:
             selectAStreamToDisconnectFrom(inputfd, bytes);
             break;
-        case ClientCommand_ShowAllStreams:
-            askQuestion("All Streams");
-            for (size_t i = 0; i < clientData.allStreams.used; ++i) {
-                printServerConfigurationForClient(
-                  &clientData.allStreams.buffer[i]);
-            }
-            break;
-        case ClientCommand_ShowOwnStreams: {
-            askQuestion("Own Streams");
+        case ClientCommand_ShowAllStreams: {
+            LobbyMessage lm = { 0 };
+            lm.tag = LobbyMessageTag_allStreams;
+            lm.allStreams = NULL;
+            MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
+            sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+        } break;
+        case ClientCommand_ShowConnectedStreams: {
+            askQuestion("Connected Streams");
             const ServerConfiguration* config = NULL;
             for (size_t i = 0; i < clientData.displays.used; ++i) {
                 if (GetStreamFromName(
@@ -1194,8 +1301,7 @@ checkUserInput(SDL_Renderer* renderer,
 void
 updateTextDisplay(SDL_Renderer* renderer,
                   TTF_Font* ttfFont,
-                  pStreamDisplay display,
-                  const TemLangString* string)
+                  pStreamDisplay display)
 {
     if (renderer == NULL) {
         return;
@@ -1206,9 +1312,6 @@ updateTextDisplay(SDL_Renderer* renderer,
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;
-    }
-    if (string != NULL) {
-        TemLangStringCopy(&display->data.text, string, currentAllocator);
     }
 
     if (TemLangStringIsEmpty(&display->data.text)) {
@@ -1496,7 +1599,7 @@ updateAllDisplays(SDL_Renderer* renderer,
                 updateChatDisplay(renderer, ttfFont, w, h, display);
                 break;
             case StreamDisplayDataTag_text:
-                updateTextDisplay(renderer, ttfFont, display, NULL);
+                updateTextDisplay(renderer, ttfFont, display);
                 break;
             default:
                 break;
@@ -1620,19 +1723,53 @@ refrehClients(ENetPeer* peer, pBytes bytes)
 }
 
 void
-refreshStreams(ENetPeer* peer, pBytes bytes)
+refreshStreams(ENetPeer* peer)
 {
     LobbyMessage lm = { 0 };
     lm.tag = LobbyMessageTag_allStreams;
     lm.allStreams = NULL;
-    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+    uint8_t buffer[KB(1)] = { 0 };
+    Bytes bytes = {
+        .allocator = NULL, .buffer = buffer, .size = sizeof(buffer), .used = 0
+    };
+    MESSAGE_SERIALIZE(LobbyMessage, lm, bytes);
+    sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
+}
+
+void
+clientHandleGeneralMessage(const GeneralMessage* message,
+                           pClient client,
+                           ENetPeer* peer)
+{
+    switch (message->tag) {
+        case GeneralMessageTag_getClientsAck:
+            askQuestion("Clients");
+            for (size_t i = 0; i < message->getClientsAck.used; ++i) {
+                puts(message->getClientsAck.buffer[i].buffer);
+            }
+            puts("");
+            break;
+        case GeneralMessageTag_authenticateAck:
+            if (client == NULL) {
+                break;
+            }
+            TemLangStringCopy(
+              &client->name, &message->authenticateAck, currentAllocator);
+            printf("Client authenticated as %s\n", client->name.buffer);
+            if (peer != NULL) {
+                refreshStreams(peer);
+            }
+            break;
+        default:
+            printf("Unexpected message from lobby server: %s\n",
+                   GeneralMessageTagToCharString(message->tag));
+            break;
+    }
 }
 
 bool
 clientHandleLobbyMessage(const LobbyMessage* message,
                          ENetPeer* peer,
-                         pBytes bytes,
                          pClient client)
 {
     bool result = false;
@@ -1641,6 +1778,11 @@ clientHandleLobbyMessage(const LobbyMessage* message,
             result = ServerConfigurationListCopy(&clientData.allStreams,
                                                  &message->allStreamsAck,
                                                  currentAllocator);
+            askQuestion("All Streams");
+            for (size_t i = 0; i < clientData.allStreams.used; ++i) {
+                printServerConfigurationForClient(
+                  &clientData.allStreams.buffer[i]);
+            }
             goto end;
         case LobbyMessageTag_startStreamingAck:
             result = true;
@@ -1649,34 +1791,12 @@ clientHandleLobbyMessage(const LobbyMessage* message,
             } else {
                 puts("Failed to start stream");
             }
-            refreshStreams(peer, bytes);
+            refreshStreams(peer);
             goto end;
         case LobbyMessageTag_general:
-            switch (message->general.tag) {
-                case GeneralMessageTag_getClientsAck:
-                    askQuestion("Clients");
-                    for (size_t i = 0; i < message->general.getClientsAck.used;
-                         ++i) {
-                        puts(message->general.getClientsAck.buffer[i].buffer);
-                    }
-                    puts("");
-                    result = true;
-                    goto end;
-                case GeneralMessageTag_authenticateAck:
-                    result =
-                      TemLangStringCopy(&client->name,
-                                        &message->general.authenticateAck,
-                                        currentAllocator);
-                    printf("Client authenticated: %s\n", client->name.buffer);
-                    refreshStreams(peer, bytes);
-                    goto end;
-                default:
-                    printf("Unexpected message from lobby server: %s\n",
-                           GeneralMessageTagToCharString(message->general.tag));
-                    appDone = true;
-                    goto end;
-            }
-            break;
+            result = true;
+            clientHandleGeneralMessage(&message->general, client, peer);
+            goto end;
         default:
             break;
     }
@@ -1688,10 +1808,7 @@ end:
 }
 
 bool
-checkForMessagesFromLobby(ENetHost* host,
-                          ENetEvent* event,
-                          pBytes bytes,
-                          pClient client)
+checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
 {
     bool result = false;
     while (!appDone && enet_host_service(host, event, 0U) >= 0) {
@@ -1718,8 +1835,8 @@ checkForMessagesFromLobby(ENetHost* host,
                 MESSAGE_DESERIALIZE(LobbyMessage, message, temp);
 
                 IN_MUTEX(clientData.mutex, f, {
-                    result = clientHandleLobbyMessage(
-                      &message, event->peer, bytes, client);
+                    result =
+                      clientHandleLobbyMessage(&message, event->peer, client);
                 });
 
                 enet_packet_destroy(event->packet);
@@ -1838,6 +1955,54 @@ handleUserInput(ENetPeer* peer,
             // Don't free message since it wasn't allocated
         endDropFile:
             unmapFile(fd, ptr, size);
+        } break;
+        default:
+            break;
+    }
+}
+
+void
+handleUserEvent(const SDL_UserEvent* e,
+                SDL_Window* window,
+                SDL_Renderer* renderer,
+                TTF_Font* ttfFont,
+                const size_t targetDisplay)
+{
+    int w;
+    int h;
+    SDL_GetWindowSize(window, &w, &h);
+    switch (e->code) {
+        case CustomEvent_Render:
+            drawTextures(
+              renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
+            break;
+        case CustomEvent_ShowSimpleMessage:
+            SDL_ShowSimpleMessageBox(
+              SDL_MESSAGEBOX_ERROR, (char*)e->data1, (char*)e->data2, window);
+            break;
+        case CustomEvent_UpdateStreamDisplay: {
+            const Guid id = { .numbers = { (uint64_t)(size_t)e->data1,
+                                           (uint64_t)(size_t)e->data2 } };
+            size_t index = 0;
+            if (!GetStreamDisplayFromGuid(
+                  &clientData.displays, &id, NULL, &index)) {
+                fprintf(stderr,
+                        "Cannot update stream display because it was removed "
+                        "from list\n");
+                break;
+            }
+            pStreamDisplay display = &clientData.displays.buffer[index];
+            switch (display->data.tag) {
+                case StreamDisplayDataTag_text:
+                    updateTextDisplay(renderer, ttfFont, display);
+                    break;
+                case StreamDisplayDataTag_chat:
+                    updateChatDisplay(renderer, ttfFont, w, h, display);
+                    break;
+                default:
+                    break;
+            }
+            renderDisplays();
         } break;
         default:
             break;
@@ -2008,12 +2173,13 @@ runClient(const Configuration* configuration)
         goto end;
     }
 
+    RandomState rs = makeRandomState();
     while (!appDone) {
-        if (!checkForMessagesFromLobby(host, &event, &bytes, &client)) {
+        if (!checkForMessagesFromLobby(host, &event, &client)) {
             appDone = true;
             break;
         }
-        checkUserInput(renderer, &bytes, peer, &client);
+        checkUserInput(renderer, &bytes, peer, &client, &rs);
         while (!appDone && SDL_PollEvent(&e)) {
             SDL_LockMutex(clientData.mutex);
             switch (e.type) {
@@ -2166,30 +2332,10 @@ runClient(const Configuration* configuration)
                     }
                     renderDisplays();
                 } break;
-                case SDL_USEREVENT: {
-                    int w;
-                    int h;
-                    SDL_GetWindowSize(window, &w, &h);
-                    switch (e.user.code) {
-                        case CustomEvent_Render:
-                            drawTextures(renderer,
-                                         targetDisplay,
-                                         (float)w - 32.f,
-                                         (float)h - 32.f);
-                            break;
-                        case CustomEvent_ShowSimpleMessage:
-                            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-                                                     (char*)e.user.data1,
-                                                     (char*)e.user.data2,
-                                                     window);
-                            break;
-                        case CustomEvent_UpdateStreamDisplay:
-                            renderDisplays();
-                            break;
-                        default:
-                            break;
-                    }
-                } break;
+                case SDL_USEREVENT:
+                    handleUserEvent(
+                      &e.user, window, renderer, ttfFont, targetDisplay);
+                    break;
                 case SDL_DROPFILE: {
                     // Look for image stream
                     printf("Got dropped file: %s\n", e.drop.file);

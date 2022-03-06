@@ -1,7 +1,7 @@
 enum ClientCommand {
     PrintName
     ShowAllStreams
-    ShowOwnStreams
+    ShowConnectedStreams
     ConnectToStream
     DisconnectFromStream
     StartStreaming
@@ -76,6 +76,7 @@ resource StreamDisplay {
     StreamDisplayData data
     FRect dstRect
     OptionalRect srcRect
+    Guid id
     null texture
 } r {
     inlineC "
