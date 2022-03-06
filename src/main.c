@@ -222,20 +222,32 @@ printVersion()
     SDL_GetVersion(&linkedSdl);
     SDL_version compiledSdl;
     SDL_VERSION(&compiledSdl);
-    return printf(
-      "TemStream %d.%d.%d\nSDL compiled %u.%u.%u\nSDL linked %u.%u.%u\nENet "
-      "%x\nOpus %s\n",
-      VERSION_MAJOR,
-      VERSION_MINOR,
-      VERSION_PATCH,
-      compiledSdl.major,
-      compiledSdl.minor,
-      compiledSdl.patch,
-      linkedSdl.major,
-      linkedSdl.minor,
-      linkedSdl.patch,
-      version,
-      opus_get_version_string());
+
+    SDL_version ttfVersion;
+    SDL_TTF_VERSION(&ttfVersion);
+
+    SDL_version imgVersion;
+    SDL_IMAGE_VERSION(&imgVersion);
+
+    return printf("TemStream %d.%d.%d\nSDL compiled %u.%u.%u\nSDL linked "
+                  "%u.%u.%u\nTTF %d.%d.%d\nIMG %d.%d.%d\nENet %x\nOpus %s\n",
+                  VERSION_MAJOR,
+                  VERSION_MINOR,
+                  VERSION_PATCH,
+                  compiledSdl.major,
+                  compiledSdl.minor,
+                  compiledSdl.patch,
+                  linkedSdl.major,
+                  linkedSdl.minor,
+                  linkedSdl.patch,
+                  ttfVersion.major,
+                  ttfVersion.minor,
+                  ttfVersion.patch,
+                  imgVersion.major,
+                  imgVersion.minor,
+                  imgVersion.patch,
+                  version,
+                  opus_get_version_string());
 }
 
 void

@@ -52,7 +52,7 @@
 - [ ] Remove redis/just write to disk
 - [x] Make server store information on file (give information on client connection)
 - [ ] Fix memory leaks
-- [ ] Print TTF and IMG versions
+- [x] Print TTF and IMG versions
 
 ### Mar ??, 2022
 - [ ] Fix audio not working when long delay between audio packets
