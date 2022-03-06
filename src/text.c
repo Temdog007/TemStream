@@ -1,9 +1,17 @@
 #include <include/main.h>
 
+DEFINE_RUN_SERVER(Text);
+
 TextConfiguration
 defaultTextConfiguration()
 {
     return (TextConfiguration){ .maxLength = 4096 };
+}
+
+int
+printTextConfiguration(const TextConfiguration* configuration)
+{
+    return printf("Text\nMax length: %u\n", configuration->maxLength);
 }
 
 bool
@@ -66,7 +74,7 @@ getGeneralMessageFromText(const void* ptr)
 }
 
 void
-textSendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
+sendGeneralMessageForText(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
 {
     TextMessage lm = { 0 };
     lm.tag = TextMessageTag_general;
@@ -76,10 +84,10 @@ textSendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
 }
 
 bool
-textOnConnect(pClient client,
-              pBytes bytes,
-              ENetPeer* peer,
-              const ServerConfiguration* config)
+onConnectForText(pClient client,
+                 pBytes bytes,
+                 ENetPeer* peer,
+                 const ServerConfiguration* config)
 {
     (void)client;
     if (getServerFileBytes(config, bytes)) {
@@ -96,13 +104,14 @@ handleTextMessage(const void* ptr,
                   const ServerConfiguration* serverConfig)
 {
     (void)ctx;
-    TextMessage textMessage = { 0 };
+
     pClient client = peer->data;
     const TextConfiguration* config = &serverConfig->data.text;
     bool result = false;
     CAST_MESSAGE(TextMessage, ptr);
     switch (message->tag) {
-        case TextMessageTag_general:
+        case TextMessageTag_general: {
+            TextMessage textMessage = { 0 };
             textMessage.tag = TextMessageTag_general;
             result = handleGeneralMessage(
               &message->general, peer, &textMessage.general);
@@ -110,9 +119,19 @@ handleTextMessage(const void* ptr,
                 MESSAGE_SERIALIZE(TextMessage, textMessage, (*bytes));
                 sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
             }
-            break;
+            TextMessageFree(&textMessage);
+        } break;
         case TextMessageTag_text:
             result = true;
+            if (!clientHasWriteAccess(client, serverConfig)) {
+                printf("Client '%s' sent a text message when it doesn't have "
+                       "write access",
+                       client->name.buffer);
+                break;
+            }
+            if (TemLangStringIsEmpty(&message->text)) {
+                break;
+            }
             if (config->maxLength > 0 &&
                 config->maxLength < message->text.used) {
                 printf("Got a text message with the length of %u. But %u is "
@@ -121,18 +140,12 @@ handleTextMessage(const void* ptr,
                        config->maxLength);
                 break;
             }
-            if (clientHasWriteAccess(client, serverConfig)) {
-                printf("Text server updated with '%s'\n", message->text.buffer);
-                MESSAGE_SERIALIZE(TextMessage, (*message), (*bytes));
-                appendServerFileBytes(serverConfig, bytes, true);
-                ENetPacket* packet =
-                  BytesToPacket(bytes->buffer, bytes->used, true);
-                sendPacketToReaders(peer->host, packet, &serverConfig->readers);
-            } else {
-                printf("Client '%s' sent a text message when it doesn't have "
-                       "write access",
-                       client->name.buffer);
-            }
+            printf("Text server updated with '%s'\n", message->text.buffer);
+            MESSAGE_SERIALIZE(TextMessage, (*message), (*bytes));
+            writeServerFileBytes(serverConfig, bytes, true);
+            ENetPacket* packet =
+              BytesToPacket(bytes->buffer, bytes->used, true);
+            sendPacketToReaders(peer->host, packet, &serverConfig->readers);
             break;
         default:
             break;
@@ -143,6 +156,5 @@ handleTextMessage(const void* ptr,
                TextMessageTagToCharString(message->tag));
 #endif
     }
-    TextMessageFree(&textMessage);
     return result;
 }

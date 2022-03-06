@@ -34,7 +34,8 @@ struct TextConfiguration {
 }
 
 struct ChatConfiguration {
-    u32 chatInterval
+    u32 interval
+    u32 maxLength
 }
 
 struct AudioConfiguration {
@@ -133,8 +134,8 @@ inlineC "MAKE_DEFAULT_LIST(Chat);"
 variant ChatMessage {
     GeneralMessage general
     string message
-    null logs
-    [ 0 Chat ] logsAck
+    Chat newChat
+    [ 0 Chat ] logs
 }
 
 variant TextMessage {

@@ -1,7 +1,10 @@
 #include <include/main.h>
 
+#include "audio.c"
 #include "base64.c"
+#include "chat.c"
 #include "client.c"
+#include "image.c"
 #include "lobby.c"
 #include "misc.c"
 #include "rendering.c"
@@ -155,13 +158,16 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
                 case ServerConfigurationDataTag_audio:
                     goto runAudio;
                 case ServerConfigurationDataTag_chat:
-                    goto runChat;
+                    result = runChatServer(configuration);
+                    goto end;
                 case ServerConfigurationDataTag_image:
                     goto runImage;
                 case ServerConfigurationDataTag_text:
-                    goto runTextSkipParsing;
+                    result = runTextServer(configuration);
+                    goto end;
                 case ServerConfigurationDataTag_lobby:
-                    goto runLobbySkipParsing;
+                    result = runLobbyServer(configuration);
+                    goto end;
                 default:
                     break;
             }
@@ -175,17 +181,7 @@ runLobby : {
     configuration->tag = ConfigurationTag_server;
     configuration->server = defaultServerConfiguration();
     if (parseLobbyConfiguration(argc, argv, configuration)) {
-    runLobbySkipParsing:
-        result = runServer(configuration,
-                           (ServerFunctions){
-                             .serializeMessage = serializeLobbyMessage,
-                             .deserializeMessage = deserializeLobbyMessage,
-                             .onConnect = lobbyOnConnect,
-                             .handleMessage = handleLobbyMessage,
-                             .sendGeneral = lobbySendGeneralMessage,
-                             .freeMessage = freeLobbyMessage,
-                             .getGeneralMessage = getGeneralMessageFromLobby,
-                           });
+        result = runLobbyServer(configuration);
     }
     goto end;
 }
@@ -193,22 +189,16 @@ runText : {
     configuration->tag = ConfigurationTag_server;
     configuration->server = defaultServerConfiguration();
     if (parseTextConfiguration(argc, argv, configuration)) {
-    runTextSkipParsing:
-        result = runServer(configuration,
-                           (ServerFunctions){
-                             .serializeMessage = serializeTextMessage,
-                             .deserializeMessage = deserializeTextMessage,
-                             .onConnect = textOnConnect,
-                             .handleMessage = handleTextMessage,
-                             .sendGeneral = textSendGeneralMessage,
-                             .freeMessage = freeTextMessage,
-                             .getGeneralMessage = getGeneralMessageFromText,
-                           });
+        result = runTextServer(configuration);
     }
     goto end;
 }
 runChat : {
-    // result = runChatServer(argc, argv, &configuration);
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    if (parseChatConfiguration(argc, argv, configuration)) {
+        result = runChatServer(configuration);
+    }
     goto end;
 }
 runImage : {

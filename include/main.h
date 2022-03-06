@@ -43,6 +43,7 @@ typedef struct Client
     Bytes payload;
     Guid id;
     int64_t joinTime;
+    uint64_t lastMessage;
 } Client, *pClient;
 
 extern void ClientFree(pClient);
@@ -51,6 +52,9 @@ extern bool
 ClientGuidEquals(const pClient*, const Guid*);
 
 extern TemLangString RandomClientName(pRandomState);
+
+extern char
+RandomChar(pRandomState rs);
 
 extern TemLangString
 RandomString(pRandomState, size_t min, size_t max);
@@ -93,29 +97,6 @@ extern bool appDone;
 
 extern void
 signalHandler(int);
-
-// Defaults
-
-extern ClientConfiguration
-defaultClientConfiguration();
-
-extern ServerConfiguration
-defaultServerConfiguration();
-
-extern LobbyConfiguration
-defaultLobbyConfiguration();
-
-extern TextConfiguration
-defaultTextConfiguration();
-
-extern ImageConfiguration
-defaultImageConfiguration();
-
-extern AudioConfiguration
-defaultAudioConfiguration();
-
-extern ChatConfiguration
-defaultChatConfiguration();
 
 extern Configuration
 defaultConfiguration();
@@ -173,15 +154,6 @@ printServerConfiguration(const ServerConfiguration*);
 
 extern int
 printServerConfigurationForClient(const ServerConfiguration*);
-
-extern int
-printLobbyConfiguration(const LobbyConfiguration*);
-
-extern int
-printTextConfiguration(const TextConfiguration*);
-
-extern int
-printChatConfiguration(const ChatConfiguration*);
 
 extern int
 printAuthenticate(const ServerAuthentication*);
@@ -247,82 +219,67 @@ extern bool
 getServerFileBytes(const ServerConfiguration* config, pBytes bytes);
 
 extern void
-appendServerFileBytes(const ServerConfiguration* config,
-                      const Bytes* bytes,
-                      const bool overwrite);
+writeServerFileBytes(const ServerConfiguration* config,
+                     const Bytes* bytes,
+                     const bool overwrite);
 
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
 extern bool
 handleGeneralMessage(const GeneralMessage*, ENetPeer*, pGeneralMessage);
 
-// Lobby
+#define SERVER_FUNCTIONS(T)                                                    \
+    extern bool parse##T##Configuration(                                       \
+      const int, const char**, pConfiguration);                                \
+                                                                               \
+    extern void serialize##T##Message(const void*, pBytes bytes);              \
+                                                                               \
+    extern void* deserialize##T##Message(const Bytes* bytes);                  \
+                                                                               \
+    extern void sendGeneralMessageFor##T(                                      \
+      const GeneralMessage*, pBytes, ENetPeer*);                               \
+                                                                               \
+    extern bool onConnectFor##T(pClient client,                                \
+                                pBytes bytes,                                  \
+                                ENetPeer* peer,                                \
+                                const ServerConfiguration* config);            \
+                                                                               \
+    extern bool handle##T##Message(const void*,                                \
+                                   pBytes,                                     \
+                                   ENetPeer*,                                  \
+                                   redisContext*,                              \
+                                   const ServerConfiguration*);                \
+                                                                               \
+    extern const GeneralMessage* getGeneralMessageFrom##T(const void*);        \
+                                                                               \
+    extern void free##T##Message(void*);                                       \
+                                                                               \
+    extern T##Configuration default##T##Configuration();                       \
+                                                                               \
+    extern int print##T##Configuration(const T##Configuration*);               \
+                                                                               \
+    extern int run##T##Server(Configuration*);
 
-extern bool
-parseLobbyConfiguration(const int argc,
-                        const char** argv,
-                        pConfiguration configuration);
+SERVER_FUNCTIONS(Lobby);
+SERVER_FUNCTIONS(Text);
+SERVER_FUNCTIONS(Chat);
+SERVER_FUNCTIONS(Image);
+SERVER_FUNCTIONS(Audio);
 
-extern void
-serializeLobbyMessage(const void*, pBytes bytes);
-
-extern void*
-deserializeLobbyMessage(const Bytes* bytes);
-
-extern void
-lobbySendGeneralMessage(const GeneralMessage*, pBytes, ENetPeer*);
-
-extern bool
-lobbyOnConnect(pClient client,
-               pBytes bytes,
-               ENetPeer* peer,
-               const ServerConfiguration* config);
-
-extern bool
-handleLobbyMessage(const void*,
-                   pBytes,
-                   ENetPeer*,
-                   redisContext*,
-                   const ServerConfiguration*);
-
-extern const GeneralMessage*
-getGeneralMessageFromLobby(const void*);
-
-extern void
-freeLobbyMessage(void*);
-
-// Text
-
-extern bool
-parseTextConfiguration(const int, const char**, pConfiguration);
-
-extern void
-serializeTextMessage(const void*, pBytes bytes);
-
-extern void*
-deserializeTextMessage(const Bytes* bytes);
-
-extern void
-textSendGeneralMessage(const GeneralMessage*, pBytes, ENetPeer*);
-
-extern bool
-textOnConnect(pClient client,
-              pBytes bytes,
-              ENetPeer* peer,
-              const ServerConfiguration* config);
-
-extern bool
-handleTextMessage(const void*,
-                  pBytes,
-                  ENetPeer*,
-                  redisContext*,
-                  const ServerConfiguration*);
-
-extern const GeneralMessage*
-getGeneralMessageFromText(const void*);
-
-extern void
-freeTextMessage(void*);
+#define DEFINE_RUN_SERVER(T)                                                   \
+    int run##T##Server(pConfiguration configuration)                           \
+    {                                                                          \
+        return runServer(configuration,                                        \
+                         (ServerFunctions){                                    \
+                           .serializeMessage = serialize##T##Message,          \
+                           .deserializeMessage = deserialize##T##Message,      \
+                           .getGeneralMessage = getGeneralMessageFrom##T,      \
+                           .sendGeneral = sendGeneralMessageFor##T,            \
+                           .onConnect = onConnectFor##T,                       \
+                           .handleMessage = handle##T##Message,                \
+                           .freeMessage = free##T##Message,                    \
+                         });                                                   \
+    }
 
 // Parse failures
 

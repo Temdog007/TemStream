@@ -1,10 +1,18 @@
 #include <include/main.h>
 
+DEFINE_RUN_SERVER(Lobby);
+
 LobbyConfiguration
 defaultLobbyConfiguration()
 {
     return (LobbyConfiguration){ .maxStreams =
                                    ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT };
+}
+
+int
+printLobbyConfiguration(const LobbyConfiguration* configuration)
+{
+    return printf("Lobby\nMax streams: %u\n", configuration->maxStreams);
 }
 
 bool
@@ -117,7 +125,9 @@ startNewServer(const ServerConfiguration* serverConfig)
 }
 
 void
-lobbySendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
+sendGeneralMessageForLobby(const GeneralMessage* m,
+                           pBytes bytes,
+                           ENetPeer* peer)
 {
     LobbyMessage lm = { 0 };
     lm.tag = LobbyMessageTag_general;
@@ -127,10 +137,10 @@ lobbySendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
 }
 
 bool
-lobbyOnConnect(pClient client,
-               pBytes bytes,
-               ENetPeer* peer,
-               const ServerConfiguration* config)
+onConnectForLobby(pClient client,
+                  pBytes bytes,
+                  ENetPeer* peer,
+                  const ServerConfiguration* config)
 {
     (void)client;
     (void)bytes;

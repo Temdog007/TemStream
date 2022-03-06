@@ -3,6 +3,8 @@
 #define MIN_WIDTH 32
 #define MIN_HEIGHT 32
 
+#define DEFAULT_CHAT_COUNT 5
+
 SDL_mutex* clientMutex = NULL;
 ClientData clientData = { 0 };
 
@@ -44,7 +46,7 @@ clientHandleLobbyMessage(const LobbyMessage* message,
                          ENetPeer* peer,
                          pClient client);
 
-void
+bool
 clientHandleGeneralMessage(const GeneralMessage* message,
                            pClient client,
                            ENetPeer* peer);
@@ -191,13 +193,6 @@ parseClientConfiguration(const int argc,
     }
     }
     return true;
-}
-
-void
-ClientFree(pClient client)
-{
-    uint8_tListFree(&client->payload);
-    TemLangStringFree(&client->name);
 }
 
 int
@@ -370,8 +365,7 @@ clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(display);
         } break;
         case TextMessageTag_general:
-            success = true;
-            clientHandleGeneralMessage(&message.general, NULL, NULL);
+            success = clientHandleGeneralMessage(&message.general, NULL, NULL);
             break;
         default:
             printf("Unexpected text message: %s\n",
@@ -379,6 +373,50 @@ clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
             break;
     }
     TextMessageFree(&message);
+    return success;
+}
+
+bool
+clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
+{
+    ChatMessage message = { 0 };
+    MESSAGE_DESERIALIZE(ChatMessage, message, (*bytes));
+    bool success = false;
+    switch (message.tag) {
+        case ChatMessageTag_logs: {
+            StreamDisplayDataFree(&display->data);
+            display->data.tag = StreamDisplayDataTag_chat;
+            pStreamDisplayChat chat = &display->data.chat;
+            chat->count = DEFAULT_CHAT_COUNT;
+            success =
+              ChatListCopy(&chat->logs, &message.logs, currentAllocator);
+            chat->offset = chat->logs.used;
+            updateStreamDisplay(display);
+        } break;
+        case ChatMessageTag_newChat: {
+            pStreamDisplayChat chat = &display->data.chat;
+            if (display->data.tag != StreamDisplayDataTag_chat) {
+                StreamDisplayDataFree(&display->data);
+                display->data.tag = StreamDisplayDataTag_chat;
+                display->data.chat.logs.allocator = currentAllocator;
+                chat->count = DEFAULT_CHAT_COUNT;
+                chat->offset = chat->logs.used;
+            }
+            success = ChatListAppend(&chat->logs, &message.newChat);
+            if (chat->offset >= chat->logs.used - chat->count) {
+                chat->offset = chat->logs.used;
+            }
+            updateStreamDisplay(display);
+        } break;
+        case ChatMessageTag_general:
+            success = clientHandleGeneralMessage(&message.general, NULL, NULL);
+            break;
+        default:
+            printf("Unexpected chat message: %s\n",
+                   ChatMessageTagToCharString(message.tag));
+            break;
+    }
+    ChatMessageFree(&message);
     return success;
 }
 
@@ -474,6 +512,10 @@ streamConnectionThread(void* ptr)
                                 success = clientHandleTextMessage(&packetBytes,
                                                                   display);
                                 break;
+                            case ServerConfigurationDataTag_chat:
+                                success = clientHandleChatMessage(&packetBytes,
+                                                                  display);
+                                break;
                             default:
                                 fprintf(stderr,
                                         "Server '%s' not implemented\n",
@@ -558,6 +600,15 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
                UserInputResult_Input) {
         puts("Canceling connecting to stream");
         return;
+    }
+
+    for (size_t i = 0; i < clientData.displays.used; ++i) {
+        const StreamDisplay* display = &clientData.displays.buffer[i];
+        if (GetStreamFromName(
+              &clientData.allStreams, &display->config.name, NULL, NULL)) {
+            puts("Already connected to stream");
+            return;
+        }
     }
 
     StreamDisplay display = { 0 };
@@ -1478,11 +1529,24 @@ end:
     return rect;
 }
 
+size_t
+countChar(const char* str, const char target)
+{
+    size_t count = 0;
+    while (*str != '\0') {
+        if (*str == target) {
+            ++count;
+        }
+        ++str;
+    }
+    return count;
+}
+
 void
 updateChatDisplay(SDL_Renderer* renderer,
                   TTF_Font* ttfFont,
-                  const uint32_t w,
-                  const uint32_t h,
+                  const uint32_t windowWidth,
+                  const uint32_t windowHeight,
                   pStreamDisplay display)
 {
     if (renderer == NULL) {
@@ -1498,22 +1562,6 @@ updateChatDisplay(SDL_Renderer* renderer,
         return;
     }
 
-    display->texture = SDL_CreateTexture(
-      renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
-    if (display->texture == NULL) {
-        fprintf(stderr,
-                "Failed to update text display texture: %s\n",
-                SDL_GetError());
-        return;
-    }
-    SDL_SetTextureBlendMode(display->texture, SDL_BLENDMODE_BLEND);
-
-    SDL_SetRenderTarget(renderer, display->texture);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 128u);
-    SDL_RenderClear(renderer);
-
     // SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
 
     display->data.tag = StreamDisplayDataTag_chat;
@@ -1525,34 +1573,61 @@ updateChatDisplay(SDL_Renderer* renderer,
     const SDL_Color bg = { .r = 0u, .g = 0u, .b = 0u, .a = 0u };
     const SDL_Color black = { .r = 0u, .g = 0u, .b = 0u, .a = 0xffu };
 
-    SDL_Rect rect = { 0 };
-    float maxW = 0.f;
-    uint32_t y = 0;
     uint32_t offset = chat->offset;
     if (chat->logs.used >= chat->count) {
-        offset = SDL_clamp(chat->offset, 0U, chat->logs.used - chat->count);
+        offset = SDL_clamp(offset, 0U, chat->logs.used - chat->count);
     } else {
         offset = 0;
     }
 
+    display->texture = SDL_CreateTexture(renderer,
+                                         SDL_PIXELFORMAT_RGBA8888,
+                                         SDL_TEXTUREACCESS_TARGET,
+                                         (int)windowWidth,
+                                         (int)windowHeight);
+    if (display->texture == NULL) {
+        fprintf(stderr,
+                "Failed to update text display texture: %s\n",
+                SDL_GetError());
+        return;
+    }
+
+    SDL_SetTextureBlendMode(display->texture, SDL_BLENDMODE_BLEND);
+
+    SDL_SetRenderTarget(renderer, display->texture);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+    SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 128u);
+    SDL_RenderClear(renderer);
+
+    SDL_Rect rect = { 0 };
+    float maxW = 0.f;
+    uint32_t y = 0;
     for (uint32_t j = offset, n = offset + chat->count;
-         y < h && j < n && j < chat->logs.used;
+         j < n && j < chat->logs.used;
          ++j) {
         const Chat* cm = &chat->logs.buffer[j];
         const time_t t = (time_t)cm->timestamp;
 
         strftime(buffer, sizeof(buffer), "%c", localtime(&t));
-        rect = renderText(renderer, ttfFont, buffer, 0, y, purple, black, w);
+        rect = renderText(
+          renderer, ttfFont, buffer, 0, y, purple, black, windowWidth);
         maxW = SDL_max(maxW, rect.w);
 
         const float oldW = rect.w;
-        rect = renderText(
-          renderer, ttfFont, cm->author.buffer, rect.w, y, yellow, black, w);
+        rect = renderText(renderer,
+                          ttfFont,
+                          cm->author.buffer,
+                          rect.w,
+                          y,
+                          yellow,
+                          black,
+                          windowWidth);
         maxW = SDL_max(maxW, oldW + rect.w);
         y += rect.h;
 
-        rect =
-          renderText(renderer, ttfFont, cm->message.buffer, 0, y, white, bg, w);
+        rect = renderText(
+          renderer, ttfFont, cm->message.buffer, 0, y, white, bg, windowWidth);
         maxW = SDL_max(maxW, rect.w);
         y += rect.h;
     }
@@ -1563,62 +1638,11 @@ updateChatDisplay(SDL_Renderer* renderer,
     display->srcRect.rect.w = maxW;
     display->srcRect.rect.h = y;
 
-    display->dstRect.w = maxW;
-    display->dstRect.h = y;
-}
-
-#define DEFAULT_CHAT_COUNT 5
-
-void
-updateChatDisplayFromList(SDL_Renderer* renderer,
-                          TTF_Font* ttfFont,
-                          const uint32_t w,
-                          const uint32_t h,
-                          pStreamDisplay display,
-                          const ChatList* list)
-{
-    if (renderer == NULL) {
-        return;
+    if (display->dstRect.w < MIN_WIDTH) {
+        display->dstRect.w = maxW;
     }
-
-    if (display->data.chat.logs.allocator == NULL) {
-        display->data.chat.count = DEFAULT_CHAT_COUNT;
-    }
-    ChatListCopy(&display->data.chat.logs, list, currentAllocator);
-    display->data.chat.offset = list->used;
-#if _DEBUG
-    printf("Got %u chat messages\n", list->used);
-#endif
-    updateChatDisplay(renderer, ttfFont, w, h, display);
-}
-
-void
-updateChatDisplayFromMessage(SDL_Renderer* renderer,
-                             TTF_Font* ttfFont,
-                             const uint32_t w,
-                             const uint32_t h,
-                             pStreamDisplay display,
-                             const Chat* message)
-{
-    if (renderer == NULL) {
-        return;
-    }
-
-    pStreamDisplayChat chat = &display->data.chat;
-    pChatList list = &chat->logs;
-    if (list->allocator == NULL) {
-        list->allocator = currentAllocator;
-        chat->count = DEFAULT_CHAT_COUNT;
-    }
-    ChatListAppend(list, message);
-    if (list->used > chat->count &&
-        display->data.chat.offset >= list->used - chat->count) {
-        display->data.chat.offset = list->used - 1U;
-    }
-    const FRect rect = display->dstRect;
-    updateChatDisplay(renderer, ttfFont, w, h, display);
-    if (list->used > 2) {
-        display->dstRect = rect;
+    if (display->dstRect.h < MIN_HEIGHT) {
+        display->dstRect.h = y;
     }
 }
 
@@ -1772,7 +1796,7 @@ refreshStreams(ENetPeer* peer)
     sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
 }
 
-void
+bool
 clientHandleGeneralMessage(const GeneralMessage* message,
                            pClient client,
                            ENetPeer* peer)
@@ -1784,10 +1808,10 @@ clientHandleGeneralMessage(const GeneralMessage* message,
                 puts(message->getClientsAck.buffer[i].buffer);
             }
             puts("");
-            break;
+            return true;
         case GeneralMessageTag_authenticateAck:
             if (client == NULL) {
-                break;
+                return true;
             }
             TemLangStringCopy(
               &client->name, &message->authenticateAck, currentAllocator);
@@ -1795,11 +1819,11 @@ clientHandleGeneralMessage(const GeneralMessage* message,
             if (peer != NULL) {
                 refreshStreams(peer);
             }
-            break;
+            return true;
         default:
             printf("Unexpected message from lobby server: %s\n",
                    GeneralMessageTagToCharString(message->tag));
-            break;
+            return false;
     }
 }
 
@@ -1830,8 +1854,8 @@ clientHandleLobbyMessage(const LobbyMessage* message,
             refreshStreams(peer);
             goto end;
         case LobbyMessageTag_general:
-            result = true;
-            clientHandleGeneralMessage(&message->general, client, peer);
+            result =
+              clientHandleGeneralMessage(&message->general, client, peer);
             goto end;
         default:
             break;

@@ -37,55 +37,6 @@ authenticateClient(pClient client,
     }
 }
 
-bool
-clientHasAccess(const Client* client, const Access* access)
-{
-    switch (access->tag) {
-        case AccessTag_anyone:
-            return true;
-        case AccessTag_list:
-            return TemLangStringListFindIf(
-              &access->list,
-              (TemLangStringListFindFunc)TemLangStringsAreEqual,
-              &client->name,
-              NULL,
-              NULL);
-        default:
-            break;
-    }
-    return false;
-}
-
-bool
-clientHasReadAccess(const Client* client, const ServerConfiguration* config)
-{
-    return clientHasAccess(client, &config->readers);
-}
-
-bool
-clientHasWriteAccess(const Client* client, const ServerConfiguration* config)
-{
-    return clientHasAccess(client, &config->writers);
-}
-
-ImageConfiguration
-defaultImageConfiguration()
-{
-    return (ImageConfiguration){ .none = NULL };
-}
-
-AudioConfiguration
-defaultAudioConfiguration()
-{
-    return (AudioConfiguration){ .none = NULL };
-}
-
-ChatConfiguration
-defaultChatConfiguration()
-{
-    return (ChatConfiguration){ .chatInterval = 5 };
-}
-
 ServerConfiguration
 defaultServerConfiguration()
 {
@@ -174,35 +125,6 @@ parseTimeout : {
 }
 }
 
-bool
-parseChatConfiguration(const int argc,
-                       const char** argv,
-                       pConfiguration configuration)
-{
-    configuration->tag = ServerConfigurationDataTag_chat;
-    pChatConfiguration chat = &configuration->server.data.chat;
-    for (int i = 2; i < argc - 1; i += 2) {
-        const char* key = argv[i];
-        const size_t keyLen = strlen(key);
-        const char* value = argv[i + 1];
-        STR_EQUALS(key, "-I", keyLen, { goto parseInterval; });
-        STR_EQUALS(key, "--interval", keyLen, { goto parseInterval; });
-        if (!parseCommonConfiguration(key, value, configuration) &&
-            !parseServerConfiguration(key, value, &configuration->server)) {
-            parseFailure("Chat", key, value);
-            return false;
-        }
-        continue;
-
-    parseInterval : {
-        const int i = atoi(value);
-        chat->chatInterval = SDL_max(i, 32);
-        continue;
-    }
-    }
-    return true;
-}
-
 int
 printAuthenticate(const ServerAuthentication* auth)
 {
@@ -275,25 +197,6 @@ printServerConfigurationForClient(const ServerConfiguration* config)
     return printf("%s (%s)\n",
                   config->name.buffer,
                   ServerConfigurationDataTagToCharString(config->data.tag));
-}
-
-int
-printTextConfiguration(const TextConfiguration* configuration)
-{
-    return printf("Text\nMax length: %u\n", configuration->maxLength);
-}
-
-int
-printChatConfiguration(const ChatConfiguration* configuration)
-{
-    return printf("Chat\nMessage interval: %u second(s)\n",
-                  configuration->chatInterval);
-}
-
-int
-printLobbyConfiguration(const LobbyConfiguration* configuration)
-{
-    return printf("Lobby\nMax streams: %u\n", configuration->maxStreams);
 }
 
 bool
@@ -402,9 +305,9 @@ getServerFileBytes(const ServerConfiguration* config, pBytes bytes)
 }
 
 void
-appendServerFileBytes(const ServerConfiguration* config,
-                      const Bytes* bytes,
-                      const bool overwrite)
+writeServerFileBytes(const ServerConfiguration* config,
+                     const Bytes* bytes,
+                     const bool overwrite)
 {
     char buffer[512];
     FILE* file =
@@ -416,22 +319,6 @@ appendServerFileBytes(const ServerConfiguration* config,
 
     fwrite(bytes->buffer, sizeof(uint8_t), bytes->size, file);
     fclose(file);
-}
-
-void
-sendBytes(ENetPeer* peers,
-          const size_t peerCount,
-          const enet_uint32 channel,
-          const Bytes* bytes,
-          const bool reliable)
-{
-    if (bytes->used == 0) {
-        return;
-    }
-    ENetPacket* packet = BytesToPacket(bytes->buffer, bytes->used, reliable);
-    for (size_t i = 0; i < peerCount; ++i) {
-        PEER_SEND(&peers[i], channel, packet);
-    }
 }
 
 #define CHECK_SERVER                                                           \

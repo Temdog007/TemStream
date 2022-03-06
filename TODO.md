@@ -46,11 +46,13 @@
 ### Mar 02, 2022 - Mar ??, 2022
 - [x] Rewrite message protocol to send data in chunks
 - [x] Ensure each stream is its own process
-- [ ] Make chat work
+- [x] Make chat work
 - [ ] Make audio work
 - [ ] Make image work
+- [ ] Remove redis/just write to disk
 - [x] Make server store information on file (give information on client connection)
 - [ ] Fix memory leaks
+- [ ] Print TTF and IMG versions
 
 ### Mar ??, 2022
 - [ ] Fix audio not working when long delay between audio packets

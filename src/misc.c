@@ -3,6 +3,60 @@
 const Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
 SDL_atomic_t runningThreads = { 0 };
 
+void
+ClientFree(pClient client)
+{
+    uint8_tListFree(&client->payload);
+    TemLangStringFree(&client->name);
+}
+
+void
+sendBytes(ENetPeer* peers,
+          const size_t peerCount,
+          const enet_uint32 channel,
+          const Bytes* bytes,
+          const bool reliable)
+{
+    if (bytes->used == 0) {
+        return;
+    }
+    ENetPacket* packet = BytesToPacket(bytes->buffer, bytes->used, reliable);
+    for (size_t i = 0; i < peerCount; ++i) {
+        PEER_SEND(&peers[i], channel, packet);
+    }
+}
+
+bool
+clientHasAccess(const Client* client, const Access* access)
+{
+    switch (access->tag) {
+        case AccessTag_anyone:
+            return true;
+        case AccessTag_list:
+            return TemLangStringListFindIf(
+              &access->list,
+              (TemLangStringListFindFunc)TemLangStringsAreEqual,
+              &client->name,
+              NULL,
+              NULL);
+        default:
+            break;
+    }
+    return false;
+}
+
+bool
+clientHasReadAccess(const Client* client, const ServerConfiguration* config)
+{
+    return clientHasAccess(client, &config->readers);
+}
+
+bool
+clientHasWriteAccess(const Client* client, const ServerConfiguration* config)
+{
+    return clientHasAccess(client, &config->writers);
+}
+
 bool
 parseCredentials(const char* str, pCredentials c)
 {
@@ -19,6 +73,12 @@ parseCredentials(const char* str, pCredentials c)
     return false;
 }
 
+uint64_t
+randomBetween64(pRandomState rs, const uint64_t min, const uint64_t max)
+{
+    return min + (random64(rs) % (max - min));
+}
+
 TemLangString
 RandomClientName(pRandomState rs)
 {
@@ -30,31 +90,32 @@ RandomClientName(pRandomState rs)
 TemLangString
 RandomString(pRandomState rs, const uint64_t min, const uint64_t max)
 {
-    const uint64_t len = min + (random64(rs) % (max - min));
-    TemLangString name = { .allocator = currentAllocator,
-                           .buffer = currentAllocator->allocate(len),
-                           .size = len,
-                           .used = 0 };
-    for (uint64_t i = 0; i < len; ++i) {
-        do {
-            const char c = (char)(random64(rs) % 128ULL);
-            switch (c) {
-                case ':':
-                    continue;
-                case '_':
-                case ' ':
-                    break;
-                default:
-                    if (isalnum(c)) {
-                        break;
-                    }
-                    continue;
-            }
-            TemLangStringAppendChar(&name, c);
-            break;
-        } while (true);
+    const uint64_t len = randomBetween64(rs, min, max);
+    TemLangString name = { .allocator = currentAllocator };
+    for (size_t i = 0; i < len; ++i) {
+        TemLangStringAppendChar(&name, RandomChar(rs));
     }
     return name;
+}
+
+char
+RandomChar(pRandomState rs)
+{
+    do {
+        const char c = (char)(random64(rs) % 128ULL);
+        switch (c) {
+            case ':':
+                continue;
+            case '_':
+            case ' ':
+                return c;
+            default:
+                if (isalnum(c)) {
+                    return c;
+                }
+                continue;
+        }
+    } while (true);
 }
 
 bool
