@@ -31,6 +31,8 @@
 
 #define MAX_PACKET_SIZE KB(64)
 
+#define TEM_STREAM_SERVER_KEY "TemStream Servers"
+
 const extern Guid ZeroGuid;
 
 extern SDL_atomic_t runningThreads;
@@ -504,3 +506,14 @@ b64_encode(const Bytes* bytes);
 
 bool
 b64_decode(const char* in, pBytes bytes);
+
+// Access
+
+bool
+clientHasAccess(const Client* client, const Access* access);
+
+bool
+clientHasReadAccess(const Client* client, const ServerConfiguration* config);
+
+bool
+clientHasWriteAccess(const Client* client, const ServerConfiguration* config);
