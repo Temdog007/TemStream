@@ -76,6 +76,19 @@ textSendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
 }
 
 bool
+textOnConnect(pClient client,
+              pBytes bytes,
+              ENetPeer* peer,
+              const ServerConfiguration* config)
+{
+    (void)client;
+    if (getServerFileBytes(config, bytes)) {
+        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+    }
+    return true;
+}
+
+bool
 handleTextMessage(const void* ptr,
                   pBytes bytes,
                   ENetPeer* peer,
@@ -111,6 +124,7 @@ handleTextMessage(const void* ptr,
             if (clientHasWriteAccess(client, serverConfig)) {
                 printf("Text server updated with '%s'\n", message->text.buffer);
                 MESSAGE_SERIALIZE(TextMessage, (*message), (*bytes));
+                appendServerFileBytes(serverConfig, bytes, true);
                 ENetPacket* packet =
                   BytesToPacket(bytes->buffer, bytes->used, true);
                 sendPacketToReaders(peer->host, packet, &serverConfig->readers);

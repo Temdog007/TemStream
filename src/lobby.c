@@ -127,6 +127,19 @@ lobbySendGeneralMessage(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
 }
 
 bool
+lobbyOnConnect(pClient client,
+               pBytes bytes,
+               ENetPeer* peer,
+               const ServerConfiguration* config)
+{
+    (void)client;
+    (void)bytes;
+    (void)peer;
+    (void)config;
+    return true;
+}
+
+bool
 handleLobbyMessage(const void* ptr,
                    pBytes bytes,
                    ENetPeer* peer,
@@ -151,7 +164,10 @@ handleLobbyMessage(const void* ptr,
         case LobbyMessageTag_startStreaming: {
             lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
             lobbyMessage.startStreamingAck = false;
-            result = true;
+            result = clientHasWriteAccess(client, serverConfig);
+            if (!result) {
+                break;
+            }
 
             ServerConfigurationList streams = getStreams(ctx);
             const ServerConfiguration* newConfig = &message->startStreaming;

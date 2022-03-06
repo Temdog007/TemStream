@@ -372,6 +372,52 @@ cleanupServer(ENetHost* server)
     }
 }
 
+const char*
+getServerFileName(const ServerConfiguration* config, char buffer[512])
+{
+    snprintf(buffer, 512, "%s.temstream", config->name.buffer);
+    return buffer;
+}
+
+bool
+getServerFileBytes(const ServerConfiguration* config, pBytes bytes)
+{
+    char buffer[512];
+    int fd = -1;
+    char* ptr = NULL;
+    size_t size = 0;
+    if (!mapFile(getServerFileName(config, buffer),
+                 &fd,
+                 &ptr,
+                 &size,
+                 MapFileType_Read)) {
+        perror("Failed to open file");
+        return false;
+    }
+
+    bytes->used = 0;
+    const bool result = uint8_tListQuickAppend(bytes, (uint8_t*)ptr, size);
+    unmapFile(fd, ptr, size);
+    return result;
+}
+
+void
+appendServerFileBytes(const ServerConfiguration* config,
+                      const Bytes* bytes,
+                      const bool overwrite)
+{
+    char buffer[512];
+    FILE* file =
+      fopen(getServerFileName(config, buffer), overwrite ? "wb" : "ab");
+    if (file == NULL) {
+        perror("Failed to open file");
+        return;
+    }
+
+    fwrite(bytes->buffer, sizeof(uint8_t), bytes->size, file);
+    fclose(file);
+}
+
 void
 sendBytes(ENetPeer* peers,
           const size_t peerCount,
@@ -379,6 +425,9 @@ sendBytes(ENetPeer* peers,
           const Bytes* bytes,
           const bool reliable)
 {
+    if (bytes->used == 0) {
+        return;
+    }
     ENetPacket* packet = BytesToPacket(bytes->buffer, bytes->used, reliable);
     for (size_t i = 0; i < peerCount; ++i) {
         PEER_SEND(&peers[i], channel, packet);
@@ -504,6 +553,13 @@ continueServer:
                       funcs.getGeneralMessage(message),
                       &rs)) {
                         case AuthenticateResult_Success: {
+                            if ((!clientHasReadAccess(client, config) &&
+                                 !clientHasWriteAccess(client, config)) ||
+                                !funcs.onConnect(
+                                  client, &bytes, event.peer, config)) {
+                                enet_peer_disconnect(event.peer, 0);
+                                break;
+                            }
                             GeneralMessage gm = { 0 };
                             gm.tag = GeneralMessageTag_authenticateAck;
                             TemLangStringCopy(&gm.authenticateAck,

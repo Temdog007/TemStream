@@ -180,6 +180,7 @@ runLobby : {
                            (ServerFunctions){
                              .serializeMessage = serializeLobbyMessage,
                              .deserializeMessage = deserializeLobbyMessage,
+                             .onConnect = lobbyOnConnect,
                              .handleMessage = handleLobbyMessage,
                              .sendGeneral = lobbySendGeneralMessage,
                              .freeMessage = freeLobbyMessage,
@@ -197,6 +198,7 @@ runText : {
                            (ServerFunctions){
                              .serializeMessage = serializeTextMessage,
                              .deserializeMessage = deserializeTextMessage,
+                             .onConnect = textOnConnect,
                              .handleMessage = handleTextMessage,
                              .sendGeneral = textSendGeneralMessage,
                              .freeMessage = freeTextMessage,

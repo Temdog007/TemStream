@@ -48,7 +48,8 @@
 - [x] Ensure each stream is its own process
 - [ ] Make chat work
 - [ ] Make audio work
-- [ ] Make server store information on file (give information on client connection)
+- [ ] Make image work
+- [x] Make server store information on file (give information on client connection)
 - [ ] Fix memory leaks
 
 ### Mar ??, 2022

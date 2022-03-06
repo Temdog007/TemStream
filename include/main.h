@@ -229,6 +229,7 @@ typedef struct ServerFunctions
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(const void*);
     void (*sendGeneral)(const GeneralMessage*, pBytes, ENetPeer*);
+    bool (*onConnect)(pClient, pBytes, ENetPeer*, const ServerConfiguration*);
     bool (*handleMessage)(const void*,
                           pBytes,
                           ENetPeer*,
@@ -241,6 +242,14 @@ extern int runServer(pConfiguration, ServerFunctions);
 
 extern int
 runClient(const Configuration*);
+
+extern bool
+getServerFileBytes(const ServerConfiguration* config, pBytes bytes);
+
+extern void
+appendServerFileBytes(const ServerConfiguration* config,
+                      const Bytes* bytes,
+                      const bool overwrite);
 
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
@@ -262,6 +271,12 @@ deserializeLobbyMessage(const Bytes* bytes);
 
 extern void
 lobbySendGeneralMessage(const GeneralMessage*, pBytes, ENetPeer*);
+
+extern bool
+lobbyOnConnect(pClient client,
+               pBytes bytes,
+               ENetPeer* peer,
+               const ServerConfiguration* config);
 
 extern bool
 handleLobbyMessage(const void*,
@@ -289,6 +304,12 @@ deserializeTextMessage(const Bytes* bytes);
 
 extern void
 textSendGeneralMessage(const GeneralMessage*, pBytes, ENetPeer*);
+
+extern bool
+textOnConnect(pClient client,
+              pBytes bytes,
+              ENetPeer* peer,
+              const ServerConfiguration* config);
 
 extern bool
 handleTextMessage(const void*,
