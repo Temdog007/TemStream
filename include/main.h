@@ -361,6 +361,14 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
     endLabel:                                                                  \
     SDL_UnlockMutex(mutex);
 
+#define TRY_IN_MUTEX(mutex, endLabel, f)                                       \
+    if (SDL_TryLockMutex(mutex) == 0) {                                        \
+        f;                                                                     \
+        goto endLabel;                                                         \
+    endLabel:                                                                  \
+        SDL_UnlockMutex(mutex);                                                \
+    }
+
 extern bool
 authenticateClient(pClient,
                    const ServerAuthentication*,

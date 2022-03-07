@@ -26,6 +26,24 @@ ClientData clientData = { 0 };
         f                                                                      \
     });
 
+#define TRY_USE_DISPLAY(mutex, endLabel, displayMissing, f)                    \
+    TRY_IN_MUTEX(mutex, endLabel, {                                            \
+        pStreamDisplay display = NULL;                                         \
+        const ServerConfiguration* config = NULL;                              \
+        {                                                                      \
+            size_t index = 0;                                                  \
+            if (!GetStreamDisplayFromGuid(                                     \
+                  &clientData.displays, id, NULL, &index)) {                   \
+                displayMissing = true;                                         \
+                goto endLabel;                                                 \
+            }                                                                  \
+            display = &clientData.displays.buffer[index];                      \
+        }                                                                      \
+        config = &display->config;                                             \
+        displayMissing = false;                                                \
+        f                                                                      \
+    });
+
 void
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
@@ -532,6 +550,7 @@ streamConnectionThread(void* ptr)
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
+    pENetPacketList packetList = { .allocator = currentAllocator };
     Bytes bytes = { .allocator = currentAllocator,
                     .used = 0,
                     .size = MAX_PACKET_SIZE,
@@ -589,7 +608,6 @@ streamConnectionThread(void* ptr)
     }
 
     while (!appDone && !displayMissing) {
-        USE_DISPLAY(clientData.mutex, fend64, displayMissing, { goto fend64; });
         if (enet_host_service(host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
@@ -609,50 +627,9 @@ streamConnectionThread(void* ptr)
                                  config->data.tag));
                     });
                     goto end;
-                case ENET_EVENT_TYPE_RECEIVE: {
-                    const Bytes packetBytes = { .allocator = currentAllocator,
-                                                .buffer = event.packet->data,
-                                                .size =
-                                                  event.packet->dataLength,
-                                                .used =
-                                                  event.packet->dataLength };
-                    USE_DISPLAY(clientData.mutex, fend5, displayMissing, {
-                        bool success = false;
-                        switch (config->data.tag) {
-                            case ServerConfigurationDataTag_text:
-                                success = clientHandleTextMessage(&packetBytes,
-                                                                  display);
-                                break;
-                            case ServerConfigurationDataTag_chat:
-                                success = clientHandleChatMessage(&packetBytes,
-                                                                  display);
-                                break;
-                            case ServerConfigurationDataTag_image:
-                                success = clientHandleImageMessage(&packetBytes,
-                                                                   display);
-                                break;
-                            case ServerConfigurationDataTag_audio:
-                                success = clientHandleAudioMessage(&packetBytes,
-                                                                   &bytes,
-                                                                   display,
-                                                                   &record,
-                                                                   &playback);
-                                break;
-                            default:
-                                fprintf(stderr,
-                                        "Server '%s' not implemented\n",
-                                        ServerConfigurationDataTagToCharString(
-                                          config->data.tag));
-                                break;
-                        }
-                        if (!success) {
-                            printf("Disconnecting from server: ");
-                            printServerConfigurationForClient(config);
-                            enet_peer_disconnect(event.peer, 0);
-                        }
-                    });
-                    enet_packet_destroy(event.packet);
-                } break;
+                case ENET_EVENT_TYPE_RECEIVE:
+                    pENetPacketListAppend(&packetList, &event.packet);
+                    break;
                 case ENET_EVENT_TYPE_NONE:
                     break;
                 default:
@@ -668,13 +645,48 @@ streamConnectionThread(void* ptr)
                   record.encoder, &audioBytes, record.spec, peer);
             }
         }
-        if (SDL_TryLockMutex(clientData.mutex) == 0) {
-            size_t index = 0;
-            if (!GetStreamDisplayFromGuid(
-                  &clientData.displays, id, NULL, &index)) {
-                goto endLabel;
+        TRY_USE_DISPLAY(clientData.mutex, fend563, displayMissing, {
+            for (size_t i = 0; i < packetList.used; ++i) {
+                pENetPacket packet = packetList.buffer[i];
+                Bytes packetBytes = { 0 };
+                packetBytes.allocator = currentAllocator;
+                packetBytes.buffer = packet->data;
+                packetBytes.size = packet->dataLength;
+                packetBytes.used = packet->dataLength;
+                bool success = false;
+                switch (config->data.tag) {
+                    case ServerConfigurationDataTag_text:
+                        success =
+                          clientHandleTextMessage(&packetBytes, display);
+                        break;
+                    case ServerConfigurationDataTag_chat:
+                        success =
+                          clientHandleChatMessage(&packetBytes, display);
+                        break;
+                    case ServerConfigurationDataTag_image:
+                        success =
+                          clientHandleImageMessage(&packetBytes, display);
+                        break;
+                    case ServerConfigurationDataTag_audio:
+                        success = clientHandleAudioMessage(
+                          &packetBytes, &bytes, display, &record, &playback);
+                        break;
+                    default:
+                        fprintf(stderr,
+                                "Server '%s' not implemented\n",
+                                ServerConfigurationDataTagToCharString(
+                                  config->data.tag));
+                        break;
+                }
+                if (!success) {
+                    printf("Disconnecting from server: ");
+                    printServerConfigurationForClient(config);
+                    enet_peer_disconnect(event.peer, 0);
+                }
+                enet_packet_destroy(packet);
             }
-            pStreamDisplay display = &clientData.displays.buffer[index];
+            pENetPacketListFree(&packetList);
+            packetList.allocator = currentAllocator;
             for (size_t i = 0; i < display->userInputs.used; ++i) {
                 UserInput input = { 0 };
                 UserInputCopy(
@@ -686,9 +698,7 @@ streamConnectionThread(void* ptr)
             }
             UserInputListFree(&display->userInputs);
             display->userInputs.allocator = currentAllocator;
-        endLabel:
-            SDL_UnlockMutex(clientData.mutex);
-        }
+        });
     }
 
     result = EXIT_SUCCESS;
@@ -705,6 +715,10 @@ end:
             StreamDisplayListSwapRemove(&clientData.displays, i);
         }
     });
+    for (size_t i = 0; i < packetList.used; ++i) {
+        enet_packet_destroy(packetList.buffer[i]);
+    }
+    pENetPacketListFree(&packetList);
     AudioStateFree(&record);
     AudioStateFree(&playback);
     uint8_tListFree(&bytes);
