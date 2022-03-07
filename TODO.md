@@ -55,7 +55,7 @@
 
 ### Mar 07, 2022
 - [ ] Fix memory leaks
-- [ ] Make large images not crash app (write to disk. send chunks peridically to stay under memory usage)
+- [ ] Make large images not crash app (detect packets from client. Ensure client has write access)
 
 ### Mar 08, 2022
 - [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM

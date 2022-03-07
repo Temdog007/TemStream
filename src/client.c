@@ -549,7 +549,7 @@ streamConnectionThread(void* ptr)
         }
 
         host =
-          enet_host_create(NULL, 1, 2, currentAllocator->totalSize() / 2, 0);
+          enet_host_create(NULL, 1, 2, currentAllocator->totalSize() / 4, 0);
         if (host == NULL) {
             fprintf(stderr, "Failed to create client host\n");
             goto fend;

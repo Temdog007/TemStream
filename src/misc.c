@@ -24,6 +24,9 @@ sendBytes(ENetPeer* peers,
     for (size_t i = 0; i < peerCount; ++i) {
         PEER_SEND(&peers[i], channel, packet);
     }
+    if (packet->referenceCount == 0) {
+        enet_packet_destroy(packet);
+    }
 }
 
 bool
@@ -599,6 +602,9 @@ sendPacketToReaders(ENetHost* host, ENetPacket* packet, const Access* acccess)
         }
         PEER_SEND(peer, SERVER_CHANNEL, packet);
     }
+    if (packet->referenceCount == 0) {
+        enet_packet_destroy(packet);
+    }
 }
 
 ServerConfigurationList
@@ -639,17 +645,46 @@ void
 cleanupConfigurationsInRedis(redisContext* ctx)
 {
     ServerConfigurationList servers = getStreams(ctx);
-    for (size_t i = 0; i < servers.used; ++i) {
+    printf("Verifying %u server(s)\n", servers.used);
+    for (uint32_t i = 0; i < servers.used; ++i) {
         const ServerConfiguration* config = &servers.buffer[i];
 
         ENetAddress address = { 0 };
         enet_address_set_host(&address, config->hostname.buffer);
         address.port = config->port.port;
         ENetHost* host = enet_host_create(NULL, 2, 1, 0, 0);
+        ENetPeer* peer = NULL;
+        bool verified = false;
         if (host == NULL) {
-            removeConfigurationFromRedis(ctx, config);
-            continue;
+            goto endLoop;
         }
-        enet_host_destroy(host);
+
+        peer = enet_host_connect(host, &address, 2, 0);
+        if (peer == NULL) {
+            goto endLoop;
+        }
+
+        ENetEvent e = { 0 };
+        if (enet_host_service(host, &e, 100U) >= 0) {
+            switch (e.type) {
+                case ENET_EVENT_TYPE_CONNECT:
+                    verified = true;
+                    break;
+                case ENET_EVENT_TYPE_RECEIVE:
+                    enet_packet_destroy(e.packet);
+                    break;
+                default:
+                    break;
+            }
+        }
+        enet_peer_disconnect_now(peer, 0);
+
+    endLoop:
+        closeHostAndPeer(host, peer);
+        if (!verified) {
+            printf("Removing '%s' server from list\n", config->name.buffer);
+            removeConfigurationFromRedis(ctx, config);
+        }
     }
+    ServerConfigurationListFree(&servers);
 }
