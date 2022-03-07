@@ -81,7 +81,7 @@ handleTextMessage(const void* ptr,
             }
             TextMessageFree(&textMessage);
         } break;
-        case TextMessageTag_text:
+        case TextMessageTag_text: {
             result = true;
             if (!clientHasWriteAccess(client, serverConfig)) {
                 printf("Client '%s' sent a text message when it doesn't have "
@@ -106,7 +106,7 @@ handleTextMessage(const void* ptr,
             ENetPacket* packet =
               BytesToPacket(bytes->buffer, bytes->used, true);
             sendPacketToReaders(peer->host, packet, &serverConfig->readers);
-            break;
+        } break;
         default:
             break;
     }

@@ -32,11 +32,20 @@ sendAudioPackets(OpusEncoder* encoder,
                  const SDL_AudioSpec spec,
                  ENetPeer*);
 
+bool
+selectAudioStreamSource(struct pollfd inputfd, pBytes bytes, pAudioState state);
+
 void
 consumeAudio(const Bytes*, const Guid*);
 
 bool
 startRecording(struct pollfd inputfd, pBytes bytes, pAudioState);
+
+bool
+startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state);
+
+void
+storeOpusAudio(pAudioState state, const Bytes* compressed);
 
 void
 handleUserInput(ENetPeer* peer,
@@ -463,6 +472,59 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
     return success;
 }
 
+bool
+clientHandleAudioMessage(const Bytes* packetBytes,
+                         pBytes bytes,
+                         pStreamDisplay display,
+                         pAudioState record,
+                         pAudioState playback)
+{
+    AudioMessage message = { 0 };
+    MESSAGE_DESERIALIZE(AudioMessage, message, (*packetBytes));
+    bool success = false;
+    switch (message.tag) {
+        case AudioMessageTag_general: {
+            Client client = { 0 };
+            success =
+              clientHandleGeneralMessage(&message.general, &client, NULL);
+            if (!success ||
+                message.general.tag != GeneralMessageTag_authenticateAck) {
+                break;
+            }
+            const struct pollfd inputfd = { .events = POLLIN,
+                                            .revents = 0,
+                                            .fd = STDIN_FILENO };
+            if (clientHasWriteAccess(&client, &display->config)) {
+                selectAudioStreamSource(inputfd, bytes, record);
+                if (record->encoder != NULL) {
+                    SDL_PauseAudioDevice(record->deviceId, SDL_FALSE);
+                }
+            }
+            if (clientHasReadAccess(&client, &display->config)) {
+                startPlayback(inputfd, bytes, playback);
+                if (playback->decoder != NULL) {
+                    SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
+                }
+            }
+            ClientFree(&client);
+        } break;
+        case AudioMessageTag_audio:
+            if (playback->decoder == NULL) {
+                success = false;
+                break;
+            }
+            success = true;
+            storeOpusAudio(playback, &message.audio);
+            break;
+        default:
+            printf("Unexpected audio message: %s\n",
+                   AudioMessageTagToCharString(message.tag));
+            break;
+    }
+    AudioMessageFree(&message);
+    return success;
+}
+
 int
 streamConnectionThread(void* ptr)
 {
@@ -470,9 +532,15 @@ streamConnectionThread(void* ptr)
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
-    Bytes bytes = { .allocator = currentAllocator };
-
+    Bytes bytes = { .allocator = currentAllocator,
+                    .used = 0,
+                    .size = MAX_PACKET_SIZE,
+                    .buffer = currentAllocator->allocate(MAX_PACKET_SIZE) };
+    Bytes audioBytes = { .allocator = currentAllocator };
+    int result = EXIT_FAILURE;
     bool displayMissing = false;
+    AudioState record = { 0 };
+    AudioState playback = { 0 };
     USE_DISPLAY(clientData.mutex, fend, displayMissing, {
         if (config->port.tag != PortTag_port) {
             printf(
@@ -480,7 +548,8 @@ streamConnectionThread(void* ptr)
             goto fend;
         }
 
-        host = enet_host_create(NULL, 1, 2, 0, 0);
+        host =
+          enet_host_create(NULL, 1, 2, currentAllocator->totalSize() / 2, 0);
         if (host == NULL) {
             fprintf(stderr, "Failed to create client host\n");
             goto fend;
@@ -522,7 +591,7 @@ streamConnectionThread(void* ptr)
 
     while (!appDone && !displayMissing) {
         USE_DISPLAY(clientData.mutex, fend64, displayMissing, { goto fend64; });
-        while (enet_host_service(host, &event, 100U) > 0) {
+        if (enet_host_service(host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     USE_DISPLAY(clientData.mutex, fend3, displayMissing, {
@@ -563,6 +632,13 @@ streamConnectionThread(void* ptr)
                                 success = clientHandleImageMessage(&packetBytes,
                                                                    display);
                                 break;
+                            case ServerConfigurationDataTag_audio:
+                                success = clientHandleAudioMessage(&packetBytes,
+                                                                   &bytes,
+                                                                   display,
+                                                                   &record,
+                                                                   &playback);
+                                break;
                             default:
                                 fprintf(stderr,
                                         "Server '%s' not implemented\n",
@@ -582,6 +658,15 @@ streamConnectionThread(void* ptr)
                     break;
                 default:
                     break;
+            }
+        }
+        if (record.encoder != NULL) {
+            bytes.used =
+              SDL_DequeueAudio(record.deviceId, bytes.buffer, bytes.size);
+            uint8_tListQuickAppend(&audioBytes, bytes.buffer, bytes.used);
+            if (audioBytes.used != 0) {
+                sendAudioPackets(
+                  record.encoder, &audioBytes, record.spec, peer);
             }
         }
         if (SDL_TryLockMutex(clientData.mutex) == 0) {
@@ -604,6 +689,8 @@ streamConnectionThread(void* ptr)
         }
     }
 
+    result = EXIT_SUCCESS;
+
 end:
     IN_MUTEX(clientData.mutex, fend645, {
         size_t i = 0;
@@ -616,11 +703,14 @@ end:
             StreamDisplayListSwapRemove(&clientData.displays, i);
         }
     });
+    AudioStateFree(&record);
+    AudioStateFree(&playback);
     uint8_tListFree(&bytes);
+    uint8_tListFree(&audioBytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
     SDL_AtomicDecRef(&runningThreads);
-    return EXIT_SUCCESS;
+    return result;
 }
 
 void
@@ -806,13 +896,17 @@ sendAudioPackets(OpusEncoder* encoder,
                  ENetPeer* peer)
 {
     uint8_t buffer[KB(2)] = { 0 };
-    Bytes converted = { .allocator = currentAllocator,
-                        .buffer = buffer,
-                        .size = sizeof(buffer),
-                        .used = 0 };
+
     const int minDuration =
       audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 
+    AudioMessage message = { 0 };
+    message.tag = AudioMessageTag_audio;
+    message.audio.allocator = currentAllocator;
+    message.audio.buffer = buffer;
+    message.audio.size = sizeof(buffer);
+    message.audio.used = 0;
+    Bytes temp = { .allocator = currentAllocator };
     while (!uint8_tListIsEmpty(audio)) {
         int frame_size = audio->used / (spec.channels * PCM_SIZE);
 
@@ -828,14 +922,14 @@ sendAudioPackets(OpusEncoder* encoder,
           opus_encode_float(encoder,
                             (float*)audio->buffer,
                             frame_size,
-                            converted.buffer,
-                            converted.size);
+                            message.audio.buffer,
+                            message.audio.size);
 #else
           opus_encode(encoder,
                       (opus_int16*)audio->buffer,
                       frame_size,
-                      converted.buffer,
-                      converted.size);
+                      message.audio.buffer,
+                      message.audio.size);
 #endif
         if (result < 0) {
             fprintf(stderr,
@@ -845,17 +939,19 @@ sendAudioPackets(OpusEncoder* encoder,
             break;
         }
 
-        converted.used = (uint32_t)result;
+        message.audio.used = (uint32_t)result;
 
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
         uint8_tListQuickRemove(audio, 0, bytesUsed);
 
-        sendBytes(peer, 1, CLIENT_CHANNEL, &converted, false);
+        MESSAGE_SERIALIZE(AudioMessage, message, temp);
+        sendBytes(peer, 1, CLIENT_CHANNEL, &temp, false);
     }
+    uint8_tListFree(&temp);
 }
 
-void
-selectAudioStreamSource(struct pollfd inputfd, pBytes bytes)
+bool
+selectAudioStreamSource(struct pollfd inputfd, pBytes bytes, pAudioState state)
 {
     askQuestion("Select audio source to stream from");
     for (AudioStreamSource i = 0; i < AudioStreamSource_Length; ++i) {
@@ -867,10 +963,9 @@ selectAudioStreamSource(struct pollfd inputfd, pBytes bytes)
           inputfd, bytes, AudioStreamSource_Length, &selected, true) !=
         UserInputResult_Input) {
         puts("Canceled audio streaming seleciton");
-        return;
+        return false;
     }
 
-    AudioState state = { 0 };
     switch (selected) {
         case AudioStreamSource_File:
             askQuestion("Enter file to stream");
@@ -890,24 +985,20 @@ selectAudioStreamSource(struct pollfd inputfd, pBytes bytes)
                         continue;
                     default:
                         puts("Canceled audio streaming file");
-                        goto end;
+                        break;
                 }
             }
             break;
         case AudioStreamSource_Microphone:
-            if (!startRecording(inputfd, bytes, &state)) {
-                goto end;
-            }
-            break;
+            return startRecording(inputfd, bytes, state);
         case AudioStreamSource_Window:
             fprintf(stderr, "Window audio streaming not implemented\n");
-            goto end;
+            break;
         default:
             fprintf(stderr, "Unknown option: %d\n", selected);
-            goto end;
+            break;
     }
-end:
-    AudioStateFree(&state);
+    return false;
 }
 
 bool

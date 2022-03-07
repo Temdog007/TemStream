@@ -12,7 +12,7 @@ int
 printImageConfiguration(const ImageConfiguration* configuration)
 {
     (void)configuration;
-    return printf("Image\n");
+    return puts("Image");
 }
 
 bool

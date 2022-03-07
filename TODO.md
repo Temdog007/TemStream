@@ -47,12 +47,13 @@
 - [x] Rewrite message protocol to send data in chunks
 - [x] Ensure each stream is its own process
 - [x] Make chat work
-- [ ] Make audio work
+- [x] Make audio work
 - [x] Make image work
 - [x] Cleanup servers in redis
 - [x] Make server store information on file (give information on client connection)
-- [ ] Fix memory leaks
 - [x] Print TTF and IMG versions
+- [ ] Fix memory leaks
+- [ ] Make large images not crash app
 
 ### Mar ??, 2022
 - [ ] Fix audio not working when long delay between audio packets

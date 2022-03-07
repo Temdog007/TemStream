@@ -541,6 +541,15 @@ void
 AudioStateFree(pAudioState state)
 {
     SDL_CloseAudioDevice(state->deviceId);
+    if (state->isRecording) {
+        if (state->encoder != NULL) {
+            currentAllocator->free(state->encoder);
+        }
+    } else {
+        if (state->decoder != NULL) {
+            currentAllocator->free(state->decoder);
+        }
+    }
 }
 
 bool
