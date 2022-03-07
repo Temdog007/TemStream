@@ -393,8 +393,9 @@ continueServer:
         goto end;
     }
 
-    if (config->data.tag != ServerConfigurationDataTag_lobby &&
-        !writeConfigurationToRedis(ctx, config)) {
+    if (config->data.tag == ServerConfigurationDataTag_lobby) {
+        cleanupConfigurationsInRedis(ctx);
+    } else if (!writeConfigurationToRedis(ctx, config)) {
         fprintf(stderr, "Failed to write to redis\n");
         goto end;
     }

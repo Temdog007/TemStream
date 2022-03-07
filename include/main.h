@@ -521,6 +521,9 @@ writeConfigurationToRedis(redisContext*, const ServerConfiguration*);
 extern bool
 removeConfigurationFromRedis(redisContext*, const ServerConfiguration*);
 
+extern void
+cleanupConfigurationsInRedis(redisContext*);
+
 // Base 64
 
 TemLangString

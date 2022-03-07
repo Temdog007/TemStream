@@ -635,3 +635,22 @@ end:
     freeReplyObject(reply);
     return list;
 }
+
+void
+cleanupConfigurationsInRedis(redisContext* ctx)
+{
+    ServerConfigurationList servers = getStreams(ctx);
+    for (size_t i = 0; i < servers.used; ++i) {
+        const ServerConfiguration* config = &servers.buffer[i];
+
+        ENetAddress address = { 0 };
+        enet_address_set_host(&address, config->hostname.buffer);
+        address.port = config->port.port;
+        ENetHost* host = enet_host_create(NULL, 2, 1, 0, 0);
+        if (host == NULL) {
+            removeConfigurationFromRedis(ctx, config);
+            continue;
+        }
+        enet_host_destroy(host);
+    }
+}

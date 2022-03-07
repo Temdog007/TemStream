@@ -49,7 +49,7 @@
 - [x] Make chat work
 - [ ] Make audio work
 - [x] Make image work
-- [ ] Remove redis/just write to disk
+- [x] Cleanup servers in redis
 - [x] Make server store information on file (give information on client connection)
 - [ ] Fix memory leaks
 - [x] Print TTF and IMG versions
