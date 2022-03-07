@@ -49,7 +49,7 @@ handleAudioMessage(const void* ptr,
                    const ServerConfiguration* serverConfig)
 {
     (void)ctx;
-    pClient client = peer->data;
+
     // const AudioConfiguration* config = &serverConfig->data.audio;
     bool result = false;
     CAST_MESSAGE(AudioMessage, ptr);
@@ -67,12 +67,6 @@ handleAudioMessage(const void* ptr,
         } break;
         case AudioMessageTag_audio: {
             result = true;
-            if (!clientHasWriteAccess(client, serverConfig)) {
-                printf("Client '%s' sent a audio message when it doesn't have "
-                       "write access",
-                       client->name.buffer);
-                break;
-            }
             MESSAGE_SERIALIZE(AudioMessage, (*message), (*bytes));
             ENetPacket* packet =
               BytesToPacket(bytes->buffer, bytes->used, true);

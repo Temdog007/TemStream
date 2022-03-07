@@ -712,6 +712,10 @@ end:
     uint8_tListFree(&audioBytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_RefreshStreams;
+    SDL_PushEvent(&e);
     SDL_AtomicDecRef(&runningThreads);
     return result;
 }
@@ -1250,7 +1254,7 @@ end:
 }
 
 void
-selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
+selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes, pClient client)
 {
     const StreamDisplayList* list = &clientData.displays;
     if (StreamDisplayListIsEmpty(list)) {
@@ -1276,6 +1280,12 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes)
         goto end;
     }
 
+    const ServerConfiguration* config = &clientData.displays.buffer[i].config;
+    if (!clientHasWriteAccess(client, config)) {
+        puts("Write access is not granted for this stream");
+        goto end;
+    }
+
     askQuestion("Enter text to send");
     if (getUserInput(inputfd, bytes, NULL, POLL_FOREVER) !=
         UserInputResult_Input) {
@@ -1293,7 +1303,7 @@ end:
 }
 
 void
-selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
+selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes, pClient client)
 {
     const StreamDisplayList* list = &clientData.displays;
     if (StreamDisplayListIsEmpty(list)) {
@@ -1319,6 +1329,12 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes)
     } else if (getIndexFromUser(inputfd, bytes, list->used, &i, true) !=
                UserInputResult_Input) {
         puts("Canceling file upload");
+        goto end;
+    }
+
+    const ServerConfiguration* config = &clientData.displays.buffer[i].config;
+    if (!clientHasWriteAccess(client, config)) {
+        puts("Write access is not granted for this stream");
         goto end;
     }
 
@@ -1511,10 +1527,10 @@ checkUserInput(SDL_Renderer* renderer,
             saveScreenshot(renderer, &list->buffer[i]);
         } break;
         case ClientCommand_UploadFile:
-            selectStreamToUploadFileTo(inputfd, bytes);
+            selectStreamToUploadFileTo(inputfd, bytes, client);
             break;
         case ClientCommand_UploadText:
-            selectStreamToSendTextTo(inputfd, bytes);
+            selectStreamToSendTextTo(inputfd, bytes, client);
             break;
         default:
             fprintf(stderr,
@@ -1982,6 +1998,7 @@ clientHandleLobbyMessage(const LobbyMessage* message,
                 printServerConfigurationForClient(
                   &clientData.allStreams.buffer[i]);
             }
+            renderDisplays();
             goto end;
         case LobbyMessageTag_startStreamingAck:
             result = true;
@@ -2191,7 +2208,8 @@ handleUserEvent(const SDL_UserEvent* e,
                 SDL_Window* window,
                 SDL_Renderer* renderer,
                 TTF_Font* ttfFont,
-                const size_t targetDisplay)
+                const size_t targetDisplay,
+                ENetPeer* peer)
 {
     int w;
     int h;
@@ -2200,6 +2218,9 @@ handleUserEvent(const SDL_UserEvent* e,
         case CustomEvent_Render:
             drawTextures(
               renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
+            break;
+        case CustomEvent_RefreshStreams:
+            refreshStreams(peer);
             break;
         case CustomEvent_ShowSimpleMessage:
             SDL_ShowSimpleMessageBox(
@@ -2562,7 +2583,7 @@ runClient(const Configuration* configuration)
                 } break;
                 case SDL_USEREVENT:
                     handleUserEvent(
-                      &e.user, window, renderer, ttfFont, targetDisplay);
+                      &e.user, window, renderer, ttfFont, targetDisplay, peer);
                     break;
                 case SDL_DROPFILE: {
                     // Look for image stream

@@ -99,6 +99,7 @@ resource ClientData {
 enum CustomEvent {
     Render
     UpdateStreamDisplay
+    RefreshStreams
     ShowSimpleMessage
 }
 

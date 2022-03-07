@@ -85,8 +85,6 @@ handleImageMessage(const void* ptr,
 {
     (void)ctx;
 
-    pClient client = peer->data;
-    // const ImageConfiguration* config = &serverConfig->data.image;
     bool result = false;
     CAST_MESSAGE(ImageMessage, ptr);
     switch (message->tag) {
@@ -105,12 +103,6 @@ handleImageMessage(const void* ptr,
         case ImageMessageTag_imageChunk:
         case ImageMessageTag_imageEnd:
             result = true;
-            if (!clientHasWriteAccess(client, serverConfig)) {
-                printf("Client '%s' sent an image message when it doesn't have "
-                       "write access",
-                       client->name.buffer);
-                break;
-            }
             MESSAGE_SERIALIZE(ImageMessage, (*message), (*bytes));
             switch (message->tag) {
                 case ImageMessageTag_imageStart:

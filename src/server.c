@@ -1,5 +1,7 @@
 #include <include/main.h>
 
+const ServerConfiguration* gServerConfig = NULL;
+
 // Assigns client a name and id also
 bool
 authenticateClient(pClient client,
@@ -322,6 +324,31 @@ writeServerFileBytes(const ServerConfiguration* config,
     fclose(file);
 }
 
+int
+VerifyClientPacket(ENetHost* host, ENetEvent* e)
+{
+    (void)e;
+    if (host->receivedDataLength > MAX_PACKET_SIZE) {
+        return 1;
+    }
+    const ENetProtocolHeader* header = (ENetProtocolHeader*)host->receivedData;
+    const enet_uint16 peerId = ENET_NET_TO_HOST_16(header->peerID);
+
+    ENetPeer* peer = &host->peers[peerId];
+    switch (peer->state) {
+        case ENET_PEER_STATE_CONNECTED: {
+            pClient client = peer->data;
+            if (client == NULL) {
+                break;
+            }
+            return clientHasWriteAccess(client, gServerConfig) ? 0 : 1;
+        } break;
+        default:
+            break;
+    }
+    return 0;
+}
+
 #define CHECK_SERVER                                                           \
     server = enet_host_create(                                                 \
       &address, config->maxClients, 2, currentAllocator->totalSize() / 4, 0);  \
@@ -340,6 +367,8 @@ int
 runServer(pConfiguration configuration, ServerFunctions funcs)
 {
     int result = EXIT_FAILURE;
+
+    gServerConfig = &configuration->server;
 
     redisContext* ctx = NULL;
     ENetHost* server = NULL;
@@ -381,6 +410,8 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
         fprintf(stderr, "Failed to create server\n");
         goto end;
     }
+
+    server->intercept = VerifyClientPacket;
 
 continueServer:
     ctx = redisConnect(config->redisIp.buffer, config->redisPort);

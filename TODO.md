@@ -55,7 +55,8 @@
 
 ### Mar 07, 2022
 - [ ] Fix memory leaks
-- [ ] Make large images not crash app (detect packets from client. Ensure client has write access)
+- [ ] Make large images not crash server (write image data to file)
+- [x] Ensure clients cannot slow down server if they don't have write access (use intercept callback in ENetHost)
 
 ### Mar 08, 2022
 - [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM

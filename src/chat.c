@@ -90,12 +90,6 @@ handleChatMessage(const void* ptr,
             break;
         case ChatMessageTag_message:
             result = true;
-            if (!clientHasWriteAccess(client, serverConfig)) {
-                printf("Client '%s' sent a chat message when it doesn't have "
-                       "write access",
-                       client->name.buffer);
-                break;
-            }
             if (config->maxLength > 0 &&
                 config->maxLength < message->message.used) {
                 printf("Got a chat message with the length of %u. But %u is "

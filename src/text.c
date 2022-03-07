@@ -65,7 +65,6 @@ handleTextMessage(const void* ptr,
 {
     (void)ctx;
 
-    pClient client = peer->data;
     const TextConfiguration* config = &serverConfig->data.text;
     bool result = false;
     CAST_MESSAGE(TextMessage, ptr);
@@ -83,12 +82,6 @@ handleTextMessage(const void* ptr,
         } break;
         case TextMessageTag_text: {
             result = true;
-            if (!clientHasWriteAccess(client, serverConfig)) {
-                printf("Client '%s' sent a text message when it doesn't have "
-                       "write access",
-                       client->name.buffer);
-                break;
-            }
             if (TemLangStringIsEmpty(&message->text)) {
                 break;
             }

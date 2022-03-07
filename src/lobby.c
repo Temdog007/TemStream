@@ -132,10 +132,7 @@ handleLobbyMessage(const void* ptr,
         case LobbyMessageTag_startStreaming: {
             lobbyMessage.tag = LobbyMessageTag_startStreamingAck;
             lobbyMessage.startStreamingAck = false;
-            result = clientHasWriteAccess(client, serverConfig);
-            if (!result) {
-                break;
-            }
+            result = true;
 
             ServerConfigurationList streams = getStreams(ctx);
             const ServerConfiguration* newConfig = &message->startStreaming;
@@ -193,7 +190,7 @@ handleLobbyMessage(const void* ptr,
         sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
     } else {
 #if _DEBUG
-        printf("Unexpected message '%s' from client\n",
+        printf("Unexpected lobby message '%s' from client\n",
                LobbyMessageTagToCharString(message->tag));
 #endif
     }
