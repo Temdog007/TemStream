@@ -58,7 +58,6 @@
 - [ ] Make large images not crash app (write to disk. send chunks peridically to stay under memory usage)
 
 ### Mar 08, 2022
-- [ ] Fix audio not working when long delay between audio packets
 - [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM
 
 ### Later
@@ -67,7 +66,6 @@
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam
-
 - [ ] Ensure textures can be hidden for a stream
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Allow for blacklist/whitelist for stream access

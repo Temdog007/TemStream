@@ -41,7 +41,7 @@ main(const int argc, const char** argv)
     {
         // Look for -M or --memory
         int binaryIndex = -1;
-        uint64_t memory = MB(8);
+        uint64_t memory = MB(64);
         for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-B", argv[i]) == 0 ||
                 strcmp("--binary", argv[i]) == 0) {
