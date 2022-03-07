@@ -2,6 +2,9 @@
 
 DEFINE_RUN_SERVER(Image);
 
+bool needImageSend = false;
+size_t imageSendOffset = 0;
+
 ImageConfiguration
 defaultImageConfiguration()
 {
@@ -13,6 +16,63 @@ printImageConfiguration(const ImageConfiguration* configuration)
 {
     (void)configuration;
     return puts("Image");
+}
+
+void
+onImageDownTime(ENetHost* host, pBytes b)
+{
+    if (!needImageSend) {
+        return;
+    }
+
+    ENetPacket* packet = NULL;
+    ImageMessage m = { 0 };
+    if (imageSendOffset == 0U) {
+        m.tag = ImageMessageTag_imageStart;
+        m.imageStart = NULL;
+        MESSAGE_SERIALIZE(ImageMessage, m, (*b));
+        packet = BytesToPacket(b->buffer, b->used, true);
+        sendPacketToReaders(host, packet, &gServerConfig->readers);
+    }
+
+    int fd = -1;
+    char* ptr = NULL;
+    size_t size = 0;
+    char buffer[512];
+    if (!mapFile(getServerFileName(gServerConfig, buffer),
+                 &fd,
+                 &ptr,
+                 &size,
+                 MapFileType_Read)) {
+        return;
+    }
+
+    m.tag = ImageMessageTag_imageChunk;
+    while (imageSendOffset < size && !lowMemory()) {
+        m.imageChunk.used = 0;
+        m.imageChunk.buffer = (uint8_t*)ptr + imageSendOffset;
+        const size_t s = SDL_min(size - imageSendOffset, host->mtu);
+        m.imageChunk.used = s;
+        m.imageChunk.size = s;
+        MESSAGE_SERIALIZE(ImageMessage, m, (*b));
+        packet = BytesToPacket(b->buffer, b->used, true);
+        sendPacketToReaders(host, packet, &gServerConfig->readers);
+        imageSendOffset += s;
+#if _DEBUG
+        printf("Sending image chunk: %zu\n", imageSendOffset);
+#endif
+    }
+
+    if (imageSendOffset >= size) {
+        m.tag = ImageMessageTag_imageEnd;
+        m.imageEnd = NULL;
+        MESSAGE_SERIALIZE(ImageMessage, m, (*b));
+        packet = BytesToPacket(b->buffer, b->used, true);
+        sendPacketToReaders(host, packet, &gServerConfig->readers);
+        needImageSend = false;
+    }
+
+    unmapFile(fd, ptr, size);
 }
 
 bool
@@ -36,43 +96,10 @@ onConnectForImage(pClient client,
 {
     (void)client;
     (void)bytes;
-    char buffer[512];
-    int fd = -1;
-    char* ptr = NULL;
-    size_t size = 0;
-    if (!mapFile(getServerFileName(config, buffer),
-                 &fd,
-                 &ptr,
-                 &size,
-                 MapFileType_Read)) {
-        perror("Failed to open file");
-        return true;
-    }
-
-    ImageMessage message = { 0 };
-    message.tag = ImageMessageTag_imageStart;
-    message.imageStart = NULL;
-    MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-    sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-
-    message.tag = ImageMessageTag_imageChunk;
-    message.imageChunk.allocator = currentAllocator;
-    for (size_t i = 0; i < size; i += peer->mtu) {
-        message.imageChunk.used = 0;
-        uint8_tListQuickAppend(
-          &message.imageChunk, (uint8_t*)ptr + i, SDL_min(peer->mtu, size - i));
-        MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-        enet_host_flush(peer->host);
-    }
-    ImageMessageFree(&message);
-
-    message.tag = ImageMessageTag_imageEnd;
-    message.imageEnd = NULL;
-    MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-    sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-
-    unmapFile(fd, ptr, size);
+    (void)peer;
+    (void)config;
+    needImageSend = true;
+    imageSendOffset = 0;
     return true;
 }
 
@@ -100,31 +127,22 @@ handleImageMessage(const void* ptr,
             ImageMessageFree(&imageMessage);
         } break;
         case ImageMessageTag_imageStart:
+            result = true;
+            writeServerFileBytes(serverConfig, NULL, true);
+            break;
         case ImageMessageTag_imageChunk:
+            result = true;
+            writeServerFileBytes(serverConfig, &message->imageChunk, false);
+            break;
         case ImageMessageTag_imageEnd:
             result = true;
-            MESSAGE_SERIALIZE(ImageMessage, (*message), (*bytes));
-            switch (message->tag) {
-                case ImageMessageTag_imageStart:
-                    writeServerFileBytes(serverConfig, NULL, true);
-                    break;
-                case ImageMessageTag_imageChunk:
-                    if (uint8_tListIsEmpty(&message->imageChunk)) {
-                        goto end;
-                    }
-                    writeServerFileBytes(serverConfig, bytes, false);
-                    break;
-                default:
-                    break;
-            }
-            ENetPacket* packet =
-              BytesToPacket(bytes->buffer, bytes->used, true);
-            sendPacketToReaders(peer->host, packet, &serverConfig->readers);
+            needImageSend = true;
+            imageSendOffset = 0U;
             break;
         default:
             break;
     }
-end:
+
     if (!result) {
 #if _DEBUG
         printf("Unexpected message '%s' from client\n",

@@ -16,6 +16,13 @@ printChatConfiguration(const ChatConfiguration* configuration)
                   configuration->maxLength);
 }
 
+void
+onChatDownTime(ENetHost* host, pBytes b)
+{
+    (void)host;
+    (void)b;
+}
+
 bool
 parseChatConfiguration(const int argc,
                        const char** argv,

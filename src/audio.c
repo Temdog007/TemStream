@@ -15,6 +15,13 @@ printAudioConfiguration(const AudioConfiguration* configuration)
     return puts("Audio");
 }
 
+void
+onAudioDownTime(ENetHost* host, pBytes b)
+{
+    (void)host;
+    (void)b;
+}
+
 bool
 parseAudioConfiguration(const int argc,
                         const char** argv,

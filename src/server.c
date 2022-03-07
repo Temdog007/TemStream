@@ -324,11 +324,18 @@ writeServerFileBytes(const ServerConfiguration* config,
     fclose(file);
 }
 
+bool
+lowMemory()
+{
+    return currentAllocator->used() >
+           (currentAllocator->totalSize() * 9u / 10u);
+}
+
 int
 VerifyClientPacket(ENetHost* host, ENetEvent* e)
 {
     (void)e;
-    if (host->receivedDataLength > MAX_PACKET_SIZE) {
+    if (host->receivedDataLength > MAX_PACKET_SIZE || lowMemory()) {
         return 1;
     }
     const ENetProtocolHeader* header = (ENetProtocolHeader*)host->receivedData;
@@ -350,8 +357,7 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
 }
 
 #define CHECK_SERVER                                                           \
-    server = enet_host_create(                                                 \
-      &address, config->maxClients, 2, currentAllocator->totalSize() / 4, 0);  \
+    server = enet_host_create(&address, config->maxClients, 2, 0, 0);          \
     if (server != NULL) {                                                      \
         char buffer[1024] = { 0 };                                             \
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));            \
@@ -539,10 +545,12 @@ continueServer:
                        ServerConfigurationDataTagToCharString(config->data.tag),
                        config->timeout / 1000U);
                 appDone = true;
+                continue;
             }
         } else {
             lastCheck = now;
         }
+        funcs.onDownTime(server, &bytes);
     }
 
     result = EXIT_SUCCESS;

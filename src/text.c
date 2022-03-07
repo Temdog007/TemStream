@@ -14,6 +14,13 @@ printTextConfiguration(const TextConfiguration* configuration)
     return printf("Text\nMax length: %u\n", configuration->maxLength);
 }
 
+void
+onTextDownTime(ENetHost* host, pBytes b)
+{
+    (void)host;
+    (void)b;
+}
+
 bool
 parseTextConfiguration(const int argc,
                        const char** argv,

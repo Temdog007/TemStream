@@ -548,8 +548,7 @@ streamConnectionThread(void* ptr)
             goto fend;
         }
 
-        host =
-          enet_host_create(NULL, 1, 2, currentAllocator->totalSize() / 4, 0);
+        host = enet_host_create(NULL, 1, 2, 0, 0);
         if (host == NULL) {
             fprintf(stderr, "Failed to create client host\n");
             goto fend;
@@ -1311,10 +1310,6 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes, pClient client)
         return;
     }
 
-    int fd = -1;
-    char* ptr = NULL;
-    size_t size = 0;
-
     askQuestion("Send file to which stream?");
     for (size_t i = 0; i < clientData.displays.used; ++i) {
         const StreamDisplay* display = &clientData.displays.buffer[i];
@@ -1344,16 +1339,16 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes, pClient client)
         goto end;
     }
 
-    if (!mapFile((char*)bytes->buffer, &fd, &ptr, &size, MapFileType_Read)) {
-        fprintf(stderr,
-                "Error opening file '%s': %s\n",
-                (char*)bytes->buffer,
-                strerror(errno));
-        goto end;
-    }
+    pStreamDisplay display = &clientData.displays.buffer[i];
+    UserInput userInput = { 0 };
+    userInput.tag = UserInputTag_file;
+    userInput.file =
+      TemLangStringCreate((char*)bytes->buffer, currentAllocator);
+    UserInputListAppend(&display->userInputs, &userInput);
+    UserInputFree(&userInput);
 
 end:
-    unmapFile(fd, ptr, size);
+    return;
 }
 
 void
@@ -2170,17 +2165,14 @@ handleUserInput(ENetPeer* peer,
                     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
 
                     message.tag = ImageMessageTag_imageChunk;
-                    message.imageChunk.allocator = currentAllocator;
                     for (size_t i = 0; i < size; i += peer->mtu) {
-                        message.imageChunk.used = 0;
-                        uint8_tListQuickAppend(&message.imageChunk,
-                                               (uint8_t*)ptr + i,
-                                               SDL_min(peer->mtu, size - i));
+                        message.imageChunk.buffer = (uint8_t*)ptr + i;
+                        const size_t s = SDL_min(peer->mtu, size - i);
+                        message.imageChunk.used = s;
+                        message.imageChunk.size = s;
                         MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
                         sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
-                        enet_host_flush(peer->host);
                     }
-                    ImageMessageFree(&message);
 
                     message.tag = ImageMessageTag_imageEnd;
                     message.imageEnd = NULL;

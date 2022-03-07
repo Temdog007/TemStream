@@ -9,6 +9,13 @@ defaultLobbyConfiguration()
                                    ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT };
 }
 
+void
+onLobbyDownTime(ENetHost* host, pBytes b)
+{
+    (void)host;
+    (void)b;
+}
+
 int
 printLobbyConfiguration(const LobbyConfiguration* configuration)
 {

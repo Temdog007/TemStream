@@ -592,12 +592,12 @@ removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
 }
 
 void
-sendPacketToReaders(ENetHost* host, ENetPacket* packet, const Access* acccess)
+sendPacketToReaders(ENetHost* host, ENetPacket* packet, const Access* access)
 {
     for (size_t i = 0; i < host->peerCount; ++i) {
         ENetPeer* peer = &host->peers[i];
         pClient client = peer->data;
-        if (client == NULL || !clientHasAccess(client, acccess)) {
+        if (client == NULL || !clientHasAccess(client, access)) {
             continue;
         }
         PEER_SEND(peer, SERVER_CHANNEL, packet);

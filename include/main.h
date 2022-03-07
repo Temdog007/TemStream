@@ -207,10 +207,13 @@ typedef struct ServerFunctions
                           ENetPeer*,
                           redisContext*,
                           const ServerConfiguration*);
+    void (*onDownTime)(ENetHost*, pBytes);
     void (*freeMessage)(void*);
 } ServerFunctions, *pServerFunctions;
 
 extern int runServer(pConfiguration, ServerFunctions);
+
+extern const ServerConfiguration* gServerConfig;
 
 extern int
 runClient(const Configuration*);
@@ -236,32 +239,24 @@ handleGeneralMessage(const GeneralMessage*, ENetPeer*, pGeneralMessage);
       const int, const char**, pConfiguration);                                \
                                                                                \
     extern void serialize##T##Message(const void*, pBytes bytes);              \
-                                                                               \
     extern void* deserialize##T##Message(const Bytes* bytes);                  \
-                                                                               \
     extern void sendGeneralMessageFor##T(                                      \
       const GeneralMessage*, pBytes, ENetPeer*);                               \
-                                                                               \
     extern bool onConnectFor##T(pClient client,                                \
                                 pBytes bytes,                                  \
                                 ENetPeer* peer,                                \
                                 const ServerConfiguration* config);            \
-                                                                               \
     extern bool handle##T##Message(const void*,                                \
                                    pBytes,                                     \
                                    ENetPeer*,                                  \
                                    redisContext*,                              \
                                    const ServerConfiguration*);                \
-                                                                               \
     extern const GeneralMessage* getGeneralMessageFrom##T(const void*);        \
-                                                                               \
     extern void free##T##Message(void*);                                       \
-                                                                               \
     extern T##Configuration default##T##Configuration();                       \
-                                                                               \
     extern int print##T##Configuration(const T##Configuration*);               \
-                                                                               \
-    extern int run##T##Server(Configuration*);
+    extern int run##T##Server(Configuration*);                                 \
+    extern void on##T##DownTime(ENetHost*, pBytes);
 
 SERVER_FUNCTIONS(Lobby);
 SERVER_FUNCTIONS(Text);
@@ -272,16 +267,16 @@ SERVER_FUNCTIONS(Audio);
 #define DEFINE_RUN_SERVER(T)                                                   \
     int run##T##Server(pConfiguration configuration)                           \
     {                                                                          \
-        return runServer(configuration,                                        \
-                         (ServerFunctions){                                    \
-                           .serializeMessage = serialize##T##Message,          \
-                           .deserializeMessage = deserialize##T##Message,      \
-                           .getGeneralMessage = getGeneralMessageFrom##T,      \
-                           .sendGeneral = sendGeneralMessageFor##T,            \
-                           .onConnect = onConnectFor##T,                       \
-                           .handleMessage = handle##T##Message,                \
-                           .freeMessage = free##T##Message,                    \
-                         });                                                   \
+        return runServer(                                                      \
+          configuration,                                                       \
+          (ServerFunctions){ .serializeMessage = serialize##T##Message,        \
+                             .deserializeMessage = deserialize##T##Message,    \
+                             .getGeneralMessage = getGeneralMessageFrom##T,    \
+                             .sendGeneral = sendGeneralMessageFor##T,          \
+                             .onConnect = onConnectFor##T,                     \
+                             .handleMessage = handle##T##Message,              \
+                             .freeMessage = free##T##Message,                  \
+                             .onDownTime = on##T##DownTime });                 \
     }                                                                          \
                                                                                \
     void serialize##T##Message(const void* ptr, pBytes bytes)                  \
@@ -523,19 +518,22 @@ cleanupConfigurationsInRedis(redisContext*);
 
 // Base 64
 
-TemLangString
+extern TemLangString
 b64_encode(const Bytes* bytes);
 
-bool
+extern bool
 b64_decode(const char* in, pBytes bytes);
 
 // Access
 
-bool
+extern bool
 clientHasAccess(const Client* client, const Access* access);
 
-bool
+extern bool
 clientHasReadAccess(const Client* client, const ServerConfiguration* config);
 
-bool
+extern bool
 clientHasWriteAccess(const Client* client, const ServerConfiguration* config);
+
+extern bool
+lowMemory();
