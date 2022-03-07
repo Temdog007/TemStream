@@ -43,46 +43,6 @@ parseTextConfiguration(const int argc,
     return true;
 }
 
-void
-serializeTextMessage(const void* ptr, pBytes bytes)
-{
-    CAST_MESSAGE(TextMessage, ptr);
-    MESSAGE_SERIALIZE(TextMessage, (*message), (*bytes));
-}
-
-void*
-deserializeTextMessage(const Bytes* bytes)
-{
-    TextMessage* message = currentAllocator->allocate(sizeof(TextMessage));
-    MESSAGE_DESERIALIZE(TextMessage, (*message), (*bytes));
-    return message;
-}
-
-void
-freeTextMessage(void* ptr)
-{
-    CAST_MESSAGE(TextMessage, ptr);
-    TextMessageFree(message);
-    currentAllocator->free(message);
-}
-
-const GeneralMessage*
-getGeneralMessageFromText(const void* ptr)
-{
-    CAST_MESSAGE(TextMessage, ptr);
-    return message->tag == LobbyMessageTag_general ? &message->general : NULL;
-}
-
-void
-sendGeneralMessageForText(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
-{
-    TextMessage lm = { 0 };
-    lm.tag = TextMessageTag_general;
-    lm.general = *m;
-    MESSAGE_SERIALIZE(TextMessage, lm, (*bytes));
-    sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-}
-
 bool
 onConnectForText(pClient client,
                  pBytes bytes,

@@ -156,12 +156,14 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
         case ConfigurationTag_server:
             switch (configuration->server.data.tag) {
                 case ServerConfigurationDataTag_audio:
-                    goto runAudio;
+                    fprintf(stderr, "Audio server not implemented\n");
+                    goto end;
                 case ServerConfigurationDataTag_chat:
                     result = runChatServer(configuration);
                     goto end;
                 case ServerConfigurationDataTag_image:
-                    goto runImage;
+                    result = runImageServer(configuration);
+                    goto end;
                 case ServerConfigurationDataTag_text:
                     result = runTextServer(configuration);
                     goto end;
@@ -202,7 +204,11 @@ runChat : {
     goto end;
 }
 runImage : {
-    // result = runImageServer(argc, argv, &configuration);
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    if (parseImageConfiguration(argc, argv, configuration)) {
+        result = runImageServer(configuration);
+    }
     goto end;
 }
 runAudio : {

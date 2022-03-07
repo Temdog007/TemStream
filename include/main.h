@@ -125,6 +125,9 @@ closeHostAndPeer(ENetHost*, ENetPeer*);
 extern void
 sendPacketToReaders(ENetHost*, ENetPacket*, const Access*);
 
+extern void
+quickHandleHost(ENetHost*);
+
 typedef ENetPacket* pENetPacket;
 
 MAKE_COPY_AND_FREE(pENetPacket);
@@ -223,6 +226,9 @@ writeServerFileBytes(const ServerConfiguration* config,
                      const Bytes* bytes,
                      const bool overwrite);
 
+extern const char*
+getServerFileName(const ServerConfiguration* config, char buffer[512]);
+
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
 extern bool
@@ -279,6 +285,44 @@ SERVER_FUNCTIONS(Audio);
                            .handleMessage = handle##T##Message,                \
                            .freeMessage = free##T##Message,                    \
                          });                                                   \
+    }                                                                          \
+                                                                               \
+    void serialize##T##Message(const void* ptr, pBytes bytes)                  \
+    {                                                                          \
+        CAST_MESSAGE(T##Message, ptr);                                         \
+        MESSAGE_SERIALIZE(T##Message, (*message), (*bytes));                   \
+    }                                                                          \
+                                                                               \
+    void* deserialize##T##Message(const Bytes* bytes)                          \
+    {                                                                          \
+        p##T##Message message =                                                \
+          currentAllocator->allocate(sizeof(T##Message));                      \
+        MESSAGE_DESERIALIZE(T##Message, (*message), (*bytes));                 \
+        return message;                                                        \
+    }                                                                          \
+                                                                               \
+    void free##T##Message(void* ptr)                                           \
+    {                                                                          \
+        CAST_MESSAGE(T##Message, ptr);                                         \
+        T##MessageFree(message);                                               \
+        currentAllocator->free(message);                                       \
+    }                                                                          \
+                                                                               \
+    const GeneralMessage* getGeneralMessageFrom##T(const void* ptr)            \
+    {                                                                          \
+        CAST_MESSAGE(T##Message, ptr);                                         \
+        return message->tag == T##MessageTag_general ? &message->general       \
+                                                     : NULL;                   \
+    }                                                                          \
+                                                                               \
+    void sendGeneralMessageFor##T(                                             \
+      const GeneralMessage* m, pBytes bytes, ENetPeer* peer)                   \
+    {                                                                          \
+        T##Message lm = { 0 };                                                 \
+        lm.tag = T##MessageTag_general;                                        \
+        lm.general = *m;                                                       \
+        MESSAGE_SERIALIZE(T##Message, lm, (*bytes));                           \
+        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);                       \
     }
 
 // Parse failures

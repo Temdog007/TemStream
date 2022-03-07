@@ -46,36 +46,6 @@ parseLobbyConfiguration(const int argc,
     return true;
 }
 
-void
-serializeLobbyMessage(const void* ptr, pBytes bytes)
-{
-    CAST_MESSAGE(LobbyMessage, ptr);
-    MESSAGE_SERIALIZE(LobbyMessage, (*message), (*bytes));
-}
-
-void*
-deserializeLobbyMessage(const Bytes* bytes)
-{
-    pLobbyMessage message = currentAllocator->allocate(sizeof(LobbyMessage));
-    MESSAGE_DESERIALIZE(LobbyMessage, (*message), (*bytes));
-    return message;
-}
-
-void
-freeLobbyMessage(void* ptr)
-{
-    CAST_MESSAGE(LobbyMessage, ptr);
-    LobbyMessageFree(message);
-    currentAllocator->free(message);
-}
-
-const GeneralMessage*
-getGeneralMessageFromLobby(const void* ptr)
-{
-    CAST_MESSAGE(LobbyMessage, ptr);
-    return message->tag == LobbyMessageTag_general ? &message->general : NULL;
-}
-
 int
 waitForChildProcess(void* ptr)
 {
@@ -122,18 +92,6 @@ startNewServer(const ServerConfiguration* serverConfig)
         SDL_DetachThread(thread);
         return true;
     }
-}
-
-void
-sendGeneralMessageForLobby(const GeneralMessage* m,
-                           pBytes bytes,
-                           ENetPeer* peer)
-{
-    LobbyMessage lm = { 0 };
-    lm.tag = LobbyMessageTag_general;
-    lm.general = *m;
-    MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-    sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
 }
 
 bool

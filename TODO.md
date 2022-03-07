@@ -48,7 +48,7 @@
 - [x] Ensure each stream is its own process
 - [x] Make chat work
 - [ ] Make audio work
-- [ ] Make image work
+- [x] Make image work
 - [ ] Remove redis/just write to disk
 - [x] Make server store information on file (give information on client connection)
 - [ ] Fix memory leaks

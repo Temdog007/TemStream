@@ -52,46 +52,6 @@ parseChatConfiguration(const int argc,
     return true;
 }
 
-void
-serializeChatMessage(const void* ptr, pBytes bytes)
-{
-    CAST_MESSAGE(ChatMessage, ptr);
-    MESSAGE_SERIALIZE(ChatMessage, (*message), (*bytes));
-}
-
-void*
-deserializeChatMessage(const Bytes* bytes)
-{
-    pChatMessage message = currentAllocator->allocate(sizeof(ChatMessage));
-    MESSAGE_DESERIALIZE(ChatMessage, (*message), (*bytes));
-    return message;
-}
-
-void
-freeChatMessage(void* ptr)
-{
-    CAST_MESSAGE(ChatMessage, ptr);
-    ChatMessageFree(message);
-    currentAllocator->free(message);
-}
-
-const GeneralMessage*
-getGeneralMessageFromChat(const void* ptr)
-{
-    CAST_MESSAGE(ChatMessage, ptr);
-    return message->tag == ChatMessageTag_general ? &message->general : NULL;
-}
-
-void
-sendGeneralMessageForChat(const GeneralMessage* m, pBytes bytes, ENetPeer* peer)
-{
-    ChatMessage lm = { 0 };
-    lm.tag = TextMessageTag_general;
-    lm.general = *m;
-    MESSAGE_SERIALIZE(ChatMessage, lm, (*bytes));
-    sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-}
-
 bool
 onConnectForChat(pClient client,
                  pBytes bytes,

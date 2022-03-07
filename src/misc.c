@@ -26,6 +26,14 @@ sendBytes(ENetPeer* peers,
     }
 }
 
+void
+quickHandleHost(ENetHost* host)
+{
+    if (enet_host_service(host, NULL, 0U) < 0) {
+        return;
+    }
+}
+
 bool
 clientHasAccess(const Client* client, const Access* access)
 {

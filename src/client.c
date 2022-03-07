@@ -35,6 +35,9 @@ sendAudioPackets(OpusEncoder* encoder,
 void
 consumeAudio(const Bytes*, const Guid*);
 
+bool
+startRecording(struct pollfd inputfd, pBytes bytes, pAudioState);
+
 void
 handleUserInput(ENetPeer* peer,
                 pBytes,
@@ -420,6 +423,46 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
     return success;
 }
 
+bool
+clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
+{
+    ImageMessage message = { 0 };
+    MESSAGE_DESERIALIZE(ImageMessage, message, (*bytes));
+    bool success = false;
+    switch (message.tag) {
+        case ImageMessageTag_imageStart:
+            success = true;
+            StreamDisplayDataFree(&display->data);
+            display->data.tag = StreamDisplayDataTag_image;
+            display->data.image.allocator = currentAllocator;
+            break;
+        case ImageMessageTag_imageChunk:
+            success = true;
+            if (display->data.tag != StreamDisplayDataTag_image) {
+                StreamDisplayDataFree(&display->data);
+                display->data.tag = StreamDisplayDataTag_image;
+                display->data.image.allocator = currentAllocator;
+            }
+            uint8_tListQuickAppend(&display->data.image,
+                                   message.imageChunk.buffer,
+                                   message.imageChunk.used);
+            break;
+        case ImageMessageTag_imageEnd:
+            success = true;
+            updateStreamDisplay(display);
+            break;
+        case ImageMessageTag_general:
+            success = clientHandleGeneralMessage(&message.general, NULL, NULL);
+            break;
+        default:
+            printf("Unexpected image message: %s\n",
+                   ImageMessageTagToCharString(message.tag));
+            break;
+    }
+    ImageMessageFree(&message);
+    return success;
+}
+
 int
 streamConnectionThread(void* ptr)
 {
@@ -515,6 +558,10 @@ streamConnectionThread(void* ptr)
                             case ServerConfigurationDataTag_chat:
                                 success = clientHandleChatMessage(&packetBytes,
                                                                   display);
+                                break;
+                            case ServerConfigurationDataTag_image:
+                                success = clientHandleImageMessage(&packetBytes,
+                                                                   display);
                                 break;
                             default:
                                 fprintf(stderr,
@@ -806,9 +853,6 @@ sendAudioPackets(OpusEncoder* encoder,
         sendBytes(peer, 1, CLIENT_CHANNEL, &converted, false);
     }
 }
-
-bool
-startRecording(struct pollfd inputfd, pBytes bytes, pAudioState);
 
 void
 selectAudioStreamSource(struct pollfd inputfd, pBytes bytes)
@@ -1436,23 +1480,23 @@ end:
 }
 
 void
-updateImageDisplay(SDL_Renderer* renderer,
-                   pStreamDisplay display,
-                   const Bytes* bytes)
+updateImageDisplay(SDL_Renderer* renderer, pStreamDisplay display)
 {
     if (renderer == NULL) {
         return;
     }
 
+    const Bytes* bytes = &display->data.image;
     SDL_Surface* surface = NULL;
-    if (uint8_tListIsEmpty(bytes)) {
-        goto end;
-    }
 
     display->data.tag = StreamDisplayDataTag_none;
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;
+    }
+
+    if (uint8_tListIsEmpty(bytes)) {
+        goto end;
     }
 
     SDL_RWops* rw = SDL_RWFromConstMem(bytes->buffer, bytes->used);
@@ -2005,6 +2049,34 @@ handleUserInput(ENetPeer* peer,
                     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
                     ChatMessageFree(&message);
                 } break;
+                case ServerConfigurationDataTag_image: {
+                    ImageMessage message = { 0 };
+
+                    message.tag = ImageMessageTag_imageStart;
+                    message.imageStart = NULL;
+                    MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+
+                    message.tag = ImageMessageTag_imageChunk;
+                    message.imageChunk.allocator = currentAllocator;
+                    printf("File size: %zu\n", size);
+                    for (size_t i = 0; i < size; i += peer->mtu) {
+                        printf("File chunk: %zu\n", i);
+                        message.imageChunk.used = 0;
+                        uint8_tListQuickAppend(&message.imageChunk,
+                                               (uint8_t*)ptr + i,
+                                               SDL_min(peer->mtu, size - i));
+                        MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
+                        sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                        quickHandleHost(peer->host);
+                    }
+                    ImageMessageFree(&message);
+
+                    message.tag = ImageMessageTag_imageEnd;
+                    message.imageEnd = NULL;
+                    MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
+                    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                } break;
                 default:
                     fprintf(stderr,
                             "Sending '%s' not implemented\n",
@@ -2058,6 +2130,9 @@ handleUserEvent(const SDL_UserEvent* e,
                     break;
                 case StreamDisplayDataTag_chat:
                     updateChatDisplay(renderer, ttfFont, w, h, display);
+                    break;
+                case StreamDisplayDataTag_image:
+                    updateImageDisplay(renderer, display);
                     break;
                 default:
                     break;

@@ -310,14 +310,15 @@ writeServerFileBytes(const ServerConfiguration* config,
                      const bool overwrite)
 {
     char buffer[512];
-    FILE* file =
-      fopen(getServerFileName(config, buffer), overwrite ? "wb" : "ab");
+    FILE* file = fopen(getServerFileName(config, buffer),
+                       bytes == NULL || overwrite ? "wb" : "ab");
     if (file == NULL) {
         perror("Failed to open file");
         return;
     }
-
-    fwrite(bytes->buffer, sizeof(uint8_t), bytes->size, file);
+    if (bytes != NULL) {
+        fwrite(bytes->buffer, sizeof(uint8_t), bytes->used, file);
+    }
     fclose(file);
 }
 
