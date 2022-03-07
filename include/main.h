@@ -125,9 +125,6 @@ closeHostAndPeer(ENetHost*, ENetPeer*);
 extern void
 sendPacketToReaders(ENetHost*, ENetPacket*, const Access*);
 
-extern void
-quickHandleHost(ENetHost*);
-
 typedef ENetPacket* pENetPacket;
 
 MAKE_COPY_AND_FREE(pENetPacket);

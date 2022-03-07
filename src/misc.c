@@ -26,14 +26,6 @@ sendBytes(ENetPeer* peers,
     }
 }
 
-void
-quickHandleHost(ENetHost* host)
-{
-    if (enet_host_service(host, NULL, 0U) < 0) {
-        return;
-    }
-}
-
 bool
 clientHasAccess(const Client* client, const Access* access)
 {
@@ -563,8 +555,7 @@ writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
     redisReply* reply =
       redisCommand(ctx, "LPUSH %s %s", TEM_STREAM_SERVER_KEY, str.buffer);
 
-    const bool result =
-      reply->type == REDIS_REPLY_INTEGER && reply->integer == 1LL;
+    const bool result = reply->type == REDIS_REPLY_INTEGER;
     if (!result && reply->type == REDIS_REPLY_ERROR) {
         fprintf(stderr, "Redis error: %s\n", reply->str);
     }
@@ -586,8 +577,7 @@ removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
     redisReply* reply =
       redisCommand(ctx, "LREM %s 0 %s", TEM_STREAM_SERVER_KEY, str.buffer);
 
-    const bool result =
-      reply->type == REDIS_REPLY_INTEGER && reply->integer == 1LL;
+    const bool result = reply->type == REDIS_REPLY_INTEGER;
     if (!result && reply->type == REDIS_REPLY_ERROR) {
         fprintf(stderr, "Redis error: %s\n", reply->str);
     }

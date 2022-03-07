@@ -677,10 +677,13 @@ streamConnectionThread(void* ptr)
             }
             pStreamDisplay display = &clientData.displays.buffer[index];
             for (size_t i = 0; i < display->userInputs.used; ++i) {
-                handleUserInput(peer,
-                                &bytes,
-                                display->config.data.tag,
-                                &display->userInputs.buffer[i]);
+                UserInput input = { 0 };
+                UserInputCopy(
+                  &input, &display->userInputs.buffer[i], currentAllocator);
+                SDL_UnlockMutex(clientData.mutex);
+                handleUserInput(peer, &bytes, display->config.data.tag, &input);
+                UserInputFree(&input);
+                SDL_LockMutex(clientData.mutex);
             }
             UserInputListFree(&display->userInputs);
             display->userInputs.allocator = currentAllocator;
@@ -739,13 +742,14 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
         return;
     }
 
-    for (size_t i = 0; i < clientData.displays.used; ++i) {
-        const StreamDisplay* display = &clientData.displays.buffer[i];
-        if (GetStreamFromName(
-              &clientData.allStreams, &display->config.name, NULL, NULL)) {
-            puts("Already connected to stream");
-            return;
-        }
+    const TemLangString str = { .allocator = NULL,
+                                .buffer = (char*)bytes->buffer,
+                                .size = bytes->size,
+                                .used = bytes->used };
+
+    if (GetStreamDisplayFromName(&clientData.displays, &str, NULL, NULL)) {
+        puts("Already connected to stream");
+        return;
     }
 
     StreamDisplay display = { 0 };
@@ -2150,16 +2154,14 @@ handleUserInput(ENetPeer* peer,
 
                     message.tag = ImageMessageTag_imageChunk;
                     message.imageChunk.allocator = currentAllocator;
-                    printf("File size: %zu\n", size);
                     for (size_t i = 0; i < size; i += peer->mtu) {
-                        printf("File chunk: %zu\n", i);
                         message.imageChunk.used = 0;
                         uint8_tListQuickAppend(&message.imageChunk,
                                                (uint8_t*)ptr + i,
                                                SDL_min(peer->mtu, size - i));
                         MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
                         sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
-                        quickHandleHost(peer->host);
+                        enet_host_flush(peer->host);
                     }
                     ImageMessageFree(&message);
 

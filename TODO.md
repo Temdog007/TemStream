@@ -43,7 +43,7 @@
 - [x] Communicate with user input thread to prompt user for input
 - [x] Fix user input stops working when playing audio
 
-### Mar 02, 2022 - Mar ??, 2022
+### Mar 02, 2022 - Mar 06, 2022
 - [x] Rewrite message protocol to send data in chunks
 - [x] Ensure each stream is its own process
 - [x] Make chat work
@@ -52,10 +52,12 @@
 - [x] Cleanup servers in redis
 - [x] Make server store information on file (give information on client connection)
 - [x] Print TTF and IMG versions
-- [ ] Fix memory leaks
-- [ ] Make large images not crash app
 
-### Mar ??, 2022
+### Mar 07, 2022
+- [ ] Fix memory leaks
+- [ ] Make large images not crash app (write to disk. send chunks peridically to stay under memory usage)
+
+### Mar 08, 2022
 - [ ] Fix audio not working when long delay between audio packets
 - [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM
 

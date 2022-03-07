@@ -63,7 +63,7 @@ onConnectForImage(pClient client,
           &message.imageChunk, (uint8_t*)ptr + i, SDL_min(peer->mtu, size - i));
         MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
         sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
-        quickHandleHost(peer->host);
+        enet_host_flush(peer->host);
     }
     ImageMessageFree(&message);
 
