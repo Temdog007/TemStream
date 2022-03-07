@@ -1595,7 +1595,6 @@ updateImageDisplay(SDL_Renderer* renderer, pStreamDisplay display)
     const Bytes* bytes = &display->data.image;
     SDL_Surface* surface = NULL;
 
-    display->data.tag = StreamDisplayDataTag_none;
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;
@@ -2437,9 +2436,11 @@ runClient(const Configuration* configuration)
                             displayUserOptions();
                             break;
                         case SDLK_F2:
-                            printf("Memory: %zu / %zu\n",
+                            printf("Memory: %zu (%zu MB) / %zu (%zu MB) \n",
                                    currentAllocator->used(),
-                                   currentAllocator->totalSize());
+                                   currentAllocator->used() / (MB(1)),
+                                   currentAllocator->totalSize(),
+                                   currentAllocator->totalSize() / (MB(1)));
                             break;
                         case SDLK_F3:
                             if (hasTarget) {
