@@ -133,6 +133,8 @@ MAKE_DEFAULT_LIST(pENetPacket);
 #define CLIENT_CHANNEL 0
 #define SERVER_CHANNEL 1
 
+#define ENABLE_PRINT_MEMORY 1
+
 #define PEER_SEND(peer, channelID, packet)                                     \
     if (enet_peer_send(peer, channelID, packet) == -1) {                       \
         fprintf(stderr,                                                        \

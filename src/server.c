@@ -369,9 +369,17 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
         goto continueServer;                                                   \
     }
 
+#if ENABLE_PRINT_MEMORY
+#define PRINT_MEMORY printf("%d) %zu\n", __LINE__, currentAllocator->used());
+#else
+#define PRINT_MEMORY
+#endif
+
 int
 runServer(pConfiguration configuration, ServerFunctions funcs)
 {
+    PRINT_MEMORY;
+
     int result = EXIT_FAILURE;
 
     gServerConfig = &configuration->server;
@@ -390,6 +398,7 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
       ServerConfigurationDataTagToCharString(configuration->server.data.tag));
     printConfiguration(configuration);
 
+    PRINT_MEMORY;
     appDone = false;
     SDL_AtomicSet(&runningThreads, 0);
 
@@ -416,10 +425,12 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
         fprintf(stderr, "Failed to create server\n");
         goto end;
     }
+    PRINT_MEMORY;
 
     server->intercept = VerifyClientPacket;
 
 continueServer:
+    PRINT_MEMORY;
     ctx = redisConnect(config->redisIp.buffer, config->redisPort);
     if (ctx == NULL || ctx->err) {
         if (ctx == NULL) {
@@ -430,12 +441,14 @@ continueServer:
         goto end;
     }
 
+    PRINT_MEMORY;
     if (config->data.tag == ServerConfigurationDataTag_lobby) {
         cleanupConfigurationsInRedis(ctx);
     } else if (!writeConfigurationToRedis(ctx, config)) {
         fprintf(stderr, "Failed to write to redis\n");
         goto end;
     }
+    PRINT_MEMORY;
 
     RandomState rs = makeRandomState();
     ENetEvent event = { 0 };
@@ -540,7 +553,7 @@ continueServer:
         if (connectedPeers == 0) {
             if (config->timeout > 0 && now - lastCheck > config->timeout) {
                 printf("Ending server '%s(%s)' due to no connected clients in "
-                       "%" PRIu64 " seconds\n",
+                       "%" PRIu64 " second(s)\n",
                        config->name.buffer,
                        ServerConfigurationDataTagToCharString(config->data.tag),
                        config->timeout / 1000U);
@@ -556,14 +569,20 @@ continueServer:
     result = EXIT_SUCCESS;
 
 end:
+    PRINT_MEMORY;
     appDone = true;
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
     }
+    PRINT_MEMORY;
     removeConfigurationFromRedis(ctx, config);
+    PRINT_MEMORY;
     redisFree(ctx);
+    PRINT_MEMORY;
     uint8_tListFree(&bytes);
+    PRINT_MEMORY;
     cleanupServer(server);
+    PRINT_MEMORY;
     SDL_Quit();
     return result;
 }

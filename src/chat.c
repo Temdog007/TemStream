@@ -28,7 +28,7 @@ parseChatConfiguration(const int argc,
                        const char** argv,
                        pConfiguration configuration)
 {
-    configuration->tag = ServerConfigurationDataTag_chat;
+    configuration->server.data.tag = ServerConfigurationDataTag_chat;
     pChatConfiguration chat = &configuration->server.data.chat;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];

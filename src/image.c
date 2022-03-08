@@ -80,11 +80,19 @@ parseImageConfiguration(const int argc,
                         const char** argv,
                         pConfiguration configuration)
 {
-    (void)argc;
-    (void)argv;
-    configuration->tag = ServerConfigurationDataTag_image;
+    configuration->server.data.tag = ServerConfigurationDataTag_image;
     pImageConfiguration image = &configuration->server.data.image;
-    (void)image;
+    for (int i = 2; i < argc - 1; i += 2) {
+        const char* key = argv[i];
+        // const size_t keyLen = strlen(key);
+        const char* value = argv[i + 1];
+        if (!parseCommonConfiguration(key, value, configuration) &&
+            !parseServerConfiguration(key, value, &configuration->server)) {
+            parseFailure("Image", key, value);
+            return false;
+        }
+        (void)image;
+    }
     return true;
 }
 

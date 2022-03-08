@@ -27,11 +27,19 @@ parseAudioConfiguration(const int argc,
                         const char** argv,
                         pConfiguration configuration)
 {
-    (void)argc;
-    (void)argv;
-    configuration->tag = ServerConfigurationDataTag_image;
-    pAudioConfiguration image = &configuration->server.data.audio;
-    (void)image;
+    configuration->server.data.tag = ServerConfigurationDataTag_audio;
+    pAudioConfiguration audio = &configuration->server.data.audio;
+    for (int i = 2; i < argc - 1; i += 2) {
+        const char* key = argv[i];
+        // const size_t keyLen = strlen(key);
+        const char* value = argv[i + 1];
+        if (!parseCommonConfiguration(key, value, configuration) &&
+            !parseServerConfiguration(key, value, &configuration->server)) {
+            parseFailure("Audio", key, value);
+            return false;
+        }
+        (void)audio;
+    }
     return true;
 }
 
