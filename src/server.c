@@ -369,12 +369,6 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
         goto continueServer;                                                   \
     }
 
-#if ENABLE_PRINT_MEMORY
-#define PRINT_MEMORY printf("%d) %zu\n", __LINE__, currentAllocator->used());
-#else
-#define PRINT_MEMORY
-#endif
-
 int
 runServer(pConfiguration configuration, ServerFunctions funcs)
 {
@@ -465,6 +459,7 @@ continueServer:
                            event.peer->address.port);
                     pClient client = currentAllocator->allocate(sizeof(Client));
                     client->payload.allocator = currentAllocator;
+                    client->name.allocator = currentAllocator;
                     client->joinTime = SDL_GetTicks64();
                     // name and id will be set after parsing authentication
                     // message

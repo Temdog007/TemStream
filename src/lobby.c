@@ -44,9 +44,9 @@ parseLobbyConfiguration(const int argc,
         continue;
 
     parseStreams : {
-        const uint32_t i = (uint32_t)atoi(value);
+        const int i = atoi(value);
         lobby->maxStreams =
-          SDL_clamp(i, 1U, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT);
+          SDL_clamp(i, 1, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT);
         continue;
     }
     }
@@ -157,20 +157,14 @@ handleLobbyMessage(const void* ptr,
                 case ServerConfigurationDataTag_chat:
                 case ServerConfigurationDataTag_audio:
                 case ServerConfigurationDataTag_image: {
-                    ServerConfiguration c = { 0 };
-                    ServerConfigurationCopy(&c, serverConfig, currentAllocator);
-                    TemLangStringCopy(
-                      &c.name, &newConfig->name, currentAllocator);
-                    AccessCopy(
-                      &c.readers, &newConfig->readers, currentAllocator);
-                    AccessCopy(
-                      &c.writers, &newConfig->writers, currentAllocator);
-                    ServerConfigurationDataCopy(
-                      &c.data, &newConfig->data, currentAllocator);
+                    ServerConfiguration c = *serverConfig;
+                    c.name = newConfig->name;
+                    c.readers = newConfig->readers;
+                    c.writers = newConfig->writers;
+                    c.data = newConfig->data;
                     c.data.lobby.runCommand =
                       serverConfig->data.lobby.runCommand;
                     const bool success = startNewServer(&c);
-                    ServerConfigurationFree(&c);
                     if (success) {
                         lobbyMessage.startStreamingAck = true;
                     } else {

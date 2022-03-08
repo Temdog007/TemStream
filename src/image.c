@@ -58,7 +58,7 @@ onImageDownTime(ENetHost* host, pBytes b)
         packet = BytesToPacket(b->buffer, b->used, true);
         sendPacketToReaders(host, packet, &gServerConfig->readers);
         imageSendOffset += s;
-#if _DEBUG
+#if PRINT_CHUNKS
         printf("Sending image chunk: %zu\n", imageSendOffset);
 #endif
     }

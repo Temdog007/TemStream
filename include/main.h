@@ -134,6 +134,14 @@ MAKE_DEFAULT_LIST(pENetPacket);
 #define SERVER_CHANNEL 1
 
 #define ENABLE_PRINT_MEMORY 1
+#define PRINT_CHUNKS 0
+
+#if ENABLE_PRINT_MEMORY
+#define PRINT_MEMORY                                                           \
+    printf("%s:%d) %zu\n", __FILE__, __LINE__, currentAllocator->used());
+#else
+#define PRINT_MEMORY
+#endif
 
 #define PEER_SEND(peer, channelID, packet)                                     \
     if (enet_peer_send(peer, channelID, packet) == -1) {                       \

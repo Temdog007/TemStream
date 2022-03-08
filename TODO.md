@@ -54,7 +54,7 @@
 - [x] Print TTF and IMG versions
 
 ### Mar 07, 2022
-- [ ] Fix memory leaks (leaks when client joins server, leaks when client uploads image file)
+- [x] Fix memory leaks (leaks when client joins server, leaks when client uploads image file)
 - [x] Make large images not crash server (write image data to file)
 - [x] Ensure clients cannot slow down server if they don't have write access (use intercept callback in ENetHost)
 

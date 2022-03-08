@@ -611,6 +611,8 @@ ServerConfigurationList
 getStreams(redisContext* ctx)
 {
     ServerConfigurationList list = { .allocator = currentAllocator };
+
+    Bytes bytes = { .allocator = currentAllocator };
     redisReply* reply =
       redisCommand(ctx, "LRANGE %s 0 -1", TEM_STREAM_SERVER_KEY);
     if (reply->type != REDIS_REPLY_ARRAY) {
@@ -627,7 +629,7 @@ getStreams(redisContext* ctx)
         if (r->type != REDIS_REPLY_STRING) {
             continue;
         }
-        Bytes bytes = { .allocator = currentAllocator };
+
         if (!b64_decode(r->str, &bytes)) {
             continue;
         }
@@ -637,6 +639,7 @@ getStreams(redisContext* ctx)
         ServerConfigurationFree(&s);
     }
 end:
+    uint8_tListFree(&bytes);
     freeReplyObject(reply);
     return list;
 }
@@ -644,7 +647,9 @@ end:
 void
 cleanupConfigurationsInRedis(redisContext* ctx)
 {
+    PRINT_MEMORY;
     ServerConfigurationList servers = getStreams(ctx);
+    PRINT_MEMORY;
     printf("Verifying %u server(s)\n", servers.used);
     for (uint32_t i = 0; i < servers.used; ++i) {
         const ServerConfiguration* config = &servers.buffer[i];
@@ -665,7 +670,7 @@ cleanupConfigurationsInRedis(redisContext* ctx)
         }
 
         ENetEvent e = { 0 };
-        if (enet_host_service(host, &e, 100U) >= 0) {
+        while (enet_host_service(host, &e, 100U) > 0) {
             switch (e.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     verified = true;
@@ -677,7 +682,6 @@ cleanupConfigurationsInRedis(redisContext* ctx)
                     break;
             }
         }
-        enet_peer_disconnect_now(peer, 0);
 
     endLoop:
         closeHostAndPeer(host, peer);
@@ -687,4 +691,5 @@ cleanupConfigurationsInRedis(redisContext* ctx)
         }
     }
     ServerConfigurationListFree(&servers);
+    PRINT_MEMORY;
 }
