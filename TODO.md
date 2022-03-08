@@ -59,7 +59,9 @@
 - [x] Ensure clients cannot slow down server if they don't have write access (use intercept callback in ENetHost)
 
 ### Mar 08, 2022
-- [ ] use FFMPEG for audio stuff to handle streaming/converting audio files to PCM
+- [ ] Stream mp3 with mp3lame
+- [ ] Stream ogg with lib vorbis
+- [ ] Find alternative to FFmepg
 
 ### Later
 - [ ] Display audio mixer

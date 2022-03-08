@@ -51,7 +51,10 @@ sendAudioPackets(OpusEncoder* encoder,
                  ENetPeer*);
 
 bool
-selectAudioStreamSource(struct pollfd inputfd, pBytes bytes, pAudioState state);
+selectAudioStreamSource(struct pollfd inputfd,
+                        pBytes bytes,
+                        pStreamDisplay,
+                        pAudioState state);
 
 void
 consumeAudio(const Bytes*, const Guid*);
@@ -166,6 +169,7 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
         STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
         STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
+        // TODO: parse authentication
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;
@@ -513,13 +517,14 @@ clientHandleAudioMessage(const Bytes* packetBytes,
                                             .revents = 0,
                                             .fd = STDIN_FILENO };
             if (clientHasWriteAccess(&client, &display->config)) {
-                selectAudioStreamSource(inputfd, bytes, record);
+                success =
+                  selectAudioStreamSource(inputfd, bytes, display, record);
                 if (record->encoder != NULL) {
                     SDL_PauseAudioDevice(record->deviceId, SDL_FALSE);
                 }
             }
-            if (clientHasReadAccess(&client, &display->config)) {
-                startPlayback(inputfd, bytes, playback);
+            if (success && clientHasReadAccess(&client, &display->config)) {
+                success = startPlayback(inputfd, bytes, playback);
                 if (playback->decoder != NULL) {
                     SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
                 }
@@ -972,7 +977,10 @@ sendAudioPackets(OpusEncoder* encoder,
 }
 
 bool
-selectAudioStreamSource(struct pollfd inputfd, pBytes bytes, pAudioState state)
+selectAudioStreamSource(struct pollfd inputfd,
+                        pBytes bytes,
+                        pStreamDisplay display,
+                        pAudioState state)
 {
     askQuestion("Select audio source to stream from");
     for (AudioStreamSource i = 0; i < AudioStreamSource_Length; ++i) {
@@ -993,14 +1001,14 @@ selectAudioStreamSource(struct pollfd inputfd, pBytes bytes, pAudioState state)
             while (!appDone) {
                 switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
                     case UserInputResult_Input: {
-                        SDL_Event e = { 0 };
-                        e.type = SDL_DROPFILE;
-                        char* c = SDL_malloc(bytes->used + 1);
-                        memcpy(c, bytes->buffer, bytes->used);
-                        c[bytes->used] = '\0';
-                        e.drop.file = c;
-                        e.drop.timestamp = SDL_GetTicks();
-                        SDL_PushEvent(&e);
+                        UserInput ui = { 0 };
+                        ui.tag = UserInputTag_file;
+                        ui.file = TemLangStringCreate((char*)bytes->buffer,
+                                                      currentAllocator);
+                        const bool result =
+                          UserInputListAppend(&display->userInputs, &ui);
+                        UserInputFree(&ui);
+                        return result;
                     } break;
                     case UserInputResult_NoInput:
                         continue;
@@ -1130,6 +1138,184 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
 #endif
 
     return true;
+}
+
+bool
+sendDecodedAudioFrames(AVCodecContext* dec_ctx,
+                       AVPacket* pkt,
+                       AVFrame* frame,
+                       OpusEncoder* encoder,
+                       ENetPeer* peer,
+                       pBytes bytes)
+{
+    int ret = avcodec_send_packet(dec_ctx, pkt);
+    if (ret < 0) {
+        fprintf(stderr, "Error submitting the packet to the decoder\n");
+        return false;
+    }
+
+    int sampleRate;
+    switch (dec_ctx->sample_fmt) {
+        case AV_SAMPLE_FMT_U8:
+            sampleRate = AUDIO_U8;
+            break;
+        case AV_SAMPLE_FMT_S16:
+            sampleRate = AUDIO_S16;
+            break;
+        case AV_SAMPLE_FMT_S32:
+            sampleRate = AUDIO_S32;
+            break;
+        case AV_SAMPLE_FMT_FLT:
+            sampleRate = AUDIO_F32;
+            break;
+        default:
+            fprintf(
+              stderr, "Cannot convert audio format: %d\n", dec_ctx->sample_fmt);
+            return false;
+    }
+
+    const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
+    SDL_AudioCVT cvt;
+    SDL_BuildAudioCVT(&cvt,
+                      sampleRate,
+                      dec_ctx->channels,
+                      dec_ctx->sample_rate,
+                      spec.format,
+                      spec.channels,
+                      spec.freq);
+
+    while (ret >= 0) {
+        ret = avcodec_receive_frame(dec_ctx, frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        } else if (ret < 0) {
+            fprintf(stderr, "Error during decoding\n");
+            return false;
+        }
+
+        const int dataSize = av_get_bytes_per_sample(dec_ctx->sample_fmt);
+        if (dataSize < 0) {
+            fprintf(stderr, "Failed to calculate size during decoding\n");
+            return false;
+        }
+        for (int i = 0; i < frame->nb_samples; ++i) {
+            for (int ch = 0; ch < dec_ctx->channels; ++ch) {
+                while (bytes->size < (size_t)dataSize * cvt.len_mult) {
+                    uint8_tListRellocateIfNeeded(bytes);
+                }
+                memcpy(bytes->buffer, frame->data[ch] + dataSize * i, dataSize);
+                if (cvt.needed) {
+                    cvt.buf = bytes->buffer;
+                    cvt.len = dataSize;
+                    SDL_ConvertAudio(&cvt);
+                    bytes->used = cvt.len_cvt;
+                } else {
+                    bytes->used = dataSize;
+                }
+                sendAudioPackets(encoder, bytes, spec, peer);
+            }
+        }
+    }
+
+    return true;
+}
+
+void
+decodeAudioData(const AudioExtension ext,
+                const uint8_t* data,
+                const size_t dataSize,
+                ENetPeer* peer,
+                pBytes bytes)
+{
+    printf("Sending audio data...\n");
+    AVCodecContext* c = NULL;
+    AVCodecParserContext* parser = NULL;
+    AVPacket* pkt = NULL;
+    AVFrame* frame = NULL;
+    const AVCodec* codec = NULL;
+
+    const int encoderSize = opus_encoder_get_size(2);
+    OpusEncoder* encoder = currentAllocator->allocate(encoderSize);
+    const int encoderError =
+      opus_encoder_init(encoder, 48000, 2, OPUS_APPLICATION_AUDIO);
+    if (encoderError < 0) {
+        fprintf(stderr,
+                "Failed to make Opus encoder: %s\n",
+                opus_strerror(encoderError));
+        goto audioEnd;
+    }
+
+    switch (ext) {
+        case AudioExtension_FLAC:
+            codec = avcodec_find_decoder(AV_CODEC_ID_FLAC);
+            break;
+        case AudioExtension_OGG:
+            codec = avcodec_find_decoder(AV_CODEC_ID_VORBIS);
+            break;
+        case AudioExtension_MP3:
+            codec = avcodec_find_decoder(AV_CODEC_ID_MP3);
+            break;
+        default:
+            break;
+    }
+    if (codec == NULL) {
+        fprintf(stderr, "Failed to find audio decoder for file\n");
+        goto audioEnd;
+    }
+    parser = av_parser_init(codec->id);
+    if (parser == NULL) {
+        fprintf(stderr, "Parser not found\n");
+        goto audioEnd;
+    }
+    c = avcodec_alloc_context3(codec);
+    if (c == NULL) {
+        fprintf(stderr, "Could not allocate audio codec context\n");
+        goto audioEnd;
+    }
+    if (avcodec_open2(c, codec, NULL) < 0) {
+        fprintf(stderr, "Could not open codec\n");
+        goto audioEnd;
+    }
+    pkt = av_packet_alloc();
+    size_t bytesRead = 0;
+    while (bytesRead < dataSize) {
+        if (frame == NULL) {
+            frame = av_frame_alloc();
+            if (frame == NULL) {
+                fprintf(stderr, "Could not allocate frame\n");
+                goto audioEnd;
+            }
+        }
+
+        const int ret = av_parser_parse2(parser,
+                                         c,
+                                         &pkt->data,
+                                         &pkt->size,
+                                         data + bytesRead,
+                                         dataSize - bytesRead,
+                                         AV_NOPTS_VALUE,
+                                         AV_NOPTS_VALUE,
+                                         0);
+        if (ret < 0) {
+            fprintf(stderr, "Error while parsing\n");
+            goto audioEnd;
+        }
+        if (pkt->size > 0 &&
+            !sendDecodedAudioFrames(c, pkt, frame, encoder, peer, bytes)) {
+            goto audioEnd;
+        }
+        bytesRead += ret;
+    }
+    pkt->data = NULL;
+    pkt->size = 0;
+    sendDecodedAudioFrames(c, pkt, frame, encoder, peer, bytes);
+audioEnd:
+    avcodec_free_context(&c);
+    av_parser_close(parser);
+    av_frame_free(&frame);
+    av_packet_free(&pkt);
+    currentAllocator->free(encoder);
+    printf("Done sending audio data\n");
 }
 
 void
@@ -2185,12 +2371,22 @@ handleUserInput(ENetPeer* peer,
                         message.imageChunk.size = s;
                         MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
                         sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                        enet_host_flush(peer->host);
                     }
 
                     message.tag = ImageMessageTag_imageEnd;
                     message.imageEnd = NULL;
                     MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
                     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+                } break;
+                case ServerConfigurationDataTag_audio: {
+                    if (ext.tag != FileExtensionTag_audio) {
+                        fprintf(stderr,
+                                "Must send audio file to audio stream\n");
+                        break;
+                    }
+                    decodeAudioData(
+                      ext.audio, (uint8_t*)ptr, size, peer, bytes);
                 } break;
                 default:
                     fprintf(stderr,

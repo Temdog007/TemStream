@@ -16,6 +16,11 @@
 
 #include <opus/opus.h>
 
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/frame.h>
+#include <libavutil/mem.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -133,7 +138,7 @@ MAKE_DEFAULT_LIST(pENetPacket);
 #define CLIENT_CHANNEL 0
 #define SERVER_CHANNEL 1
 
-#define ENABLE_PRINT_MEMORY 1
+#define ENABLE_PRINT_MEMORY 0
 #define PRINT_CHUNKS 0
 
 #if ENABLE_PRINT_MEMORY
