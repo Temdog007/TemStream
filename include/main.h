@@ -29,6 +29,8 @@
 
 #include <generated/general.h>
 
+#include <vorbis/codec.h>
+
 #define MAX_PACKET_SIZE KB(64)
 
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
@@ -413,9 +415,6 @@ extern void
 cleanupServer(ENetHost*);
 
 // Audio
-
-#define AUDIO_FRAME_SIZE KB(128)
-#define MAX_AUDIO_PACKET_LOSS 10
 #define ENABLE_FEC 0
 
 #define HIGH_QUALITY_AUDIO 1

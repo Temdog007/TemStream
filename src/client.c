@@ -642,12 +642,17 @@ streamConnectionThread(void* ptr)
             }
         }
         if (record.encoder != NULL) {
-            bytes.used =
+            const int result =
               SDL_DequeueAudio(record.deviceId, bytes.buffer, bytes.size);
-            uint8_tListQuickAppend(&audioBytes, bytes.buffer, bytes.used);
-            if (audioBytes.used != 0) {
-                sendAudioPackets(
-                  record.encoder, &audioBytes, record.spec, peer);
+            if (result < 0) {
+                fprintf(
+                  stderr, "Failed to dequeue audio: %s\n", SDL_GetError());
+            } else {
+                uint8_tListQuickAppend(&audioBytes, bytes.buffer, result);
+                if (audioBytes.used != 0) {
+                    sendAudioPackets(
+                      record.encoder, &audioBytes, record.spec, peer);
+                }
             }
         }
         TRY_USE_DISPLAY(clientData.mutex, fend563, displayMissing, {
@@ -909,7 +914,9 @@ storeOpusAudio(pAudioState state, const Bytes* compressed)
     }
 
     const int byteSize = result * state->spec.channels * PCM_SIZE;
-    SDL_QueueAudio(state->deviceId, uncompressed, byteSize);
+    if (SDL_QueueAudio(state->deviceId, uncompressed, byteSize) != 0) {
+        fprintf(stderr, "Failed to queue audio: %s\n", SDL_GetError());
+    }
 
 end:
     currentAllocator->free(uncompressed);
@@ -968,7 +975,7 @@ sendAudioPackets(OpusEncoder* encoder,
         message.audio.used = (uint32_t)result;
 
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
-        printf("Bytes encoded: %zu\n", bytesUsed);
+        // printf("Bytes encoded: %zu -> %d\n", bytesUsed, result);
         uint8_tListQuickRemove(audio, 0, bytesUsed);
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
@@ -1095,7 +1102,7 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
         return false;
     }
 
-    askQuestion("Select a audio device to play audio from");
+    askQuestion("Select an audio device to play audio from");
     state->isRecording = SDL_FALSE;
     state->packetLoss = 0u;
     for (int i = 0; i < devices; ++i) {
@@ -1231,7 +1238,7 @@ decodeWAV(const void* data, const size_t size, pBytes bytes)
             format = AUDIO_U8;
             goto readAudio;
         case 16:
-            format = AUDIO_U16;
+            format = AUDIO_S16;
             goto readAudio;
         case 32:
             format = AUDIO_S32;
@@ -1249,7 +1256,6 @@ readAudio:
 
     offset += uint32_tDeserialize(&dataSize, &audio, offset, true);
 
-    bytes->used = 0;
     uint8_tListQuickAppend(bytes, &audio.buffer[offset], dataSize);
 
     const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
@@ -1288,11 +1294,231 @@ readAudio:
 bool
 decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
 {
-    (void)data;
-    (void)dataSize;
-    (void)bytes;
-    fprintf(stderr, "Ogg not implemetned\n");
-    return false;
+    ogg_sync_state oy;
+    ogg_sync_init(&oy);
+    ogg_stream_state os;
+
+    vorbis_comment vc;
+    vorbis_info vi;
+
+    size_t bytesRead = 0;
+
+    bool success = true;
+    const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
+    while (bytesRead < dataSize) {
+        size_t writeSize;
+
+        writeSize = SDL_min(KB(4), dataSize - bytesRead);
+        char* buffer = ogg_sync_buffer(&oy, writeSize);
+        memcpy(buffer, data + bytesRead, writeSize);
+        ogg_sync_wrote(&oy, writeSize);
+        bytesRead += writeSize;
+
+        ogg_page og;
+        if (ogg_sync_pageout(&oy, &og) != 1) {
+            if (bytesRead >= writeSize) {
+                break;
+            }
+
+            fprintf(stderr, "Failed to parse ogg dta\n");
+            success = false;
+            break;
+        }
+
+        ogg_stream_init(&os, ogg_page_serialno(&og));
+
+        vorbis_info_init(&vi);
+        vorbis_comment_init(&vc);
+
+        if (ogg_stream_pagein(&os, &og) < 0) {
+            fprintf(stderr, "Failed to read first page of ogg data\n");
+            success = false;
+            break;
+        }
+
+        ogg_packet op;
+        if (ogg_stream_packetout(&os, &op) != 1) {
+            fprintf(stderr, "Failed to read header packet\n");
+            success = false;
+            break;
+        }
+
+        if (vorbis_synthesis_headerin(&vi, &vc, &op) < 0) {
+            fprintf(stderr, "Vorbis audio data not present\n");
+            success = false;
+            break;
+        }
+
+        int i = 0;
+        while (i < 2) {
+            while (i < 2) {
+                int result = ogg_sync_pageout(&oy, &og);
+                if (result == 0) {
+                    break;
+                }
+                if (result == 1) {
+                    ogg_stream_pagein(&os, &og);
+                    while (i < 2) {
+                        result = ogg_stream_packetout(&os, &op);
+                        if (result == 0) {
+                            break;
+                        }
+                        if (result < 0) {
+                            fprintf(stderr, "Corrupt header in ogg data\n");
+                            success = false;
+                            goto end;
+                        }
+                        result = vorbis_synthesis_headerin(&vi, &vc, &op);
+                        if (result < 0) {
+                            fprintf(stderr, "Corrupt header in ogg data\n");
+                            success = false;
+                            goto end;
+                        }
+                        ++i;
+                    }
+                }
+            }
+            writeSize = SDL_min(KB(4), dataSize - bytesRead);
+            buffer = ogg_sync_buffer(&oy, writeSize);
+            memcpy(buffer, data + bytesRead, writeSize);
+            ogg_sync_wrote(&oy, writeSize);
+            bytesRead += writeSize;
+        }
+
+        if (vc.user_comments != NULL) {
+            char** ptr = vc.user_comments;
+            while (*ptr != NULL) {
+                printf("%s\n", *ptr);
+                ++ptr;
+            }
+            printf("BitStream is %d channel, %ldHz\n", vi.channels, vi.rate);
+            printf("Encoded by: %s\n", vc.vendor);
+        }
+
+        SDL_AudioCVT cvt;
+        SDL_BuildAudioCVT(&cvt,
+                          AUDIO_S16,
+                          vi.channels,
+                          vi.rate,
+                          spec.format,
+                          spec.channels,
+                          spec.freq);
+
+        vorbis_dsp_state vd;
+        if (vorbis_synthesis_init(&vd, &vi) == 0) {
+            vorbis_block vb;
+            vorbis_block_init(&vd, &vb);
+
+            bool done = false;
+            while (!done) {
+                while (!done) {
+                    int result = ogg_sync_pageout(&oy, &og);
+                    if (result == 0) {
+                        break;
+                    }
+                    if (result < 0) {
+                        fprintf(stderr,
+                                "Ogg data might be corrupt; Cotinuing...\n");
+                        continue;
+                    }
+                    ogg_stream_pagein(&os, &og);
+                    while (true) {
+                        result = ogg_stream_packetout(&os, &op);
+                        if (result == 0) {
+                            break;
+                        }
+                        if (result < 0) {
+                            continue;
+                        }
+                        float** pcm;
+                        int samples;
+
+                        if (vorbis_synthesis(&vb, &op) == 0) {
+                            vorbis_synthesis_blockin(&vd, &vb);
+                        }
+
+                        int convbuffersize = MAX_PACKET_SIZE;
+                        ogg_int16_t* convbuffer =
+                          currentAllocator->allocate(convbuffersize);
+                        while ((samples = vorbis_synthesis_pcmout(&vd, &pcm)) >
+                               0) {
+                            bool clipflag = false;
+                            for (int i = 0; i < vi.channels; ++i) {
+                                ogg_int16_t* ptr = convbuffer + i;
+                                const float* mono = pcm[i];
+                                for (int j = 0; j < samples; ++j) {
+                                    int val =
+                                      (int)floorf(mono[j] * 32767.f + 0.5f);
+                                    if (val > 32767) {
+                                        val = 32767;
+                                        clipflag = true;
+                                    }
+                                    if (val < -32768) {
+                                        val = -32768;
+                                        clipflag = true;
+                                    }
+                                    *ptr = val;
+                                    ptr += vi.channels;
+                                }
+                            }
+                            if (clipflag) {
+                                fprintf(stderr,
+                                        "Clipping in frame %" PRId64 "\n",
+                                        vd.sequence);
+                            }
+                            if (cvt.needed) {
+                                cvt.buf = (uint8_t*)convbuffer;
+                                cvt.len =
+                                  sizeof(ogg_int16_t) * vi.channels * samples;
+                                if (convbuffersize < cvt.len * cvt.len_mult) {
+                                    convbuffersize = cvt.len * cvt.len_mult;
+                                    convbuffer = currentAllocator->reallocate(
+                                      convbuffer, convbuffersize);
+                                }
+                                SDL_ConvertAudio(&cvt);
+                                uint8_tListQuickAppend(
+                                  bytes, (uint8_t*)convbuffer, cvt.len_cvt);
+                            } else {
+                                uint8_tListQuickAppend(bytes,
+                                                       (uint8_t*)convbuffer,
+                                                       sizeof(ogg_int16_t) *
+                                                         vi.channels * samples);
+                            }
+                            vorbis_synthesis_read(&vd, samples);
+                        }
+                        currentAllocator->free(convbuffer);
+                    }
+                    if (ogg_page_eos(&og)) {
+                        done = true;
+                    }
+                }
+                if (!done) {
+                    writeSize = SDL_min(KB(4), dataSize - bytesRead);
+                    buffer = ogg_sync_buffer(&oy, writeSize);
+                    memcpy(buffer, data + bytesRead, writeSize);
+                    ogg_sync_wrote(&oy, writeSize);
+                    bytesRead += writeSize;
+                    done = bytesRead >= dataSize;
+                }
+            }
+
+            vorbis_block_clear(&vb);
+            vorbis_dsp_clear(&vd);
+        } else {
+            fprintf(stderr, "Corrupt header during ogg decoding\n");
+        }
+
+        ogg_stream_clear(&os);
+        vorbis_comment_clear(&vc);
+        vorbis_info_clear(&vi);
+    }
+
+end:
+    ogg_stream_clear(&os);
+    vorbis_comment_clear(&vc);
+    vorbis_info_clear(&vi);
+    ogg_sync_clear(&oy);
+    return success;
 }
 
 bool
@@ -1326,6 +1552,7 @@ decodeAudioData(const AudioExtension ext,
         goto audioEnd;
     }
 
+    bytes->used = 0;
     switch (ext) {
         case AudioExtension_WAV:
             success = decodeWAV(data, dataSize, bytes);
