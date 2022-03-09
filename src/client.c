@@ -2292,7 +2292,7 @@ handleUserInput(ENetPeer* peer,
                     MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
                     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
                 } break;
-                case ServerConfigurationDataTag_audio: {
+                case ServerConfigurationDataTag_audio:
                     if (ext.tag != FileExtensionTag_audio) {
                         fprintf(stderr,
                                 "Must send audio file to audio stream\n");
@@ -2300,7 +2300,7 @@ handleUserInput(ENetPeer* peer,
                     }
                     decodeAudioData(
                       ext.audio, (uint8_t*)ptr, size, peer, bytes);
-                } break;
+                    break;
                 default:
                     fprintf(stderr,
                             "Sending '%s' not implemented\n",

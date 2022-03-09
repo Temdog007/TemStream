@@ -65,18 +65,18 @@
 ### Mar 09, 2022
 - [x] Stream mp3 
 - [x] Audio sent over stream doesn't play pass one second (encoding issue? fill with silence if packet too small; use reliable send for audio files)
-- [ ] Display audio mixer
+- [ ] Display audio mixer (need to use callback)
+- [ ] Allow volume of playback to be changed
+- [ ] Include press to talk
 
 ### Later
-- [ ] Allow volume of playback to be changed
+- [ ] Ensure that taking too long to answer questions doesn't disconnect from server
 - [ ] Play gifs
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam
 - [ ] Ensure textures can be hidden for a stream
 - [ ] Implement stream recording and playback (need to timestamp messages)
-- [ ] Allow for blacklist/whitelist for stream access
-- [ ] Include press to talk
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams

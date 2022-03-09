@@ -3,160 +3,58 @@
 bool
 decodeWAV(const void* data, const size_t size, pBytes bytes)
 {
-    const Bytes audio = { .buffer = (uint8_t*)data,
-                          .size = size,
-                          .used = size };
-
-    union
-    {
-        uint32_t u;
-        char c[4];
-    } type;
-
-    size_t offset = 0;
-    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
-
-    if (memcmp(&type, "RIFF", 4) != 0) {
-        fprintf(stderr,
-                "Did not get 'RIFF' in WAV header. Got '%c' '%c' '%c' '%c'\n",
-                type.c[0],
-                type.c[1],
-                type.c[2],
-                type.c[3]);
+    SDL_RWops* rwops = SDL_RWFromConstMem(data, size);
+    uint8_t* pcm = NULL;
+    uint32_t len = 0;
+    SDL_AudioSpec realSpec;
+    if (SDL_LoadWAV_RW(rwops, 0, &realSpec, &pcm, &len) == NULL) {
+        fprintf(stderr, "Failed to load WAV file: %s\n", SDL_GetError());
         return false;
     }
 
-    uint32_t audioSize;
-    offset += uint32_tDeserialize(&audioSize, &audio, offset, true);
+    printf("Wav format: format %u; channels: %u; hz %d\n",
+           realSpec.format,
+           realSpec.channels,
+           realSpec.freq);
 
-    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
-    if (memcmp(&type, "WAVE", 4) != 0) {
-        fprintf(stderr,
-                "Did not get 'WAVE' in WAV header. Got '%c' '%c' '%c' '%c'\n",
-                type.c[0],
-                type.c[1],
-                type.c[2],
-                type.c[3]);
-        return false;
-    }
-
-    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
-    if (memcmp(&type, "fmt ", 4) != 0) {
-        fprintf(stderr,
-                "Did not get 'fmt ' in WAV header. Got '%c' '%c' '%c' '%c'\n",
-                type.c[0],
-                type.c[1],
-                type.c[2],
-                type.c[3]);
-        return false;
-    }
-
-    uint32_t chunkSize;
-    offset += uint32_tDeserialize(&chunkSize, &audio, offset, true);
-
-    int16_t formatType;
-    offset += int16_tDeserialize(&formatType, &audio, offset, true);
-
-    if (formatType != 1) {
-        fprintf(stderr,
-                "Only PCM wav files are supported. Got %d (1 = PCM)\n",
-                formatType);
-        return false;
-    }
-
-    int16_t channels;
-    offset += int16_tDeserialize(&channels, &audio, offset, true);
-
-    uint32_t sampleRate;
-    offset += uint32_tDeserialize(&sampleRate, &audio, offset, true);
-
-    uint32_t avgBytesPerSec;
-    offset += uint32_tDeserialize(&avgBytesPerSec, &audio, offset, true);
-
-    int16_t bytesPerSample;
-    offset += int16_tDeserialize(&bytesPerSample, &audio, offset, true);
-
-    int16_t bitsPerSample;
-    offset += int16_tDeserialize(&bitsPerSample, &audio, offset, true);
-
-    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
-    if (memcmp(&type, "data", 4) != 0) {
-        fprintf(stderr,
-                "Did not get 'data' in WAV header. Got '%c' '%c' '%c' '%c'\n",
-                type.c[0],
-                type.c[1],
-                type.c[2],
-                type.c[3]);
-        return false;
-    }
-
-    uint32_t dataSize;
-    SDL_AudioFormat format;
-    switch (bitsPerSample) {
-        case 8:
-            format = AUDIO_U8;
-            goto readAudio;
-        case 16:
-            format = AUDIO_S16;
-            goto readAudio;
-        case 32:
-            format = AUDIO_S32;
-            goto readAudio;
-        default:
-            break;
-    }
-    fprintf(stderr,
-            "Wav has invalid channels (%d) or bitsPerSample (%d)\n",
-            channels,
-            bitsPerSample);
-    return false;
-
-readAudio:
-
-    offset += uint32_tDeserialize(&dataSize, &audio, offset, true);
-
-    uint8_tListQuickAppend(bytes, &audio.buffer[offset], dataSize);
-    printf("Wav data %d bit format %u; channels %d; sample rate %u\n",
-           bitsPerSample,
-           format,
-           channels,
-           sampleRate);
-
+    bool result = false;
     const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
     SDL_AudioCVT cvt;
     if (SDL_BuildAudioCVT(&cvt,
-                          format,
-                          channels,
-                          sampleRate,
+                          realSpec.format,
+                          realSpec.channels,
+                          realSpec.freq,
                           spec.format,
                           spec.channels,
                           spec.freq) < 0) {
-        fprintf(stderr, "Failed make audio converter: %s\n", SDL_GetError());
-        return false;
+        fprintf(stderr, "Failed to make converter: %s\n", SDL_GetError());
+        goto end;
     }
 
+    memcpy(bytes->buffer, pcm, len);
     if (cvt.needed) {
-        cvt.len = bytes->used;
-        cvt.buf = bytes->buffer;
-        const uint32_t newSize = (uint32_t)(cvt.len * cvt.len_mult);
-        if (bytes->size < newSize) {
+        cvt.len = len;
+        const size_t desiredSize = cvt.len * cvt.len_mult;
+        if (bytes->size < desiredSize) {
             bytes->buffer =
-              currentAllocator->reallocate(bytes->buffer, newSize);
-            bytes->size = newSize;
+              currentAllocator->reallocate(bytes->buffer, desiredSize);
+            bytes->size = desiredSize;
         }
-        printf("Converting %d Hz %d channels to %d Hz %d channels\n",
-               sampleRate,
-               channels,
-               spec.freq,
-               spec.channels);
+        memcpy(bytes->buffer, pcm, len);
+        cvt.buf = bytes->buffer;
         if (SDL_ConvertAudio(&cvt) != 0) {
             fprintf(stderr, "Failed to convert audio: %s\n", SDL_GetError());
-            return false;
+            goto end;
         }
         bytes->used = cvt.len_cvt;
+    } else {
+        bytes->used = len;
     }
 
-    return true;
+    result = true;
+end:
+    SDL_FreeWAV(pcm);
+    return result;
 }
 
 bool
@@ -431,6 +329,7 @@ bool
 decodeMp3(const void* data, const size_t dataSize, pBytes bytes)
 {
     mp3dec_frame_info_t info;
+    bool printedInfo = false;
     mp3d_sample_t* pcm = currentAllocator->allocate(MAX_PACKET_SIZE);
     mp3dec_t* mp3d = currentAllocator->allocate(sizeof(mp3dec_t));
     mp3dec_init(mp3d);
@@ -445,6 +344,18 @@ decodeMp3(const void* data, const size_t dataSize, pBytes bytes)
         if (info.frame_bytes == 0 && samples == 0) {
             fprintf(stderr, "Insufficient mp3 data\n");
             break;
+        }
+
+        if (!printedInfo) {
+            printf("Channels: %u; Hz %u\n", info.channels, info.hz);
+            printedInfo = true;
+        }
+
+        if (info.channels == 0) {
+            info.channels = spec.channels;
+        }
+        if (info.hz == 0) {
+            info.hz = spec.freq;
         }
 
         SDL_AudioCVT cvt;
