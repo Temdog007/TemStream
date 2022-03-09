@@ -440,7 +440,6 @@ decodeMp3(const void* data, const size_t dataSize, pBytes bytes)
         const size_t readSize = SDL_min(KB(16), dataSize - bytesRead);
         const int samples =
           mp3dec_decode_frame(mp3d, data + bytesRead, readSize, pcm, &info);
-        printf("Read %d samples (%d bytes)\n", samples, info.frame_bytes);
         bytesRead += info.frame_bytes;
 
         if (info.frame_bytes == 0 && samples == 0) {

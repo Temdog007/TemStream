@@ -328,7 +328,7 @@ bool
 lowMemory()
 {
     return currentAllocator->used() >
-           (currentAllocator->totalSize() * 9u / 10u);
+           (currentAllocator->totalSize() * 95u / 100u);
 }
 
 int
@@ -336,6 +336,9 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
 {
     (void)e;
     if (host->receivedDataLength > MAX_PACKET_SIZE || lowMemory()) {
+#if _DEBUG
+        puts("Dropping packet");
+#endif
         return 1;
     }
     const ENetProtocolHeader* header = (ENetProtocolHeader*)host->receivedData;

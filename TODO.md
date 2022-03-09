@@ -64,7 +64,7 @@
 
 ### Mar 09, 2022
 - [x] Stream mp3 
-- [ ] Audio sent over stream doesn't play pass one second (encoding issue?)
+- [x] Audio sent over stream doesn't play pass one second (encoding issue? fill with silence if packet too small; use reliable send for audio files)
 - [ ] Display audio mixer
 
 ### Later

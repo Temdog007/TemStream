@@ -44,11 +44,12 @@ ClientData clientData = { 0 };
         f                                                                      \
     });
 
-void
+size_t
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
                  const SDL_AudioSpec spec,
-                 ENetPeer*);
+                 ENetPeer*,
+                 const bool reliable);
 
 bool
 selectAudioStreamSource(struct pollfd inputfd,
@@ -650,8 +651,9 @@ streamConnectionThread(void* ptr)
             } else {
                 uint8_tListQuickAppend(&audioBytes, bytes.buffer, result);
                 if (audioBytes.used != 0) {
-                    sendAudioPackets(
-                      record.encoder, &audioBytes, record.spec, peer);
+                    const size_t bytesRead = sendAudioPackets(
+                      record.encoder, &audioBytes, record.spec, peer, false);
+                    uint8_tListQuickRemove(&audioBytes, 0, bytesRead);
                 }
             }
         }
@@ -922,16 +924,17 @@ end:
     currentAllocator->free(uncompressed);
 }
 
-void
+size_t
 sendAudioPackets(OpusEncoder* encoder,
                  pBytes audio,
                  const SDL_AudioSpec spec,
-                 ENetPeer* peer)
+                 ENetPeer* peer,
+                 const bool reliable)
 {
     uint8_t buffer[KB(4)] = { 0 };
 
     const int minDuration =
-      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_2_5_MS);
+      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 
     AudioMessage message = { 0 };
     message.tag = AudioMessageTag_audio;
@@ -940,8 +943,9 @@ sendAudioPackets(OpusEncoder* encoder,
     message.audio.size = sizeof(buffer);
     message.audio.used = 0;
     Bytes temp = { .allocator = currentAllocator };
-    while (!uint8_tListIsEmpty(audio)) {
-        int frame_size = audio->used / (spec.channels * PCM_SIZE);
+    size_t bytesRead = 0;
+    while (bytesRead < audio->used) {
+        int frame_size = (audio->used - bytesRead) / (spec.channels * PCM_SIZE);
 
         if (frame_size < minDuration) {
             break;
@@ -953,13 +957,13 @@ sendAudioPackets(OpusEncoder* encoder,
         const int result =
 #if HIGH_QUALITY_AUDIO
           opus_encode_float(encoder,
-                            (float*)audio->buffer,
+                            (float*)(audio->buffer + bytesRead),
                             frame_size,
                             message.audio.buffer,
                             message.audio.size);
 #else
           opus_encode(encoder,
-                      (opus_int16*)audio->buffer,
+                      (opus_int16*)(audio->buffer + bytesRead),
                       frame_size,
                       message.audio.buffer,
                       message.audio.size);
@@ -976,12 +980,13 @@ sendAudioPackets(OpusEncoder* encoder,
 
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
         // printf("Bytes encoded: %zu -> %d\n", bytesUsed, result);
-        uint8_tListQuickRemove(audio, 0, bytesUsed);
+        bytesRead += bytesUsed;
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
-        sendBytes(peer, 1, CLIENT_CHANNEL, &temp, false);
+        sendBytes(peer, 1, CLIENT_CHANNEL, &temp, reliable);
     }
     uint8_tListFree(&temp);
+    return bytesRead;
 }
 
 bool
@@ -1155,7 +1160,7 @@ decodeAudioData(const AudioExtension ext,
                 ENetPeer* peer,
                 pBytes bytes)
 {
-    puts("Sending audio data...");
+    puts("Decoding audio data...");
 
     bool success = false;
     const int encoderSize = opus_encoder_get_size(2);
@@ -1195,17 +1200,29 @@ decodeAudioData(const AudioExtension ext,
         if (deviceId == 0) {
             fprintf(
               stderr, "Failed to open playback device: %s\n", SDL_GetError());
-        } else {
-            SDL_PauseAudioDevice(deviceId, SDL_FALSE);
-            SDL_QueueAudio(deviceId, bytes->buffer, bytes->used);
-            while (!appDone && SDL_GetQueuedAudioSize(deviceId) > 0) {
-                SDL_Delay(1000);
-            }
-            SDL_CloseAudioDevice(deviceId);
+            goto audioEnd;
         }
+        SDL_PauseAudioDevice(deviceId, SDL_FALSE);
+        SDL_QueueAudio(deviceId, bytes->buffer, bytes->used);
+        while (!appDone && SDL_GetQueuedAudioSize(deviceId) > 0) {
+            SDL_Delay(1000);
+        }
+        SDL_CloseAudioDevice(deviceId);
 #else
-        sendAudioPackets(encoder, bytes, spec, peer);
-        printf("Done sending audio data. Bytes left: %u\n", bytes->used);
+        puts("Sending audio data...");
+        const size_t bytesRead =
+          sendAudioPackets(encoder, bytes, spec, peer, true);
+        if (bytesRead < bytes->used) {
+            uint8_tListQuickRemove(bytes, 0, bytesRead);
+            const int minDuration =
+              audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
+            for (int i = bytes->used; i < minDuration; ++i) {
+                uint8_tListAppend(bytes, &spec.silence);
+            }
+            sendAudioPackets(encoder, bytes, spec, peer, true);
+        }
+        puts("Done sending audio data.");
+        bytes->used = 0;
 #endif
     }
 

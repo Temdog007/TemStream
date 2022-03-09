@@ -42,7 +42,7 @@ main(const int argc, const char** argv)
     {
         // Look for -M or --memory
         int binaryIndex = -1;
-        uint64_t memory = MB(256);
+        uint64_t memory = 256ULL;
         for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-B", argv[i]) == 0 ||
                 strcmp("--binary", argv[i]) == 0) {
@@ -64,8 +64,8 @@ main(const int argc, const char** argv)
         }
 
         static Allocator allocator = { 0 };
-        allocator = makeTSAllocator(memory);
-        printf("Using %zu MB of memory\n", memory / (1024 * 1024));
+        allocator = makeTSAllocator(MB(memory));
+        printf("Using %zu MB of memory\n", memory);
         currentAllocator = &allocator;
         if (binaryIndex == -1) {
             configuration = defaultConfiguration();
