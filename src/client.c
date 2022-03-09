@@ -46,7 +46,7 @@ ClientData clientData = { 0 };
 
 size_t
 sendAudioPackets(OpusEncoder* encoder,
-                 pBytes audio,
+                 const Bytes* audio,
                  const SDL_AudioSpec spec,
                  ENetPeer*,
                  const bool reliable);
@@ -926,7 +926,7 @@ end:
 
 size_t
 sendAudioPackets(OpusEncoder* encoder,
-                 pBytes audio,
+                 const Bytes* audio,
                  const SDL_AudioSpec spec,
                  ENetPeer* peer,
                  const bool reliable)

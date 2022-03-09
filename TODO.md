@@ -72,6 +72,7 @@
 ### Later
 - [ ] Ensure that taking too long to answer questions doesn't disconnect from server
 - [ ] Play gifs
+- [ ] Add optional labels to stream displays
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam
@@ -81,8 +82,8 @@
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
-- [ ] Add websocket connection
-- [ ] SSL encryption (dtls)
+- [ ] Add websocket connection (use proxy)
+- [ ] SSL encryption (dtls, use proxy)
 
 ### Maybe
 - [ ] Add logging library (or make one)

@@ -31,23 +31,27 @@ decodeWAV(const void* data, const size_t size, pBytes bytes)
         goto end;
     }
 
-    memcpy(bytes->buffer, pcm, len);
     if (cvt.needed) {
-        cvt.len = len;
-        const size_t desiredSize = cvt.len * cvt.len_mult;
+        const size_t desiredSize = len * cvt.len_mult;
         if (bytes->size < desiredSize) {
             bytes->buffer =
               currentAllocator->reallocate(bytes->buffer, desiredSize);
             bytes->size = desiredSize;
         }
-        memcpy(bytes->buffer, pcm, len);
+        cvt.len = len;
         cvt.buf = bytes->buffer;
+        memcpy(cvt.buf, pcm, len);
         if (SDL_ConvertAudio(&cvt) != 0) {
             fprintf(stderr, "Failed to convert audio: %s\n", SDL_GetError());
             goto end;
         }
         bytes->used = cvt.len_cvt;
     } else {
+        if (bytes->size < len) {
+            bytes->buffer = currentAllocator->reallocate(bytes->buffer, len);
+            bytes->size = len;
+        }
+        memcpy(bytes->buffer, pcm, len);
         bytes->used = len;
     }
 
