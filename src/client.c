@@ -1413,7 +1413,11 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
 
         SDL_AudioCVT cvt;
         if (SDL_BuildAudioCVT(&cvt,
+#if !HIGH_QUALITY_AUDIO
                               AUDIO_S16,
+#else
+                              AUDIO_F32,
+#endif
                               vi.channels,
                               vi.rate,
                               spec.format,
@@ -1457,10 +1461,19 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                         }
 
                         int convbuffersize = MAX_PACKET_SIZE;
-                        ogg_int16_t* convbuffer =
-                          currentAllocator->allocate(convbuffersize);
+#if !HIGH_QUALITY_AUDIO
+                        ogg_int16_t*
+#else
+                        float*
+#endif
+                          convbuffer =
+                            currentAllocator->allocate(convbuffersize);
                         while ((samples = vorbis_synthesis_pcmout(&vd, &pcm)) >
                                0) {
+                            const int bout = samples < convbuffersize
+                                               ? samples
+                                               : convbuffersize;
+#if !HIGH_QUALITY_AUDIO
                             bool clipflag = false;
                             for (int i = 0; i < vi.channels; ++i) {
                                 ogg_int16_t* ptr = convbuffer + i;
@@ -1485,10 +1498,25 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                                         "Clipping in frame %" PRId64 "\n",
                                         vd.sequence);
                             }
+#else
+                            for (int i = 0; i < vi.channels; ++i) {
+                                float* ptr = convbuffer + i;
+                                const float* mono = pcm[i];
+                                for (int j = 0; j < samples; ++j) {
+                                    *ptr = mono[j];
+                                    ptr += vi.channels;
+                                }
+                            }
+#endif
                             if (cvt.needed) {
-                                cvt.buf = (uint8_t*)convbuffer;
+#if !HIGH_QUALITY_AUDIO
                                 cvt.len =
-                                  sizeof(ogg_int16_t) * vi.channels * samples;
+                                  sizeof(ogg_int16_t) * vi.channels * bout;
+#else
+                                cvt.len = sizeof(float) * vi.channels * bout;
+                                memcpy(convbuffer, *pcm, cvt.len);
+#endif
+                                cvt.buf = (uint8_t*)convbuffer;
                                 if (convbuffersize < cvt.len * cvt.len_mult) {
                                     convbuffersize = cvt.len * cvt.len_mult;
                                     convbuffer = currentAllocator->reallocate(
@@ -1498,12 +1526,19 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                                 uint8_tListQuickAppend(
                                   bytes, (uint8_t*)convbuffer, cvt.len_cvt);
                             } else {
+#if !HIGH_QUALITY_AUDIO
                                 uint8_tListQuickAppend(bytes,
                                                        (uint8_t*)convbuffer,
                                                        sizeof(ogg_int16_t) *
-                                                         vi.channels * samples);
+                                                         vi.channels * bout);
+#else
+                                uint8_tListQuickAppend(bytes,
+                                                       (uint8_t*)convbuffer,
+                                                       sizeof(float) *
+                                                         vi.channels * bout);
+#endif
                             }
-                            vorbis_synthesis_read(&vd, samples);
+                            vorbis_synthesis_read(&vd, bout);
                         }
                         currentAllocator->free(convbuffer);
                     }
