@@ -416,6 +416,7 @@ cleanupServer(ENetHost*);
 
 // Audio
 #define ENABLE_FEC 0
+#define TEST_DECODER 1
 
 #define HIGH_QUALITY_AUDIO 1
 #if HIGH_QUALITY_AUDIO

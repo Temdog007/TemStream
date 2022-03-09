@@ -59,11 +59,12 @@
 - [x] Ensure clients cannot slow down server if they don't have write access (use intercept callback in ENetHost)
 
 ### Mar 08, 2022
-- [ ] Stream wav file
+- [x] Stream wav file
+- [x] Stream ogg with lib vorbis
 
 ### Mar 09, 2022
+- [ ] Don't send all audio at once
 - [ ] Stream mp3 with mp3lame
-- [ ] Stream ogg with lib vorbis
 
 ### Later
 - [ ] Display audio mixer

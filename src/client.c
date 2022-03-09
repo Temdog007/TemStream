@@ -1205,6 +1205,13 @@ decodeWAV(const void* data, const size_t size, pBytes bytes)
     int16_t formatType;
     offset += int16_tDeserialize(&formatType, &audio, offset, true);
 
+    if (formatType != 1) {
+        fprintf(stderr,
+                "Only PCM wav files are supported. Got %d (1 = PCM)\n",
+                formatType);
+        return false;
+    }
+
     int16_t channels;
     offset += int16_tDeserialize(&channels, &audio, offset, true);
 
@@ -1257,13 +1264,14 @@ readAudio:
     offset += uint32_tDeserialize(&dataSize, &audio, offset, true);
 
     uint8_tListQuickAppend(bytes, &audio.buffer[offset], dataSize);
-
-    const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
-    SDL_AudioCVT cvt;
-    printf("Wav data format %u; channels %d; sample rate %u\n",
+    printf("Wav data %d bit format %u; channels %d; sample rate %u\n",
+           bitsPerSample,
            format,
            channels,
            sampleRate);
+
+    const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
+    SDL_AudioCVT cvt;
     if (SDL_BuildAudioCVT(&cvt,
                           format,
                           channels,
@@ -1274,20 +1282,28 @@ readAudio:
         fprintf(stderr, "Failed make audio converter: %s\n", SDL_GetError());
         return false;
     }
-    cvt.len = bytes->used;
-    cvt.buf = bytes->buffer;
-    const uint32_t newSize = (uint32_t)(cvt.len * cvt.len_mult);
-    if (bytes->size < newSize) {
-        bytes->buffer = currentAllocator->reallocate(bytes->buffer, newSize);
-        bytes->size = newSize;
-    }
+
     if (cvt.needed) {
+        cvt.len = bytes->used;
+        cvt.buf = bytes->buffer;
+        const uint32_t newSize = (uint32_t)(cvt.len * cvt.len_mult);
+        if (bytes->size < newSize) {
+            bytes->buffer =
+              currentAllocator->reallocate(bytes->buffer, newSize);
+            bytes->size = newSize;
+        }
+        printf("Converting %d Hz %d channels to %d Hz %d channels\n",
+               sampleRate,
+               channels,
+               spec.freq,
+               spec.channels);
         if (SDL_ConvertAudio(&cvt) != 0) {
             fprintf(stderr, "Failed to convert audio: %s\n", SDL_GetError());
             return false;
         }
         bytes->used = cvt.len_cvt;
     }
+
     return true;
 }
 
@@ -1391,18 +1407,21 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                 printf("%s\n", *ptr);
                 ++ptr;
             }
-            printf("BitStream is %d channel, %ldHz\n", vi.channels, vi.rate);
+            printf("BitStream is %d channel(s), %ldHz\n", vi.channels, vi.rate);
             printf("Encoded by: %s\n", vc.vendor);
         }
 
         SDL_AudioCVT cvt;
-        SDL_BuildAudioCVT(&cvt,
-                          AUDIO_S16,
-                          vi.channels,
-                          vi.rate,
-                          spec.format,
-                          spec.channels,
-                          spec.freq);
+        if (SDL_BuildAudioCVT(&cvt,
+                              AUDIO_S16,
+                              vi.channels,
+                              vi.rate,
+                              spec.format,
+                              spec.channels,
+                              spec.freq) < 0) {
+            fprintf(
+              stderr, "Failed to make audio converter: %s\n", SDL_GetError());
+        }
 
         vorbis_dsp_state vd;
         if (vorbis_synthesis_init(&vd, &vi) == 0) {
@@ -1569,8 +1588,27 @@ decodeAudioData(const AudioExtension ext,
     }
 
     if (success) {
-        sendAudioPackets(encoder, bytes, makeAudioSpec(NULL, NULL), peer);
+        const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
+#if TEST_DECODER
+        (void)peer;
+        SDL_AudioSpec obtained;
+        const int deviceId =
+          SDL_OpenAudioDevice(NULL, SDL_FALSE, &spec, &obtained, 0);
+        if (deviceId == 0) {
+            fprintf(
+              stderr, "Failed to open playback device: %s\n", SDL_GetError());
+        } else {
+            SDL_PauseAudioDevice(deviceId, SDL_FALSE);
+            SDL_QueueAudio(deviceId, bytes->buffer, bytes->used);
+            while (!appDone && SDL_GetQueuedAudioSize(deviceId) > 0) {
+                SDL_Delay(1000);
+            }
+            SDL_CloseAudioDevice(deviceId);
+        }
+#else
+        sendAudioPackets(encoder, bytes, spec, peer);
         puts("Done sending audio data");
+#endif
     }
 
 audioEnd:
