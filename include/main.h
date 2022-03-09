@@ -16,11 +16,6 @@
 
 #include <opus/opus.h>
 
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/frame.h>
-#include <libavutil/mem.h>
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>

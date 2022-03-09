@@ -59,9 +59,11 @@
 - [x] Ensure clients cannot slow down server if they don't have write access (use intercept callback in ENetHost)
 
 ### Mar 08, 2022
+- [ ] Stream wav file
+
+### Mar 09, 2022
 - [ ] Stream mp3 with mp3lame
 - [ ] Stream ogg with lib vorbis
-- [ ] Find alternative to FFmepg
 
 ### Later
 - [ ] Display audio mixer
@@ -72,7 +74,6 @@
 - [ ] Ensure textures can be hidden for a stream
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Allow for blacklist/whitelist for stream access
-- [ ] Allow owner to add/remove writers/readers
 - [ ] Include press to talk
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

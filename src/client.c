@@ -921,7 +921,7 @@ sendAudioPackets(OpusEncoder* encoder,
                  const SDL_AudioSpec spec,
                  ENetPeer* peer)
 {
-    uint8_t buffer[KB(2)] = { 0 };
+    uint8_t buffer[KB(4)] = { 0 };
 
     const int minDuration =
       audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
@@ -959,7 +959,7 @@ sendAudioPackets(OpusEncoder* encoder,
 #endif
         if (result < 0) {
             fprintf(stderr,
-                    "Failed to encode recorded packet: %s; Frame size %d\n",
+                    "Failed to encode audio packet: %s; Frame size %d\n",
                     opus_strerror(result),
                     frame_size);
             break;
@@ -968,6 +968,7 @@ sendAudioPackets(OpusEncoder* encoder,
         message.audio.used = (uint32_t)result;
 
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
+        printf("Bytes encoded: %zu\n", bytesUsed);
         uint8_tListQuickRemove(audio, 0, bytesUsed);
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
@@ -1141,99 +1142,179 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
 }
 
 bool
-sendDecodedAudioFrames(AVCodecContext* dec_ctx,
-                       AVPacket* pkt,
-                       AVFrame* frame,
-                       OpusEncoder* encoder,
-                       ENetPeer* peer,
-                       pBytes bytes)
+decodeWAV(const void* data, const size_t size, pBytes bytes)
 {
-    int ret = avcodec_send_packet(dec_ctx, pkt);
-    if (ret < 0) {
-        fprintf(stderr, "Error submitting the packet to the decoder\n");
+    const Bytes audio = { .buffer = (uint8_t*)data,
+                          .size = size,
+                          .used = size };
+
+    union
+    {
+        uint32_t u;
+        char c[4];
+    } type;
+
+    size_t offset = 0;
+    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
+
+    if (memcmp(&type, "RIFF", 4) != 0) {
+        fprintf(stderr,
+                "Did not get 'RIFF' in WAV header. Got '%c' '%c' '%c' '%c'\n",
+                type.c[0],
+                type.c[1],
+                type.c[2],
+                type.c[3]);
         return false;
     }
 
-    int sampleRate;
-    switch (dec_ctx->sample_fmt) {
-        case AV_SAMPLE_FMT_U8:
-            sampleRate = AUDIO_U8;
-            break;
-        case AV_SAMPLE_FMT_S16:
-            sampleRate = AUDIO_S16;
-            break;
-        case AV_SAMPLE_FMT_S32:
-            sampleRate = AUDIO_S32;
-            break;
-        case AV_SAMPLE_FMT_FLT:
-            sampleRate = AUDIO_F32;
-            break;
-        default:
-            fprintf(
-              stderr, "Cannot convert audio format: %d\n", dec_ctx->sample_fmt);
-            return false;
+    uint32_t audioSize;
+    offset += uint32_tDeserialize(&audioSize, &audio, offset, true);
+
+    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
+    if (memcmp(&type, "WAVE", 4) != 0) {
+        fprintf(stderr,
+                "Did not get 'WAVE' in WAV header. Got '%c' '%c' '%c' '%c'\n",
+                type.c[0],
+                type.c[1],
+                type.c[2],
+                type.c[3]);
+        return false;
     }
+
+    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
+    if (memcmp(&type, "fmt ", 4) != 0) {
+        fprintf(stderr,
+                "Did not get 'fmt ' in WAV header. Got '%c' '%c' '%c' '%c'\n",
+                type.c[0],
+                type.c[1],
+                type.c[2],
+                type.c[3]);
+        return false;
+    }
+
+    uint32_t chunkSize;
+    offset += uint32_tDeserialize(&chunkSize, &audio, offset, true);
+
+    int16_t formatType;
+    offset += int16_tDeserialize(&formatType, &audio, offset, true);
+
+    int16_t channels;
+    offset += int16_tDeserialize(&channels, &audio, offset, true);
+
+    uint32_t sampleRate;
+    offset += uint32_tDeserialize(&sampleRate, &audio, offset, true);
+
+    uint32_t avgBytesPerSec;
+    offset += uint32_tDeserialize(&avgBytesPerSec, &audio, offset, true);
+
+    int16_t bytesPerSample;
+    offset += int16_tDeserialize(&bytesPerSample, &audio, offset, true);
+
+    int16_t bitsPerSample;
+    offset += int16_tDeserialize(&bitsPerSample, &audio, offset, true);
+
+    offset += uint32_tDeserialize(&type.u, &audio, offset, true);
+    if (memcmp(&type, "data", 4) != 0) {
+        fprintf(stderr,
+                "Did not get 'data' in WAV header. Got '%c' '%c' '%c' '%c'\n",
+                type.c[0],
+                type.c[1],
+                type.c[2],
+                type.c[3]);
+        return false;
+    }
+
+    uint32_t dataSize;
+    SDL_AudioFormat format;
+    switch (bitsPerSample) {
+        case 8:
+            format = AUDIO_U8;
+            goto readAudio;
+        case 16:
+            format = AUDIO_U16;
+            goto readAudio;
+        case 32:
+            format = AUDIO_S32;
+            goto readAudio;
+        default:
+            break;
+    }
+    fprintf(stderr,
+            "Wav has invalid channels (%d) or bitsPerSample (%d)\n",
+            channels,
+            bitsPerSample);
+    return false;
+
+readAudio:
+
+    offset += uint32_tDeserialize(&dataSize, &audio, offset, true);
+
+    bytes->used = 0;
+    uint8_tListQuickAppend(bytes, &audio.buffer[offset], dataSize);
 
     const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
     SDL_AudioCVT cvt;
-    SDL_BuildAudioCVT(&cvt,
-                      sampleRate,
-                      dec_ctx->channels,
-                      dec_ctx->sample_rate,
-                      spec.format,
-                      spec.channels,
-                      spec.freq);
-
-    while (ret >= 0) {
-        ret = avcodec_receive_frame(dec_ctx, frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            break;
-        } else if (ret < 0) {
-            fprintf(stderr, "Error during decoding\n");
-            return false;
-        }
-
-        const int dataSize = av_get_bytes_per_sample(dec_ctx->sample_fmt);
-        if (dataSize < 0) {
-            fprintf(stderr, "Failed to calculate size during decoding\n");
-            return false;
-        }
-        for (int i = 0; i < frame->nb_samples; ++i) {
-            for (int ch = 0; ch < dec_ctx->channels; ++ch) {
-                while (bytes->size < (size_t)dataSize * cvt.len_mult) {
-                    uint8_tListRellocateIfNeeded(bytes);
-                }
-                memcpy(bytes->buffer, frame->data[ch] + dataSize * i, dataSize);
-                if (cvt.needed) {
-                    cvt.buf = bytes->buffer;
-                    cvt.len = dataSize;
-                    SDL_ConvertAudio(&cvt);
-                    bytes->used = cvt.len_cvt;
-                } else {
-                    bytes->used = dataSize;
-                }
-                sendAudioPackets(encoder, bytes, spec, peer);
-            }
-        }
+    printf("Wav data format %u; channels %d; sample rate %u\n",
+           format,
+           channels,
+           sampleRate);
+    if (SDL_BuildAudioCVT(&cvt,
+                          format,
+                          channels,
+                          sampleRate,
+                          spec.format,
+                          spec.channels,
+                          spec.freq) < 0) {
+        fprintf(stderr, "Failed make audio converter: %s\n", SDL_GetError());
+        return false;
     }
-
+    cvt.len = bytes->used;
+    cvt.buf = bytes->buffer;
+    const uint32_t newSize = (uint32_t)(cvt.len * cvt.len_mult);
+    if (bytes->size < newSize) {
+        bytes->buffer = currentAllocator->reallocate(bytes->buffer, newSize);
+        bytes->size = newSize;
+    }
+    if (cvt.needed) {
+        if (SDL_ConvertAudio(&cvt) != 0) {
+            fprintf(stderr, "Failed to convert audio: %s\n", SDL_GetError());
+            return false;
+        }
+        bytes->used = cvt.len_cvt;
+    }
     return true;
 }
 
-void
+bool
+decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
+{
+    (void)data;
+    (void)dataSize;
+    (void)bytes;
+    fprintf(stderr, "Ogg not implemetned\n");
+    return false;
+}
+
+bool
+decodeMp3(const void* data, const size_t dataSize, pBytes bytes)
+{
+    (void)data;
+    (void)dataSize;
+    (void)bytes;
+    fprintf(stderr, "Mp3 not implemetned\n");
+    return false;
+}
+
+bool
 decodeAudioData(const AudioExtension ext,
                 const uint8_t* data,
                 const size_t dataSize,
                 ENetPeer* peer,
                 pBytes bytes)
 {
-    printf("Sending audio data...\n");
-    AVCodecContext* c = NULL;
-    AVCodecParserContext* parser = NULL;
-    AVPacket* pkt = NULL;
-    AVFrame* frame = NULL;
-    const AVCodec* codec = NULL;
+    puts("Sending audio data...");
 
+    bool success = false;
     const int encoderSize = opus_encoder_get_size(2);
     OpusEncoder* encoder = currentAllocator->allocate(encoderSize);
     const int encoderError =
@@ -1246,76 +1327,28 @@ decodeAudioData(const AudioExtension ext,
     }
 
     switch (ext) {
-        case AudioExtension_FLAC:
-            codec = avcodec_find_decoder(AV_CODEC_ID_FLAC);
+        case AudioExtension_WAV:
+            success = decodeWAV(data, dataSize, bytes);
             break;
         case AudioExtension_OGG:
-            codec = avcodec_find_decoder(AV_CODEC_ID_VORBIS);
+            success = decodeOgg(data, dataSize, bytes);
             break;
         case AudioExtension_MP3:
-            codec = avcodec_find_decoder(AV_CODEC_ID_MP3);
+            success = decodeMp3(data, dataSize, bytes);
             break;
         default:
+            fprintf(stderr, "Unknown audio extension\n");
             break;
     }
-    if (codec == NULL) {
-        fprintf(stderr, "Failed to find audio decoder for file\n");
-        goto audioEnd;
-    }
-    parser = av_parser_init(codec->id);
-    if (parser == NULL) {
-        fprintf(stderr, "Parser not found\n");
-        goto audioEnd;
-    }
-    c = avcodec_alloc_context3(codec);
-    if (c == NULL) {
-        fprintf(stderr, "Could not allocate audio codec context\n");
-        goto audioEnd;
-    }
-    if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
-        goto audioEnd;
-    }
-    pkt = av_packet_alloc();
-    size_t bytesRead = 0;
-    while (bytesRead < dataSize) {
-        if (frame == NULL) {
-            frame = av_frame_alloc();
-            if (frame == NULL) {
-                fprintf(stderr, "Could not allocate frame\n");
-                goto audioEnd;
-            }
-        }
 
-        const int ret = av_parser_parse2(parser,
-                                         c,
-                                         &pkt->data,
-                                         &pkt->size,
-                                         data + bytesRead,
-                                         dataSize - bytesRead,
-                                         AV_NOPTS_VALUE,
-                                         AV_NOPTS_VALUE,
-                                         0);
-        if (ret < 0) {
-            fprintf(stderr, "Error while parsing\n");
-            goto audioEnd;
-        }
-        if (pkt->size > 0 &&
-            !sendDecodedAudioFrames(c, pkt, frame, encoder, peer, bytes)) {
-            goto audioEnd;
-        }
-        bytesRead += ret;
+    if (success) {
+        sendAudioPackets(encoder, bytes, makeAudioSpec(NULL, NULL), peer);
+        puts("Done sending audio data");
     }
-    pkt->data = NULL;
-    pkt->size = 0;
-    sendDecodedAudioFrames(c, pkt, frame, encoder, peer, bytes);
+
 audioEnd:
-    avcodec_free_context(&c);
-    av_parser_close(parser);
-    av_frame_free(&frame);
-    av_packet_free(&pkt);
     currentAllocator->free(encoder);
-    printf("Done sending audio data\n");
+    return success;
 }
 
 void

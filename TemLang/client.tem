@@ -135,10 +135,9 @@ enum VideoExtension {
 }
 
 enum AudioExtension {
+    WAV
     MP3
     OGG
-    FLAC
-    WAV
 }
 
 variant FileExtension {
