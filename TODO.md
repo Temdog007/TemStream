@@ -63,11 +63,11 @@
 - [x] Stream ogg with lib vorbis
 
 ### Mar 09, 2022
+- [x] Stream mp3 
 - [ ] Audio sent over stream doesn't play pass one second (encoding issue?)
-- [ ] Stream mp3 with mp3lame
+- [ ] Display audio mixer
 
 ### Later
-- [ ] Display audio mixer
 - [ ] Allow volume of playback to be changed
 - [ ] Play gifs
 - [ ] Record windows

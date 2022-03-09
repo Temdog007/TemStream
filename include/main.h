@@ -31,6 +31,11 @@
 
 #include <vorbis/codec.h>
 
+#define MINIMP3_ONLY_MP3
+#define MINIMP3_NO_STDIO
+#define MINIMP3_IMPLEMENTATION
+#include <minimp3.h>
+
 #define MAX_PACKET_SIZE KB(64)
 
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
@@ -413,6 +418,15 @@ extern bool CanSendFileToStream(FileExtensionTag, ServerConfigurationDataTag);
 
 extern void
 cleanupServer(ENetHost*);
+
+extern bool
+decodeWAV(const void*, size_t, pBytes);
+
+extern bool
+decodeOgg(const void*, size_t, pBytes);
+
+extern bool
+decodeMp3(const void*, size_t, pBytes);
 
 // Audio
 #define ENABLE_FEC 0

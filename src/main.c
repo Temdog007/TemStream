@@ -4,6 +4,7 @@
 #include "base64.c"
 #include "chat.c"
 #include "client.c"
+#include "decode.c"
 #include "image.c"
 #include "lobby.c"
 #include "misc.c"
@@ -41,7 +42,7 @@ main(const int argc, const char** argv)
     {
         // Look for -M or --memory
         int binaryIndex = -1;
-        uint64_t memory = MB(64);
+        uint64_t memory = MB(256);
         for (int i = 1; i < argc - 1; ++i) {
             if (strcmp("-B", argv[i]) == 0 ||
                 strcmp("--binary", argv[i]) == 0) {
