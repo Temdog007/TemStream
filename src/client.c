@@ -931,7 +931,7 @@ sendAudioPackets(OpusEncoder* encoder,
     uint8_t buffer[KB(4)] = { 0 };
 
     const int minDuration =
-      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
+      audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_2_5_MS);
 
     AudioMessage message = { 0 };
     message.tag = AudioMessageTag_audio;
@@ -1642,7 +1642,7 @@ decodeAudioData(const AudioExtension ext,
         }
 #else
         sendAudioPackets(encoder, bytes, spec, peer);
-        puts("Done sending audio data");
+        printf("Done sending audio data. Bytes left: %u\n", bytes->used);
 #endif
     }
 
