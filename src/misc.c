@@ -28,9 +28,16 @@ clientHasAccess(const Client* client, const Access* access)
     switch (access->tag) {
         case AccessTag_anyone:
             return true;
-        case AccessTag_list:
+        case AccessTag_allowed:
             return TemLangStringListFindIf(
-              &access->list,
+              &access->allowed,
+              (TemLangStringListFindFunc)TemLangStringsAreEqual,
+              &client->name,
+              NULL,
+              NULL);
+        case AccessTag_disallowed:
+            return TemLangStringListFindIf(
+              &access->disallowed,
               (TemLangStringListFindFunc)TemLangStringsAreEqual,
               &client->name,
               NULL,
@@ -538,6 +545,7 @@ AudioStateFree(pAudioState state)
             currentAllocator->free(state->decoder);
         }
     }
+    uint8_tListFree(&state->storedAudio);
 }
 
 bool

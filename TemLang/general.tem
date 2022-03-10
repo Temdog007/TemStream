@@ -94,7 +94,8 @@ inlineC "MAKE_DEFAULT_LIST(ServerConfiguration);"
 
 variant Access {
     null anyone
-    [ 0 string ] list
+    [ 0 string ] allowed
+    [ 0 string ] disallowed
 }
 
 variant OptionalGuid {

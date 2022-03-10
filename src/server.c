@@ -148,12 +148,24 @@ printAccess(const Access* access)
     switch (access->tag) {
         case AccessTag_anyone:
             return puts("Anyone");
-        case AccessTag_list: {
+        case AccessTag_allowed: {
             int offset = 0;
-            for (size_t i = 0; i < access->list.used; ++i) {
+            printf("Allowed: ");
+            for (size_t i = 0; i < access->allowed.used; ++i) {
                 offset += printf("%s%s",
-                                 access->list.buffer[i].buffer,
-                                 i == access->list.used - 1U ? "\n" : ", ");
+                                 access->allowed.buffer[i].buffer,
+                                 i == access->allowed.used - 1U ? "\n" : ", ");
+            }
+            return offset;
+        } break;
+        case AccessTag_disallowed: {
+            int offset = 0;
+            printf("Disallowed: ");
+            for (size_t i = 0; i < access->disallowed.used; ++i) {
+                offset +=
+                  printf("%s%s",
+                         access->disallowed.buffer[i].buffer,
+                         i == access->disallowed.used - 1U ? "\n" : ", ");
             }
             return offset;
         } break;

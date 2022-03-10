@@ -391,3 +391,38 @@ decodeMp3(const void* data, const size_t dataSize, pBytes bytes)
     currentAllocator->free(mp3d);
     return true;
 }
+
+bool
+decodeOpus(pAudioState state, const Bytes* audio, void** data, int* byteSize)
+{
+    *data = currentAllocator->allocate(MAX_PACKET_SIZE);
+
+    void* uncompressed = *data;
+
+    const int result =
+#if HIGH_QUALITY_AUDIO
+      opus_decode_float(
+        state->decoder,
+        (unsigned char*)audio->buffer,
+        audio->used,
+        (float*)uncompressed,
+        audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
+        ENABLE_FEC);
+#else
+      opus_decode(state->decoder,
+                  (unsigned char*)audio->buffer,
+                  audio->used,
+                  (opus_int16*)uncompressed,
+                  audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
+                  ENABLE_FEC);
+#endif
+
+    if (result < 0) {
+        fprintf(stderr, "Failed to decode audio: %s\n", opus_strerror(result));
+        return false;
+    }
+
+    *byteSize = result * state->spec.channels * PCM_SIZE;
+
+    return true;
+}

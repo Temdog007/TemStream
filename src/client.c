@@ -67,9 +67,6 @@ bool
 startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state);
 
 void
-storeOpusAudio(pAudioState state, const Bytes* compressed);
-
-void
 handleUserInput(ENetPeer*,
                 pBytes,
                 const ServerConfigurationDataTag,
@@ -301,20 +298,33 @@ getIndexFromUser(struct pollfd inputfd,
                  uint32_t* index,
                  const bool keepPolling)
 {
+    static SDL_atomic_t inUse = { 0 };
+    while (SDL_AtomicGet(&inUse) != 0) {
+        if (keepPolling) {
+            SDL_Delay(CLIENT_POLL_WAIT);
+            continue;
+        }
+        return UserInputResult_NoInput;
+    }
+    SDL_AtomicIncRef(&inUse);
+    UserInputResult result = UserInputResult_NoInput;
     if (max < 2) {
         *index = 0;
-        return UserInputResult_Input;
+        result = UserInputResult_Input;
+        goto end;
     }
     ssize_t size = 0;
     while (!appDone) {
         switch (getUserInput(inputfd, bytes, &size, 0)) {
             case UserInputResult_Error:
-                return UserInputResult_Error;
+                result = UserInputResult_Error;
+                goto end;
             case UserInputResult_NoInput:
                 if (keepPolling) {
                     continue;
                 } else {
-                    return UserInputResult_NoInput;
+                    result = UserInputResult_NoInput;
+                    goto end;
                 }
             default:
                 break;
@@ -323,11 +333,15 @@ getIndexFromUser(struct pollfd inputfd,
         *index = (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
         if (end != (char*)&bytes->buffer[size] || *index >= max) {
             printf("Enter a number between 1 and %u\n", max);
-            return UserInputResult_Error;
+            result = UserInputResult_Error;
+            goto end;
         }
-        return UserInputResult_Input;
+        result = UserInputResult_Input;
+        goto end;
     }
-    return UserInputResult_NoInput;
+end:
+    SDL_AtomicDecRef(&inUse);
+    return result;
 }
 
 void
@@ -500,7 +514,8 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
 bool
 clientHandleAudioMessage(const Bytes* packetBytes,
                          pStreamDisplay display,
-                         pAudioState playback)
+                         pAudioState playback,
+                         pAudioState record)
 {
     AudioMessage message = { 0 };
     MESSAGE_DESERIALIZE(AudioMessage, message, (*packetBytes));
@@ -523,14 +538,34 @@ clientHandleAudioMessage(const Bytes* packetBytes,
         } break;
         case AudioMessageTag_audio:
             if (playback->decoder == NULL) {
+                // If true, this stream is sending audio. Not receiving.
+                if (record->encoder != NULL) {
+                    success = true;
+                    break;
+                }
                 fprintf(stderr,
-                        "No playback device sent. Disconnecting from audio "
-                        "server...\n");
+                        "No playback device assigned to this stream. "
+                        "Disconnecting from audio server...\n");
                 success = false;
                 break;
             }
-            success = true;
-            storeOpusAudio(playback, &message.audio);
+            void* data = NULL;
+            int byteSize = 0;
+            if (decodeOpus(playback, &message.audio, &data, &byteSize)) {
+#if USE_PLAYBACK_CALLBACK
+                SDL_LockAudioDevice(playback->deviceId);
+                success = uint8_tListQuickAppend(
+                  &playback->storedAudio, data, byteSize);
+                SDL_UnlockAudioDevice(playback->deviceId);
+#else
+                success =
+                  SDL_QueueAudio(playback->deviceId, data, byteSize) == 0;
+#endif
+            } else {
+                // Bad frames can be recovered ?
+                success = true;
+            }
+            currentAllocator->free(data);
             break;
         default:
             printf("Unexpected audio message: %s\n",
@@ -673,7 +708,7 @@ streamConnectionThread(void* ptr)
                         break;
                     case ServerConfigurationDataTag_audio:
                         success = clientHandleAudioMessage(
-                          &packetBytes, display, &playback);
+                          &packetBytes, display, &playback, &record);
                         break;
                     default:
                         fprintf(stderr,
@@ -884,43 +919,6 @@ closestValidFrameCount(const int frequency, const int frames)
     return audioLengthToFrames(frequency, values[arrayLength - 1]);
 }
 
-void
-storeOpusAudio(pAudioState state, const Bytes* compressed)
-{
-    void* uncompressed = currentAllocator->allocate(MAX_PACKET_SIZE);
-
-    const int result =
-#if HIGH_QUALITY_AUDIO
-      opus_decode_float(
-        state->decoder,
-        (unsigned char*)compressed->buffer,
-        compressed->used,
-        (float*)uncompressed,
-        audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
-        ENABLE_FEC);
-#else
-      opus_decode(state->decoder,
-                  (unsigned char*)compressed->buffer,
-                  compressed->used,
-                  (opus_int16*)uncompressed,
-                  audioLengthToFrames(state->spec.freq, OPUS_FRAMESIZE_120_MS),
-                  ENABLE_FEC);
-#endif
-
-    if (result < 0) {
-        fprintf(stderr, "Failed to decode audio: %s\n", opus_strerror(result));
-        goto end;
-    }
-
-    const int byteSize = result * state->spec.channels * PCM_SIZE;
-    if (SDL_QueueAudio(state->deviceId, uncompressed, byteSize) != 0) {
-        fprintf(stderr, "Failed to queue audio: %s\n", SDL_GetError());
-    }
-
-end:
-    currentAllocator->free(uncompressed);
-}
-
 size_t
 sendAudioPackets(OpusEncoder* encoder,
                  const Bytes* audio,
@@ -1090,6 +1088,17 @@ startRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
     return true;
 }
 
+void
+playbackCallback(pAudioState state, uint8_t* data, int len)
+{
+    memset(data, 0, len);
+    len = SDL_min(len, (int)state->storedAudio.used);
+    memcpy(data, state->storedAudio.buffer, len);
+    // printf("Audio written: %d\n", len);
+    uint8_tListQuickRemove(&state->storedAudio, 0, len);
+    // printf("Audio left: %d\n", state->storedAudio.used);
+}
+
 bool
 startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
 {
@@ -1101,7 +1110,6 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
 
     askQuestion("Select an audio device to play audio from");
     state->isRecording = SDL_FALSE;
-    state->packetLoss = 0u;
     for (int i = 0; i < devices; ++i) {
         printf("%d) %s\n", i + 1, SDL_GetAudioDeviceName(i, SDL_FALSE));
     }
@@ -1113,7 +1121,12 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
         return false;
     }
 
-    const SDL_AudioSpec desiredRecordingSpec = makeAudioSpec(NULL, NULL);
+    const SDL_AudioSpec desiredRecordingSpec =
+#if USE_PLAYBACK_CALLBACK
+      makeAudioSpec((SDL_AudioCallback)playbackCallback, state);
+#else
+      makeAudioSpec(NULL, NULL);
+#endif
     state->deviceId =
       SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_FALSE),
                           SDL_FALSE,
@@ -1300,17 +1313,21 @@ selectStreamToStart(struct pollfd inputfd,
 
 continueMessage:
     if (index) {
-        message.startStreaming.writers.tag = AccessTag_list;
-        message.startStreaming.writers.list.allocator = currentAllocator;
-        TemLangStringListAppend(&message.startStreaming.writers.list,
+        message.startStreaming.writers.tag = AccessTag_allowed;
+        message.startStreaming.writers.allowed.allocator = currentAllocator;
+        TemLangStringListAppend(&message.startStreaming.writers.allowed,
+                                &client->name);
+
+        message.startStreaming.writers.tag = AccessTag_disallowed;
+        message.startStreaming.writers.disallowed.allocator = currentAllocator;
+        TemLangStringListAppend(&message.startStreaming.writers.disallowed,
                                 &client->name);
     } else {
         message.startStreaming.writers.tag = AccessTag_anyone;
         message.startStreaming.writers.anyone = NULL;
+        message.startStreaming.readers.tag = AccessTag_anyone;
+        message.startStreaming.readers.anyone = NULL;
     }
-
-    message.startStreaming.readers.tag = AccessTag_anyone;
-    message.startStreaming.readers.anyone = NULL;
 
     MESSAGE_SERIALIZE(LobbyMessage, message, (*bytes));
     printf(
@@ -2209,6 +2226,7 @@ handleUserInput(ENetPeer* peer,
             if (!done && userInput->queryAudio.readAccess) {
                 startPlayback(inputfd, bytes, playback);
                 if (playback->decoder != NULL) {
+                    playback->storedAudio.allocator = currentAllocator;
                     SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
                 }
             }

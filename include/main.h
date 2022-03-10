@@ -408,18 +408,10 @@ extern bool CanSendFileToStream(FileExtensionTag, ServerConfigurationDataTag);
 extern void
 cleanupServer(ENetHost*);
 
-extern bool
-decodeWAV(const void*, size_t, pBytes);
-
-extern bool
-decodeOgg(const void*, size_t, pBytes);
-
-extern bool
-decodeMp3(const void*, size_t, pBytes);
-
 // Audio
 #define ENABLE_FEC 0
 #define TEST_DECODER 0
+#define USE_PLAYBACK_CALLBACK 0
 
 #define HIGH_QUALITY_AUDIO 1
 #if HIGH_QUALITY_AUDIO
@@ -430,6 +422,7 @@ decodeMp3(const void*, size_t, pBytes);
 
 typedef struct AudioState
 {
+    Bytes storedAudio;
     SDL_AudioSpec spec;
     union
     {
@@ -437,12 +430,23 @@ typedef struct AudioState
         OpusDecoder* decoder;
     };
     SDL_AudioDeviceID deviceId;
-    uint32_t packetLoss;
     SDL_bool running;
     SDL_bool isRecording;
 } AudioState, *pAudioState;
 
 extern void AudioStateFree(pAudioState);
+
+extern bool
+decodeWAV(const void*, size_t, pBytes);
+
+extern bool
+decodeOgg(const void*, size_t, pBytes);
+
+extern bool
+decodeMp3(const void*, size_t, pBytes);
+
+extern bool
+decodeOpus(pAudioState, const Bytes*, void**, int*);
 
 // Font
 typedef struct Character
