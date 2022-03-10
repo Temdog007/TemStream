@@ -54,8 +54,8 @@ sendAudioPackets(OpusEncoder* encoder,
 bool
 selectAudioStreamSource(struct pollfd inputfd,
                         pBytes bytes,
-                        pStreamDisplay,
-                        pAudioState state);
+                        pAudioState state,
+                        pUserInput);
 
 void
 consumeAudio(const Bytes*, const Guid*);
@@ -70,10 +70,12 @@ void
 storeOpusAudio(pAudioState state, const Bytes* compressed);
 
 void
-handleUserInput(ENetPeer* peer,
+handleUserInput(ENetPeer*,
                 pBytes,
                 const ServerConfigurationDataTag,
-                const UserInput*);
+                const UserInput*,
+                pAudioState record,
+                pAudioState playback);
 
 bool
 clientHandleLobbyMessage(const LobbyMessage* message,
@@ -497,9 +499,7 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
 
 bool
 clientHandleAudioMessage(const Bytes* packetBytes,
-                         pBytes bytes,
                          pStreamDisplay display,
-                         pAudioState record,
                          pAudioState playback)
 {
     AudioMessage message = { 0 };
@@ -507,33 +507,25 @@ clientHandleAudioMessage(const Bytes* packetBytes,
     bool success = false;
     switch (message.tag) {
         case AudioMessageTag_general: {
-            Client client = { 0 };
-            success =
-              clientHandleGeneralMessage(&message.general, &client, NULL);
-            if (!success ||
-                message.general.tag != GeneralMessageTag_authenticateAck) {
-                break;
+            UserInput input = { 0 };
+            input.tag = UserInputTag_queryAudio;
+            success = clientHandleGeneralMessage(
+              &message.general, &input.queryAudio.client, NULL);
+            if (success &&
+                message.general.tag == GeneralMessageTag_authenticateAck) {
+                input.queryAudio.writeAccess = clientHasWriteAccess(
+                  &input.queryAudio.client, &display->config);
+                input.queryAudio.readAccess = clientHasReadAccess(
+                  &input.queryAudio.client, &display->config);
+                success = UserInputListAppend(&display->userInputs, &input);
             }
-            const struct pollfd inputfd = { .events = POLLIN,
-                                            .revents = 0,
-                                            .fd = STDIN_FILENO };
-            if (clientHasWriteAccess(&client, &display->config)) {
-                success =
-                  selectAudioStreamSource(inputfd, bytes, display, record);
-                if (record->encoder != NULL) {
-                    SDL_PauseAudioDevice(record->deviceId, SDL_FALSE);
-                }
-            }
-            if (success && clientHasReadAccess(&client, &display->config)) {
-                success = startPlayback(inputfd, bytes, playback);
-                if (playback->decoder != NULL) {
-                    SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
-                }
-            }
-            ClientFree(&client);
+            UserInputFree(&input);
         } break;
         case AudioMessageTag_audio:
             if (playback->decoder == NULL) {
+                fprintf(stderr,
+                        "No playback device sent. Disconnecting from audio "
+                        "server...\n");
                 success = false;
                 break;
             }
@@ -681,7 +673,7 @@ streamConnectionThread(void* ptr)
                         break;
                     case ServerConfigurationDataTag_audio:
                         success = clientHandleAudioMessage(
-                          &packetBytes, &bytes, display, &record, &playback);
+                          &packetBytes, display, &playback);
                         break;
                     default:
                         fprintf(stderr,
@@ -704,7 +696,12 @@ streamConnectionThread(void* ptr)
                 UserInputCopy(
                   &input, &display->userInputs.buffer[i], currentAllocator);
                 SDL_UnlockMutex(clientData.mutex);
-                handleUserInput(peer, &bytes, display->config.data.tag, &input);
+                handleUserInput(peer,
+                                &bytes,
+                                display->config.data.tag,
+                                &input,
+                                &record,
+                                &playback);
                 UserInputFree(&input);
                 SDL_LockMutex(clientData.mutex);
             }
@@ -992,8 +989,8 @@ sendAudioPackets(OpusEncoder* encoder,
 bool
 selectAudioStreamSource(struct pollfd inputfd,
                         pBytes bytes,
-                        pStreamDisplay display,
-                        pAudioState state)
+                        pAudioState state,
+                        pUserInput ui)
 {
     askQuestion("Select audio source to stream from");
     for (AudioStreamSource i = 0; i < AudioStreamSource_Length; ++i) {
@@ -1013,16 +1010,11 @@ selectAudioStreamSource(struct pollfd inputfd,
             askQuestion("Enter file to stream");
             while (!appDone) {
                 switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
-                    case UserInputResult_Input: {
-                        UserInput ui = { 0 };
-                        ui.tag = UserInputTag_file;
-                        ui.file = TemLangStringCreate((char*)bytes->buffer,
-                                                      currentAllocator);
-                        const bool result =
-                          UserInputListAppend(&display->userInputs, &ui);
-                        UserInputFree(&ui);
-                        return result;
-                    } break;
+                    case UserInputResult_Input:
+                        ui->tag = UserInputTag_file;
+                        ui->file = TemLangStringCreate((char*)bytes->buffer,
+                                                       currentAllocator);
+                        return true;
                     case UserInputResult_NoInput:
                         continue;
                     default:
@@ -2188,12 +2180,39 @@ void
 handleUserInput(ENetPeer* peer,
                 pBytes bytes,
                 const ServerConfigurationDataTag serverType,
-                const UserInput* userInput)
+                const UserInput* userInput,
+                pAudioState record,
+                pAudioState playback)
 {
     switch (userInput->tag) {
         case UserInputTag_disconnect:
             enet_peer_disconnect(peer, 0);
             break;
+        case UserInputTag_queryAudio: {
+            const struct pollfd inputfd = { .events = POLLIN,
+                                            .revents = 0,
+                                            .fd = STDIN_FILENO };
+            bool done = false;
+            if (userInput->queryAudio.writeAccess) {
+                UserInput ui = { 0 };
+                ui.tag = UserInputTag_Invalid;
+                if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
+                    handleUserInput(
+                      peer, bytes, serverType, &ui, playback, record);
+                    if (record->encoder != NULL) {
+                        SDL_PauseAudioDevice(record->deviceId, SDL_FALSE);
+                        done = true;
+                    }
+                }
+                UserInputFree(&ui);
+            }
+            if (!done && userInput->queryAudio.readAccess) {
+                startPlayback(inputfd, bytes, playback);
+                if (playback->decoder != NULL) {
+                    SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
+                }
+            }
+        } break;
         case UserInputTag_text:
             switch (serverType) {
                 case ServerConfigurationDataTag_text: {

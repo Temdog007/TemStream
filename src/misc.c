@@ -4,13 +4,6 @@ const Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
 SDL_atomic_t runningThreads = { 0 };
 
 void
-ClientFree(pClient client)
-{
-    uint8_tListFree(&client->payload);
-    TemLangStringFree(&client->name);
-}
-
-void
 sendBytes(ENetPeer* peers,
           const size_t peerCount,
           const enet_uint32 channel,

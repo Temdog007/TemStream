@@ -44,17 +44,6 @@ const extern Guid ZeroGuid;
 
 extern SDL_atomic_t runningThreads;
 
-typedef struct Client
-{
-    TemLangString name;
-    Bytes payload;
-    Guid id;
-    int64_t joinTime;
-    uint64_t lastMessage;
-} Client, *pClient;
-
-extern void ClientFree(pClient);
-
 extern bool
 ClientGuidEquals(const pClient*, const Guid*);
 

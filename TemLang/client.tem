@@ -63,8 +63,23 @@ variant StreamDisplayData {
     string text
 }
 
+struct Client {
+    string name
+    [ 0 u8 ] payload
+    Guid id
+    i64 joinTime
+    u64 lastMessage
+}
+
+struct ClientAudioQuery {
+    Client client
+    bool readAccess
+    bool writeAccess
+}
+
 variant UserInput {
     null disconnect
+    ClientAudioQuery queryAudio
     string file
     string text
 }
