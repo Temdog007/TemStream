@@ -66,13 +66,16 @@
 - [x] Stream mp3 
 - [x] Audio sent over stream doesn't play pass one second (encoding issue? fill with silence if packet too small; use reliable send for audio files)
 - [x] Ensure that taking too long to answer questions doesn't disconnect from server (audio server issue only; send playback/record questions to user input list)
+- [x] Fix quick remove
 - [ ] Display audio mixer
+
+### Mar 10, 2022
 - [ ] Allow volume of playback to be changed
 - [ ] Include press to talk
+- [ ] Add optional labels to stream displays
 
 ### Later
 - [ ] Play gifs
-- [ ] Add optional labels to stream displays
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam

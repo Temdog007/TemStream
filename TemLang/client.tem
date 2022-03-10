@@ -59,6 +59,7 @@ struct StreamDisplayChat {
 variant StreamDisplayData {
     null none
     [ 0 u8 ] image
+    [ 0 f32 ] audioData
     StreamDisplayChat chat
     string text
 }

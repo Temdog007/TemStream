@@ -1091,12 +1091,10 @@ startRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
 void
 playbackCallback(pAudioState state, uint8_t* data, int len)
 {
-    memset(data, 0, len);
+    memset(data, state->spec.silence, len);
     len = SDL_min(len, (int)state->storedAudio.used);
     memcpy(data, state->storedAudio.buffer, len);
-    // printf("Audio written: %d\n", len);
     uint8_tListQuickRemove(&state->storedAudio, 0, len);
-    // printf("Audio left: %d\n", state->storedAudio.used);
 }
 
 bool
