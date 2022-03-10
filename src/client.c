@@ -1225,7 +1225,8 @@ decodeAudioData(const AudioExtension ext,
             sendAudioPackets(encoder, bytes, spec, peer, true);
         }
         puts("Done sending audio data.");
-        bytes->used = 0;
+        uint8_tListFree(bytes);
+        bytes->allocator = currentAllocator;
 #endif
     }
 
