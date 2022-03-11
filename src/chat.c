@@ -17,10 +17,9 @@ printChatConfiguration(const ChatConfiguration* configuration)
 }
 
 void
-onChatDownTime(ENetHost* host, pBytes b)
+onChatDownTime(pServerData serverData)
 {
-    (void)host;
-    (void)b;
+    (void)serverData;
 }
 
 bool
@@ -60,29 +59,20 @@ parseChatConfiguration(const int argc,
 }
 
 bool
-onConnectForChat(pClient client,
-                 pBytes bytes,
-                 ENetPeer* peer,
-                 const ServerConfiguration* config)
+onConnectForChat(ENetPeer* peer, pServerData serverData)
 {
-    (void)client;
-    if (getServerFileBytes(config, bytes)) {
-        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+    if (getServerFileBytes(serverData->config, &serverData->bytes)) {
+        sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
     }
     return true;
 }
 
 bool
-handleChatMessage(const void* ptr,
-                  pBytes bytes,
-                  ENetPeer* peer,
-                  redisContext* ctx,
-                  const ServerConfiguration* serverConfig)
+handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
 {
-    (void)ctx;
     ChatMessage chatMessage = { 0 };
     pClient client = peer->data;
-    const ChatConfiguration* config = &serverConfig->data.chat;
+    const ChatConfiguration* config = &serverData->config->data.chat;
     bool result = false;
     CAST_MESSAGE(ChatMessage, ptr);
     switch (message->tag) {
@@ -91,8 +81,8 @@ handleChatMessage(const void* ptr,
             result = handleGeneralMessage(
               &message->general, peer, &chatMessage.general);
             if (result) {
-                MESSAGE_SERIALIZE(ChatMessage, chatMessage, (*bytes));
-                sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+                MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
+                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
             }
             break;
         case ChatMessageTag_message:
@@ -123,21 +113,23 @@ handleChatMessage(const void* ptr,
             chatMessage.tag = ChatMessageTag_newChat;
             ChatCopy(&chatMessage.newChat, &newChat, currentAllocator);
 
-            MESSAGE_SERIALIZE(ChatMessage, chatMessage, (*bytes));
-            ENetPacket* packet =
-              BytesToPacket(bytes->buffer, bytes->used, true);
-            sendPacketToReaders(peer->host, packet, &serverConfig->readers);
+            MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
+            ENetPacket* packet = BytesToPacket(
+              serverData->bytes.buffer, serverData->bytes.used, true);
+            sendPacketToReaders(
+              peer->host, packet, &serverData->config->readers);
 
-            if (getServerFileBytes(serverConfig, bytes)) {
-                MESSAGE_DESERIALIZE(ChatMessage, chatMessage, (*bytes));
+            if (getServerFileBytes(serverData->config, &serverData->bytes)) {
+                MESSAGE_DESERIALIZE(
+                  ChatMessage, chatMessage, serverData->bytes);
             } else {
                 ChatMessageFree(&chatMessage);
                 chatMessage.tag = ChatMessageTag_logs;
                 chatMessage.logs.allocator = currentAllocator;
             }
             ChatListAppend(&chatMessage.logs, &newChat);
-            MESSAGE_SERIALIZE(ChatMessage, chatMessage, (*bytes));
-            writeServerFileBytes(serverConfig, bytes, true);
+            MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
+            writeServerFileBytes(serverData->config, &serverData->bytes, true);
             ChatFree(&newChat);
             break;
         default:

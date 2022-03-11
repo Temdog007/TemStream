@@ -1,6 +1,6 @@
 #include <include/main.h>
 
-const ServerConfiguration* gServerConfig = NULL;
+ServerData serverData = { 0 };
 
 // Assigns client a name and id also
 bool
@@ -363,7 +363,7 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
             if (client == NULL) {
                 break;
             }
-            return clientHasWriteAccess(client, gServerConfig) ? 0 : 1;
+            return clientHasWriteAccess(client, serverData.config) ? 0 : 1;
         } break;
         default:
             break;
@@ -372,8 +372,8 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
 }
 
 #define CHECK_SERVER                                                           \
-    server = enet_host_create(&address, config->maxClients, 2, 0, 0);          \
-    if (server != NULL) {                                                      \
+    serverData.host = enet_host_create(&address, config->maxClients, 2, 0, 0); \
+    if (serverData.host != NULL) {                                             \
         char buffer[1024] = { 0 };                                             \
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));            \
         printf("Opened server at %s:%u\n", buffer, address.port);              \
@@ -391,11 +391,9 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
 
     int result = EXIT_FAILURE;
 
-    gServerConfig = &configuration->server;
-
-    redisContext* ctx = NULL;
-    ENetHost* server = NULL;
-    Bytes bytes = { .allocator = currentAllocator };
+    ServerData serverData = { 0 };
+    serverData.config = &configuration->server;
+    serverData.bytes = (Bytes){ .allocator = currentAllocator };
     if (SDL_Init(0) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
         goto end;
@@ -436,24 +434,24 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
     }
     PRINT_MEMORY;
 
-    server->intercept = VerifyClientPacket;
+    serverData.host->intercept = VerifyClientPacket;
 
 continueServer:
     PRINT_MEMORY;
-    ctx = redisConnect(config->redisIp.buffer, config->redisPort);
-    if (ctx == NULL || ctx->err) {
-        if (ctx == NULL) {
+    serverData.ctx = redisConnect(config->redisIp.buffer, config->redisPort);
+    if (serverData.ctx == NULL || serverData.ctx->err) {
+        if (serverData.ctx == NULL) {
             fprintf(stderr, "Can't make redis context\n");
         } else {
-            fprintf(stderr, "Redis error: %s\n", ctx->errstr);
+            fprintf(stderr, "Redis error: %s\n", serverData.ctx->errstr);
         }
         goto end;
     }
 
     PRINT_MEMORY;
     if (config->data.tag == ServerConfigurationDataTag_lobby) {
-        cleanupConfigurationsInRedis(ctx);
-    } else if (!writeConfigurationToRedis(ctx, config)) {
+        cleanupConfigurationsInRedis(serverData.ctx);
+    } else if (!writeConfigurationToRedis(serverData.ctx, config)) {
         fprintf(stderr, "Failed to write to redis\n");
         goto end;
     }
@@ -463,7 +461,8 @@ continueServer:
     ENetEvent event = { 0 };
     uint64_t lastCheck = SDL_GetTicks64();
     while (!appDone) {
-        while (!appDone && enet_host_service(server, &event, 100U) > 0) {
+        while (!appDone &&
+               enet_host_service(serverData.host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT: {
                     char buffer[KB(1)] = { 0 };
@@ -504,8 +503,7 @@ continueServer:
                         case AuthenticateResult_Success: {
                             if ((!clientHasReadAccess(client, config) &&
                                  !clientHasWriteAccess(client, config)) ||
-                                !funcs.onConnect(
-                                  client, &bytes, event.peer, config)) {
+                                !funcs.onConnect(event.peer, &serverData)) {
                                 enet_peer_disconnect(event.peer, 0);
                                 break;
                             }
@@ -514,12 +512,13 @@ continueServer:
                             TemLangStringCopy(&gm.authenticateAck,
                                               &client->name,
                                               currentAllocator);
-                            funcs.sendGeneral(&gm, &bytes, event.peer);
+                            funcs.sendGeneral(
+                              &gm, &serverData.bytes, event.peer);
                             GeneralMessageFree(&gm);
                         } break;
                         case AuthenticateResult_NotNeeded:
                             if (!funcs.handleMessage(
-                                  message, &bytes, event.peer, ctx, config)) {
+                                  message, event.peer, &serverData)) {
                                 printf("Disconnecting %s\n",
                                        client->name.buffer);
                                 enet_peer_disconnect(event.peer, 0);
@@ -541,8 +540,8 @@ continueServer:
         }
         const uint64_t now = SDL_GetTicks64();
         uint64_t connectedPeers = 0;
-        for (size_t i = 0; i < server->peerCount; ++i) {
-            ENetPeer* peer = &server->peers[i];
+        for (size_t i = 0; i < serverData.host->peerCount; ++i) {
+            ENetPeer* peer = &serverData.host->peers[i];
             pClient client = peer->data;
             if (client == NULL) {
                 continue;
@@ -573,7 +572,7 @@ continueServer:
         } else {
             lastCheck = now;
         }
-        funcs.onDownTime(server, &bytes);
+        funcs.onDownTime(&serverData);
     }
 
     result = EXIT_SUCCESS;
@@ -584,15 +583,21 @@ end:
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
     }
-    PRINT_MEMORY;
-    removeConfigurationFromRedis(ctx, config);
-    PRINT_MEMORY;
-    redisFree(ctx);
-    PRINT_MEMORY;
-    uint8_tListFree(&bytes);
-    PRINT_MEMORY;
-    cleanupServer(server);
-    PRINT_MEMORY;
+    ServerDataFree(&serverData);
     SDL_Quit();
     return result;
+}
+
+void
+ServerDataFree(pServerData server)
+{
+    PRINT_MEMORY;
+    removeConfigurationFromRedis(server->ctx, server->config);
+    PRINT_MEMORY;
+    redisFree(server->ctx);
+    PRINT_MEMORY;
+    uint8_tListFree(&server->bytes);
+    PRINT_MEMORY;
+    cleanupServer(server->host);
+    PRINT_MEMORY;
 }

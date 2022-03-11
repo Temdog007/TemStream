@@ -53,14 +53,10 @@ void
 handleUserInput(const UserInput*, pBytes);
 
 bool
-clientHandleLobbyMessage(const LobbyMessage* message,
-                         ENetPeer* peer,
-                         pClient client);
+clientHandleLobbyMessage(const LobbyMessage* message, pClient client);
 
 bool
-clientHandleGeneralMessage(const GeneralMessage* message,
-                           pClient client,
-                           ENetPeer* peer);
+clientHandleGeneralMessage(const GeneralMessage* message, pClient client);
 
 void
 renderDisplays()
@@ -389,7 +385,7 @@ clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(display);
         } break;
         case TextMessageTag_general:
-            success = clientHandleGeneralMessage(&message.general, NULL, NULL);
+            success = clientHandleGeneralMessage(&message.general, NULL);
             break;
         default:
             printf("Unexpected text message: %s\n",
@@ -433,7 +429,7 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(display);
         } break;
         case ChatMessageTag_general:
-            success = clientHandleGeneralMessage(&message.general, NULL, NULL);
+            success = clientHandleGeneralMessage(&message.general, NULL);
             break;
         default:
             printf("Unexpected chat message: %s\n",
@@ -473,7 +469,7 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(display);
             break;
         case ImageMessageTag_general:
-            success = clientHandleGeneralMessage(&message.general, NULL, NULL);
+            success = clientHandleGeneralMessage(&message.general, NULL);
             break;
         default:
             printf("Unexpected image message: %s\n",
@@ -498,8 +494,8 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             UserInput input = { 0 };
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryAudio;
-            success = clientHandleGeneralMessage(
-              &message.general, &input.data.queryAudio.client, NULL);
+            success = clientHandleGeneralMessage(&message.general,
+                                                 &input.data.queryAudio.client);
             if (success &&
                 message.general.tag == GeneralMessageTag_authenticateAck) {
                 input.data.queryAudio.writeAccess = clientHasWriteAccess(
@@ -758,10 +754,6 @@ end:
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
-    SDL_Event e = { 0 };
-    e.type = SDL_USEREVENT;
-    e.user.code = CustomEvent_RefreshStreams;
-    SDL_PushEvent(&e);
     SDL_AtomicDecRef(&runningThreads);
     return result;
 }
@@ -1724,6 +1716,15 @@ userInputThread(void* ptr)
             case ClientCommand_UploadText:
                 selectStreamToSendTextTo(inputfd, &bytes, client);
                 break;
+            case ClientCommand_ShowAllStreams:
+                askQuestion("All Streams");
+                IN_MUTEX(clientData.mutex, endShowALlStreams, {
+                    for (size_t i = 0; i < clientData.allStreams.used; ++i) {
+                        printServerConfigurationForClient(
+                          &clientData.allStreams.buffer[i]);
+                    }
+                });
+                break;
             case ClientCommand_ShowConnectedStreams:
                 askQuestion("Connected Streams");
                 IN_MUTEX(clientData.mutex, endConnectedStreams, {
@@ -2147,24 +2148,8 @@ refrehClients(ENetPeer* peer, pBytes bytes)
     sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
 }
 
-void
-refreshStreams(ENetPeer* peer)
-{
-    LobbyMessage lm = { 0 };
-    lm.tag = LobbyMessageTag_allStreams;
-    lm.allStreams = NULL;
-    uint8_t buffer[KB(1)] = { 0 };
-    Bytes bytes = {
-        .allocator = NULL, .buffer = buffer, .size = sizeof(buffer), .used = 0
-    };
-    MESSAGE_SERIALIZE(LobbyMessage, lm, bytes);
-    sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
-}
-
 bool
-clientHandleGeneralMessage(const GeneralMessage* message,
-                           pClient client,
-                           ENetPeer* peer)
+clientHandleGeneralMessage(const GeneralMessage* message, pClient client)
 {
     switch (message->tag) {
         case GeneralMessageTag_getClientsAck:
@@ -2181,9 +2166,6 @@ clientHandleGeneralMessage(const GeneralMessage* message,
             TemLangStringCopy(
               &client->name, &message->authenticateAck, currentAllocator);
             printf("Client authenticated as %s\n", client->name.buffer);
-            if (peer != NULL) {
-                refreshStreams(peer);
-            }
             return true;
         default:
             printf("Unexpected message from lobby server: %s\n",
@@ -2193,22 +2175,13 @@ clientHandleGeneralMessage(const GeneralMessage* message,
 }
 
 bool
-clientHandleLobbyMessage(const LobbyMessage* message,
-                         ENetPeer* peer,
-                         pClient client)
+clientHandleLobbyMessage(const LobbyMessage* message, pClient client)
 {
     bool result = false;
     switch (message->tag) {
-        case LobbyMessageTag_allStreamsAck:
-            result = ServerConfigurationListCopy(&clientData.allStreams,
-                                                 &message->allStreamsAck,
-                                                 currentAllocator);
-            askQuestion("All Streams");
-            for (size_t i = 0; i < clientData.allStreams.used; ++i) {
-                printServerConfigurationForClient(
-                  &clientData.allStreams.buffer[i]);
-            }
-            renderDisplays();
+        case LobbyMessageTag_allStreams:
+            result = ServerConfigurationListCopy(
+              &clientData.allStreams, &message->allStreams, currentAllocator);
             goto end;
         case LobbyMessageTag_startStreamingAck:
             result = true;
@@ -2217,11 +2190,9 @@ clientHandleLobbyMessage(const LobbyMessage* message,
             } else {
                 puts("Failed to start stream");
             }
-            refreshStreams(peer);
             goto end;
         case LobbyMessageTag_general:
-            result =
-              clientHandleGeneralMessage(&message->general, client, peer);
+            result = clientHandleGeneralMessage(&message->general, client);
             goto end;
         default:
             break;
@@ -2261,8 +2232,7 @@ checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
                 MESSAGE_DESERIALIZE(LobbyMessage, message, temp);
 
                 IN_MUTEX(clientData.mutex, f, {
-                    result =
-                      clientHandleLobbyMessage(&message, event->peer, client);
+                    result = clientHandleLobbyMessage(&message, client);
                 });
 
                 enet_packet_destroy(event->packet);
@@ -2526,10 +2496,12 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                             }
                         });
                         if (sent) {
-                            printf("Sent image chunk: %zu bytes\n", s);
-                            // Sleep to make sure the outgoing list gets a
-                            // chance to empty to not use too much memory
-                            SDL_Delay(1);
+                            printf("Sent image chunk: %zu bytes (%zu left) \n",
+                                   s,
+                                   size - (i + s));
+                            if (lowMemory()) {
+                                SDL_Delay(1);
+                            }
                             continue;
                         }
                         break;
@@ -2593,9 +2565,6 @@ handleUserEvent(const SDL_UserEvent* e,
         case CustomEvent_Render:
             drawTextures(
               renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
-            break;
-        case CustomEvent_RefreshStreams:
-            refreshStreams(peer);
             break;
         case CustomEvent_ShowSimpleMessage:
             SDL_ShowSimpleMessageBox(

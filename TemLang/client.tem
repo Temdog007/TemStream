@@ -1,4 +1,5 @@
 enum ClientCommand {
+    ShowAllStreams
     ShowConnectedStreams
     ConnectToStream
     DisconnectFromStream
@@ -12,7 +13,6 @@ enum ClientCommand {
 enum CustomEvent {
     Render
     UpdateStreamDisplay
-    RefreshStreams
     ShowSimpleMessage
     SendLobbyMessage
     SaveScreenshot

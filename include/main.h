@@ -201,25 +201,29 @@ parseCredentials(const char*, pCredentials);
 extern int
 runApp(const int, const char**, pConfiguration);
 
+typedef struct ServerData
+{
+    Bytes bytes;
+    ENetHost* host;
+    const ServerConfiguration* config;
+    redisContext* ctx;
+} ServerData, *pServerData;
+
+extern void ServerDataFree(pServerData);
+
 typedef struct ServerFunctions
 {
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(const void*);
     void (*sendGeneral)(const GeneralMessage*, pBytes, ENetPeer*);
-    bool (*onConnect)(pClient, pBytes, ENetPeer*, const ServerConfiguration*);
-    bool (*handleMessage)(const void*,
-                          pBytes,
-                          ENetPeer*,
-                          redisContext*,
-                          const ServerConfiguration*);
-    void (*onDownTime)(ENetHost*, pBytes);
+    bool (*onConnect)(ENetPeer*, pServerData);
+    bool (*handleMessage)(const void*, ENetPeer*, pServerData);
+    void (*onDownTime)(pServerData);
     void (*freeMessage)(void*);
 } ServerFunctions, *pServerFunctions;
 
 extern int runServer(pConfiguration, ServerFunctions);
-
-extern const ServerConfiguration* gServerConfig;
 
 extern int
 runClient(const Configuration*);
@@ -248,21 +252,14 @@ handleGeneralMessage(const GeneralMessage*, ENetPeer*, pGeneralMessage);
     extern void* deserialize##T##Message(const Bytes* bytes);                  \
     extern void sendGeneralMessageFor##T(                                      \
       const GeneralMessage*, pBytes, ENetPeer*);                               \
-    extern bool onConnectFor##T(pClient client,                                \
-                                pBytes bytes,                                  \
-                                ENetPeer* peer,                                \
-                                const ServerConfiguration* config);            \
-    extern bool handle##T##Message(const void*,                                \
-                                   pBytes,                                     \
-                                   ENetPeer*,                                  \
-                                   redisContext*,                              \
-                                   const ServerConfiguration*);                \
+    extern bool onConnectFor##T(ENetPeer* peer, pServerData);                  \
+    extern bool handle##T##Message(const void*, ENetPeer*, pServerData);       \
     extern const GeneralMessage* getGeneralMessageFrom##T(const void*);        \
     extern void free##T##Message(void*);                                       \
     extern T##Configuration default##T##Configuration();                       \
     extern int print##T##Configuration(const T##Configuration*);               \
     extern int run##T##Server(Configuration*);                                 \
-    extern void on##T##DownTime(ENetHost*, pBytes);
+    extern void on##T##DownTime(pServerData);
 
 SERVER_FUNCTIONS(Lobby);
 SERVER_FUNCTIONS(Text);

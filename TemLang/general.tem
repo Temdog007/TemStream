@@ -25,6 +25,7 @@ enum AuthenticateResult {
 }
 
 struct LobbyConfiguration {
+    u64 refreshRate
     u32 maxStreams
     null runCommand
 }
@@ -120,8 +121,7 @@ variant LobbyMessage {
     GeneralMessage general
     ServerConfiguration startStreaming
     bool startStreamingAck
-    null allStreams
-    [0 ServerConfiguration] allStreamsAck
+    [0 ServerConfiguration] allStreams
 }
 
 struct Chat {

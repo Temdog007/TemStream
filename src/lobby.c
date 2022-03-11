@@ -2,24 +2,41 @@
 
 DEFINE_RUN_SERVER(Lobby);
 
+uint64_t lastStreamRefresh = 0;
+
 LobbyConfiguration
 defaultLobbyConfiguration()
 {
     return (LobbyConfiguration){ .maxStreams =
-                                   ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT };
+                                   ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT,
+                                 .refreshRate = 3u };
 }
 
 void
-onLobbyDownTime(ENetHost* host, pBytes b)
+onLobbyDownTime(pServerData serverData)
 {
-    (void)host;
-    (void)b;
+    const uint64_t now = SDL_GetTicks64();
+    if (now - lastStreamRefresh <
+        serverData->config->data.lobby.refreshRate * 1000U) {
+        return;
+    }
+
+    lastStreamRefresh = now;
+    LobbyMessage message = { .tag = LobbyMessageTag_allStreams,
+                             .allStreams = getStreams(serverData->ctx) };
+    MESSAGE_SERIALIZE(LobbyMessage, message, serverData->bytes);
+    ENetPacket* packet =
+      BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
+    sendPacketToReaders(serverData->host, packet, &serverData->config->readers);
+    LobbyMessageFree(&message);
 }
 
 int
 printLobbyConfiguration(const LobbyConfiguration* configuration)
 {
-    return printf("Lobby\nMax streams: %u\n", configuration->maxStreams);
+    return printf("Lobby\nMax streams: %u\nRefresh rate: %zu seconds\n",
+                  configuration->maxStreams,
+                  configuration->refreshRate);
 }
 
 bool
@@ -36,6 +53,8 @@ parseLobbyConfiguration(const int argc,
         const size_t keyLen = strlen(key);
         const char* value = argv[i + 1];
         STR_EQUALS(key, "--max-streams", keyLen, { goto parseStreams; });
+        STR_EQUALS(key, "-R", keyLen, { goto parseRefresh; });
+        STR_EQUALS(key, "--refresh-rate", keyLen, { goto parseRefresh; });
         if (!parseCommonConfiguration(key, value, configuration) &&
             !parseServerConfiguration(key, value, &configuration->server)) {
             parseFailure("Lobby", key, value);
@@ -47,6 +66,11 @@ parseLobbyConfiguration(const int argc,
         const int i = atoi(value);
         lobby->maxStreams =
           SDL_clamp(i, 1, ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT);
+        continue;
+    }
+    parseRefresh : {
+        const int i = atoi(value);
+        lobby->refreshRate = SDL_max(1, i);
         continue;
     }
     }
@@ -102,35 +126,22 @@ startNewServer(const ServerConfiguration* serverConfig)
 }
 
 bool
-onConnectForLobby(pClient client,
-                  pBytes bytes,
-                  ENetPeer* peer,
-                  const ServerConfiguration* config)
+onConnectForLobby(ENetPeer* peer, pServerData serverData)
 {
-    (void)client;
-    (void)bytes;
     (void)peer;
-    (void)config;
+    (void)serverData;
+    lastStreamRefresh = 0;
     return true;
 }
 
 bool
-handleLobbyMessage(const void* ptr,
-                   pBytes bytes,
-                   ENetPeer* peer,
-                   redisContext* ctx,
-                   const ServerConfiguration* serverConfig)
+handleLobbyMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
 {
     LobbyMessage lobbyMessage = { 0 };
     pClient client = peer->data;
     bool result = false;
     CAST_MESSAGE(LobbyMessage, ptr);
     switch (message->tag) {
-        case LobbyMessageTag_allStreams:
-            lobbyMessage.tag = LobbyMessageTag_allStreamsAck;
-            lobbyMessage.allStreamsAck = getStreams(ctx);
-            result = true;
-            break;
         case LobbyMessageTag_general:
             lobbyMessage.tag = LobbyMessageTag_general;
             result = handleGeneralMessage(
@@ -141,7 +152,7 @@ handleLobbyMessage(const void* ptr,
             lobbyMessage.startStreamingAck = false;
             result = true;
 
-            ServerConfigurationList streams = getStreams(ctx);
+            ServerConfigurationList streams = getStreams(serverData->ctx);
             const ServerConfiguration* newConfig = &message->startStreaming;
             if (GetStreamFromName(&streams, &newConfig->name, NULL, NULL)) {
 #if _DEBUG
@@ -157,17 +168,23 @@ handleLobbyMessage(const void* ptr,
                 case ServerConfigurationDataTag_chat:
                 case ServerConfigurationDataTag_audio:
                 case ServerConfigurationDataTag_image: {
-                    ServerConfiguration c = *serverConfig;
+                    ServerConfiguration c = *serverData->config;
                     c.name = newConfig->name;
                     c.readers = newConfig->readers;
                     c.writers = newConfig->writers;
                     c.data = newConfig->data;
                     c.data.lobby.runCommand =
-                      serverConfig->data.lobby.runCommand;
+                      serverData->config->data.lobby.runCommand;
                     // Streams started with client must always have a timeout
                     // since there isn't a way to manually stop them
                     c.timeout = STREAM_TIMEOUT;
                     const bool success = startNewServer(&c);
+                    const uint64_t now = SDL_GetTicks64();
+                    if (now > 1000U) {
+                        lastStreamRefresh = now - 1000;
+                    } else {
+                        lastStreamRefresh = 0;
+                    }
                     if (success) {
                         lobbyMessage.startStreamingAck = true;
                     } else {
@@ -190,8 +207,8 @@ handleLobbyMessage(const void* ptr,
             break;
     }
     if (result) {
-        MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, (*bytes));
-        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+        MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, serverData->bytes);
+        sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
     } else {
 #if _DEBUG
         printf("Unexpected lobby message '%s' from client\n",

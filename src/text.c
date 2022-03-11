@@ -15,10 +15,9 @@ printTextConfiguration(const TextConfiguration* configuration)
 }
 
 void
-onTextDownTime(ENetHost* host, pBytes b)
+onTextDownTime(pServerData data)
 {
-    (void)host;
-    (void)b;
+    (void)data;
 }
 
 bool
@@ -51,28 +50,18 @@ parseTextConfiguration(const int argc,
 }
 
 bool
-onConnectForText(pClient client,
-                 pBytes bytes,
-                 ENetPeer* peer,
-                 const ServerConfiguration* config)
+onConnectForText(ENetPeer* peer, pServerData serverData)
 {
-    (void)client;
-    if (getServerFileBytes(config, bytes)) {
-        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+    if (getServerFileBytes(serverData->config, &serverData->bytes)) {
+        sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
     }
     return true;
 }
 
 bool
-handleTextMessage(const void* ptr,
-                  pBytes bytes,
-                  ENetPeer* peer,
-                  redisContext* ctx,
-                  const ServerConfiguration* serverConfig)
+handleTextMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
 {
-    (void)ctx;
-
-    const TextConfiguration* config = &serverConfig->data.text;
+    const TextConfiguration* config = &serverData->config->data.text;
     bool result = false;
     CAST_MESSAGE(TextMessage, ptr);
     switch (message->tag) {
@@ -82,8 +71,8 @@ handleTextMessage(const void* ptr,
             result = handleGeneralMessage(
               &message->general, peer, &textMessage.general);
             if (result) {
-                MESSAGE_SERIALIZE(TextMessage, textMessage, (*bytes));
-                sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+                MESSAGE_SERIALIZE(TextMessage, textMessage, serverData->bytes);
+                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
             }
             TextMessageFree(&textMessage);
         } break;
@@ -101,11 +90,12 @@ handleTextMessage(const void* ptr,
                 break;
             }
             printf("Text server updated with '%s'\n", message->text.buffer);
-            MESSAGE_SERIALIZE(TextMessage, (*message), (*bytes));
-            writeServerFileBytes(serverConfig, bytes, true);
-            ENetPacket* packet =
-              BytesToPacket(bytes->buffer, bytes->used, true);
-            sendPacketToReaders(peer->host, packet, &serverConfig->readers);
+            MESSAGE_SERIALIZE(TextMessage, (*message), serverData->bytes);
+            writeServerFileBytes(serverData->config, &serverData->bytes, true);
+            ENetPacket* packet = BytesToPacket(
+              serverData->bytes.buffer, serverData->bytes.used, true);
+            sendPacketToReaders(
+              peer->host, packet, &serverData->config->readers);
         } break;
         default:
             break;

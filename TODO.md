@@ -69,7 +69,7 @@
 - [x] Fix quick remove
 
 ### Mar 11, 2022
-- [ ] Seperate user input and main threads
+- [x] Seperate user input and main threads
 - [ ] Seperate sockets from reading and writing data
 - [ ] Display audio mixer
 - [ ] Allow volume of playback to be changed
@@ -77,6 +77,7 @@
 - [ ] Add optional labels to stream displays
 
 ### Later
+- [ ] Send chat logs the same way images are sent (chunk them, update getServerFileBytes)
 - [ ] Play gifs
 - [ ] Record windows
 - [ ] Record screen

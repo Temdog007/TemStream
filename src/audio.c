@@ -16,10 +16,9 @@ printAudioConfiguration(const AudioConfiguration* configuration)
 }
 
 void
-onAudioDownTime(ENetHost* host, pBytes b)
+onAudioDownTime(pServerData data)
 {
-    (void)host;
-    (void)b;
+    (void)data;
 }
 
 bool
@@ -44,27 +43,16 @@ parseAudioConfiguration(const int argc,
 }
 
 bool
-onConnectForAudio(pClient client,
-                  pBytes bytes,
-                  ENetPeer* peer,
-                  const ServerConfiguration* config)
+onConnectForAudio(ENetPeer* peer, pServerData serverData)
 {
-    (void)client;
-    (void)bytes;
+    (void)serverData;
     (void)peer;
-    (void)config;
     return true;
 }
 
 bool
-handleAudioMessage(const void* ptr,
-                   pBytes bytes,
-                   ENetPeer* peer,
-                   redisContext* ctx,
-                   const ServerConfiguration* serverConfig)
+handleAudioMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
 {
-    (void)ctx;
-
     // const AudioConfiguration* config = &serverConfig->data.audio;
     bool result = false;
     CAST_MESSAGE(AudioMessage, ptr);
@@ -75,17 +63,19 @@ handleAudioMessage(const void* ptr,
             result = handleGeneralMessage(
               &message->general, peer, &audioMessage.general);
             if (result) {
-                MESSAGE_SERIALIZE(AudioMessage, audioMessage, (*bytes));
-                sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);
+                MESSAGE_SERIALIZE(
+                  AudioMessage, audioMessage, serverData->bytes);
+                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
             }
             AudioMessageFree(&audioMessage);
         } break;
         case AudioMessageTag_audio: {
             result = true;
-            MESSAGE_SERIALIZE(AudioMessage, (*message), (*bytes));
-            ENetPacket* packet =
-              BytesToPacket(bytes->buffer, bytes->used, true);
-            sendPacketToReaders(peer->host, packet, &serverConfig->readers);
+            MESSAGE_SERIALIZE(AudioMessage, (*message), serverData->bytes);
+            ENetPacket* packet = BytesToPacket(
+              serverData->bytes.buffer, serverData->bytes.used, true);
+            sendPacketToReaders(
+              peer->host, packet, &serverData->config->readers);
         } break;
         default:
             break;
