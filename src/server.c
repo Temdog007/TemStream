@@ -49,7 +49,7 @@ defaultServerConfiguration()
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .port = { .port = 10000u, .tag = PortTag_port },
         .maxClients = 1024u,
-        .timeout = 10u * 1000u,
+        .timeout = STREAM_TIMEOUT,
         .writers = { .anyone = NULL, .tag = AccessTag_anyone },
         .readers = { .anyone = NULL, .tag = AccessTag_anyone },
         .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },

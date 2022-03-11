@@ -164,6 +164,9 @@ handleLobbyMessage(const void* ptr,
                     c.data = newConfig->data;
                     c.data.lobby.runCommand =
                       serverConfig->data.lobby.runCommand;
+                    // Streams started with client must always have a timeout
+                    // since there isn't a way to manually stop them
+                    c.timeout = STREAM_TIMEOUT;
                     const bool success = startNewServer(&c);
                     if (success) {
                         lobbyMessage.startStreamingAck = true;

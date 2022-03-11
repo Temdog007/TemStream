@@ -367,14 +367,6 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
     endLabel:                                                                  \
     SDL_UnlockMutex(mutex);
 
-#define TRY_IN_MUTEX(mutex, endLabel, f)                                       \
-    if (SDL_TryLockMutex(mutex) == 0) {                                        \
-        f;                                                                     \
-        goto endLabel;                                                         \
-    endLabel:                                                                  \
-        SDL_UnlockMutex(mutex);                                                \
-    }
-
 extern bool
 authenticateClient(pClient,
                    const ServerAuthentication*,
@@ -408,10 +400,12 @@ extern bool CanSendFileToStream(FileExtensionTag, ServerConfigurationDataTag);
 extern void
 cleanupServer(ENetHost*);
 
+#define STREAM_TIMEOUT (1000u * 10u)
+
 // Audio
 #define ENABLE_FEC 0
 #define TEST_DECODER 0
-#define USE_PLAYBACK_CALLBACK 1
+#define USE_AUDIO_CALLBACKS 1
 
 #define HIGH_QUALITY_AUDIO 1
 #if HIGH_QUALITY_AUDIO
@@ -424,6 +418,7 @@ typedef struct AudioState
 {
     Bytes storedAudio;
     SDL_AudioSpec spec;
+    Guid id;
     union
     {
         OpusEncoder* encoder;
@@ -435,6 +430,18 @@ typedef struct AudioState
 } AudioState, *pAudioState;
 
 extern void AudioStateFree(pAudioState);
+
+typedef AudioState* AudioStatePtr;
+
+MAKE_COPY_AND_FREE(AudioStatePtr);
+MAKE_DEFAULT_LIST(AudioStatePtr);
+
+extern bool
+AudioStateFromGuid(const AudioStatePtrList*,
+                   const Guid*,
+                   const bool isRecording,
+                   const AudioState**,
+                   size_t*);
 
 extern bool
 decodeWAV(const void*, size_t, pBytes);

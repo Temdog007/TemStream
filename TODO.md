@@ -68,7 +68,9 @@
 - [x] Ensure that taking too long to answer questions doesn't disconnect from server (audio server issue only; send playback/record questions to user input list)
 - [x] Fix quick remove
 
-### Mar 10, 2022
+### Mar 11, 2022
+- [ ] Seperate user input and main threads
+- [ ] Seperate sockets from reading and writing data
 - [ ] Display audio mixer
 - [ ] Allow volume of playback to be changed
 - [ ] Include press to talk

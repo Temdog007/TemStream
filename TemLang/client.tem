@@ -1,16 +1,50 @@
 enum ClientCommand {
-    PrintName
-    ShowAllStreams
     ShowConnectedStreams
     ConnectToStream
     DisconnectFromStream
     StartStreaming
-    StopStreaming
     UploadText
     UploadFile
     SaveScreenshot
     Quit
 }
+
+enum CustomEvent {
+    Render
+    UpdateStreamDisplay
+    RefreshStreams
+    ShowSimpleMessage
+    SendLobbyMessage
+    SaveScreenshot
+}
+
+struct Client {
+    string name
+    [ 0 u8 ] payload
+    Guid id
+    i64 joinTime
+    u64 lastMessage
+}
+
+struct ClientAudioQuery {
+    Client client
+    bool readAccess
+    bool writeAccess
+}
+
+variant UserInputData {
+    null startStream
+    ClientAudioQuery queryAudio
+    string file
+    string text
+}
+
+struct UserInput {
+    Guid id
+    UserInputData data
+}
+
+inlineC "MAKE_DEFAULT_LIST(UserInput);"
 
 struct ClientConfiguration {
     ClientAuthentication authentication
@@ -64,40 +98,21 @@ variant StreamDisplayData {
     string text
 }
 
-struct Client {
-    string name
-    [ 0 u8 ] payload
-    Guid id
-    i64 joinTime
-    u64 lastMessage
-}
-
-struct ClientAudioQuery {
-    Client client
-    bool readAccess
-    bool writeAccess
-}
-
-variant UserInput {
-    null disconnect
-    ClientAudioQuery queryAudio
-    string file
-    string text
-}
-
-inlineC "MAKE_DEFAULT_LIST(UserInput);"
-
 resource StreamDisplay {
     ServerConfiguration config
-    [0 UserInput] userInputs
     StreamDisplayData data
+    [ 0 null ] outgoing
     FRect dstRect
     OptionalRect srcRect
     Guid id
+    u32 mtu
     null texture
 } r {
     inlineC "
         SDL_DestroyTexture(r.texture);
+        for(size_t i = 0; i < r.outgoing.used; ++i){
+            enet_packet_destroy(r.outgoing.buffer[i]);
+        }
     "
 }
 
@@ -110,13 +125,6 @@ resource ClientData {
     null mutex
 } c {
     inlineC "SDL_DestroyMutex(c.mutex);"
-}
- 
-enum CustomEvent {
-    Render
-    UpdateStreamDisplay
-    RefreshStreams
-    ShowSimpleMessage
 }
 
 enum AudioStreamSource {

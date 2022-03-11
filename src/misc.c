@@ -549,6 +549,28 @@ AudioStateFree(pAudioState state)
 }
 
 bool
+AudioStateFromGuid(const AudioStatePtrList* list,
+                   const Guid* id,
+                   const bool isRecording,
+                   const AudioState** state,
+                   size_t* index)
+{
+    for (size_t i = 0; i < list->used; ++i) {
+        const AudioState* ptr = list->buffer[i];
+        if (ptr->isRecording == isRecording && GuidEquals(&ptr->id, id)) {
+            if (state != NULL) {
+                *state = ptr;
+            }
+            if (index != NULL) {
+                *index = i;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
 writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
 {
     Bytes bytes = { .allocator = currentAllocator };
