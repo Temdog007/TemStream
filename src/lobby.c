@@ -52,6 +52,7 @@ parseLobbyConfiguration(const int argc,
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
         const char* value = argv[i + 1];
+        STR_EQUALS(key, "-MS", keyLen, { goto parseStreams; });
         STR_EQUALS(key, "--max-streams", keyLen, { goto parseStreams; });
         STR_EQUALS(key, "-R", keyLen, { goto parseRefresh; });
         STR_EQUALS(key, "--refresh-rate", keyLen, { goto parseRefresh; });

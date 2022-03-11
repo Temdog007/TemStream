@@ -93,6 +93,9 @@ askQuestion(const char* string)
     puts("");
 }
 
+bool
+askYesOrNoQuestion(const char* q, const struct pollfd inputfd, pBytes bytes);
+
 ClientConfiguration
 defaultClientConfiguration()
 {
@@ -507,7 +510,7 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             UserInputFree(&input);
         } break;
         case AudioMessageTag_audio:
-            if (playback->decoder == NULL) {
+            if (playback == NULL || playback->decoder == NULL) {
                 if (isRecording) {
                     success = true;
                     break;
@@ -653,7 +656,17 @@ streamConnectionThread(void* ptr)
         });
 
         if (record != NULL && record->encoder != NULL) {
-#if !USE_AUDIO_CALLBACKS
+#if USE_AUDIO_CALLBACKS
+            SDL_LockAudioDevice(record->deviceId);
+            if (!uint8_tListIsEmpty(&record->storedAudio)) {
+                const size_t bytesRead = encodeAudioData(record->encoder,
+                                                         &record->storedAudio,
+                                                         record->spec,
+                                                         &packetList);
+                uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
+            }
+            SDL_UnlockAudioDevice(record->deviceId);
+#else
             const int result =
               SDL_DequeueAudio(record.deviceId, bytes.buffer, bytes.size);
             if (result < 0) {
@@ -662,15 +675,16 @@ streamConnectionThread(void* ptr)
             } else {
                 uint8_tListQuickAppend(
                   &record->storedAudio, bytes.buffer, result);
+                if (!uint8_tListIsEmpty(&record->storedAudio)) {
+                    const size_t bytesRead =
+                      encodeAudioData(record->encoder,
+                                      &record->storedAudio,
+                                      record->spec,
+                                      &packetList);
+                    uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
+                }
             }
 #endif
-            if (!uint8_tListIsEmpty(&record->storedAudio)) {
-                const size_t bytesRead = encodeAudioData(record->encoder,
-                                                         &record->storedAudio,
-                                                         record->spec,
-                                                         &packetList);
-                uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
-            }
         }
         USE_DISPLAY(clientData.mutex, fend563, displayMissing, {
             pAudioState playback = NULL;
@@ -720,8 +734,7 @@ streamConnectionThread(void* ptr)
                 }
                 enet_packet_destroy(packet);
             }
-            pENetPacketListFree(&packetList);
-            packetList.allocator = currentAllocator;
+            packetList.used = 0;
         });
     }
 
@@ -740,10 +753,12 @@ end:
         }
         if (AudioStateFromGuid(&audioStates, id, true, NULL, &i)) {
             AudioStateFree(audioStates.buffer[i]);
+            currentAllocator->free(audioStates.buffer[i]);
             AudioStatePtrListSwapRemove(&audioStates, i);
         }
         if (AudioStateFromGuid(&audioStates, id, false, NULL, &i)) {
             AudioStateFree(audioStates.buffer[i]);
+            currentAllocator->free(audioStates.buffer[i]);
             AudioStatePtrListSwapRemove(&audioStates, i);
         }
     });
@@ -1008,6 +1023,11 @@ selectAudioStreamSource(struct pollfd inputfd,
                         pAudioState state,
                         pUserInput ui)
 {
+    if (!askYesOrNoQuestion(
+          "Do you want record audio and stream it?", inputfd, bytes)) {
+        return false;
+    }
+
     askQuestion("Select audio source to stream from");
     for (AudioStreamSource i = 0; i < AudioStreamSource_Length; ++i) {
         printf("%d) %s\n", i + 1, AudioStreamSourceToCharString(i));
@@ -1130,6 +1150,11 @@ playbackCallback(pAudioState state, uint8_t* data, int len)
 bool
 startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
 {
+    if (!askYesOrNoQuestion(
+          "Do you want play audio from stream?", inputfd, bytes)) {
+        return false;
+    }
+
     const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
     if (devices == 0) {
         fprintf(stderr, "No playback devices found to play audio\n");
@@ -1291,6 +1316,34 @@ audioEnd:
     return success;
 }
 
+bool
+askYesOrNoQuestion(const char* q, const struct pollfd inputfd, pBytes bytes)
+{
+    char buffer[KB(2)];
+    snprintf(buffer, sizeof(buffer), "%s (y or n)", q);
+    askQuestion(buffer);
+    while (!appDone) {
+        switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
+            case UserInputResult_Input:
+                switch ((char)bytes->buffer[0]) {
+                    case 'y':
+                        return true;
+                    case 'n':
+                        return false;
+                    default:
+                        break;
+                }
+                break;
+            case UserInputResult_NoInput:
+                continue;
+            default:
+                break;
+        }
+        puts("Enter 'y' or 'n'");
+    }
+    return false;
+}
+
 void
 selectStreamToStart(struct pollfd inputfd, pBytes bytes, const Client* client)
 {
@@ -1340,31 +1393,10 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes, const Client* client)
     message.startStreaming.name =
       TemLangStringCreate((char*)bytes->buffer, currentAllocator);
 
-    askQuestion("Do you want exclusive write access? (y or n)");
-    while (!appDone) {
-        switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
-            case UserInputResult_Input:
-                switch ((char)bytes->buffer[0]) {
-                    case 'y':
-                        index = 1;
-                        goto continueMessage;
-                    case 'n':
-                        index = 0;
-                        goto continueMessage;
-                    default:
-                        break;
-                }
-                break;
-            case UserInputResult_NoInput:
-                continue;
-            default:
-                break;
-        }
-        puts("Enter 'y' or 'n'");
-    }
+    const bool yes =
+      askYesOrNoQuestion("Do you want exclusive write access?", inputfd, bytes);
 
-continueMessage:
-    if (index) {
+    if (yes) {
         message.startStreaming.writers.tag = AccessTag_allowed;
         message.startStreaming.writers.allowed.allocator = currentAllocator;
         TemLangStringListAppend(&message.startStreaming.writers.allowed,
@@ -2273,13 +2305,13 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
             const struct pollfd inputfd = { .events = POLLIN,
                                             .revents = 0,
                                             .fd = STDIN_FILENO };
-            bool done = false;
             if (userInput->data.queryAudio.writeAccess) {
                 UserInput ui = { 0 };
                 ui.id = userInput->id;
                 ui.data.tag = UserInputDataTag_Invalid;
                 pAudioState record =
                   currentAllocator->allocate(sizeof(AudioState));
+                record->storedAudio.allocator = currentAllocator;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(&ui, bytes);
                     if (record->encoder != NULL) {
@@ -2289,7 +2321,6 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                             AudioStatePtrListAppend(&audioStates, &record);
                         });
                         record = NULL;
-                        done = true;
                     }
                 }
                 if (record != NULL) {
@@ -2298,9 +2329,10 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                 }
                 UserInputFree(&ui);
             }
-            if (!done && userInput->data.queryAudio.readAccess) {
+            if (userInput->data.queryAudio.readAccess) {
                 pAudioState playback =
                   currentAllocator->allocate(sizeof(AudioState));
+                playback->storedAudio.allocator = currentAllocator;
                 if (startPlayback(inputfd, bytes, playback)) {
                     playback->id = userInput->id;
                     playback->storedAudio.allocator = currentAllocator;
