@@ -32,7 +32,7 @@ size_t
 encodeAudioData(OpusEncoder* encoder,
                 const Bytes* audio,
                 const SDL_AudioSpec spec,
-                ppENetPacketList);
+                pNullValueList);
 
 bool
 selectAudioStreamSource(struct pollfd inputfd,
@@ -555,7 +555,7 @@ streamConnectionThread(void* ptr)
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
-    pENetPacketList packetList = { .allocator = currentAllocator };
+    NullValueList packetList = { .allocator = currentAllocator };
     Bytes bytes = { .allocator = currentAllocator,
                     .used = 0,
                     .size = MAX_PACKET_SIZE,
@@ -613,10 +613,11 @@ streamConnectionThread(void* ptr)
     while (!appDone && !displayMissing) {
         USE_DISPLAY(clientData.mutex, endPakce, displayMissing, {
             for (size_t i = 0; i < display->outgoing.used; ++i) {
-                ENetPacket* packet = (ENetPacket*)display->outgoing.buffer[i];
-                pENetPacketListAppend(&packetList, &packet);
+                NullValue packet = display->outgoing.buffer[i];
+                NullValueListAppend(&packetList, &packet);
             }
-            display->outgoing.used = 0;
+            NullValueListFree(&display->outgoing);
+            display->outgoing.allocator = currentAllocator;
         });
         if (enet_host_service(host, &event, 100U) > 0) {
             switch (event.type) {
@@ -638,7 +639,7 @@ streamConnectionThread(void* ptr)
                     });
                     goto end;
                 case ENET_EVENT_TYPE_RECEIVE:
-                    pENetPacketListAppend(&packetList, &event.packet);
+                    NullValueListAppend(&packetList, (NullValue*)&event.packet);
                     break;
                 case ENET_EVENT_TYPE_NONE:
                     break;
@@ -696,7 +697,7 @@ streamConnectionThread(void* ptr)
                 }
             }
             for (size_t i = 0; i < packetList.used; ++i) {
-                pENetPacket packet = packetList.buffer[i];
+                ENetPacket* packet = (ENetPacket*)packetList.buffer[i];
                 Bytes packetBytes = { 0 };
                 packetBytes.allocator = currentAllocator;
                 packetBytes.buffer = packet->data;
@@ -718,7 +719,10 @@ streamConnectionThread(void* ptr)
                         break;
                     case ServerConfigurationDataTag_audio:
                         success = clientHandleAudioMessage(
-                          &packetBytes, display, playback, record != NULL);
+                          &packetBytes,
+                          display,
+                          playback,
+                          display->recordings != 0 || record != NULL);
                         break;
                     default:
                         fprintf(stderr,
@@ -730,11 +734,12 @@ streamConnectionThread(void* ptr)
                 if (!success) {
                     printf("Disconnecting from server: ");
                     printServerConfigurationForClient(config);
-                    enet_peer_disconnect(event.peer, 0);
+                    displayMissing = true;
                 }
                 enet_packet_destroy(packet);
             }
-            packetList.used = 0;
+            NullValueListFree(&packetList);
+            packetList.allocator = currentAllocator;
         });
     }
 
@@ -765,7 +770,7 @@ end:
     for (size_t i = 0; i < packetList.used; ++i) {
         enet_packet_destroy(packetList.buffer[i]);
     }
-    pENetPacketListFree(&packetList);
+    NullValueListFree(&packetList);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
@@ -804,15 +809,10 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
         goto end;
     }
 
-    const TemLangString str = { .allocator = NULL,
-                                .buffer = (char*)bytes->buffer,
-                                .size = bytes->size,
-                                .used = bytes->used };
-
     bool exists;
     IN_MUTEX(clientData.mutex, end5, {
-        exists =
-          GetStreamDisplayFromName(&clientData.displays, &str, NULL, NULL);
+        exists = GetStreamDisplayFromName(
+          &clientData.displays, &list.buffer[i].name, NULL, NULL);
     });
 
     if (exists) {
@@ -956,7 +956,7 @@ size_t
 encodeAudioData(OpusEncoder* encoder,
                 const Bytes* audio,
                 const SDL_AudioSpec spec,
-                ppENetPacketList list)
+                pNullValueList list)
 {
     uint8_t buffer[KB(4)] = { 0 };
 
@@ -1010,8 +1010,8 @@ encodeAudioData(OpusEncoder* encoder,
         bytesRead += bytesUsed;
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
-        ENetPacket* packet = BytesToPacket(temp.buffer, temp.used, false);
-        pENetPacketListAppend(list, &packet);
+        NullValue packet = BytesToPacket(temp.buffer, temp.used, false);
+        NullValueListAppend(list, &packet);
     }
     uint8_tListFree(&temp);
     return bytesRead;
@@ -1211,6 +1211,39 @@ startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
     return true;
 }
 
+int
+sendAudioThread(pAudioSendThreadData data)
+{
+    const Guid* id = &data->id;
+    bool displayMissing = false;
+    USE_DISPLAY(
+      clientData.mutex, end2, displayMissing, { ++display->recordings; });
+
+    pNullValueList packets = &data->packets;
+    printf("Sending %u audio packets\n", packets->used);
+    size_t i = 0;
+    for (; i < packets->used && !displayMissing && !appDone; ++i) {
+        USE_DISPLAY(clientData.mutex, end, displayMissing, {
+            NullValueListAppend(&display->outgoing, &packets->buffer[i]);
+        });
+        // Each packet is aprox 120 ms. Sleep for less to not flood server
+        // but also not have breaks in audio.
+        SDL_Delay(100);
+        if (displayMissing) {
+            enet_packet_destroy(packets->buffer[i]);
+        }
+    }
+    for (; i < packets->used; ++i) {
+        enet_packet_destroy(packets->buffer[i]);
+    }
+    AudioSendThreadDataFree(data);
+    currentAllocator->free(data);
+    USE_DISPLAY(
+      clientData.mutex, end3, displayMissing, { --display->recordings; });
+    SDL_AtomicDecRef(&runningThreads);
+    return EXIT_SUCCESS;
+}
+
 bool
 decodeAudioData(const AudioExtension ext,
                 const uint8_t* data,
@@ -1248,68 +1281,63 @@ decodeAudioData(const AudioExtension ext,
             break;
     }
 
-    if (success) {
-        const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
-#if TEST_DECODER
-        (void)peer;
-        SDL_AudioSpec obtained;
-        const int deviceId =
-          SDL_OpenAudioDevice(NULL, SDL_FALSE, &spec, &obtained, 0);
-        if (deviceId == 0) {
-            fprintf(
-              stderr, "Failed to open playback device: %s\n", SDL_GetError());
-            goto audioEnd;
-        }
-        SDL_PauseAudioDevice(deviceId, SDL_FALSE);
-        SDL_QueueAudio(deviceId, bytes->buffer, bytes->used);
-        while (!appDone && SDL_GetQueuedAudioSize(deviceId) > 0) {
-            SDL_Delay(1000);
-        }
-        SDL_CloseAudioDevice(deviceId);
-#else
-        puts("Encoding audio for streaming...");
-        pENetPacketList list = { .allocator = currentAllocator };
-        const size_t bytesRead = encodeAudioData(encoder, bytes, spec, &list);
-        puts("Audio encoded");
-
-        if (bytesRead < bytes->used) {
-            uint8_tListQuickRemove(bytes, 0, bytesRead);
-            const int minDuration =
-              audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
-            for (int i = bytes->used; i < minDuration; ++i) {
-                uint8_tListAppend(bytes, &spec.silence);
-            }
-            encodeAudioData(encoder, bytes, spec, &list);
-        }
-        uint8_tListFree(bytes);
-        bytes->allocator = currentAllocator;
-
-        puts("Sending audio...");
-        for (size_t i = 0; i < list.used && !appDone; ++i) {
-            bool doSleep = false;
-            IN_MUTEX(clientData.mutex, end2, {
-                size_t listIndex = 0;
-                if (GetStreamDisplayFromGuid(
-                      &clientData.displays, id, NULL, &listIndex)) {
-                    NullValueListAppend(
-                      &clientData.displays.buffer[listIndex].outgoing,
-                      (NullValue)&list.buffer[i]);
-                    doSleep = true;
-                } else {
-                    enet_packet_destroy(list.buffer[i]);
-                    doSleep = false;
-                }
-            });
-            if (doSleep) {
-                // An audio packet is, at most, 120 ms
-                SDL_Delay(120);
-            }
-        }
-        puts("Done sending audio data.");
-        pENetPacketListFree(&list);
-
-#endif
+    if (!success) {
+        goto audioEnd;
     }
+
+    const SDL_AudioSpec spec = makeAudioSpec(NULL, NULL);
+#if TEST_DECODER
+    (void)peer;
+    SDL_AudioSpec obtained;
+    const int deviceId =
+      SDL_OpenAudioDevice(NULL, SDL_FALSE, &spec, &obtained, 0);
+    if (deviceId == 0) {
+        fprintf(stderr, "Failed to open playback device: %s\n", SDL_GetError());
+        goto audioEnd;
+    }
+    SDL_PauseAudioDevice(deviceId, SDL_FALSE);
+    SDL_QueueAudio(deviceId, bytes->buffer, bytes->used);
+    while (!appDone && SDL_GetQueuedAudioSize(deviceId) > 0) {
+        SDL_Delay(1000);
+    }
+    SDL_CloseAudioDevice(deviceId);
+#else
+    puts("Encoding audio for streaming...");
+    pAudioSendThreadData audioSendData =
+      currentAllocator->allocate(sizeof(AudioSendThreadData));
+    audioSendData->id = *id;
+    audioSendData->packets.allocator = currentAllocator;
+    const size_t bytesRead =
+      encodeAudioData(encoder, bytes, spec, &audioSendData->packets);
+    if (bytesRead < bytes->used) {
+        uint8_tListQuickRemove(bytes, 0, bytesRead);
+        const int minDuration =
+          audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
+        for (int i = bytes->used; i < minDuration; ++i) {
+            uint8_tListAppend(bytes, &spec.silence);
+        }
+        encodeAudioData(encoder, bytes, spec, &audioSendData->packets);
+    }
+    puts("Audio encoded");
+
+    uint8_tListFree(bytes);
+    (*bytes) = INIT_ALLOCATOR(MAX_PACKET_SIZE);
+
+    SDL_Thread* thread = SDL_CreateThread(
+      (SDL_ThreadFunction)sendAudioThread, "audio_file", audioSendData);
+    if (thread == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        for (size_t i = 0; i < audioSendData->packets.used; ++i) {
+            enet_packet_destroy(audioSendData->packets.buffer[i]);
+        }
+        AudioSendThreadDataFree(audioSendData);
+        currentAllocator->free(audioSendData);
+        goto audioEnd;
+    }
+
+    SDL_AtomicIncRef(&runningThreads);
+    SDL_DetachThread(thread);
+#endif
 
 audioEnd:
     currentAllocator->free(encoder);
@@ -1319,12 +1347,16 @@ audioEnd:
 bool
 askYesOrNoQuestion(const char* q, const struct pollfd inputfd, pBytes bytes)
 {
-    char buffer[KB(2)];
+    char buffer[KB(1)];
     snprintf(buffer, sizeof(buffer), "%s (y or n)", q);
     askQuestion(buffer);
+    ssize_t s = 0;
     while (!appDone) {
-        switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
+        switch (getUserInput(inputfd, bytes, &s, CLIENT_POLL_WAIT)) {
             case UserInputResult_Input:
+                if (s != 1) {
+                    break;
+                }
                 switch ((char)bytes->buffer[0]) {
                     case 'y':
                         return true;

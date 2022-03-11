@@ -105,6 +105,7 @@ resource StreamDisplay {
     FRect dstRect
     OptionalRect srcRect
     Guid id
+    u32 recordings
     u32 mtu
     null texture
 } r {
@@ -170,4 +171,9 @@ variant FileExtension {
     ImageExtension image
     null font
     null text
+}
+
+struct AudioSendThreadData {
+    [ 0 null ] packets
+    Guid id
 }

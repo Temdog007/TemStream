@@ -40,6 +40,13 @@
 
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
 
+#define INIT_ALLOCATOR(S)                                                      \
+    (Bytes)                                                                    \
+    {                                                                          \
+        .allocator = currentAllocator, .used = 0U,                             \
+        .buffer = currentAllocator->allocate(S), .size = S                     \
+    }
+
 const extern Guid ZeroGuid;
 
 extern SDL_atomic_t runningThreads;
@@ -120,11 +127,6 @@ closeHostAndPeer(ENetHost*, ENetPeer*);
 
 extern void
 sendPacketToReaders(ENetHost*, ENetPacket*, const Access*);
-
-typedef ENetPacket* pENetPacket;
-
-MAKE_COPY_AND_FREE(pENetPacket);
-MAKE_DEFAULT_LIST(pENetPacket);
 
 #define CLIENT_CHANNEL 0
 #define SERVER_CHANNEL 1
