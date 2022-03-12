@@ -1195,14 +1195,31 @@ playbackCallback(pAudioState state, uint8_t* data, int len)
 {
     memset(data, state->spec.silence, len);
     len = SDL_min(len, (int)state->storedAudio.used);
-    memcpy(data, state->storedAudio.buffer, len);
+    if (len == 0) {
+        return;
+    }
+#if HIGH_QUALITY_AUDIO
+    float* f = (float*)state->storedAudio.buffer;
+    const int size = len / sizeof(float);
+    for (int i = 0; i < size; ++i) {
+        f[i] *= state->volume;
+    }
+#else
+    int16_t* s = (int16_t*)state->storeAudio.buffer;
+    const int size = len / sizeof(int16_t);
+    for (int i = 0; i < size; ++i) {
+        s[i] *= state->volume;
+    }
+#endif
     pCurrentAudio current = currentAllocator->allocate(sizeof(CurrentAudio));
     current->id = state->id;
     current->audio.allocator = currentAllocator;
     floatListQuickAppend(
-      &current->audio, (float*)state->storedAudio.buffer, len / sizeof(float));
-    uint8_tListQuickRemove(&state->storedAudio, 0, len);
+      &current->audio, (float*)state->storedAudio.buffer, size);
     updateCurrentAudioDisplay(current);
+
+    memcpy(data, state->storedAudio.buffer, len);
+    uint8_tListQuickRemove(&state->storedAudio, 0, len);
 }
 
 bool
@@ -1861,6 +1878,83 @@ end:
     ServerConfigurationListFree(&list);
 }
 
+void
+selectStreamToChangeVolume(struct pollfd inputfd, pBytes bytes)
+{
+    ServerConfigurationList list = { .allocator = currentAllocator };
+    IN_MUTEX(clientData.mutex, end2, {
+        for (size_t i = 0; i < clientData.displays.used; ++i) {
+            if (clientData.displays.buffer[i].config.data.tag ==
+                ServerConfigurationDataTag_audio) {
+                ServerConfigurationListAppend(
+                  &list, &clientData.displays.buffer[i].config);
+            }
+        }
+    });
+
+    if (ServerConfigurationListIsEmpty(&list)) {
+        puts("Not connected to any audio streams...");
+        goto end;
+    }
+
+    for (size_t i = 0; i < list.used; ++i) {
+        IN_MUTEX(clientData.mutex, end3, {
+            const StreamDisplay* display = NULL;
+            const AudioState* ptr = NULL;
+            if (GetStreamDisplayFromName(
+                  &clientData.displays, &list.buffer[i].name, &display, NULL) &&
+                AudioStateFromGuid(
+                  &audioStates, &display->id, false, &ptr, NULL)) {
+                printf("%zu) %s (Volume: %d)\n",
+                       i + 1,
+                       display->config.name.buffer,
+                       (int)roundf(ptr->volume * 100.f));
+            }
+        });
+    }
+    uint32_t i = 0;
+    if (list.used == 1) {
+        puts("Using only available audio stream");
+    } else {
+        askQuestion("Select audio stream");
+        if (getIndexFromUser(inputfd, bytes, list.used, &i, true) !=
+            UserInputResult_Input) {
+            puts("Canceling audio volume change");
+            goto end;
+        }
+    }
+
+    const ServerConfiguration* config = &list.buffer[i];
+
+    askQuestion("Enter a number between 0 - 100");
+    if (getIndexFromUser(inputfd, bytes, 101, &i, true) !=
+        UserInputResult_Input) {
+        puts("Canceling audio volume change");
+        goto end;
+    }
+
+    i = SDL_clamp(i, 0U, 100U);
+    const float vf = SDL_clamp((float)i / 100.f, 0.f, 1.f);
+
+    IN_MUTEX(clientData.mutex, end4, {
+        const StreamDisplay* display = NULL;
+        size_t sIndex = 0;
+        if (GetStreamDisplayFromName(
+              &clientData.displays, &config->name, &display, NULL) &&
+            AudioStateFromGuid(
+              &audioStates, &display->id, false, NULL, &sIndex)) {
+            AudioStatePtr ptr = audioStates.buffer[sIndex];
+            SDL_LockAudioDevice(ptr->deviceId);
+            ptr->volume = vf;
+            SDL_UnlockAudioDevice(ptr->deviceId);
+            printf("Changed volume of stream: %s\n", config->name.buffer);
+        }
+    });
+
+end:
+    ServerConfigurationListFree(&list);
+}
+
 int
 userInputThread(void* ptr)
 {
@@ -1918,6 +2012,9 @@ userInputThread(void* ptr)
                 break;
             case ClientCommand_ToggleDisplay:
                 toggleStreamDisplays(inputfd, &bytes);
+                break;
+            case ClientCommand_ChangeAudioVolume:
+                selectStreamToChangeVolume(inputfd, &bytes);
                 break;
             case ClientCommand_UploadFile:
                 selectStreamToUploadFileTo(inputfd, &bytes, client);
@@ -2580,6 +2677,7 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                   currentAllocator->allocate(sizeof(AudioState));
                 record->storedAudio.allocator = currentAllocator;
                 record->current.allocator = currentAllocator;
+                record->volume = 1.f;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(&ui, bytes);
                     ask = true;
@@ -2603,6 +2701,7 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                   currentAllocator->allocate(sizeof(AudioState));
                 playback->storedAudio.allocator = currentAllocator;
                 playback->current.allocator = currentAllocator;
+                playback->volume = 1.f;
                 if (startPlayback(inputfd, bytes, playback, ask)) {
                     playback->id = userInput->id;
                     playback->storedAudio.allocator = currentAllocator;

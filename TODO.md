@@ -78,7 +78,7 @@
 - [x] Write key in redis to signal new stream so lobby can update clients quickly
 - [x] Ensure textures can be hidden for a stream
 - [x] Update audio texture (don't delete)
-- [ ] Allow volume of playback to be changed
+- [x] Allow volume of playback to be changed
 - [ ] Allow audio source/destinations to be changed
 - [ ] Allow press to talk to be set for recording microphone
 - [ ] Make authentication work as a plugin

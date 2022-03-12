@@ -426,6 +426,7 @@ typedef struct AudioState
         OpusDecoder* decoder;
     };
     SDL_AudioDeviceID deviceId;
+    float volume;
     SDL_bool running;
     SDL_bool isRecording;
 } AudioState, *pAudioState;
