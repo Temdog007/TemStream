@@ -416,6 +416,7 @@ cleanupServer(ENetHost*);
 typedef struct AudioState
 {
     Bytes storedAudio;
+    floatList current;
     SDL_AudioSpec spec;
     Guid id;
     union
@@ -491,6 +492,9 @@ renderFont(SDL_Renderer* renderer,
            const uint8_t background[4]);
 
 // SDL
+
+MAKE_COPY_AND_FREE(SDL_FPoint);
+MAKE_DEFAULT_LIST(SDL_FPoint);
 
 SDL_FORCE_INLINE SDL_bool
 SDL_PointInFRect(const SDL_FPoint* p, const SDL_FRect* r)

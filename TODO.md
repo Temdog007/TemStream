@@ -70,14 +70,13 @@
 
 ### Mar 11, 2022
 - [x] Seperate user input and main threads
-- [ ] Seperate sockets from reading and writing data
-- [ ] Display audio mixer
+- [x] Display audio mixer
 - [ ] Allow volume of playback to be changed
 - [ ] Include press to talk
 - [ ] Add optional labels to stream displays
 
 ### Later
-- [ ] Send chat logs the same way images are sent (chunk them, update getServerFileBytes)
+- [ ] Make authentication work as a plugin
 - [ ] Play gifs
 - [ ] Record windows
 - [ ] Record screen

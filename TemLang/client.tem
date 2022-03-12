@@ -11,11 +11,11 @@ enum ClientCommand {
 }
 
 enum CustomEvent {
-    Render
     UpdateStreamDisplay
     ShowSimpleMessage
     SendLobbyMessage
     SaveScreenshot
+    UpdateAudioDisplay
 }
 
 struct Client {
@@ -93,9 +93,13 @@ struct StreamDisplayChat {
 variant StreamDisplayData {
     null none
     [ 0 u8 ] image
-    [ 0 f32 ] audioData
     StreamDisplayChat chat
     string text
+}
+
+struct CurrentAudio {
+    Guid id
+    [ 0 f32 ] audio
 }
 
 resource StreamDisplay {

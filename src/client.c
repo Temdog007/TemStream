@@ -3,6 +3,17 @@
 #define MIN_WIDTH 32
 #define MIN_HEIGHT 32
 
+#define RENDER_NOW(w, h)                                                       \
+    drawTextures(                                                              \
+      renderer, targetDisplay, (float)w - MIN_WIDTH, (float)h - MIN_HEIGHT)
+
+#define RENDER_NOW_CALC                                                        \
+    {                                                                          \
+        int w, h;                                                              \
+        SDL_GetWindowSize(window, &w, &h);                                     \
+        RENDER_NOW(w, h);                                                      \
+    }
+
 #define DEFAULT_CHAT_COUNT 5
 
 SDL_mutex* clientMutex = NULL;
@@ -47,7 +58,10 @@ bool
 startRecording(struct pollfd inputfd, pBytes bytes, pAudioState);
 
 bool
-startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state);
+startPlayback(struct pollfd inputfd,
+              pBytes bytes,
+              pAudioState state,
+              const bool);
 
 void
 handleUserInput(const UserInput*, pBytes);
@@ -59,23 +73,24 @@ bool
 clientHandleGeneralMessage(const GeneralMessage* message, pClient client);
 
 void
-renderDisplays()
-{
-    SDL_Event e = { 0 };
-    e.type = SDL_USEREVENT;
-    e.user.code = CustomEvent_Render;
-    SDL_PushEvent(&e);
-}
-
-void
-updateStreamDisplay(const StreamDisplay* display)
+updateStreamDisplay(const Guid* id)
 {
     SDL_Event e = { 0 };
     e.type = SDL_USEREVENT;
     e.user.code = CustomEvent_UpdateStreamDisplay;
     pGuid guid = (pGuid)currentAllocator->allocate(sizeof(Guid));
-    *guid = display->id;
+    *guid = *id;
     e.user.data1 = guid;
+    SDL_PushEvent(&e);
+}
+
+void
+updateCurrentAudioDisplay(pCurrentAudio ptr)
+{
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_UpdateAudioDisplay;
+    e.user.data1 = ptr;
     SDL_PushEvent(&e);
 }
 
@@ -385,7 +400,7 @@ clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
             success = TemLangStringCopy(
               &display->data.text, &message.text, currentAllocator);
             printf("Got text message: '%s'\n", message.text.buffer);
-            updateStreamDisplay(display);
+            updateStreamDisplay(&display->id);
         } break;
         case TextMessageTag_general:
             success = clientHandleGeneralMessage(&message.general, NULL);
@@ -414,7 +429,7 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
             success =
               ChatListCopy(&chat->logs, &message.logs, currentAllocator);
             chat->offset = chat->logs.used;
-            updateStreamDisplay(display);
+            updateStreamDisplay(&display->id);
         } break;
         case ChatMessageTag_newChat: {
             pStreamDisplayChat chat = &display->data.chat;
@@ -429,7 +444,7 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
             if (chat->offset >= chat->logs.used - chat->count) {
                 chat->offset = chat->logs.used;
             }
-            updateStreamDisplay(display);
+            updateStreamDisplay(&display->id);
         } break;
         case ChatMessageTag_general:
             success = clientHandleGeneralMessage(&message.general, NULL);
@@ -469,7 +484,7 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
             break;
         case ImageMessageTag_imageEnd:
             success = true;
-            updateStreamDisplay(display);
+            updateStreamDisplay(&display->id);
             break;
         case ImageMessageTag_general:
             success = clientHandleGeneralMessage(&message.general, NULL);
@@ -1076,6 +1091,9 @@ void
 recordCallback(pAudioState state, uint8_t* data, int len)
 {
     uint8_tListQuickAppend(&state->storedAudio, data, len);
+    state->current.used = 0;
+    floatListQuickAppend(
+      &state->current, (float*)state->storedAudio.buffer, len / sizeof(float));
 }
 
 bool
@@ -1144,15 +1162,28 @@ playbackCallback(pAudioState state, uint8_t* data, int len)
     memset(data, state->spec.silence, len);
     len = SDL_min(len, (int)state->storedAudio.used);
     memcpy(data, state->storedAudio.buffer, len);
+    pCurrentAudio current = currentAllocator->allocate(sizeof(CurrentAudio));
+    current->id = state->id;
+    current->audio.allocator = currentAllocator;
+    floatListQuickAppend(
+      &current->audio, (float*)state->storedAudio.buffer, len / sizeof(float));
     uint8_tListQuickRemove(&state->storedAudio, 0, len);
+    updateCurrentAudioDisplay(current);
 }
 
 bool
-startPlayback(struct pollfd inputfd, pBytes bytes, pAudioState state)
+startPlayback(struct pollfd inputfd,
+              pBytes bytes,
+              pAudioState state,
+              const bool ask)
 {
-    if (!askYesOrNoQuestion(
-          "Do you want play audio from stream?", inputfd, bytes)) {
-        return false;
+    if (ask) {
+        if (!askYesOrNoQuestion(
+              "Do you want play audio from stream?", inputfd, bytes)) {
+            return false;
+        }
+    } else {
+        puts("Need to select audio source to play audio");
     }
 
     const int devices = SDL_GetNumAudioDevices(SDL_FALSE);
@@ -1222,16 +1253,16 @@ sendAudioThread(pAudioSendThreadData data)
     pNullValueList packets = &data->packets;
     printf("Sending %u audio packets\n", packets->used);
     size_t i = 0;
-    for (; i < packets->used && !displayMissing && !appDone; ++i) {
+    for (; i < packets->used && !appDone; ++i) {
         USE_DISPLAY(clientData.mutex, end, displayMissing, {
             NullValueListAppend(&display->outgoing, &packets->buffer[i]);
         });
+        if (displayMissing) {
+            break;
+        }
         // Each packet is aprox 120 ms. Sleep for less to not flood server
         // but also not have breaks in audio.
         SDL_Delay(100);
-        if (displayMissing) {
-            enet_packet_destroy(packets->buffer[i]);
-        }
     }
     for (; i < packets->used; ++i) {
         enet_packet_destroy(packets->buffer[i]);
@@ -1914,6 +1945,63 @@ end:
     SDL_FreeSurface(surface);
 }
 
+#define AUDIO_SIZE 1024.f
+#define HALF_AUDIO_SIZE (AUDIO_SIZE * 0.5f)
+
+void
+updateAudioDisplay(SDL_Renderer* renderer,
+                   pStreamDisplay display,
+                   const floatList* list)
+{
+    if (renderer == NULL) {
+        return;
+    }
+
+    if (display->texture != NULL) {
+        SDL_DestroyTexture(display->texture);
+        display->texture = NULL;
+    }
+
+    if (floatListIsEmpty(list)) {
+        goto end;
+    }
+
+    display->texture = SDL_CreateTexture(renderer,
+                                         SDL_PIXELFORMAT_RGBA8888,
+                                         SDL_TEXTUREACCESS_TARGET,
+                                         AUDIO_SIZE,
+                                         AUDIO_SIZE);
+
+    SDL_SetRenderTarget(renderer, display->texture);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
+    SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
+
+    SDL_FPointList points = { .allocator = currentAllocator };
+    for (size_t i = 0; i < list->used; ++i) {
+        const SDL_FPoint p = { .x = ((float)i / (float)list->used) * AUDIO_SIZE,
+                               .y = HALF_AUDIO_SIZE * list->buffer[i] +
+                                    HALF_AUDIO_SIZE };
+        SDL_FPointListAppend(&points, &p);
+    }
+    SDL_RenderDrawLinesF(renderer, points.buffer, points.used);
+    SDL_FPointListFree(&points);
+
+    display->srcRect.none = NULL;
+    display->srcRect.tag = OptionalRectTag_none;
+
+    if (display->dstRect.w < MIN_WIDTH) {
+        display->dstRect.w = AUDIO_SIZE;
+    }
+    if (display->dstRect.h < MIN_HEIGHT) {
+        display->dstRect.h = AUDIO_SIZE;
+    }
+
+end:
+    return;
+}
+
 SDL_Rect
 renderText(SDL_Renderer* renderer,
            TTF_Font* ttfFont,
@@ -2337,6 +2425,7 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
             const struct pollfd inputfd = { .events = POLLIN,
                                             .revents = 0,
                                             .fd = STDIN_FILENO };
+            bool ask = false;
             if (userInput->data.queryAudio.writeAccess) {
                 UserInput ui = { 0 };
                 ui.id = userInput->id;
@@ -2344,8 +2433,10 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                 pAudioState record =
                   currentAllocator->allocate(sizeof(AudioState));
                 record->storedAudio.allocator = currentAllocator;
+                record->current.allocator = currentAllocator;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(&ui, bytes);
+                    ask = true;
                     if (record->encoder != NULL) {
                         record->id = userInput->id;
                         SDL_PauseAudioDevice(record->deviceId, SDL_FALSE);
@@ -2365,7 +2456,8 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                 pAudioState playback =
                   currentAllocator->allocate(sizeof(AudioState));
                 playback->storedAudio.allocator = currentAllocator;
-                if (startPlayback(inputfd, bytes, playback)) {
+                playback->current.allocator = currentAllocator;
+                if (startPlayback(inputfd, bytes, playback, ask)) {
                     playback->id = userInput->id;
                     playback->storedAudio.allocator = currentAllocator;
                     SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
@@ -2564,7 +2656,7 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                                    s,
                                    size - (i + s));
                             if (lowMemory()) {
-                                SDL_Delay(1);
+                                SDL_Delay(0);
                             }
                             continue;
                         }
@@ -2626,10 +2718,6 @@ handleUserEvent(const SDL_UserEvent* e,
     int h;
     SDL_GetWindowSize(window, &w, &h);
     switch (e->code) {
-        case CustomEvent_Render:
-            drawTextures(
-              renderer, targetDisplay, (float)w - 32.f, (float)h - 32.f);
-            break;
         case CustomEvent_ShowSimpleMessage:
             SDL_ShowSimpleMessageBox(
               SDL_MESSAGEBOX_ERROR, (char*)e->data1, (char*)e->data2, window);
@@ -2659,7 +2747,7 @@ handleUserEvent(const SDL_UserEvent* e,
                 default:
                     break;
             }
-            renderDisplays();
+            RENDER_NOW(w, h);
         } break;
         case CustomEvent_SaveScreenshot: {
             const Guid id = *(const Guid*)e->data1;
@@ -2681,6 +2769,18 @@ handleUserEvent(const SDL_UserEvent* e,
             sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
             LobbyMessageFree(e->data1);
             currentAllocator->free(e->data1);
+        } break;
+        case CustomEvent_UpdateAudioDisplay: {
+            pCurrentAudio ptr = (pCurrentAudio)e->data1;
+            const Guid id = ptr->id;
+            size_t i = 0;
+            if (GetStreamDisplayFromGuid(&clientData.displays, &id, NULL, &i)) {
+                updateAudioDisplay(
+                  renderer, &clientData.displays.buffer[i], &ptr->audio);
+            }
+            CurrentAudioFree(ptr);
+            currentAllocator->free(ptr);
+            RENDER_NOW(w, h);
         } break;
         default:
             break;
@@ -2908,7 +3008,7 @@ runClient(const Configuration* configuration)
                     appDone = true;
                     break;
                 case SDL_WINDOWEVENT:
-                    renderDisplays();
+                    RENDER_NOW_CALC;
                     break;
                 case SDL_KEYDOWN:
                     switch (e.key.keysym.sym) {
@@ -2963,14 +3063,14 @@ runClient(const Configuration* configuration)
                     if (findDisplayFromPoint(&point, &targetDisplay)) {
                         hasTarget = true;
                         SDL_SetWindowGrab(window, true);
-                        renderDisplays();
+                        RENDER_NOW_CALC;
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
                     SDL_SetWindowGrab(window, false);
-                    renderDisplays();
+                    RENDER_NOW_CALC;
                     break;
                 case SDL_MOUSEMOTION:
                     if (hasTarget) {
@@ -3009,7 +3109,7 @@ runClient(const Configuration* configuration)
                           display->dstRect.x, 0.f, w - display->dstRect.w);
                         display->dstRect.y = SDL_clamp(
                           display->dstRect.y, 0.f, h - display->dstRect.h);
-                        renderDisplays();
+                        RENDER_NOW(w, h);
                     } else {
                         SDL_FPoint point = { 0 };
                         int x;
@@ -3019,7 +3119,7 @@ runClient(const Configuration* configuration)
                         point.y = (float)y;
                         targetDisplay = UINT_MAX;
                         findDisplayFromPoint(&point, &targetDisplay);
-                        renderDisplays();
+                        RENDER_NOW_CALC;
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
@@ -3053,7 +3153,7 @@ runClient(const Configuration* configuration)
                         default:
                             break;
                     }
-                    renderDisplays();
+                    RENDER_NOW(w, h);
                 } break;
                 case SDL_USEREVENT:
                     handleUserEvent(&e.user,
@@ -3147,7 +3247,7 @@ runClient(const Configuration* configuration)
             }
             SDL_UnlockMutex(clientData.mutex);
         }
-        SDL_Delay(1);
+        SDL_Delay(0);
     }
 
     result = EXIT_SUCCESS;
@@ -3170,11 +3270,35 @@ end:
     UserInputListFree(&userInputs);
 
     ClientDataFree(&clientData);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
     TTF_CloseFont(ttfFont);
     TTF_Quit();
     IMG_Quit();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    // Ensure that SDL user events don't still have memory
+    while (SDL_WaitEventTimeout(&e, 100) == 1) {
+        if (e.type != SDL_USEREVENT) {
+            continue;
+        }
+        switch (e.user.code) {
+            case CustomEvent_SaveScreenshot:
+                currentAllocator->free(e.user.data1);
+                break;
+            case CustomEvent_SendLobbyMessage:
+                LobbyMessageFree(e.user.data1);
+                currentAllocator->free(e.user.data1);
+                break;
+            case CustomEvent_UpdateStreamDisplay:
+                currentAllocator->free(e.user.data1);
+                break;
+            case CustomEvent_UpdateAudioDisplay:
+                CurrentAudioFree(e.user.data1);
+                currentAllocator->free(e.user.data1);
+                break;
+            default:
+                break;
+        }
+    }
     SDL_Quit();
     return result;
 }
