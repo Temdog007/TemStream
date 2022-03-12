@@ -2079,29 +2079,25 @@ updateAudioDisplay(SDL_Renderer* renderer,
         return;
     }
 
-    if (display->texture != NULL) {
-        SDL_DestroyTexture(display->texture);
-        display->texture = NULL;
+    if (display->texture == NULL) {
+        display->texture = SDL_CreateTexture(renderer,
+                                             SDL_PIXELFORMAT_RGBA8888,
+                                             SDL_TEXTUREACCESS_TARGET,
+                                             AUDIO_SIZE,
+                                             AUDIO_SIZE);
     }
-
-    if (!display->visible) {
-        goto end;
-    }
+    SDL_SetRenderTarget(renderer, display->texture);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
+    SDL_RenderClear(renderer);
 
     if (floatListIsEmpty(list)) {
         goto end;
     }
 
-    display->texture = SDL_CreateTexture(renderer,
-                                         SDL_PIXELFORMAT_RGBA8888,
-                                         SDL_TEXTUREACCESS_TARGET,
-                                         AUDIO_SIZE,
-                                         AUDIO_SIZE);
-
-    SDL_SetRenderTarget(renderer, display->texture);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
-    SDL_RenderClear(renderer);
+    if (!display->visible) {
+        goto end;
+    }
 
     SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
     SDL_RenderDrawLineF(
@@ -2122,10 +2118,10 @@ updateAudioDisplay(SDL_Renderer* renderer,
     display->srcRect.tag = OptionalRectTag_none;
 
     if (display->dstRect.w < MIN_WIDTH) {
-        display->dstRect.w = 256.f;
+        display->dstRect.w = 512.f;
     }
     if (display->dstRect.h < MIN_HEIGHT) {
-        display->dstRect.h = 256.f;
+        display->dstRect.h = 128.f;
     }
 
 end:
