@@ -111,6 +111,7 @@ resource StreamDisplay {
     Guid id
     u32 recordings
     u32 mtu
+    bool visible
     null texture
 } r {
     inlineC "

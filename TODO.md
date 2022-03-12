@@ -73,7 +73,7 @@
 - [x] Display audio mixer
 - [ ] Allow volume of playback to be changed
 - [ ] Include press to talk
-- [ ] Add optional labels to stream displays
+- [ ] Render label with display is selected
 
 ### Later
 - [ ] Make authentication work as a plugin

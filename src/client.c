@@ -836,6 +836,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
     }
 
     StreamDisplay display = { 0 };
+    display.visible = true;
     display.outgoing.allocator = currentAllocator;
     display.id = randomGuid(rs);
     pGuid id = currentAllocator->allocate(sizeof(Guid));
@@ -1863,6 +1864,10 @@ updateTextDisplay(SDL_Renderer* renderer,
         display->texture = NULL;
     }
 
+    if (!display->visible) {
+        goto end;
+    }
+
     if (TemLangStringIsEmpty(&display->data.text)) {
         goto end;
     }
@@ -1912,6 +1917,10 @@ updateImageDisplay(SDL_Renderer* renderer, pStreamDisplay display)
         display->texture = NULL;
     }
 
+    if (!display->visible) {
+        goto end;
+    }
+
     if (uint8_tListIsEmpty(bytes)) {
         goto end;
     }
@@ -1945,7 +1954,7 @@ end:
     SDL_FreeSurface(surface);
 }
 
-#define AUDIO_SIZE 1024.f
+#define AUDIO_SIZE 2048.f
 #define HALF_AUDIO_SIZE (AUDIO_SIZE * 0.5f)
 
 void
@@ -1962,6 +1971,10 @@ updateAudioDisplay(SDL_Renderer* renderer,
         display->texture = NULL;
     }
 
+    if (!display->visible) {
+        goto end;
+    }
+
     if (floatListIsEmpty(list)) {
         goto end;
     }
@@ -1976,8 +1989,12 @@ updateAudioDisplay(SDL_Renderer* renderer,
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
     SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
 
+    SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
+    SDL_RenderDrawLineF(
+      renderer, 0.f, HALF_AUDIO_SIZE, AUDIO_SIZE, HALF_AUDIO_SIZE);
+
+    SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
     SDL_FPointList points = { .allocator = currentAllocator };
     for (size_t i = 0; i < list->used; ++i) {
         const SDL_FPoint p = { .x = ((float)i / (float)list->used) * AUDIO_SIZE,
@@ -2073,6 +2090,10 @@ updateChatDisplay(SDL_Renderer* renderer,
     if (display->texture != NULL) {
         SDL_DestroyTexture(display->texture);
         display->texture = NULL;
+    }
+
+    if (!display->visible) {
+        return;
     }
 
     const StreamDisplayChat* chat = &display->data.chat;
