@@ -1785,6 +1785,82 @@ displayUserOptions()
     puts("");
 }
 
+void
+toggleStreamDisplays(struct pollfd inputfd, pBytes bytes)
+{
+    ServerConfigurationList list = { .allocator = currentAllocator };
+    IN_MUTEX(clientData.mutex, end2, {
+        for (size_t i = 0; i < clientData.displays.used; ++i) {
+            ServerConfigurationListAppend(
+              &list, &clientData.displays.buffer[i].config);
+        }
+    });
+
+    if (ServerConfigurationListIsEmpty(&list)) {
+        puts("No streams to display...");
+        goto end;
+    }
+
+    if (list.used == 1) {
+        IN_MUTEX(clientData.mutex, end35, {
+            size_t sIndex = 0;
+            if (GetStreamDisplayFromName(
+                  &clientData.displays, &list.buffer[0].name, NULL, &sIndex)) {
+                pStreamDisplay display = &clientData.displays.buffer[sIndex];
+                display->visible = !display->visible;
+                updateStreamDisplay(&display->id);
+            }
+        });
+        goto end;
+    }
+
+    while (true) {
+        askQuestion("Toggle Displays");
+        size_t available = 0;
+        for (size_t i = 0; i < list.used; ++i) {
+            IN_MUTEX(clientData.mutex, endf, {
+                const StreamDisplay* display = NULL;
+                if (GetStreamDisplayFromName(&clientData.displays,
+                                             &list.buffer[i].name,
+                                             &display,
+                                             NULL)) {
+                    printf("%zu) %s: %s\n",
+                           i + 1,
+                           list.buffer[i].name.buffer,
+                           display->visible ? "Visible" : "Not Visible");
+                    ++available;
+                }
+            });
+        }
+
+        if (available == 0) {
+            goto end;
+        }
+        uint32_t listIndex = 0;
+        switch (getIndexFromUser(inputfd, bytes, list.used, &listIndex, true)) {
+            case UserInputResult_Input: {
+                IN_MUTEX(clientData.mutex, end3, {
+                    size_t sIndex = 0;
+                    if (GetStreamDisplayFromName(&clientData.displays,
+                                                 &list.buffer[listIndex].name,
+                                                 NULL,
+                                                 &sIndex)) {
+                        pStreamDisplay display =
+                          &clientData.displays.buffer[sIndex];
+                        display->visible = !display->visible;
+                        updateStreamDisplay(&display->id);
+                    }
+                });
+            } break;
+            default:
+                goto end;
+        }
+    }
+
+end:
+    ServerConfigurationListFree(&list);
+}
+
 int
 userInputThread(void* ptr)
 {
@@ -1839,6 +1915,9 @@ userInputThread(void* ptr)
                 break;
             case ClientCommand_SaveScreenshot:
                 selectStreamToScreenshot(inputfd, &bytes);
+                break;
+            case ClientCommand_ToggleDisplay:
+                toggleStreamDisplays(inputfd, &bytes);
                 break;
             case ClientCommand_UploadFile:
                 selectStreamToUploadFileTo(inputfd, &bytes, client);
@@ -2261,7 +2340,7 @@ drawTextures(SDL_Renderer* renderer,
     const StreamDisplay* display = NULL;
     if (target < clientData.displays.used) {
         display = &clientData.displays.buffer[target];
-        if (display->texture != NULL) {
+        if (display->texture != NULL && display->visible) {
             SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
             const SDL_FRect rect =
               expandRect((const SDL_FRect*)&display->dstRect, 1.025f, 1.025f);
@@ -2335,7 +2414,7 @@ findDisplayFromPoint(const SDL_FPoint* point, size_t* targetDisplay)
 {
     for (int64_t i = (int64_t)clientData.displays.used - 1LL; i >= 0LL; --i) {
         pStreamDisplay display = &clientData.displays.buffer[i];
-        if (display->texture == NULL) {
+        if (display->texture == NULL || !display->visible) {
             continue;
         }
         if (!SDL_PointInFRect(point, (const SDL_FRect*)&display->dstRect)) {
