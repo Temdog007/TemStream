@@ -56,6 +56,7 @@ struct ClientConfiguration {
     u16 port
     bool noGui
     bool noAudio
+    bool showLabel
     bool fullscreen
 }
 

@@ -4,8 +4,12 @@
 #define MIN_HEIGHT 32
 
 #define RENDER_NOW(w, h)                                                       \
-    drawTextures(                                                              \
-      renderer, targetDisplay, (float)w - MIN_WIDTH, (float)h - MIN_HEIGHT)
+    drawTextures(renderer,                                                     \
+                 ttfFont,                                                      \
+                 config,                                                       \
+                 targetDisplay,                                                \
+                 (float)w - MIN_WIDTH,                                         \
+                 (float)h - MIN_HEIGHT)
 
 #define RENDER_NOW_CALC                                                        \
     {                                                                          \
@@ -120,6 +124,7 @@ defaultClientConfiguration()
         .windowHeight = 600,
         .fontSize = 48,
         .noGui = false,
+        .showLabel = true,
         .noAudio = false,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .port = 10000,
@@ -162,6 +167,8 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
         STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
         STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
+        STR_EQUALS(key, "-SL", keyLen, { goto parseLabel; });
+        STR_EQUALS(key, "--show-label", keyLen, { goto parseLabel; });
         // TODO: parse authentication
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
@@ -216,6 +223,10 @@ parseClientConfiguration(const int argc,
     parsePort : {
         const int i = atoi(value);
         client->port = SDL_clamp(i, 1000, 60000);
+        continue;
+    }
+    parseLabel : {
+        client->showLabel = atoi(value);
         continue;
     }
     }
@@ -531,7 +542,8 @@ clientHandleAudioMessage(const Bytes* packetBytes,
                     break;
                 }
                 fprintf(stderr,
-                        "No playback device assigned to this stream. "
+                        "No playback device assigned to this "
+                        "stream. "
                         "Disconnecting from audio server...\n");
                 success = false;
                 break;
@@ -579,8 +591,8 @@ streamConnectionThread(void* ptr)
     bool displayMissing = false;
     USE_DISPLAY(clientData.mutex, fend, displayMissing, {
         if (config->port.tag != PortTag_port) {
-            printf(
-              "Cannot opening connection to stream due to an invalid port\n");
+            printf("Cannot opening connection to stream due "
+                   "to an invalid port\n");
             goto fend;
         }
 
@@ -638,16 +650,17 @@ streamConnectionThread(void* ptr)
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     USE_DISPLAY(clientData.mutex, fend3, displayMissing, {
-                        printf(
-                          "Unexpected connect message from '%s(%s)' stream\n",
-                          config->name.buffer,
-                          ServerConfigurationDataTagToCharString(
-                            config->data.tag));
+                        printf("Unexpected connect message from "
+                               "'%s(%s)' stream\n",
+                               config->name.buffer,
+                               ServerConfigurationDataTagToCharString(
+                                 config->data.tag));
                     });
                     goto end;
                 case ENET_EVENT_TYPE_DISCONNECT:
                     USE_DISPLAY(clientData.mutex, fend4, displayMissing, {
-                        printf("Disconnected from '%s(%s)' stream\n",
+                        printf("Disconnected from '%s(%s)' "
+                               "stream\n",
                                config->name.buffer,
                                ServerConfigurationDataTagToCharString(
                                  config->data.tag));
@@ -1013,7 +1026,8 @@ encodeAudioData(OpusEncoder* encoder,
 #endif
         if (result < 0) {
             fprintf(stderr,
-                    "Failed to encode audio packet: %s; Frame size %d\n",
+                    "Failed to encode audio packet: %s; Frame "
+                    "size %d\n",
                     opus_strerror(result),
                     frame_size);
             break;
@@ -1022,7 +1036,8 @@ encodeAudioData(OpusEncoder* encoder,
         message.audio.used = (uint32_t)result;
 
         const size_t bytesUsed = (frame_size * spec.channels * PCM_SIZE);
-        // printf("Bytes encoded: %zu -> %d\n", bytesUsed, result);
+        // printf("Bytes encoded: %zu -> %d\n", bytesUsed,
+        // result);
         bytesRead += bytesUsed;
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
@@ -1261,8 +1276,8 @@ sendAudioThread(pAudioSendThreadData data)
         if (displayMissing) {
             break;
         }
-        // Each packet is aprox 120 ms. Sleep for less to not flood server
-        // but also not have breaks in audio.
+        // Each packet is aprox 120 ms. Sleep for less to not
+        // flood server but also not have breaks in audio.
         SDL_Delay(100);
     }
     for (; i < packets->used; ++i) {
@@ -2009,10 +2024,10 @@ updateAudioDisplay(SDL_Renderer* renderer,
     display->srcRect.tag = OptionalRectTag_none;
 
     if (display->dstRect.w < MIN_WIDTH) {
-        display->dstRect.w = AUDIO_SIZE;
+        display->dstRect.w = 256.f;
     }
     if (display->dstRect.h < MIN_HEIGHT) {
-        display->dstRect.h = AUDIO_SIZE;
+        display->dstRect.h = 256.f;
     }
 
 end:
@@ -2101,7 +2116,8 @@ updateChatDisplay(SDL_Renderer* renderer,
         return;
     }
 
-    // SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu, 0xffu);
+    // SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0xffu,
+    // 0xffu);
 
     display->data.tag = StreamDisplayDataTag_chat;
     char buffer[128] = { 0 };
@@ -2208,6 +2224,8 @@ updateAllDisplays(SDL_Renderer* renderer,
 
 void
 drawTextures(SDL_Renderer* renderer,
+             TTF_Font* ttfFont,
+             const ClientConfiguration* config,
              const size_t target,
              const float maxX,
              const float maxY)
@@ -2221,8 +2239,9 @@ drawTextures(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, 0x33u, 0x33u, 0x33u, 0xffu);
     SDL_RenderClear(renderer);
 
+    const StreamDisplay* display = NULL;
     if (target < clientData.displays.used) {
-        const StreamDisplay* display = &clientData.displays.buffer[target];
+        display = &clientData.displays.buffer[target];
         if (display->texture != NULL) {
             SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
             const SDL_FRect rect =
@@ -2249,11 +2268,7 @@ drawTextures(SDL_Renderer* renderer,
                 r.y = display->srcRect.rect.y;
                 r.w = display->srcRect.rect.w;
                 r.h = display->srcRect.rect.h;
-                result = SDL_RenderCopyF(renderer,
-                                         texture,
-                                         &r,
-                                         //   NULL,
-                                         rect);
+                result = SDL_RenderCopyF(renderer, texture, &r, rect);
             } break;
             default:
                 result = SDL_RenderCopyF(renderer, texture, NULL, rect);
@@ -2264,9 +2279,25 @@ drawTextures(SDL_Renderer* renderer,
         }
     }
 
+    if (config->showLabel && display != NULL) {
+        const SDL_Color fg = { .a = 128u, .r = 255u, .g = 255u, .b = 255u };
+        const SDL_Color bg = { .a = 128u, .r = 0u, .g = 0u, .b = 0u };
+        SDL_Surface* text =
+          TTF_RenderText_Shaded(ttfFont, display->config.name.buffer, fg, bg);
+        if (text != NULL) {
+            SDL_Texture* t = SDL_CreateTextureFromSurface(renderer, text);
+            SDL_Rect dst = { .w = text->w, .h = text->h };
+            SDL_GetMouseState(&dst.x, &dst.y);
+            dst.x += MIN_WIDTH;
+            SDL_RenderCopy(renderer, t, NULL, &dst);
+            SDL_DestroyTexture(t);
+        }
+        SDL_FreeSurface(text);
+    }
+
     // uint8_t background[4] = { 0xff, 0xffu, 0x0u, 0xffu };
-    // renderFont(renderer, font, "Hello World", 0, 0, 5.f, NULL,
-    // background);
+    // renderFont(renderer, font, "Hello World", 0, 0, 5.f,
+    // NULL, background);
     SDL_RenderPresent(renderer);
 }
 
@@ -2673,7 +2704,8 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                             }
                         });
                         if (sent) {
-                            printf("Sent image chunk: %zu bytes (%zu left) \n",
+                            printf("Sent image chunk: %zu "
+                                   "bytes (%zu left) \n",
                                    s,
                                    size - (i + s));
                             if (lowMemory()) {
@@ -2704,7 +2736,8 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                 case ServerConfigurationDataTag_audio:
                     if (ext.tag != FileExtensionTag_audio) {
                         fprintf(stderr,
-                                "Must send audio file to audio stream\n");
+                                "Must send audio file to "
+                                "audio stream\n");
                         break;
                     }
                     decodeAudioData(
@@ -2731,6 +2764,7 @@ handleUserEvent(const SDL_UserEvent* e,
                 SDL_Window* window,
                 SDL_Renderer* renderer,
                 TTF_Font* ttfFont,
+                const ClientConfiguration* config,
                 const size_t targetDisplay,
                 ENetPeer* peer,
                 pBytes bytes)
@@ -2750,7 +2784,8 @@ handleUserEvent(const SDL_UserEvent* e,
             if (!GetStreamDisplayFromGuid(
                   &clientData.displays, &id, NULL, &index)) {
                 fprintf(stderr,
-                        "Cannot update stream display because it was removed "
+                        "Cannot update stream display because "
+                        "it was removed "
                         "from list\n");
                 break;
             }
@@ -2776,10 +2811,10 @@ handleUserEvent(const SDL_UserEvent* e,
             const StreamDisplay* display = NULL;
             if (!GetStreamDisplayFromGuid(
                   &clientData.displays, &id, &display, NULL)) {
-                fprintf(
-                  stderr,
-                  "Cannot screenshot stream display because it was removed "
-                  "from list\n");
+                fprintf(stderr,
+                        "Cannot screenshot stream display "
+                        "because it was removed "
+                        "from list\n");
                 break;
             }
             saveScreenshot(renderer, display);
@@ -2904,8 +2939,8 @@ runClient(const Configuration* configuration)
             printf("Current renderer: %s\n", info.name);
         }
 
-        // if (!loadFont(config->ttfFile.buffer, config->fontSize, renderer,
-        // &font))
+        // if (!loadFont(config->ttfFile.buffer,
+        // config->fontSize, renderer, &font))
         // {
         //     fprintf(stderr, "Failed to load font\n");
         //     goto end;
@@ -3038,7 +3073,8 @@ runClient(const Configuration* configuration)
                             displayUserOptions();
                             break;
                         case SDLK_F2:
-                            printf("Memory: %zu (%zu MB) / %zu (%zu MB) \n",
+                            printf("Memory: %zu (%zu MB) / %zu "
+                                   "(%zu MB) \n",
                                    currentAllocator->used(),
                                    currentAllocator->used() / (MB(1)),
                                    currentAllocator->totalSize(),
@@ -3157,13 +3193,15 @@ runClient(const Configuration* configuration)
                             pStreamDisplayChat chat = &display->data.chat;
                             int64_t offset = (int64_t)chat->offset;
 
-                            // printf("Before: %" PRId64 "\n", offset);
+                            // printf("Before: %" PRId64 "\n",
+                            // offset);
                             offset += (e.wheel.y > 0) ? -1LL : 1LL;
                             offset = SDL_clamp(
                               offset, 0LL, (int64_t)chat->logs.used - 1LL);
                             chat->offset = (uint32_t)offset;
-                            // printf("After: %u\n", chat->offset);
-                            // printf("Logs %u\n", chat->logs.used);
+                            // printf("After: %u\n",
+                            // chat->offset); printf("Logs
+                            // %u\n", chat->logs.used);
 
                             const float width = display->dstRect.w;
                             const float height = display->dstRect.h;
@@ -3181,6 +3219,7 @@ runClient(const Configuration* configuration)
                                     window,
                                     renderer,
                                     ttfFont,
+                                    config,
                                     targetDisplay,
                                     peer,
                                     &bytes);
