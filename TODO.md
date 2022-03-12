@@ -71,17 +71,22 @@
 ### Mar 11, 2022
 - [x] Seperate user input and main threads
 - [x] Display audio mixer
-- [ ] Allow volume of playback to be changed
-- [ ] Include press to talk
 - [x] Render label with display is selected
 
-### Later
+### Mar 12, 2022
+- [x] Allow canceling current menu selection
+- [ ] Write key in redis to signal new stream so lobby can update clients quickly
+- [ ] Ensure textures can be hidden for a stream
+- [ ] Allow volume of playback to be changed
+- [ ] Allow audio source/destinations to be changed
+- [ ] Allow press to talk to be set for recording microphone
 - [ ] Make authentication work as a plugin
+
+### Later
 - [ ] Play gifs
 - [ ] Record windows
 - [ ] Record screen
 - [ ] Record webcam
-- [ ] Ensure textures can be hidden for a stream
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

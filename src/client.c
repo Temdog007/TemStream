@@ -24,6 +24,7 @@ SDL_mutex* clientMutex = NULL;
 ClientData clientData = { 0 };
 UserInputList userInputs = { 0 };
 AudioStatePtrList audioStates = { 0 };
+SDL_atomic_t continueSelection = { 0 };
 
 #define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
     IN_MUTEX(mutex, endLabel, {                                                \
@@ -263,12 +264,9 @@ typedef enum UserInputResult
   *pUserInputResult;
 
 UserInputResult
-getUserInput(struct pollfd inputfd,
-             pBytes bytes,
-             ssize_t* output,
-             const int timeout)
+getUserInput(struct pollfd inputfd, pBytes bytes)
 {
-    switch (poll(&inputfd, 1, timeout)) {
+    switch (poll(&inputfd, 1, CLIENT_POLL_WAIT)) {
         case -1:
             perror("poll");
             return UserInputResult_Error;
@@ -293,28 +291,19 @@ getUserInput(struct pollfd inputfd,
     // Remove new line character
     --size;
     bytes->buffer[size] = '\0';
-    if (output != NULL) {
-        *output = size;
-    }
+    bytes->used = size;
     return UserInputResult_Input;
 }
 
 UserInputResult
-getIndexFromUser(struct pollfd inputfd,
-                 pBytes bytes,
-                 const uint32_t max,
-                 uint32_t* index,
-                 const bool keepPolling)
+getStringFromUser(struct pollfd inputfd, pBytes bytes, const bool keepPolling)
 {
-    UserInputResult result = UserInputResult_NoInput;
-    if (max < 2) {
-        *index = 0;
-        result = UserInputResult_Input;
-        goto end;
-    }
-    ssize_t size = 0;
-    while (!appDone) {
-        switch (getUserInput(inputfd, bytes, &size, CLIENT_POLL_WAIT)) {
+    uint8_tListRellocateIfNeeded(bytes);
+
+    UserInputResult result = UserInputResult_Error;
+    SDL_AtomicSet(&continueSelection, 1);
+    while (!appDone && SDL_AtomicGet(&continueSelection) == 1) {
+        switch (getUserInput(inputfd, bytes)) {
             case UserInputResult_Error:
                 result = UserInputResult_Error;
                 goto end;
@@ -325,19 +314,52 @@ getIndexFromUser(struct pollfd inputfd,
                     result = UserInputResult_NoInput;
                     goto end;
                 }
+                break;
+            case UserInputResult_Input:
+                result = UserInputResult_Input;
+                goto end;
             default:
                 break;
         }
-        char* end = NULL;
-        *index = (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
-        if (end != (char*)&bytes->buffer[size] || *index >= max) {
-            printf("Enter a number between 1 and %u\n", max);
-            result = UserInputResult_Error;
-            goto end;
-        }
+    }
+end:
+    return result;
+}
+
+UserInputResult
+getIndexFromUser(struct pollfd inputfd,
+                 pBytes bytes,
+                 const uint32_t max,
+                 uint32_t* index,
+                 const bool keepPolling)
+{
+    UserInputResult result = UserInputResult_Error;
+    if (max < 2) {
+        *index = 0;
         result = UserInputResult_Input;
         goto end;
     }
+
+    switch (getStringFromUser(inputfd, bytes, keepPolling)) {
+        case UserInputResult_Error:
+            result = UserInputResult_Error;
+            goto end;
+        case UserInputResult_NoInput:
+            result = UserInputResult_NoInput;
+            goto end;
+        default:
+            break;
+    }
+    char* end = NULL;
+    *index = (uint32_t)strtoul((const char*)bytes->buffer, &end, 10) - 1UL;
+    if (end != (char*)&bytes->buffer[bytes->used] || *index >= max) {
+        printf("Enter a number between 1 and %u\n", max);
+        result = UserInputResult_Error;
+        goto end;
+    }
+    result = UserInputResult_Input;
+    goto end;
+
 end:
     return result;
 }
@@ -1075,20 +1097,16 @@ selectAudioStreamSource(struct pollfd inputfd,
     switch (selected) {
         case AudioStreamSource_File:
             askQuestion("Enter file to stream");
-            while (!appDone) {
-                switch (getUserInput(inputfd, bytes, NULL, CLIENT_POLL_WAIT)) {
-                    case UserInputResult_Input:
-                        // Set id before function call
-                        ui->data.tag = UserInputDataTag_file;
-                        ui->data.file = TemLangStringCreate(
-                          (char*)bytes->buffer, currentAllocator);
-                        return true;
-                    case UserInputResult_NoInput:
-                        continue;
-                    default:
-                        puts("Canceled audio streaming file");
-                        break;
-                }
+            switch (getStringFromUser(inputfd, bytes, true)) {
+                case UserInputResult_Input:
+                    // Set id before function call
+                    ui->data.tag = UserInputDataTag_file;
+                    ui->data.file = TemLangStringCreate((char*)bytes->buffer,
+                                                        currentAllocator);
+                    return true;
+                default:
+                    puts("Canceled audio streaming file");
+                    break;
             }
             break;
         case AudioStreamSource_Microphone:
@@ -1397,11 +1415,10 @@ askYesOrNoQuestion(const char* q, const struct pollfd inputfd, pBytes bytes)
     char buffer[KB(1)];
     snprintf(buffer, sizeof(buffer), "%s (y or n)", q);
     askQuestion(buffer);
-    ssize_t s = 0;
-    while (!appDone) {
-        switch (getUserInput(inputfd, bytes, &s, CLIENT_POLL_WAIT)) {
+    while (true) {
+        switch (getStringFromUser(inputfd, bytes, false)) {
             case UserInputResult_Input:
-                if (s != 1) {
+                if (bytes->used != 1u) {
                     break;
                 }
                 switch ((char)bytes->buffer[0]) {
@@ -1416,10 +1433,13 @@ askYesOrNoQuestion(const char* q, const struct pollfd inputfd, pBytes bytes)
             case UserInputResult_NoInput:
                 continue;
             default:
-                break;
+                goto end;
         }
         puts("Enter 'y' or 'n'");
     }
+
+end:
+    puts("Canceling input counts as selecting no");
     return false;
 }
 
@@ -1463,7 +1483,7 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes, const Client* client)
     }
 
     askQuestion("What's the name of the stream?");
-    if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
+    if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling start stream");
         goto end;
     }
@@ -1547,8 +1567,7 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes, pClient client)
     }
 
     askQuestion("Enter text to send");
-    if (getUserInput(inputfd, bytes, NULL, POLL_FOREVER) !=
-        UserInputResult_Input) {
+    if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling text send");
         goto end;
     }
@@ -1608,7 +1627,7 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes, pClient client)
     }
 
     askQuestion("Enter file name");
-    if (getUserInput(inputfd, bytes, NULL, -1) != UserInputResult_Input) {
+    if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling file upload");
         goto end;
     }
@@ -3068,8 +3087,11 @@ runClient(const Configuration* configuration)
                     break;
                 case SDL_KEYDOWN:
                     switch (e.key.keysym.sym) {
-                        case SDLK_F1:
                         case SDLK_ESCAPE:
+                            SDL_AtomicSet(&continueSelection, 0);
+                            displayUserOptions();
+                            break;
+                        case SDLK_F1:
                             displayUserOptions();
                             break;
                         case SDLK_F2:
