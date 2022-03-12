@@ -75,7 +75,7 @@
 
 ### Mar 12, 2022
 - [x] Allow canceling current menu selection
-- [ ] Write key in redis to signal new stream so lobby can update clients quickly
+- [x] Write key in redis to signal new stream so lobby can update clients quickly
 - [ ] Ensure textures can be hidden for a stream
 - [ ] Allow volume of playback to be changed
 - [ ] Allow audio source/destinations to be changed

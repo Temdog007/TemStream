@@ -572,6 +572,42 @@ AudioStateFromGuid(const AudioStatePtrList* list,
 }
 
 bool
+serverIsDirty(redisContext* ctx)
+{
+    redisReply* reply =
+      redisCommand(ctx, "GET %s", TEM_STREAM_SERVER_DIRTY_KEY);
+
+    bool result = false;
+    switch (reply->type) {
+        case REDIS_REPLY_BOOL:
+        case REDIS_REPLY_INTEGER:
+            result = reply->integer == 1;
+            break;
+        case REDIS_REPLY_STRING:
+            result = atoi(reply->str);
+            break;
+        case REDIS_REPLY_ERROR:
+            fprintf(stderr, "Redis error: %s\n", reply->str);
+            break;
+        default:
+            break;
+    }
+    freeReplyObject(reply);
+    return result;
+}
+
+void
+setServerIsDirty(redisContext* ctx, const bool state)
+{
+    redisReply* reply =
+      redisCommand(ctx, "SET %s %d", TEM_STREAM_SERVER_DIRTY_KEY, state);
+    if (reply->type == REDIS_REPLY_ERROR) {
+        fprintf(stderr, "Redis error: %s\n", reply->str);
+    }
+    freeReplyObject(reply);
+}
+
+bool
 writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
 {
     Bytes bytes = { .allocator = currentAllocator };
@@ -590,6 +626,8 @@ writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
     freeReplyObject(reply);
     TemLangStringFree(&str);
     uint8_tListFree(&bytes);
+
+    setServerIsDirty(ctx, true);
     return result;
 }
 
@@ -612,6 +650,8 @@ removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
     freeReplyObject(reply);
     TemLangStringFree(&str);
     uint8_tListFree(&bytes);
+
+    setServerIsDirty(ctx, true);
     return result;
 }
 

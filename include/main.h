@@ -39,6 +39,7 @@
 #define MAX_PACKET_SIZE KB(64)
 
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
+#define TEM_STREAM_SERVER_DIRTY_KEY "TemStream Servers Dirty"
 
 #define INIT_ALLOCATOR(S)                                                      \
     (Bytes)                                                                    \
@@ -550,6 +551,12 @@ removeConfigurationFromRedis(redisContext*, const ServerConfiguration*);
 
 extern void
 cleanupConfigurationsInRedis(redisContext*);
+
+extern bool
+serverIsDirty(redisContext*);
+
+extern void
+setServerIsDirty(redisContext*, const bool);
 
 // Base 64
 

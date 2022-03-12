@@ -9,19 +9,26 @@ defaultLobbyConfiguration()
 {
     return (LobbyConfiguration){ .maxStreams =
                                    ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT,
-                                 .refreshRate = 3u };
+                                 .refreshRate = 30u };
 }
 
 void
 onLobbyDownTime(pServerData serverData)
 {
-    const uint64_t now = SDL_GetTicks64();
-    if (now - lastStreamRefresh <
-        serverData->config->data.lobby.refreshRate * 1000U) {
-        return;
+    if (serverIsDirty(serverData->ctx)) {
+        setServerIsDirty(serverData->ctx, false);
+        goto doUpdateClients;
+    } else {
+        const uint64_t now = SDL_GetTicks64();
+        if (now - lastStreamRefresh >=
+            serverData->config->data.lobby.refreshRate * 1000U) {
+            lastStreamRefresh = now;
+            goto doUpdateClients;
+        }
     }
+    return;
 
-    lastStreamRefresh = now;
+doUpdateClients : {
     LobbyMessage message = { .tag = LobbyMessageTag_allStreams,
                              .allStreams = getStreams(serverData->ctx) };
     MESSAGE_SERIALIZE(LobbyMessage, message, serverData->bytes);
@@ -29,6 +36,7 @@ onLobbyDownTime(pServerData serverData)
       BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
     sendPacketToReaders(serverData->host, packet, &serverData->config->readers);
     LobbyMessageFree(&message);
+}
 }
 
 int
