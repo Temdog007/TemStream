@@ -193,12 +193,7 @@ handleLobbyMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                     // since there isn't a way to manually stop them
                     c.timeout = STREAM_TIMEOUT;
                     const bool success = startNewServer(&c);
-                    const uint64_t now = SDL_GetTicks64();
-                    if (now > 1000U) {
-                        lastStreamRefresh = now - 1000;
-                    } else {
-                        lastStreamRefresh = 0;
-                    }
+                    lastStreamRefresh = 0;
                     if (success) {
                         lobbyMessage.startStreamingAck = true;
                     } else {

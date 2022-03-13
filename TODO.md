@@ -79,9 +79,10 @@
 - [x] Ensure textures can be hidden for a stream
 - [x] Update audio texture (don't delete)
 - [x] Allow volume of playback to be changed
+- [x] Server isn't sending data to all peers
+- [ ] Audio isn't being sent to connect peers
 
 ### Mar 13, 2022
-- [ ] Server isn't sending data to all peers (isn't updating file; logs not appearing)
 - [ ] Allow audio source/destinations to be changed
 - [ ] Allow press to talk to be set for recording microphone
 - [ ] Make authentication work as a plugin

@@ -465,6 +465,10 @@ continueServer:
                enet_host_service(serverData.host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT: {
+                    if (event.data != (enet_uint32)config->data.tag) {
+                        enet_peer_disconnect(event.peer, 0);
+                        break;
+                    }
                     char buffer[KB(1)] = { 0 };
                     enet_address_get_host_ip(
                       &event.peer->address, buffer, sizeof(buffer));

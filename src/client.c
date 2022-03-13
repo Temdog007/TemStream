@@ -142,7 +142,7 @@ parseClientConfiguration(const int argc,
     configuration->tag = ConfigurationTag_client;
     configuration->client = defaultClientConfiguration();
     pClientConfiguration client = &configuration->client;
-    for (int i = 2; i < argc - 1; i += 2) {
+    for (int i = 1; i < argc - 1; i += 2) {
         const char* key = argv[i];
         const size_t keyLen = strlen(key);
         const char* value = argv[i + 1];
@@ -164,7 +164,7 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
-        STR_EQUALS(key, "-H", keyLen, { goto parseHostname; });
+        STR_EQUALS(key, "-HN", keyLen, { goto parseHostname; });
         STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
         STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
         STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
@@ -237,11 +237,18 @@ parseClientConfiguration(const int argc,
 int
 printClientConfiguration(const ClientConfiguration* configuration)
 {
-    return printf("Width: %d; Height: %d; Fullscreen: %d; TTF file: %s\n",
-                  configuration->windowWidth,
-                  configuration->windowHeight,
-                  configuration->fullscreen,
-                  configuration->ttfFile.buffer);
+    return printf(
+      "Width: %d\nHeight: %d\nFullscreen: %d\nTTF file: %s\nFont size: %d\nNo "
+      "Gui: %d\nShow label: %d\nHostname: %s\nPort: %u\n",
+      configuration->windowWidth,
+      configuration->windowHeight,
+      configuration->fullscreen,
+      configuration->ttfFile.buffer,
+      configuration->fontSize,
+      configuration->noGui,
+      configuration->showLabel,
+      configuration->hostname.buffer,
+      configuration->port);
 }
 
 void
@@ -666,7 +673,7 @@ streamConnectionThread(void* ptr)
         USE_DISPLAY(clientData.mutex, endPakce, displayMissing, {
             for (size_t i = 0; i < display->outgoing.used; ++i) {
                 NullValue packet = display->outgoing.buffer[i];
-                NullValueListAppend(&packetList, &packet);
+                PEER_SEND(peer, CLIENT_CHANNEL, packet);
             }
             NullValueListFree(&display->outgoing);
             display->outgoing.allocator = currentAllocator;
@@ -2063,7 +2070,7 @@ userInputThread(void* ptr)
         switch (index) {
             case ClientCommand_Quit:
                 appDone = true;
-                break;
+                goto end;
             case ClientCommand_StartStreaming:
                 selectStreamToStart(inputfd, &bytes, client);
                 break;
@@ -2121,8 +2128,9 @@ userInputThread(void* ptr)
                         ClientCommandToCharString(index));
                 break;
         }
+        displayUserOptions();
     }
-
+end:
     uint8_tListFree(&bytes);
     SDL_AtomicDecRef(&runningThreads);
     return EXIT_SUCCESS;
@@ -2602,7 +2610,7 @@ loadNewFont(const char* filename, const int fontSize, TTF_Font** ttfFont)
 }
 
 void
-refrehClients(ENetPeer* peer, pBytes bytes)
+refreshClients(ENetPeer* peer, pBytes bytes)
 {
     LobbyMessage lm = { 0 };
     lm.tag = LobbyMessageTag_general;

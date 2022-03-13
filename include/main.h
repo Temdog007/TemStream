@@ -182,6 +182,9 @@ printAudioSpec(const SDL_AudioSpec*);
 extern int
 printServerAuthentication(const ServerAuthentication*);
 
+int
+printPort(const Port* port);
+
 // Parsing
 
 extern bool
