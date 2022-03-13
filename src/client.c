@@ -436,7 +436,8 @@ clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(&display->id);
         } break;
         case TextMessageTag_general:
-            success = clientHandleGeneralMessage(&message.general, NULL);
+            success =
+              clientHandleGeneralMessage(&message.general, &display->client);
             break;
         default:
             printf("Unexpected text message: %s\n",
@@ -480,7 +481,8 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(&display->id);
         } break;
         case ChatMessageTag_general:
-            success = clientHandleGeneralMessage(&message.general, NULL);
+            success =
+              clientHandleGeneralMessage(&message.general, &display->client);
             break;
         default:
             printf("Unexpected chat message: %s\n",
@@ -520,7 +522,8 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
             updateStreamDisplay(&display->id);
             break;
         case ImageMessageTag_general:
-            success = clientHandleGeneralMessage(&message.general, NULL);
+            success =
+              clientHandleGeneralMessage(&message.general, &display->client);
             break;
         default:
             printf("Unexpected image message: %s\n",
@@ -1157,12 +1160,10 @@ startRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
 #else
       makeAudioSpec(NULL, NULL);
 #endif
-    state->deviceId =
-      SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_TRUE),
-                          SDL_TRUE,
-                          &desiredRecordingSpec,
-                          &state->spec,
-                          0);
+    const char* name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
+    state->name = TemLangStringCreate(name, currentAllocator);
+    state->deviceId = SDL_OpenAudioDevice(
+      name, SDL_TRUE, &desiredRecordingSpec, &state->spec, 0);
     if (state->deviceId == 0) {
         fprintf(stderr, "Failed to start recording: %s\n", SDL_GetError());
         return false;
@@ -1262,12 +1263,10 @@ startPlayback(struct pollfd inputfd,
 #else
       makeAudioSpec(NULL, NULL);
 #endif
-    state->deviceId =
-      SDL_OpenAudioDevice(SDL_GetAudioDeviceName(selected, SDL_FALSE),
-                          SDL_FALSE,
-                          &desiredRecordingSpec,
-                          &state->spec,
-                          0);
+    const char* name = SDL_GetAudioDeviceName(selected, SDL_FALSE);
+    state->name = TemLangStringCreate(name, currentAllocator);
+    state->deviceId = SDL_OpenAudioDevice(
+      name, SDL_FALSE, &desiredRecordingSpec, &state->spec, 0);
     if (state->deviceId == 0) {
         fprintf(stderr, "Failed to start playback: %s\n", SDL_GetError());
         return false;
@@ -1322,6 +1321,7 @@ sendAudioThread(pAudioSendThreadData data)
     currentAllocator->free(data);
     USE_DISPLAY(
       clientData.mutex, end3, displayMissing, { --display->recordings; });
+    puts("Done sening audio");
     SDL_AtomicDecRef(&runningThreads);
     return EXIT_SUCCESS;
 }
@@ -1955,6 +1955,72 @@ end:
     ServerConfigurationListFree(&list);
 }
 
+void
+selectStreamToChangeAudioSource(struct pollfd inputfd, pBytes bytes)
+{
+    ServerConfigurationList list = { .allocator = currentAllocator };
+    IN_MUTEX(clientData.mutex, end2, {
+        for (size_t i = 0; i < clientData.displays.used; ++i) {
+            if (clientData.displays.buffer[i].config.data.tag ==
+                ServerConfigurationDataTag_audio) {
+                ServerConfigurationListAppend(
+                  &list, &clientData.displays.buffer[i].config);
+            }
+        }
+    });
+
+    if (ServerConfigurationListIsEmpty(&list)) {
+        puts("Not connected to any audio streams...");
+        goto end;
+    }
+
+    for (size_t i = 0; i < list.used; ++i) {
+        IN_MUTEX(clientData.mutex, end3, {
+            const StreamDisplay* display = NULL;
+            const AudioState* ptr = NULL;
+            if (GetStreamDisplayFromName(
+                  &clientData.displays, &list.buffer[i].name, &display, NULL) &&
+                AudioStateFromGuid(
+                  &audioStates, &display->id, false, &ptr, NULL)) {
+                printf("%zu) %s (Audio device: %s)\n",
+                       i + 1,
+                       display->config.name.buffer,
+                       ptr->name.buffer);
+            }
+        });
+    }
+    uint32_t i = 0;
+    if (list.used == 1) {
+        puts("Using only available audio stream");
+    } else {
+        askQuestion("Select audio stream");
+        if (getIndexFromUser(inputfd, bytes, list.used, &i, true) !=
+            UserInputResult_Input) {
+            puts("Canceling audio source change");
+            goto end;
+        }
+    }
+
+    IN_MUTEX(clientData.mutex, end23, {
+        const StreamDisplay* display = NULL;
+        if (GetStreamDisplayFromName(
+              &clientData.displays, &list.buffer[i].name, &display, NULL)) {
+            UserInput ui = { 0 };
+            ui.id = display->id;
+            ui.data.tag = UserInputDataTag_queryAudio;
+            ui.data.queryAudio.readAccess =
+              clientHasReadAccess(&display->client, &display->config);
+            ui.data.queryAudio.writeAccess =
+              clientHasWriteAccess(&display->client, &display->config);
+            UserInputListAppend(&userInputs, &ui);
+            UserInputFree(&ui);
+        }
+    });
+
+end:
+    ServerConfigurationListFree(&list);
+}
+
 int
 userInputThread(void* ptr)
 {
@@ -2015,6 +2081,9 @@ userInputThread(void* ptr)
                 break;
             case ClientCommand_ChangeAudioVolume:
                 selectStreamToChangeVolume(inputfd, &bytes);
+                break;
+            case ClientCommand_ChangeAudioSource:
+                selectStreamToChangeAudioSource(inputfd, &bytes);
                 break;
             case ClientCommand_UploadFile:
                 selectStreamToUploadFileTo(inputfd, &bytes, client);
@@ -2555,9 +2624,6 @@ clientHandleGeneralMessage(const GeneralMessage* message, pClient client)
             puts("");
             return true;
         case GeneralMessageTag_authenticateAck:
-            if (client == NULL) {
-                return true;
-            }
             TemLangStringCopy(
               &client->name, &message->authenticateAck, currentAllocator);
             printf("Client authenticated as %s\n", client->name.buffer);
@@ -2677,6 +2743,7 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                   currentAllocator->allocate(sizeof(AudioState));
                 record->storedAudio.allocator = currentAllocator;
                 record->current.allocator = currentAllocator;
+                record->name.allocator = currentAllocator;
                 record->volume = 1.f;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(&ui, bytes);

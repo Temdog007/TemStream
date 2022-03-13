@@ -109,6 +109,7 @@ struct CurrentAudio {
 resource StreamDisplay {
     ServerConfiguration config
     StreamDisplayData data
+    Client client
     [ 0 null ] outgoing
     FRect dstRect
     OptionalRect srcRect

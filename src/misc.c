@@ -545,6 +545,7 @@ AudioStateFree(pAudioState state)
             currentAllocator->free(state->decoder);
         }
     }
+    TemLangStringFree(&state->name);
     floatListFree(&state->current);
     uint8_tListFree(&state->storedAudio);
 }

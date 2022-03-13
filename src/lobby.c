@@ -13,22 +13,8 @@ defaultLobbyConfiguration()
 }
 
 void
-onLobbyDownTime(pServerData serverData)
+updateLobbyClients(pServerData serverData)
 {
-    if (serverIsDirty(serverData->ctx)) {
-        setServerIsDirty(serverData->ctx, false);
-        goto doUpdateClients;
-    } else {
-        const uint64_t now = SDL_GetTicks64();
-        if (now - lastStreamRefresh >=
-            serverData->config->data.lobby.refreshRate * 1000U) {
-            lastStreamRefresh = now;
-            goto doUpdateClients;
-        }
-    }
-    return;
-
-doUpdateClients : {
     LobbyMessage message = { .tag = LobbyMessageTag_allStreams,
                              .allStreams = getStreams(serverData->ctx) };
     MESSAGE_SERIALIZE(LobbyMessage, message, serverData->bytes);
@@ -37,6 +23,24 @@ doUpdateClients : {
     sendPacketToReaders(serverData->host, packet, &serverData->config->readers);
     LobbyMessageFree(&message);
 }
+
+void
+onLobbyDownTime(pServerData serverData)
+{
+    if (serverIsDirty(serverData->ctx)) {
+        setServerIsDirty(serverData->ctx, false);
+        updateLobbyClients(serverData);
+    } else {
+        const uint64_t now = SDL_GetTicks64();
+        if (now - lastStreamRefresh >=
+            serverData->config->data.lobby.refreshRate * 1000U) {
+            lastStreamRefresh = now;
+#if _DEBUG
+            puts("Refreshed streams to clients");
+#endif
+            updateLobbyClients(serverData);
+        }
+    }
 }
 
 int
@@ -111,6 +115,7 @@ startNewServer(const ServerConfiguration* serverConfig)
                                  "-B",
                                  str.buffer,
                                  NULL);
+        perror("execl");
         TemLangStringFree(&str);
         uint8_tListFree(&bytes);
         exit(result);
@@ -139,7 +144,7 @@ onConnectForLobby(ENetPeer* peer, pServerData serverData)
 {
     (void)peer;
     (void)serverData;
-    lastStreamRefresh = 0;
+    lastStreamRefresh = 0u;
     return true;
 }
 

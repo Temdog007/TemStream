@@ -420,6 +420,7 @@ typedef struct AudioState
     floatList current;
     SDL_AudioSpec spec;
     Guid id;
+    TemLangString name;
     union
     {
         OpusEncoder* encoder;

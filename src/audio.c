@@ -73,7 +73,7 @@ handleAudioMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             result = true;
             MESSAGE_SERIALIZE(AudioMessage, (*message), serverData->bytes);
             ENetPacket* packet = BytesToPacket(
-              serverData->bytes.buffer, serverData->bytes.used, true);
+              serverData->bytes.buffer, serverData->bytes.used, false);
             sendPacketToReaders(
               peer->host, packet, &serverData->config->readers);
         } break;
