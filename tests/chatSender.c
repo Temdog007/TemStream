@@ -33,7 +33,8 @@ main(int argc, char** argv)
         ENetAddress address = { 0 };
         enet_address_set_host(&address, argv[1]);
         address.port = (uint16_t)atoi(argv[2]);
-        peer = enet_host_connect(host, &address, 2, 0);
+        peer =
+          enet_host_connect(host, &address, 2, ServerConfigurationDataTag_chat);
         char buffer[512] = { 0 };
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));
         printf("Connecting to server: %s:%u...\n", buffer, address.port);

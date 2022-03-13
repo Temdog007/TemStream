@@ -215,7 +215,7 @@ printServerConfigurationForClient(const ServerConfiguration* config)
 
 bool
 handleGeneralMessage(const GeneralMessage* message,
-                     ENetPeer* peer,
+                     pServerData serverData,
                      pGeneralMessage output)
 {
     // Authentication message should have been handled previosly.
@@ -224,7 +224,7 @@ handleGeneralMessage(const GeneralMessage* message,
         case GeneralMessageTag_getClients: {
             output->tag = GeneralMessageTag_getClientsAck;
             output->getClientsAck.allocator = currentAllocator;
-            ENetHost* host = peer->host;
+            ENetHost* host = serverData->host;
             for (size_t i = 0; i < host->peerCount; ++i) {
                 ENetPeer* p = &host->peers[i];
                 pClient client = p->data;
@@ -485,6 +485,9 @@ continueServer:
                 } break;
                 case ENET_EVENT_TYPE_DISCONNECT: {
                     pClient client = (pClient)event.peer->data;
+                    if (client == NULL) {
+                        break;
+                    }
                     printf("%s disconnected\n", client->name.buffer);
                     event.peer->data = NULL;
                     ClientFree(client);

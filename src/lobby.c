@@ -159,7 +159,7 @@ handleLobbyMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
         case LobbyMessageTag_general:
             lobbyMessage.tag = LobbyMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, peer, &lobbyMessage.general);
+              &message->general, serverData, &lobbyMessage.general);
             break;
         case LobbyMessageTag_startStreaming: {
             lobbyMessage.tag = LobbyMessageTag_startStreamingAck;

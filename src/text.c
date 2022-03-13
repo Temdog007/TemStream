@@ -69,7 +69,7 @@ handleTextMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             TextMessage textMessage = { 0 };
             textMessage.tag = TextMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, peer, &textMessage.general);
+              &message->general, serverData, &textMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(TextMessage, textMessage, serverData->bytes);
                 sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
@@ -95,7 +95,7 @@ handleTextMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ENetPacket* packet = BytesToPacket(
               serverData->bytes.buffer, serverData->bytes.used, true);
             sendPacketToReaders(
-              peer->host, packet, &serverData->config->readers);
+              serverData->host, packet, &serverData->config->readers);
         } break;
         default:
             break;

@@ -120,7 +120,7 @@ handleImageMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ImageMessage imageMessage = { 0 };
             imageMessage.tag = TextMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, peer, &imageMessage.general);
+              &message->general, serverData, &imageMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(
                   ImageMessage, imageMessage, serverData->bytes);

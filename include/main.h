@@ -248,7 +248,7 @@ getServerFileName(const ServerConfiguration* config, char buffer[512]);
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
 extern bool
-handleGeneralMessage(const GeneralMessage*, ENetPeer*, pGeneralMessage);
+handleGeneralMessage(const GeneralMessage*, pServerData, pGeneralMessage);
 
 #define SERVER_FUNCTIONS(T)                                                    \
     extern bool parse##T##Configuration(                                       \

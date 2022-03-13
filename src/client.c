@@ -1257,9 +1257,11 @@ startPlayback(struct pollfd inputfd,
         printf("%d) %s\n", i + 1, SDL_GetAudioDeviceName(i, SDL_FALSE));
     }
 
-    uint32_t selected;
-    if (getIndexFromUser(inputfd, bytes, devices, &selected, true) !=
-        UserInputResult_Input) {
+    uint32_t selected = 0;
+    if (devices == 1) {
+        puts("Using the only playback device");
+    } else if (getIndexFromUser(inputfd, bytes, devices, &selected, true) !=
+               UserInputResult_Input) {
         puts("Playback canceled");
         return false;
     }
@@ -2751,7 +2753,6 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                   currentAllocator->allocate(sizeof(AudioState));
                 record->storedAudio.allocator = currentAllocator;
                 record->current.allocator = currentAllocator;
-                record->name.allocator = currentAllocator;
                 record->volume = 1.f;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(&ui, bytes);
@@ -2779,7 +2780,6 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                 playback->volume = 1.f;
                 if (startPlayback(inputfd, bytes, playback, ask)) {
                     playback->id = userInput->id;
-                    playback->storedAudio.allocator = currentAllocator;
                     SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
                     IN_MUTEX(clientData.mutex, endPlayback, {
                         AudioStatePtrListAppend(&audioStates, &playback);
