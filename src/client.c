@@ -2031,6 +2031,103 @@ end:
     ServerConfigurationListFree(&list);
 }
 
+int
+storeKey(void* userdata, SDL_Event* e)
+{
+    if (e->type == SDL_KEYDOWN) {
+        SDL_atomic_t* ptr = (SDL_atomic_t*)userdata;
+        SDL_AtomicSet(ptr, e->key.keysym.sym);
+        SDL_DelEventWatch(storeKey, userdata);
+    }
+    return EXIT_SUCCESS;
+}
+
+void
+changePressToTalk(const struct pollfd inputfd, pBytes bytes)
+{
+    pClientConfiguration config =
+      (pClientConfiguration)clientData.configuration;
+    printTalkMode(&config->talkMode);
+
+    askQuestion("Select press to talk option");
+    for (size_t i = 0; i < TalkModeTag_Length; ++i) {
+        printf("%zu) %s\n", i + 1, TalkModeTagToCharString(i));
+    }
+
+    uint32_t i = 0;
+    if (getIndexFromUser(inputfd, bytes, TalkModeTag_Length, &i, true) !=
+        UserInputResult_Input) {
+        puts("Canceling press to talk change");
+        goto end;
+    }
+
+    switch (i) {
+        case TalkModeTag_none:
+            IN_MUTEX(clientData.mutex, end4, {
+                TalkModeFree(&config->talkMode);
+                config->talkMode.tag = TalkModeTag_none;
+                config->talkMode.none = NULL;
+            });
+            break;
+        case TalkModeTag_pressToMute: {
+            askQuestion("Press key (in the WINDOW, not the CONSOLE!!!) to set "
+                        "the mute button");
+            SDL_atomic_t key = { 0 };
+            SDL_AddEventWatch((SDL_EventFilter)storeKey, &key);
+            while (!appDone && SDL_AtomicGet(&key) == 0) {
+                SDL_Delay(1);
+            }
+            IN_MUTEX(clientData.mutex, end2, {
+                TalkModeFree(&config->talkMode);
+                config->talkMode.tag = TalkModeTag_pressToMute;
+                config->talkMode.pressToMute = TemLangStringCreate(
+                  SDL_GetKeyName(SDL_AtomicGet(&key)), currentAllocator);
+            });
+        } break;
+        case TalkModeTag_pressToTalk: {
+            askQuestion("Press key (in the WINDOW, not the CONSOLE!!!) to set "
+                        "the talk button");
+            SDL_atomic_t key = { 0 };
+            SDL_AddEventWatch((SDL_EventFilter)storeKey, &key);
+            while (!appDone && SDL_AtomicGet(&key) == 0) {
+                SDL_Delay(1);
+            }
+            IN_MUTEX(clientData.mutex, end3, {
+                TalkModeFree(&config->talkMode);
+                config->talkMode.tag = TalkModeTag_pressToTalk;
+                config->talkMode.pressToTalk = TemLangStringCreate(
+                  SDL_GetKeyName(SDL_AtomicGet(&key)), currentAllocator);
+            });
+        } break;
+        default:
+            break;
+    }
+    printTalkMode(&config->talkMode);
+
+end:
+    return;
+}
+
+void
+changeSilenceThreshold(const struct pollfd inputfd, pBytes bytes)
+{
+    pClientConfiguration config =
+      (pClientConfiguration)clientData.configuration;
+    printf("Current silence threshold: %f\n", config->silenceThreshold);
+
+    askQuestion("Enter new silence threshold");
+
+    if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
+        puts("Canceling silence threshold change");
+        goto end;
+    }
+
+    config->silenceThreshold = atof((char*)bytes->buffer);
+
+end:
+    return;
+}
+
 void
 selectStreamToChangeAudioSource(struct pollfd inputfd, pBytes bytes)
 {
@@ -2193,6 +2290,12 @@ userInputThread(void* ptr)
                         }
                     }
                 });
+                break;
+            case ClientCommand_ChangePressToTalk:
+                changePressToTalk(inputfd, &bytes);
+                break;
+            case ClientCommand_ChangeSilenceThreshold:
+                changeSilenceThreshold(inputfd, &bytes);
                 break;
             default:
                 fprintf(stderr,
@@ -3238,18 +3341,15 @@ handleUserEvent(const SDL_UserEvent* e,
             switch (config->talkMode.tag) {
                 case TalkModeTag_pressToMute:
                     SDL_PauseAudioDevice(deviceId, SDL_FALSE);
-                    SDL_AddEventWatch((SDL_EventFilter)handleMicrophoneMute,
-                                      e->data1);
                     break;
                 case TalkModeTag_pressToTalk:
                     SDL_PauseAudioDevice(deviceId, SDL_TRUE);
-                    SDL_AddEventWatch((SDL_EventFilter)handleMicrophoneMute,
-                                      e->data1);
                     break;
                 default:
                     SDL_PauseAudioDevice(deviceId, SDL_FALSE);
                     break;
             }
+            SDL_AddEventWatch((SDL_EventFilter)handleMicrophoneMute, e->data1);
         } break;
         default:
             break;

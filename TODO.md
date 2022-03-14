@@ -89,7 +89,7 @@
 - [x] Put stream files in a directory
 - [x] Allow press to talk to be set for recording microphone
 - [x] Discard audio frames if they are mostly silence
-- [ ] Allow press to talk and silence to be changed during execution
+- [x] Allow press to talk and silence to be changed during execution
 - [ ] Make authentication work as a plugin
 - [ ] Record window audio
 

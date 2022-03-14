@@ -10,6 +10,8 @@ enum ClientCommand {
     ToggleDisplay
     ChangeAudioVolume
     ChangeAudioSource
+    ChangePressToTalk
+    ChangeSilenceThreshold
     Quit
 }
 
