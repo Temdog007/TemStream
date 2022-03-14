@@ -83,7 +83,7 @@
 
 ### Mar 13, 2022
 - [x] Fix audio not playing on separate clients
-- [ ] Allow audio source/destinations to be changed
+- [x] Allow audio source/destinations to be changed
 - [ ] Allow press to talk to be set for recording microphone
 - [ ] Make authentication work as a plugin
 

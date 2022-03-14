@@ -69,7 +69,7 @@ startPlayback(struct pollfd inputfd,
               const bool);
 
 void
-handleUserInput(const UserInput*, pBytes);
+handleUserInput(const struct pollfd, const UserInput*, pBytes);
 
 bool
 clientHandleLobbyMessage(const LobbyMessage* message, pClient client);
@@ -2021,11 +2021,14 @@ selectStreamToChangeAudioSource(struct pollfd inputfd, pBytes bytes)
     }
 
     IN_MUTEX(clientData.mutex, end23, {
-        const StreamDisplay* display = NULL;
+        size_t listIndex = 0;
         if (GetStreamDisplayFromName(
-              &clientData.displays, &list.buffer[i].name, &display, NULL)) {
+              &clientData.displays, &list.buffer[i].name, NULL, &listIndex)) {
+            pStreamDisplay display = &clientData.displays.buffer[i];
+            AudioStateRemoveFromList(&audioStates, &display->id);
             UserInput ui = { 0 };
             ui.id = display->id;
+            display->choosingPlayback = true;
             ui.data.tag = UserInputDataTag_queryAudio;
             ui.data.queryAudio.readAccess =
               clientHasReadAccess(&display->client, &display->config);
@@ -2060,7 +2063,7 @@ userInputThread(void* ptr)
                 UserInput ui = { 0 };
                 UserInputCopy(&ui, &userInputs.buffer[i], currentAllocator);
                 SDL_UnlockMutex(clientData.mutex);
-                handleUserInput(&ui, &bytes);
+                handleUserInput(inputfd, &ui, &bytes);
                 SDL_LockMutex(clientData.mutex);
                 UserInputFree(&ui);
             }
@@ -2739,7 +2742,9 @@ displayError(SDL_Window* window, const char* e, const bool force)
 }
 
 void
-handleUserInput(const UserInput* userInput, pBytes bytes)
+handleUserInput(const struct pollfd inputfd,
+                const UserInput* userInput,
+                pBytes bytes)
 {
     ServerConfigurationDataTag serverType = ServerConfigurationDataTag_Invalid;
     IN_MUTEX(clientData.mutex, end2, {
@@ -2755,9 +2760,6 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
             bool d;
             USE_DISPLAY(
               clientData.mutex, endD, d, { display->choosingPlayback = true; });
-            const struct pollfd inputfd = { .events = POLLIN,
-                                            .revents = 0,
-                                            .fd = STDIN_FILENO };
             bool ask = false;
             if (userInput->data.queryAudio.writeAccess) {
                 UserInput ui = { 0 };
@@ -2769,7 +2771,7 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                 record->current.allocator = currentAllocator;
                 record->volume = 1.f;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
-                    handleUserInput(&ui, bytes);
+                    handleUserInput(inputfd, &ui, bytes);
                     ask = true;
                     if (record->encoder != NULL) {
                         record->id = userInput->id;

@@ -550,6 +550,22 @@ AudioStateFree(pAudioState state)
     uint8_tListFree(&state->storedAudio);
 }
 
+void
+AudioStateRemoveFromList(pAudioStatePtrList list, const Guid* id)
+{
+    size_t i = 0;
+    while (i < list->used) {
+        pAudioState ptr = list->buffer[i];
+        if (GuidEquals(&ptr->id, id)) {
+            AudioStateFree(ptr);
+            currentAllocator->free(ptr);
+            AudioStatePtrListSwapRemove(list, i);
+        } else {
+            ++i;
+        }
+    }
+}
+
 bool
 AudioStateFromGuid(const AudioStatePtrList* list,
                    const Guid* id,
