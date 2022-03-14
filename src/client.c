@@ -624,7 +624,7 @@ streamConnectionThread(void* ptr)
     bool displayMissing = false;
     USE_DISPLAY(clientData.mutex, fend, displayMissing, {
         if (config->port.tag != PortTag_port) {
-            printf("Cannot opening connection to stream due "
+            printf("Cannot open connection to stream due "
                    "to an invalid port\n");
             goto fend;
         }

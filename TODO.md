@@ -84,13 +84,16 @@
 ### Mar 13, 2022
 - [x] Fix audio not playing on separate clients
 - [x] Allow audio source/destinations to be changed
+
+### Mar 14, 2022
+- [x] Put stream files in a directory
 - [ ] Allow press to talk to be set for recording microphone
 - [ ] Make authentication work as a plugin
+- [ ] Record window audio
 
 ### Later
 - [ ] Play gifs
-- [ ] Record windows
-- [ ] Record screen
+- [ ] Record window display
 - [ ] Record webcam
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version

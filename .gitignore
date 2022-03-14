@@ -98,3 +98,5 @@ yarn-error.log*
 *.png
 *.txt
 *.temstream
+
+streams/

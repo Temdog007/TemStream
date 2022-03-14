@@ -47,6 +47,7 @@ defaultServerConfiguration()
         .redisIp = TemLangStringCreate("localhost", currentAllocator),
         .redisPort = 6379,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
+        .saveDirectory = TemLangStringCreate("", currentAllocator),
         .port = { .port = 10000u, .tag = PortTag_port },
         .maxClients = 1024u,
         .timeout = STREAM_TIMEOUT,
@@ -79,6 +80,8 @@ parseServerConfiguration(const char* key,
     STR_EQUALS(key, "--redis-port", keyLen, { goto parseRedisPort; });
     STR_EQUALS(key, "-T", keyLen, { goto parseTimeout; });
     STR_EQUALS(key, "--timeout", keyLen, { goto parseTimeout; });
+    STR_EQUALS(key, "-D", keyLen, { goto parseDirectory; });
+    STR_EQUALS(key, "--directory", keyLen, { goto parseDirectory; });
     // TODO: parse authentication
     return false;
 
@@ -95,6 +98,11 @@ parseMaxClients : {
 parseIp : {
     TemLangStringFree(&config->redisIp);
     config->redisIp = TemLangStringCreate(value, currentAllocator);
+    return true;
+}
+parseDirectory : {
+    TemLangStringFree(&config->saveDirectory);
+    config->saveDirectory = TemLangStringCreate(value, currentAllocator);
     return true;
 }
 parseRedisPort : {
@@ -178,8 +186,9 @@ int
 printServerConfiguration(const ServerConfiguration* configuration)
 {
     int offset =
-      printf("Hostname: %s\nRedis: %s:%u\nMax clients: %u\nTimeout: %" PRIu64
-             "\n",
+      printf("Save Directory: %s\nHostname: %s\nRedis: %s:%u\nMax clients: "
+             "%u\nTimeout: %" PRIu64 "\n",
+             configuration->saveDirectory.buffer,
              configuration->hostname.buffer,
              configuration->redisIp.buffer,
              configuration->redisPort,
@@ -292,7 +301,15 @@ cleanupServer(ENetHost* server)
 const char*
 getServerFileName(const ServerConfiguration* config, char buffer[512])
 {
-    snprintf(buffer, 512, "%s.temstream", config->name.buffer);
+    if (TemLangStringIsEmpty(&config->saveDirectory)) {
+        snprintf(buffer, 512, "%s.temstream", config->name.buffer);
+    } else {
+        snprintf(buffer,
+                 512,
+                 "%s/%s.temstream",
+                 config->saveDirectory.buffer,
+                 config->name.buffer);
+    }
     return buffer;
 }
 

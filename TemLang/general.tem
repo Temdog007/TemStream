@@ -79,10 +79,11 @@ struct ServerConfiguration {
     string redisIp
     string hostname
     string name
+    string saveDirectory
     u64 timeout
+    Port port
     i32 redisPort
     u32 maxClients
-    Port port
     bool record
 }
 

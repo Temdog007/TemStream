@@ -17,6 +17,15 @@ updateLobbyClients(pServerData serverData)
 {
     LobbyMessage message = { .tag = LobbyMessageTag_allStreams,
                              .allStreams = getStreams(serverData->ctx) };
+    // Don't show: redis ip and port, save directory, timeout, record
+    for (size_t i = 0; i < message.allStreams.used; ++i) {
+        pServerConfiguration c = &message.allStreams.buffer[i];
+        TemLangStringFree(&c->redisIp);
+        c->redisPort = 0;
+        TemLangStringFree(&c->saveDirectory);
+        c->timeout = 0;
+        c->record = false;
+    }
     MESSAGE_SERIALIZE(LobbyMessage, message, serverData->bytes);
     ENetPacket* packet =
       BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
