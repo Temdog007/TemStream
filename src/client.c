@@ -122,12 +122,14 @@ defaultClientConfiguration()
         .fullscreen = false,
         .windowWidth = 800,
         .windowHeight = 600,
+        .silenceThreshold = 0.f,
         .fontSize = 48,
         .noGui = false,
         .showLabel = true,
         .noAudio = false,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .port = 10000,
+        .talkMode = { .none = NULL, .tag = TalkModeTag_none },
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
     };
@@ -167,6 +169,8 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
         STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
         STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
+        STR_EQUALS(key, "-ST", keyLen, { goto parseSilence; });
+        STR_EQUALS(key, "--silence-threshold", keyLen, { goto parseSilence; });
         STR_EQUALS(key, "-SL", keyLen, { goto parseLabel; });
         STR_EQUALS(key, "--show-label", keyLen, { goto parseLabel; });
         STR_EQUALS(key, "--press-to-talk", keyLen, {
@@ -243,6 +247,10 @@ parseClientConfiguration(const int argc,
         client->showLabel = atoi(value);
         continue;
     }
+    parseSilence : {
+        client->silenceThreshold = atof(value);
+        continue;
+    }
     }
     return true;
 }
@@ -270,7 +278,8 @@ printClientConfiguration(const ClientConfiguration* configuration)
 {
     return printf(
              "Width: %d\nHeight: %d\nFullscreen: %d\nTTF file: %s\nFont Size: "
-             "%d\nNo Gui: %d\nShow label: %d\nHostname: %s\nPort: %u\n",
+             "%d\nNo Gui: %d\nShow label: %d\nHostname: %s\nPort: %u\nSilence "
+             "Threshold: %f\n",
              configuration->windowWidth,
              configuration->windowHeight,
              configuration->fullscreen,
@@ -279,7 +288,8 @@ printClientConfiguration(const ClientConfiguration* configuration)
              configuration->noGui,
              configuration->showLabel,
              configuration->hostname.buffer,
-             configuration->port) +
+             configuration->port,
+             configuration->silenceThreshold) +
            printTalkMode(&configuration->talkMode) +
            printClientAuthentication(&configuration->authentication);
 }
@@ -1175,10 +1185,21 @@ selectAudioStreamSource(struct pollfd inputfd,
 void
 recordCallback(pAudioState state, uint8_t* data, int len)
 {
+    const float* fdata = (float*)data;
+    const int fsize = len / sizeof(float);
+    float sum = 0.f;
+    for (int i = 0; i < fsize; ++i) {
+        sum += fabsf(fdata[i]);
+    }
+    const ClientConfiguration* config =
+      (const ClientConfiguration*)clientData.configuration;
+    if (sum / fsize < config->silenceThreshold) {
+        return;
+    }
+
     uint8_tListQuickAppend(&state->storedAudio, data, len);
     state->current.used = 0;
-    floatListQuickAppend(
-      &state->current, (float*)state->storedAudio.buffer, len / sizeof(float));
+    floatListQuickAppend(&state->current, fdata, fsize);
 }
 
 bool

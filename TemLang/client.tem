@@ -61,6 +61,7 @@ struct ClientConfiguration {
     string ttfFile
     string hostname
     TalkMode talkMode
+    f32 silenceThreshold
     i32 fontSize
     i32 windowWidth
     i32 windowHeight
