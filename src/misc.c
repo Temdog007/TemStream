@@ -589,6 +589,28 @@ AudioStateFromGuid(const AudioStatePtrList* list,
 }
 
 bool
+AudioStateFromId(const AudioStatePtrList* list,
+                 const SDL_AudioDeviceID id,
+                 const bool isRecording,
+                 const AudioState** state,
+                 size_t* index)
+{
+    for (size_t i = 0; i < list->used; ++i) {
+        const AudioState* ptr = list->buffer[i];
+        if (ptr->isRecording == isRecording && ptr->deviceId == id) {
+            if (state != NULL) {
+                *state = ptr;
+            }
+            if (index != NULL) {
+                *index = i;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
 serverIsDirty(redisContext* ctx)
 {
     redisReply* reply =

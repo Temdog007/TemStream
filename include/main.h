@@ -42,6 +42,7 @@
 #define TEM_STREAM_SERVER_DIRTY_KEY "TemStream Servers Dirty"
 
 #define LOG_READER false
+#define PRINT_RENDER_INFO false
 
 #define INIT_ALLOCATOR(S)                                                      \
     (Bytes)                                                                    \
@@ -167,7 +168,10 @@ extern int
 printServerConfigurationForClient(const ServerConfiguration*);
 
 extern int
-printAuthenticate(const ServerAuthentication*);
+printServerAuthentication(const ServerAuthentication*);
+
+extern int
+printClientAuthentication(const ClientAuthentication*);
 
 extern int
 printSendingPacket(const ENetPacket*);
@@ -180,9 +184,6 @@ printBytes(const uint8_t*, const size_t);
 
 extern int
 printAudioSpec(const SDL_AudioSpec*);
-
-extern int
-printServerAuthentication(const ServerAuthentication*);
 
 int
 printPort(const Port* port);
@@ -444,6 +445,11 @@ typedef AudioState* AudioStatePtr;
 MAKE_COPY_AND_FREE(AudioStatePtr);
 MAKE_DEFAULT_LIST(AudioStatePtr);
 
+typedef struct MicrophoneMuting
+{
+    SDL_AudioDeviceID id;
+} MicrophoneMuting, *pMicrophoneMuting;
+
 extern void
 AudioStateRemoveFromList(pAudioStatePtrList, const Guid*);
 
@@ -453,6 +459,13 @@ AudioStateFromGuid(const AudioStatePtrList*,
                    const bool isRecording,
                    const AudioState**,
                    size_t*);
+
+extern bool
+AudioStateFromId(const AudioStatePtrList*,
+                 const SDL_AudioDeviceID,
+                 const bool isRecording,
+                 const AudioState**,
+                 size_t*);
 
 extern bool
 decodeWAV(const void*, size_t, pBytes);

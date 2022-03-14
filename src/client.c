@@ -6,7 +6,6 @@
 #define RENDER_NOW(w, h)                                                       \
     drawTextures(renderer,                                                     \
                  ttfFont,                                                      \
-                 config,                                                       \
                  targetDisplay,                                                \
                  (float)w - MIN_WIDTH,                                         \
                  (float)h - MIN_HEIGHT)
@@ -170,6 +169,20 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
         STR_EQUALS(key, "-SL", keyLen, { goto parseLabel; });
         STR_EQUALS(key, "--show-label", keyLen, { goto parseLabel; });
+        STR_EQUALS(key, "--press-to-talk", keyLen, {
+            TalkModeFree(&client->talkMode);
+            client->talkMode.tag = TalkModeTag_pressToTalk;
+            client->talkMode.pressToTalk =
+              TemLangStringCreate(value, currentAllocator);
+            continue;
+        });
+        STR_EQUALS(key, "--press-to-mute", keyLen, {
+            TalkModeFree(&client->talkMode);
+            client->talkMode.tag = TalkModeTag_pressToMute;
+            client->talkMode.pressToMute =
+              TemLangStringCreate(value, currentAllocator);
+            continue;
+        });
         // TODO: parse authentication
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
@@ -235,20 +248,40 @@ parseClientConfiguration(const int argc,
 }
 
 int
+printTalkMode(const TalkMode* mode)
+{
+    int offset = printf("Talk Mode: ");
+    switch (mode->tag) {
+        case TalkModeTag_pressToMute:
+            offset += printf("Press to mute=%s\n", mode->pressToMute.buffer);
+            break;
+        case TalkModeTag_pressToTalk:
+            offset += printf("Press to talk=%s\n", mode->pressToTalk.buffer);
+            break;
+        default:
+            offset += puts("None");
+            break;
+    }
+    return offset;
+}
+
+int
 printClientConfiguration(const ClientConfiguration* configuration)
 {
     return printf(
-      "Width: %d\nHeight: %d\nFullscreen: %d\nTTF file: %s\nFont size: %d\nNo "
-      "Gui: %d\nShow label: %d\nHostname: %s\nPort: %u\n",
-      configuration->windowWidth,
-      configuration->windowHeight,
-      configuration->fullscreen,
-      configuration->ttfFile.buffer,
-      configuration->fontSize,
-      configuration->noGui,
-      configuration->showLabel,
-      configuration->hostname.buffer,
-      configuration->port);
+             "Width: %d\nHeight: %d\nFullscreen: %d\nTTF file: %s\nFont Size: "
+             "%d\nNo Gui: %d\nShow label: %d\nHostname: %s\nPort: %u\n",
+             configuration->windowWidth,
+             configuration->windowHeight,
+             configuration->fullscreen,
+             configuration->ttfFile.buffer,
+             configuration->fontSize,
+             configuration->noGui,
+             configuration->showLabel,
+             configuration->hostname.buffer,
+             configuration->port) +
+           printTalkMode(&configuration->talkMode) +
+           printClientAuthentication(&configuration->authentication);
 }
 
 void
@@ -379,45 +412,43 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
                     .buffer = buffer,
                     .used = 0,
                     .size = sizeof(buffer) };
+    const ClientAuthentication authentication =
+      ((const ClientConfiguration*)clientData.configuration)->authentication;
+    printClientAuthentication(&authentication);
     switch (type) {
         case ServerConfigurationDataTag_lobby: {
             LobbyMessage message = { 0 };
             message.tag = LobbyMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate =
-              *(pClientAuthentication)clientData.authentication;
+            message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(LobbyMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_chat: {
             ChatMessage message = { 0 };
             message.tag = ChatMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate =
-              *(pClientAuthentication)clientData.authentication;
+            message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(ChatMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_text: {
             TextMessage message = { 0 };
             message.tag = TextMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate =
-              *(pClientAuthentication)clientData.authentication;
+            message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(TextMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_audio: {
             AudioMessage message = { 0 };
             message.tag = AudioMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate =
-              *(pClientAuthentication)clientData.authentication;
+            message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(AudioMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_image: {
             ImageMessage message = { 0 };
             message.tag = ImageMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate =
-              *(pClientAuthentication)clientData.authentication;
+            message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(ImageMessage, message, bytes);
         } break;
         default:
@@ -1205,6 +1236,11 @@ startRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
     printf("Encoder: %p (%d)\n", state->encoder, size);
 #endif
 
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_RecordingAudio;
+    e.user.data1 = (void*)(size_t)state->deviceId;
+    SDL_PushEvent(&e);
     return true;
 }
 
@@ -2508,7 +2544,6 @@ updateAllDisplays(SDL_Renderer* renderer,
 void
 drawTextures(SDL_Renderer* renderer,
              TTF_Font* ttfFont,
-             const ClientConfiguration* config,
              const size_t target,
              const float maxX,
              const float maxY)
@@ -2562,6 +2597,8 @@ drawTextures(SDL_Renderer* renderer,
         }
     }
 
+    const ClientConfiguration* config =
+      (const ClientConfiguration*)clientData.configuration;
     if (config->showLabel && display != NULL) {
         const SDL_Color fg = { .a = 128u, .r = 255u, .g = 255u, .b = 255u };
         const SDL_Color bg = { .a = 128u, .r = 0u, .g = 0u, .b = 0u };
@@ -2775,7 +2812,6 @@ handleUserInput(const struct pollfd inputfd,
                     ask = true;
                     if (record->encoder != NULL) {
                         record->id = userInput->id;
-                        SDL_PauseAudioDevice(record->deviceId, SDL_FALSE);
                         IN_MUTEX(clientData.mutex, endRecord, {
                             AudioStatePtrListAppend(&audioStates, &record);
                         });
@@ -3046,12 +3082,60 @@ handleUserInput(const struct pollfd inputfd,
     }
 }
 
+int
+handleMicrophoneMute(void* userdata, SDL_Event* e)
+{
+    bool keyDown;
+    switch (e->type) {
+        case SDL_KEYDOWN:
+            if (e->key.repeat) {
+                return SDL_FALSE;
+            }
+            keyDown = true;
+            break;
+        case SDL_KEYUP:
+            keyDown = false;
+            break;
+        default:
+            return SDL_FALSE;
+    }
+    const SDL_AudioDeviceID id = (SDL_AudioDeviceID)(size_t)userdata;
+    bool exists;
+    IN_MUTEX(clientData.mutex, end, {
+        exists = AudioStateFromId(&audioStates, id, true, NULL, NULL);
+    })
+    if (!exists) {
+        SDL_DelEventWatch((SDL_EventFilter)handleMicrophoneMute, userdata);
+        return SDL_FALSE;
+    }
+    const ClientConfiguration* config =
+      (const ClientConfiguration*)clientData.configuration;
+    switch (config->talkMode.tag) {
+        case TalkModeTag_pressToMute:
+            if (SDL_GetKeyFromName(config->talkMode.pressToMute.buffer) !=
+                e->key.keysym.sym) {
+                break;
+            }
+            SDL_PauseAudioDevice(id, keyDown);
+            break;
+        case TalkModeTag_pressToTalk:
+            if (SDL_GetKeyFromName(config->talkMode.pressToTalk.buffer) !=
+                e->key.keysym.sym) {
+                break;
+            }
+            SDL_PauseAudioDevice(id, !keyDown);
+            break;
+        default:
+            break;
+    }
+    return SDL_TRUE;
+}
+
 void
 handleUserEvent(const SDL_UserEvent* e,
                 SDL_Window* window,
                 SDL_Renderer* renderer,
                 TTF_Font* ttfFont,
-                const ClientConfiguration* config,
                 const size_t targetDisplay,
                 ENetPeer* peer,
                 pBytes bytes)
@@ -3125,6 +3209,27 @@ handleUserEvent(const SDL_UserEvent* e,
             currentAllocator->free(ptr);
             RENDER_NOW(w, h);
         } break;
+        case CustomEvent_RecordingAudio: {
+            const SDL_AudioDeviceID deviceId =
+              (SDL_AudioDeviceID)(size_t)e->data1;
+            const ClientConfiguration* config =
+              (const ClientConfiguration*)clientData.configuration;
+            switch (config->talkMode.tag) {
+                case TalkModeTag_pressToMute:
+                    SDL_PauseAudioDevice(deviceId, SDL_FALSE);
+                    SDL_AddEventWatch((SDL_EventFilter)handleMicrophoneMute,
+                                      e->data1);
+                    break;
+                case TalkModeTag_pressToTalk:
+                    SDL_PauseAudioDevice(deviceId, SDL_TRUE);
+                    SDL_AddEventWatch((SDL_EventFilter)handleMicrophoneMute,
+                                      e->data1);
+                    break;
+                default:
+                    SDL_PauseAudioDevice(deviceId, SDL_FALSE);
+                    break;
+            }
+        } break;
         default:
             break;
     }
@@ -3133,8 +3238,7 @@ handleUserEvent(const SDL_UserEvent* e,
 int
 runClient(const Configuration* configuration)
 {
-    clientData.authentication =
-      (NullValue)&configuration->client.authentication;
+    clientData.configuration = (NullValue)&configuration->client;
 
     int result = EXIT_FAILURE;
     puts("Running client");
@@ -3206,7 +3310,7 @@ runClient(const Configuration* configuration)
 
         {
             SDL_RendererInfo info = { 0 };
-#if _DEBUG
+#if PRINT_RENDER_INFO
             int drivers = SDL_GetNumRenderDrivers();
             for (int i = 0; i < drivers; ++i) {
                 SDL_GetRenderDriverInfo(i, &info);
@@ -3509,7 +3613,6 @@ runClient(const Configuration* configuration)
                                     window,
                                     renderer,
                                     ttfFont,
-                                    config,
                                     targetDisplay,
                                     peer,
                                     &bytes);

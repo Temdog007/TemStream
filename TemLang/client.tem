@@ -19,6 +19,7 @@ enum CustomEvent {
     SendLobbyMessage
     SaveScreenshot
     UpdateAudioDisplay
+    RecordingAudio
 }
 
 struct Client {
@@ -49,10 +50,17 @@ struct UserInput {
 
 inlineC "MAKE_DEFAULT_LIST(UserInput);"
 
+variant TalkMode {
+    string pressToTalk
+    string pressToMute
+    null none
+}
+
 struct ClientConfiguration {
     ClientAuthentication authentication
     string ttfFile
     string hostname
+    TalkMode talkMode
     i32 fontSize
     i32 windowWidth
     i32 windowHeight
@@ -133,7 +141,7 @@ inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
 resource ClientData {
     [0 ServerConfiguration] allStreams
     [0 StreamDisplay] displays
-    null authentication
+    null configuration
     null mutex
 } c {
     inlineC "SDL_DestroyMutex(c.mutex);"

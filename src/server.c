@@ -136,12 +136,16 @@ parseTimeout : {
 }
 
 int
-printAuthenticate(const ServerAuthentication* auth)
+printClientAuthentication(const ClientAuthentication* auth)
 {
-    int offset = printf("Autentication: ");
+    int offset = printf("Client Autentication: ");
     switch (auth->tag) {
-        case ServerAuthenticationTag_file:
-            offset += printf("from file (%s)\n", auth->file.buffer);
+        case ClientAuthenticationTag_credentials:
+            offset += printf("username (%s) and password\n",
+                             auth->credentials.username.buffer);
+            break;
+        case ClientAuthenticationTag_token:
+            offset += printf("token\n");
             break;
         default:
             offset += puts("none");

@@ -87,7 +87,8 @@
 
 ### Mar 14, 2022
 - [x] Put stream files in a directory
-- [ ] Allow press to talk to be set for recording microphone
+- [x] Allow press to talk to be set for recording microphone
+- [ ] Discard audio frames if they are mostly silence
 - [ ] Make authentication work as a plugin
 - [ ] Record window audio
 
