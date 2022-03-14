@@ -495,6 +495,12 @@ continueServer:
                 } break;
                 case ENET_EVENT_TYPE_RECEIVE: {
                     pClient client = (pClient)event.peer->data;
+                    if (client == NULL) {
+                        fprintf(stderr, "Got peer without a client\n");
+                        enet_peer_disconnect(event.peer, 0);
+                        enet_packet_destroy(event.packet);
+                        break;
+                    }
                     const Bytes temp = { .allocator = currentAllocator,
                                          .buffer = event.packet->data,
                                          .size = event.packet->dataLength,

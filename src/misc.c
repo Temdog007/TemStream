@@ -666,10 +666,14 @@ sendPacketToReaders(ENetHost* host, ENetPacket* packet, const Access* access)
             continue;
         }
         PEER_SEND(peer, SERVER_CHANNEL, packet);
+#if LOG_READER
+        printf("Sending packet to client '%s'\n", client->name.buffer);
+#endif
     }
     if (packet->referenceCount == 0) {
         enet_packet_destroy(packet);
     }
+    enet_host_flush(host);
 }
 
 ServerConfigurationList

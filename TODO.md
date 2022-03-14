@@ -82,7 +82,7 @@
 - [x] Server isn't sending data to all peers
 
 ### Mar 13, 2022
-- [ ] Reset audio encoder when a client joins
+- [x] Fix audio not playing on separate clients
 - [ ] Allow audio source/destinations to be changed
 - [ ] Allow press to talk to be set for recording microphone
 - [ ] Make authentication work as a plugin

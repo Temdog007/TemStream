@@ -41,6 +41,8 @@
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
 #define TEM_STREAM_SERVER_DIRTY_KEY "TemStream Servers Dirty"
 
+#define LOG_READER false
+
 #define INIT_ALLOCATOR(S)                                                      \
     (Bytes)                                                                    \
     {                                                                          \

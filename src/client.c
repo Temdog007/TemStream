@@ -543,7 +543,7 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
 
 bool
 clientHandleAudioMessage(const Bytes* packetBytes,
-                         const StreamDisplay* display,
+                         pStreamDisplay display,
                          pAudioState playback,
                          const bool isRecording)
 {
@@ -555,6 +555,7 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             UserInput input = { 0 };
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryAudio;
+            display->choosingPlayback = true;
             success = clientHandleGeneralMessage(&message.general,
                                                  &input.data.queryAudio.client);
             if (success &&
@@ -569,15 +570,14 @@ clientHandleAudioMessage(const Bytes* packetBytes,
         } break;
         case AudioMessageTag_audio:
             if (playback == NULL || playback->decoder == NULL) {
-                if (isRecording) {
+                if (isRecording || display->choosingPlayback) {
                     success = true;
-                    break;
+                } else {
+                    fprintf(stderr,
+                            "No playback device assigned to this "
+                            "stream. Disconnecting from audio server...\n");
+                    success = false;
                 }
-                fprintf(stderr,
-                        "No playback device assigned to this "
-                        "stream. "
-                        "Disconnecting from audio server...\n");
-                success = false;
                 break;
             }
             void* data = NULL;
@@ -614,7 +614,8 @@ streamConnectionThread(void* ptr)
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
-    NullValueList packetList = { .allocator = currentAllocator };
+    NullValueList incomingPackets = { .allocator = currentAllocator };
+    NullValueList outgoingPackets = { .allocator = currentAllocator };
     Bytes bytes = { .allocator = currentAllocator,
                     .used = 0,
                     .size = MAX_PACKET_SIZE,
@@ -699,7 +700,8 @@ streamConnectionThread(void* ptr)
                     });
                     goto end;
                 case ENET_EVENT_TYPE_RECEIVE:
-                    NullValueListAppend(&packetList, (NullValue*)&event.packet);
+                    NullValueListAppend(&incomingPackets,
+                                        (NullValue*)&event.packet);
                     break;
                 case ENET_EVENT_TYPE_NONE:
                     break;
@@ -723,7 +725,7 @@ streamConnectionThread(void* ptr)
                 const size_t bytesRead = encodeAudioData(record->encoder,
                                                          &record->storedAudio,
                                                          record->spec,
-                                                         &packetList);
+                                                         &outgoingPackets);
                 uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
             }
             SDL_UnlockAudioDevice(record->deviceId);
@@ -747,6 +749,11 @@ streamConnectionThread(void* ptr)
             }
 #endif
         }
+        for (size_t i = 0; i < outgoingPackets.used; ++i) {
+            NullValue packet = outgoingPackets.buffer[i];
+            PEER_SEND(peer, CLIENT_CHANNEL, packet);
+        }
+        outgoingPackets.used = 0;
         USE_DISPLAY(clientData.mutex, fend563, displayMissing, {
             pAudioState playback = NULL;
             {
@@ -756,8 +763,8 @@ streamConnectionThread(void* ptr)
                     playback = audioStates.buffer[listIndex];
                 }
             }
-            for (size_t i = 0; i < packetList.used; ++i) {
-                ENetPacket* packet = (ENetPacket*)packetList.buffer[i];
+            for (size_t i = 0; i < incomingPackets.used; ++i) {
+                ENetPacket* packet = (ENetPacket*)incomingPackets.buffer[i];
                 Bytes packetBytes = { 0 };
                 packetBytes.allocator = currentAllocator;
                 packetBytes.buffer = packet->data;
@@ -798,8 +805,7 @@ streamConnectionThread(void* ptr)
                 }
                 enet_packet_destroy(packet);
             }
-            NullValueListFree(&packetList);
-            packetList.allocator = currentAllocator;
+            incomingPackets.used = 0;
         });
     }
 
@@ -827,10 +833,14 @@ end:
             AudioStatePtrListSwapRemove(&audioStates, i);
         }
     });
-    for (size_t i = 0; i < packetList.used; ++i) {
-        enet_packet_destroy(packetList.buffer[i]);
+    for (size_t i = 0; i < incomingPackets.used; ++i) {
+        enet_packet_destroy(incomingPackets.buffer[i]);
     }
-    NullValueListFree(&packetList);
+    NullValueListFree(&incomingPackets);
+    for (size_t i = 0; i < outgoingPackets.used; ++i) {
+        enet_packet_destroy(outgoingPackets.buffer[i]);
+    }
+    NullValueListFree(&outgoingPackets);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);
     closeHostAndPeer(host, peer);
@@ -2741,6 +2751,10 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
     });
     switch (userInput->data.tag) {
         case UserInputDataTag_queryAudio: {
+            const Guid* id = &userInput->id;
+            bool d;
+            USE_DISPLAY(
+              clientData.mutex, endD, d, { display->choosingPlayback = true; });
             const struct pollfd inputfd = { .events = POLLIN,
                                             .revents = 0,
                                             .fd = STDIN_FILENO };
@@ -2791,6 +2805,9 @@ handleUserInput(const UserInput* userInput, pBytes bytes)
                     currentAllocator->free(playback);
                 }
             }
+            USE_DISPLAY(clientData.mutex, endD2, d, {
+                display->choosingPlayback = false;
+            });
         } break;
         case UserInputDataTag_text:
             switch (serverType) {
