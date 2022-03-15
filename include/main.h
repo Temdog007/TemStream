@@ -93,9 +93,7 @@ GetStreamDisplayFromGuid(const StreamDisplayList*,
 
 #define INVALID_SOCKET (-1)
 
-typedef SDL_Thread* pSDL_Thread;
-MAKE_COPY_AND_FREE(pSDL_Thread);
-MAKE_DEFAULT_LIST(pSDL_Thread);
+typedef bool (*AuthenticateFunc)(int, char*);
 
 extern int
 printVersion();
@@ -168,10 +166,7 @@ extern int
 printServerConfigurationForClient(const ServerConfiguration*);
 
 extern int
-printServerAuthentication(const ServerAuthentication*);
-
-extern int
-printClientAuthentication(const ClientAuthentication*);
+printAuthentication(const Authentication*);
 
 extern int
 printSendingPacket(const ENetPacket*);
@@ -201,9 +196,6 @@ parseConfiguration(const int, const char**, pConfiguration);
 
 extern bool
 parseCommonConfiguration(const char*, const char*, pConfiguration);
-
-extern bool
-parseCredentials(const char*, pCredentials);
 
 // Run
 
@@ -375,13 +367,13 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
 
 extern bool
 authenticateClient(pClient,
-                   const ServerAuthentication*,
-                   const ClientAuthentication*,
+                   const AuthenticateFunc,
+                   const Authentication*,
                    pRandomState);
 
 extern AuthenticateResult
 handleClientAuthentication(pClient,
-                           const ServerAuthentication* sAuth,
+                           const AuthenticateFunc,
                            const GeneralMessage*,
                            pRandomState);
 

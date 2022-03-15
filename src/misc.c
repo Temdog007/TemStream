@@ -60,22 +60,6 @@ clientHasWriteAccess(const Client* client, const ServerConfiguration* config)
     return clientHasAccess(client, &config->writers);
 }
 
-bool
-parseCredentials(const char* str, pCredentials c)
-{
-    const size_t len = strlen(str);
-    for (size_t i = 0; i < len; ++i) {
-        if (str[i] != ':') {
-            continue;
-        }
-
-        c->username = TemLangStringCreateFromSize(str, i + 1, currentAllocator);
-        c->password = TemLangStringCreate(str + i + 1, currentAllocator);
-        return true;
-    }
-    return false;
-}
-
 uint64_t
 randomBetween64(pRandomState rs, const uint64_t min, const uint64_t max)
 {
@@ -245,18 +229,9 @@ printReceivedPacket(const ENetPacket* packet)
 }
 
 int
-printServerAuthentication(const ServerAuthentication* auth)
+printAuthentication(const Authentication* auth)
 {
-    int offset = printf("Server Authentication: ");
-    switch (auth->tag) {
-        case ServerAuthenticationTag_file:
-            offset += printf("file: %s\n", auth->file.buffer);
-            break;
-        default:
-            offset += puts("none");
-            break;
-    }
-    return offset;
+    return printf("Authentication: %s (%d)\n", auth->value.buffer, auth->type);
 }
 
 int

@@ -2,22 +2,6 @@ inlineCHeaders
 
 inlineFile "TemLang/guid.tem"
 
-struct Credentials {
-    string username
-    string password
-}
-
-variant ClientAuthentication {
-    null none
-    string token
-    Credentials credentials
-}
-
-variant ServerAuthentication {
-    null none
-    string file
-}
-
 enum AuthenticateResult {
     Success
     Failed
@@ -71,11 +55,16 @@ variant Port {
     u16 port
 }
 
+struct Authentication {
+    string value
+    i32 type
+}
+
 struct ServerConfiguration {
     ServerConfigurationData data
     Access writers
     Access readers
-    ServerAuthentication authentication
+    null authenticationFunction
     string redisIp
     string hostname
     string name
@@ -112,7 +101,7 @@ variant StringOrGuid{
 
 // Messages for all streams
 variant GeneralMessage {
-    ClientAuthentication authenticate
+    Authentication authenticate
     string authenticateAck
     null getClients
     [0 string] getClientsAck

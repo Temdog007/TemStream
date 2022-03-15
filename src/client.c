@@ -129,6 +129,9 @@ defaultClientConfiguration()
         .noAudio = false,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .port = 10000,
+        .authentication = { .type = 0,
+                            .value =
+                              TemLangStringCreate("", currentAllocator) },
         .talkMode = { .none = NULL, .tag = TalkModeTag_none },
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
@@ -157,8 +160,9 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--height", keyLen, { goto parseHeight; });
         STR_EQUALS(key, "-F", keyLen, { goto parseFullscreen; });
         STR_EQUALS(key, "--fullscreen", keyLen, { goto parseFullscreen; });
-        STR_EQUALS(key, "-T", keyLen, { goto parseToken; });
-        STR_EQUALS(key, "--token", keyLen, { goto parseToken; });
+        STR_EQUALS(key, "-CT", keyLen, { goto parseCredentialType; });
+        STR_EQUALS(
+          key, "--credential-type", keyLen, { goto parseCredentialType; });
         STR_EQUALS(key, "-C", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "--credentials", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "-NG", keyLen, { goto parseNoGui; });
@@ -194,6 +198,7 @@ parseClientConfiguration(const int argc,
         }
         continue;
     parseTTF : {
+        TemLangStringFree(&client->ttfFile);
         client->ttfFile = TemLangStringCreate(value, currentAllocator);
         continue;
     }
@@ -213,17 +218,14 @@ parseClientConfiguration(const int argc,
         client->fullscreen = atoi(value);
         continue;
     }
-    parseToken : {
-        client->authentication.tag = ClientAuthenticationTag_token;
-        client->authentication.token =
-          TemLangStringCreate(value, currentAllocator);
+    parseCredentialType : {
+        client->authentication.type = atoi(value);
         continue;
     }
     parseCredentials : {
-        client->authentication.tag = ClientAuthenticationTag_credentials;
-        if (!parseCredentials(value, &client->authentication.credentials)) {
-            return false;
-        }
+        TemLangStringFree(&client->authentication.value);
+        client->authentication.value =
+          TemLangStringCreate(value, currentAllocator);
         continue;
     }
     parseNoGui : {
@@ -235,6 +237,7 @@ parseClientConfiguration(const int argc,
         continue;
     }
     parseHostname : {
+        TemLangStringFree(&client->hostname);
         client->hostname = TemLangStringCreate(value, currentAllocator);
         continue;
     }
@@ -291,7 +294,7 @@ printClientConfiguration(const ClientConfiguration* configuration)
              configuration->port,
              configuration->silenceThreshold) +
            printTalkMode(&configuration->talkMode) +
-           printClientAuthentication(&configuration->authentication);
+           printAuthentication(&configuration->authentication);
 }
 
 void
@@ -422,9 +425,9 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
                     .buffer = buffer,
                     .used = 0,
                     .size = sizeof(buffer) };
-    const ClientAuthentication authentication =
+    const Authentication authentication =
       ((const ClientConfiguration*)clientData.configuration)->authentication;
-    printClientAuthentication(&authentication);
+    // printAuthentication(&authentication);
     switch (type) {
         case ServerConfigurationDataTag_lobby: {
             LobbyMessage message = { 0 };

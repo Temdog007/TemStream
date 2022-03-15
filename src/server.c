@@ -5,37 +5,28 @@ ServerData serverData = { 0 };
 // Assigns client a name and id also
 bool
 authenticateClient(pClient client,
-                   const ServerAuthentication* sAuth,
-                   const ClientAuthentication* cAuth,
+                   const AuthenticateFunc func,
+                   const Authentication* auth,
                    pRandomState rs)
 {
-    switch (sAuth->tag) {
-        case ServerAuthenticationTag_file:
-            fprintf(stderr, "Failed authentication is not implemented\n");
-            return false;
-        default:
-            switch (cAuth->tag) {
-                case ClientAuthenticationTag_credentials:
-                    client->id = randomGuid(rs);
-                    return TemLangStringCopy(&client->name,
-                                             &cAuth->credentials.username,
-                                             currentAllocator);
-                case ClientAuthenticationTag_token:
-                    fprintf(stderr,
-                            "Token authentication is not implemented\n");
-                    return false;
-                case ClientAuthenticationTag_none:
-                    // Give client random name and id
-                    client->name = RandomClientName(rs);
-                    client->id = randomGuid(rs);
-                    return true;
-                default:
+    char buffer[KB(1)];
+    memcpy(buffer, auth->value.buffer, auth->value.used);
+    if (func) {
+        return func(auth->type, buffer);
+    } else {
+        switch (auth->type) {
+            case 0:
+                // Give client random name and id
+                client->name = RandomClientName(rs);
+                client->id = randomGuid(rs);
+                return true;
+            default:
 #if _DEBUG
-                    puts("Unknown authentication type from client");
+                puts("Unknown authentication type from client");
 #endif
-                    return false;
-            }
-            return true;
+                return false;
+        }
+        return true;
     }
 }
 
@@ -53,7 +44,7 @@ defaultServerConfiguration()
         .timeout = STREAM_TIMEOUT,
         .writers = { .anyone = NULL, .tag = AccessTag_anyone },
         .readers = { .anyone = NULL, .tag = AccessTag_anyone },
-        .authentication = { .none = NULL, .tag = ServerAuthenticationTag_none },
+        .authenticationFunction = NULL,
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
     };
 }
@@ -136,25 +127,6 @@ parseTimeout : {
 }
 
 int
-printClientAuthentication(const ClientAuthentication* auth)
-{
-    int offset = printf("Client Autentication: ");
-    switch (auth->tag) {
-        case ClientAuthenticationTag_credentials:
-            offset += printf("username (%s) and password\n",
-                             auth->credentials.username.buffer);
-            break;
-        case ClientAuthenticationTag_token:
-            offset += printf("token\n");
-            break;
-        default:
-            offset += puts("none");
-            break;
-    }
-    return offset;
-}
-
-int
 printAccess(const Access* access)
 {
     switch (access->tag) {
@@ -191,17 +163,17 @@ printServerConfiguration(const ServerConfiguration* configuration)
 {
     int offset =
       printf("Save Directory: %s\nHostname: %s\nRedis: %s:%u\nMax clients: "
-             "%u\nTimeout: %" PRIu64 "\n",
+             "%u\nTimeout: %" PRIu64 "\nHas Authentication function: %s\n",
              configuration->saveDirectory.buffer,
              configuration->hostname.buffer,
              configuration->redisIp.buffer,
              configuration->redisPort,
              configuration->maxClients,
-             configuration->timeout) +
-      printPort(&configuration->port) +
-      printServerAuthentication(&configuration->authentication) +
-      printf("Read Access: ") + printAccess(&configuration->readers) +
-      printf("Write Access: ") + printAccess(&configuration->writers);
+             configuration->timeout,
+             configuration->authenticationFunction == NULL ? "No" : "Yes") +
+      printPort(&configuration->port) + printf("Read Access: ") +
+      printAccess(&configuration->readers) + printf("Write Access: ") +
+      printAccess(&configuration->writers);
     switch (configuration->data.tag) {
         case ServerConfigurationDataTag_chat:
             offset += printChatConfiguration(&configuration->data.chat);
@@ -259,13 +231,13 @@ handleGeneralMessage(const GeneralMessage* message,
 
 AuthenticateResult
 handleClientAuthentication(pClient client,
-                           const ServerAuthentication* sAuth,
+                           const AuthenticateFunc func,
                            const GeneralMessage* message,
                            pRandomState rs)
 {
     if (GuidEquals(&client->id, &ZeroGuid)) {
         if (message != NULL && message->tag == GeneralMessageTag_authenticate) {
-            if (authenticateClient(client, sAuth, &message->authenticate, rs)) {
+            if (authenticateClient(client, func, &message->authenticate, rs)) {
                 char buffer[128];
                 getGuidString(&client->id, buffer);
                 printf("Client assigned name '%s' (%s)\n",
@@ -531,7 +503,7 @@ continueServer:
 
                     switch (handleClientAuthentication(
                       client,
-                      &config->authentication,
+                      config->authenticationFunction,
                       funcs.getGeneralMessage(message),
                       &rs)) {
                         case AuthenticateResult_Success: {

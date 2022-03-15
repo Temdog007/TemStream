@@ -59,9 +59,9 @@ variant TalkMode {
 }
 
 struct ClientConfiguration {
-    ClientAuthentication authentication
     string ttfFile
     string hostname
+    Authentication authentication
     TalkMode talkMode
     f32 silenceThreshold
     i32 fontSize

@@ -90,11 +90,12 @@
 - [x] Allow press to talk to be set for recording microphone
 - [x] Discard audio frames if they are mostly silence
 - [x] Allow press to talk and silence to be changed during execution
-- [ ] Make authentication work as a plugin
+- [x] Make authentication work as a plugin
+
+### Mar 15, 2022
 - [ ] Record window audio
 
 ### Later
-- [ ] Play gifs
 - [ ] Record window display
 - [ ] Record webcam
 - [ ] Implement stream recording and playback (need to timestamp messages)
