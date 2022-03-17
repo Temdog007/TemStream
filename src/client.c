@@ -1179,6 +1179,7 @@ selectAudioStreamSource(struct pollfd inputfd,
 void
 recordCallback(pAudioState state, uint8_t* data, int len)
 {
+#if HIGH_QUALITY_AUDIO
     const float* fdata = (float*)data;
     const int fsize = len / sizeof(float);
     float sum = 0.f;
@@ -1190,10 +1191,20 @@ recordCallback(pAudioState state, uint8_t* data, int len)
     if (sum / fsize < config->silenceThreshold) {
         return;
     }
-
+#else
+    const int16_t* fdata = (int16_t*)data;
+    const int fsize = len / sizeof(int16_t);
+    float sum = 0.f;
+    for (int i = 0; i < fsize; ++i) {
+        sum += fabsf((float)fdata[i]);
+    }
+    const ClientConfiguration* config =
+      (const ClientConfiguration*)clientData.configuration;
+    if (sum / fsize < config->silenceThreshold) {
+        return;
+    }
+#endif
     uint8_tListQuickAppend(&state->storedAudio, data, len);
-    state->current.used = 0;
-    floatListQuickAppend(&state->current, fdata, fsize);
 }
 
 bool
@@ -1221,11 +1232,12 @@ askAndStartRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
         puts("Canceled recording selection");
         return false;
     }
-    return startRecording(SDL_GetAudioDeviceName(selected, SDL_TRUE), state);
+    return startRecording(
+      SDL_GetAudioDeviceName(selected, SDL_TRUE), OPUS_APPLICATION_VOIP, state);
 }
 
 bool
-startRecording(const char* name, pAudioState state)
+startRecording(const char* name, const int application, pAudioState state)
 {
     state->isRecording = SDL_TRUE;
     const SDL_AudioSpec desiredRecordingSpec =
@@ -1248,10 +1260,8 @@ startRecording(const char* name, pAudioState state)
 
     const int size = opus_encoder_get_size(state->spec.channels);
     state->encoder = currentAllocator->allocate(size);
-    const int error = opus_encoder_init(state->encoder,
-                                        state->spec.freq,
-                                        state->spec.channels,
-                                        OPUS_APPLICATION_VOIP);
+    const int error = opus_encoder_init(
+      state->encoder, state->spec.freq, state->spec.channels, application);
     if (error < 0) {
         fprintf(
           stderr, "Failed to create voice encoder: %s\n", opus_strerror(error));
@@ -1284,8 +1294,8 @@ playbackCallback(pAudioState state, uint8_t* data, int len)
         f[i] *= state->volume;
     }
 #else
-    int16_t* s = (int16_t*)state->storeAudio.buffer;
-    const int size = len / sizeof(int16_t);
+    opus_int16* s = (opus_int16*)state->storedAudio.buffer;
+    const int size = len / sizeof(opus_int16);
     for (int i = 0; i < size; ++i) {
         s[i] *= state->volume;
     }
@@ -1293,8 +1303,7 @@ playbackCallback(pAudioState state, uint8_t* data, int len)
     pCurrentAudio current = currentAllocator->allocate(sizeof(CurrentAudio));
     current->id = state->id;
     current->audio.allocator = currentAllocator;
-    floatListQuickAppend(
-      &current->audio, (float*)state->storedAudio.buffer, size);
+    uint8_tListQuickAppend(&current->audio, state->storedAudio.buffer, len);
     updateCurrentAudioDisplay(current);
 
     memcpy(data, state->storedAudio.buffer, len);
@@ -2426,7 +2435,7 @@ end:
 void
 updateAudioDisplay(SDL_Renderer* renderer,
                    pStreamDisplay display,
-                   const floatList* list)
+                   const Bytes* bytes)
 {
     if (renderer == NULL) {
         return;
@@ -2444,7 +2453,7 @@ updateAudioDisplay(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
     SDL_RenderClear(renderer);
 
-    if (floatListIsEmpty(list)) {
+    if (uint8_tListIsEmpty(bytes)) {
         goto end;
     }
 
@@ -2457,11 +2466,28 @@ updateAudioDisplay(SDL_Renderer* renderer,
       renderer, 0.f, HALF_AUDIO_SIZE, AUDIO_SIZE, HALF_AUDIO_SIZE);
 
     SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
+
+#if HIGH_QUALITY_AUDIO
+    const floatList list = { .buffer = (float*)bytes->buffer,
+                             .used = bytes->used / sizeof(float),
+                             .size = bytes->size / sizeof(float) };
+#else
+    const int16_tList list = { .buffer = (int16_t*)bytes->buffer,
+                               .used = bytes->used / sizeof(int16_t),
+                               .size = bytes->size / sizeof(int16_t) };
+#endif
     SDL_FPointList points = { .allocator = currentAllocator };
-    for (size_t i = 0; i < list->used; ++i) {
-        const SDL_FPoint p = { .x = ((float)i / (float)list->used) * AUDIO_SIZE,
-                               .y = HALF_AUDIO_SIZE * list->buffer[i] +
+    for (size_t i = 0; i < list.used; ++i) {
+#if HIGH_QUALITY_AUDIO
+        const SDL_FPoint p = { .x = ((float)i / (float)list.used) * AUDIO_SIZE,
+                               .y = HALF_AUDIO_SIZE * list.buffer[i] +
                                     HALF_AUDIO_SIZE };
+#else
+        const SDL_FPoint p = { .x = ((float)i / (float)list.used) * AUDIO_SIZE,
+                               .y = HALF_AUDIO_SIZE *
+                                      ((list.buffer[i] * 2.f) / UINT16_MAX) +
+                                    HALF_AUDIO_SIZE };
+#endif
         SDL_FPointListAppend(&points, &p);
     }
     SDL_RenderDrawLinesF(renderer, points.buffer, points.used);
@@ -2933,7 +2959,6 @@ handleUserInput(const struct pollfd inputfd,
                 pAudioState record =
                   currentAllocator->allocate(sizeof(AudioState));
                 record->storedAudio.allocator = currentAllocator;
-                record->current.allocator = currentAllocator;
                 record->volume = 1.f;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(inputfd, &ui, bytes);
@@ -2956,7 +2981,6 @@ handleUserInput(const struct pollfd inputfd,
                 pAudioState playback =
                   currentAllocator->allocate(sizeof(AudioState));
                 playback->storedAudio.allocator = currentAllocator;
-                playback->current.allocator = currentAllocator;
                 playback->volume = 1.f;
                 if (startPlayback(inputfd, bytes, playback, ask)) {
                     playback->id = userInput->id;

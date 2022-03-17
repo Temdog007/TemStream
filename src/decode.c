@@ -167,10 +167,10 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
 
         SDL_AudioCVT cvt;
         if (SDL_BuildAudioCVT(&cvt,
-#if !HIGH_QUALITY_AUDIO
-                              AUDIO_S16,
-#else
+#if HIGH_QUALITY_AUDIO
                               AUDIO_F32,
+#else
+                              AUDIO_S16,
 #endif
                               vi.channels,
                               vi.rate,
@@ -215,10 +215,10 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                         }
 
                         int convbuffersize = MAX_PACKET_SIZE;
-#if !HIGH_QUALITY_AUDIO
-                        ogg_int16_t*
-#else
+#if HIGH_QUALITY_AUDIO
                         float*
+#else
+                        ogg_int16_t*
 #endif
                           convbuffer =
                             currentAllocator->allocate(convbuffersize);
@@ -263,11 +263,12 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                             }
 #endif
                             if (cvt.needed) {
-#if !HIGH_QUALITY_AUDIO
+#if HIGH_QUALITY_AUDIO
+                                cvt.len = sizeof(float) * vi.channels * bout;
+                                memcpy(convbuffer, *pcm, cvt.len);
+#else
                                 cvt.len =
                                   sizeof(ogg_int16_t) * vi.channels * bout;
-#else
-                                cvt.len = sizeof(float) * vi.channels * bout;
                                 memcpy(convbuffer, *pcm, cvt.len);
 #endif
                                 cvt.buf = (uint8_t*)convbuffer;
@@ -280,15 +281,15 @@ decodeOgg(const void* data, const size_t dataSize, pBytes bytes)
                                 uint8_tListQuickAppend(
                                   bytes, (uint8_t*)convbuffer, cvt.len_cvt);
                             } else {
-#if !HIGH_QUALITY_AUDIO
+#if HIGH_QUALITY_AUDIO
                                 uint8_tListQuickAppend(bytes,
                                                        (uint8_t*)convbuffer,
-                                                       sizeof(ogg_int16_t) *
+                                                       sizeof(float) *
                                                          vi.channels * bout);
 #else
                                 uint8_tListQuickAppend(bytes,
                                                        (uint8_t*)convbuffer,
-                                                       sizeof(float) *
+                                                       sizeof(ogg_int16_t) *
                                                          vi.channels * bout);
 #endif
                             }

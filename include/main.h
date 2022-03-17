@@ -420,7 +420,7 @@ extern bool
 startWindowStreaming(const struct pollfd, pBytes, pAudioState);
 
 extern bool
-startRecording(const char*, pAudioState);
+startRecording(const char*, const int, pAudioState);
 
 #define STREAM_TIMEOUT (1000u * 10u)
 
@@ -439,7 +439,6 @@ startRecording(const char*, pAudioState);
 typedef struct AudioState
 {
     Bytes storedAudio;
-    floatList current;
     SDL_AudioSpec spec;
     Guid id;
     TemLangString name;

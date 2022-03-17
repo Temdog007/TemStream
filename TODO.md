@@ -94,10 +94,13 @@
 
 ### Mar 15, 2022
 - [x] Record window audio
-- [ ] Test from another computer
+- [x] Test from another computer
+
+### Mar 16, 2022
+- [ ] Don't convert audio on sender side. Have each audio packet send audio spec for conversion
+- [ ] Record window display
 
 ### Later
-- [ ] Record window display
 - [ ] Record webcam
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version

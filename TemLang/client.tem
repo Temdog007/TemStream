@@ -114,7 +114,7 @@ variant StreamDisplayData {
 
 struct CurrentAudio {
     Guid id
-    [ 0 f32 ] audio
+    [ 0 u8 ] audio
 }
 
 resource StreamDisplay {
@@ -207,7 +207,7 @@ struct AudioSendThreadData {
 
 struct SinkInput {
     string name
-    i32 id
-    i32 sinkId
+    i32 inputId
+    i32 currentSinkId
     i32 processId
 }

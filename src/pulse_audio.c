@@ -15,6 +15,16 @@ const char remapSourceCommand[] =
 const char moveSinkCommand[] = "pactl move-sink-input %d %s_combo";
 
 int
+printSinkInput(const SinkInput* sink)
+{
+    return printf("%s (process: %d; current sink id: %d; sink input id: %d)",
+                  sink->name.buffer,
+                  sink->processId,
+                  sink->currentSinkId,
+                  sink->inputId);
+}
+
+int
 processOutputToStrings(const char* command, pTemLangStringList list)
 {
     FILE* file = popen(command, "r");
@@ -93,17 +103,17 @@ startWindowStreaming(const struct pollfd inputfd,
 
     uint32_t index = 0;
     if (sinks.used == 1) {
-        printf("Selecting only available process: %s\n",
-               sinks.buffer[0].name.buffer);
+        const SinkInput* sink = &sinks.buffer[0];
+        printf("Selecting only available process: ");
+        printSinkInput(sink);
+        puts("");
     } else {
         askQuestion("Select a process");
         for (size_t i = 0; i < sinks.used; ++i) {
             const SinkInput* sink = &sinks.buffer[i];
-            printf("%zu) %s (process: %d; sink: %d)\n",
-                   i + 1,
-                   sink->name.buffer,
-                   sink->processId,
-                   sink->sinkId);
+            printf("%zu) ", i + 1);
+            printSinkInput(sink);
+            puts("");
         }
         if (getIndexFromUser(inputfd, bytes, sinks.used, &index, true) !=
             UserInputResult_Input) {
@@ -132,9 +142,10 @@ startWindowStreaming(const struct pollfd inputfd,
 
     // Make combo sink so that audio is still sent to the current playback
     // device
-    if (!getSinkName(target->sinkId, &realSinkName)) {
-        fprintf(
-          stderr, "Failed to get sink name from ID: %d\n", target->sinkId);
+    if (!getSinkName(target->currentSinkId, &realSinkName)) {
+        fprintf(stderr,
+                "Failed to get sink name from ID: %d\n",
+                target->currentSinkId);
         goto end;
     }
     snprintf(buffer,
@@ -164,7 +175,8 @@ startWindowStreaming(const struct pollfd inputfd,
     int32_tListAppend(&state->sinks, &remapHandle);
 
     // Move the target process to send audio to the null sink
-    snprintf(buffer, sizeof(buffer), moveSinkCommand, target->id, sinkName);
+    snprintf(
+      buffer, sizeof(buffer), moveSinkCommand, target->inputId, sinkName);
 #if _DEBUG
     puts(buffer);
 #endif
@@ -177,7 +189,7 @@ startWindowStreaming(const struct pollfd inputfd,
 #if _DEBUG
     puts(buffer);
 #endif
-    result = startRecording(buffer, state);
+    result = startRecording(buffer, OPUS_APPLICATION_AUDIO, state);
     if (!result) {
         unloadSink(nullHandle);
         unloadSink(comboHandle);
@@ -246,12 +258,6 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
         // Look for Sink, application.name, and application.process.id
         TemLangStringTrim(str);
         char* end = NULL;
-        if (!foundSink && TemLangStringStartsWith(str, "Sink: ")) {
-            foundSink = true;
-            sink->sinkId =
-              (int32_t)strtol(str->buffer + (sizeof("Sink: ") - 1), &end, 10);
-            continue;
-        }
         if (!foundName &&
             TemLangStringStartsWith(str, "application.name = \"")) {
             // Will have quotes
@@ -272,10 +278,22 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
               10);
             continue;
         }
+        if (!foundSink && TemLangStringStartsWith(str, "Sink: ")) {
+            foundSink = true;
+            sink->currentSinkId =
+              (int32_t)strtol(str->buffer + (sizeof("Sink: ") - 1), &end, 10);
+#if _DEBUG
+            printf("%s = %d\n", str->buffer, sink->currentSinkId);
+#endif
+            continue;
+        }
         if (!foundId && TemLangStringStartsWith(str, "Sink Input #")) {
             foundId = true;
-            sink->id = (int32_t)strtol(
+            sink->inputId = (int32_t)strtol(
               str->buffer + (sizeof("Sink Input #") - 1), &end, 10);
+#if _DEBUG
+            printf("%s = %d\n", str->buffer, sink->inputId);
+#endif
             continue;
         }
     }
