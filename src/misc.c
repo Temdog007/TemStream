@@ -520,6 +520,10 @@ AudioStateFree(pAudioState state)
             currentAllocator->free(state->decoder);
         }
     }
+    for (size_t i = 0; i < state->sinks.used; ++i) {
+        unloadSink(state->sinks.buffer[i]);
+    }
+    int32_tListFree(&state->sinks);
     TemLangStringFree(&state->name);
     floatListFree(&state->current);
     uint8_tListFree(&state->storedAudio);

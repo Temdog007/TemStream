@@ -8,6 +8,7 @@
 #include "image.c"
 #include "lobby.c"
 #include "misc.c"
+#include "pulse_audio.c"
 #include "rendering.c"
 #include "server.c"
 #include "text.c"

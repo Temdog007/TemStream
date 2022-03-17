@@ -139,7 +139,10 @@ resource StreamDisplay {
     "
 }
 
-inlineC "MAKE_DEFAULT_LIST(StreamDisplay);"
+inlineC "
+    MAKE_DEFAULT_LIST(StreamDisplay);
+    extern void unloadSink(int32_t);
+"
 
 resource ClientData {
     [0 ServerConfiguration] allStreams
@@ -147,7 +150,9 @@ resource ClientData {
     null configuration
     null mutex
 } c {
-    inlineC "SDL_DestroyMutex(c.mutex);"
+    inlineC "
+        SDL_DestroyMutex(c.mutex);
+    "
 }
 
 enum AudioStreamSource {
@@ -198,4 +203,11 @@ variant FileExtension {
 struct AudioSendThreadData {
     [ 0 null ] packets
     Guid id
+}
+
+struct SinkInput {
+    string name
+    i32 id
+    i32 sinkId
+    i32 processId
 }

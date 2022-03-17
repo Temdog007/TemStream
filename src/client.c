@@ -59,7 +59,7 @@ void
 consumeAudio(const Bytes*, const Guid*);
 
 bool
-startRecording(struct pollfd inputfd, pBytes bytes, pAudioState);
+askAndStartRecording(struct pollfd inputfd, pBytes bytes, pAudioState);
 
 bool
 startPlayback(struct pollfd inputfd,
@@ -307,14 +307,6 @@ camelCaseToNormal(pTemLangString str)
         }
     }
 }
-
-typedef enum UserInputResult
-{
-    UserInputResult_NoInput,
-    UserInputResult_Error,
-    UserInputResult_Input
-} UserInputResult,
-  *pUserInputResult;
 
 UserInputResult
 getUserInput(struct pollfd inputfd, pBytes bytes)
@@ -1174,10 +1166,9 @@ selectAudioStreamSource(struct pollfd inputfd,
             }
             break;
         case AudioStreamSource_Microphone:
-            return startRecording(inputfd, bytes, state);
+            return askAndStartRecording(inputfd, bytes, state);
         case AudioStreamSource_Window:
-            fprintf(stderr, "Window audio streaming not implemented\n");
-            break;
+            return startWindowStreaming(inputfd, bytes, state);
         default:
             fprintf(stderr, "Unknown option: %d\n", selected);
             break;
@@ -1206,33 +1197,43 @@ recordCallback(pAudioState state, uint8_t* data, int len)
 }
 
 bool
-startRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
+askAndStartRecording(struct pollfd inputfd, pBytes bytes, pAudioState state)
 {
     const int devices = SDL_GetNumAudioDevices(SDL_TRUE);
     if (devices == 0) {
         fprintf(stderr, "No recording devices found to send audio\n");
         return false;
     }
+    if (devices < 0) {
+        fprintf(
+          stderr, "Failed to find recording devices: %s\n", SDL_GetError());
+        return false;
+    }
 
-    state->isRecording = SDL_TRUE;
     askQuestion("Select a device to record from");
     for (int i = 0; i < devices; ++i) {
         printf("%d) %s\n", i + 1, SDL_GetAudioDeviceName(i, SDL_TRUE));
     }
 
-    uint32_t selected;
+    uint32_t selected = 0;
     if (getIndexFromUser(inputfd, bytes, devices, &selected, true) !=
         UserInputResult_Input) {
         puts("Canceled recording selection");
         return false;
     }
+    return startRecording(SDL_GetAudioDeviceName(selected, SDL_TRUE), state);
+}
+
+bool
+startRecording(const char* name, pAudioState state)
+{
+    state->isRecording = SDL_TRUE;
     const SDL_AudioSpec desiredRecordingSpec =
 #if USE_AUDIO_CALLBACKS
       makeAudioSpec((SDL_AudioCallback)recordCallback, state);
 #else
       makeAudioSpec(NULL, NULL);
 #endif
-    const char* name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
     state->name = TemLangStringCreate(name, currentAllocator);
     state->deviceId = SDL_OpenAudioDevice(
       name, SDL_TRUE, &desiredRecordingSpec, &state->spec, 0);

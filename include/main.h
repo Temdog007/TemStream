@@ -55,6 +55,8 @@ const extern Guid ZeroGuid;
 
 extern SDL_atomic_t runningThreads;
 
+typedef struct AudioState AudioState, *pAudioState;
+
 extern bool
 ClientGuidEquals(const pClient*, const Guid*);
 
@@ -398,6 +400,28 @@ extern bool CanSendFileToStream(FileExtensionTag, ServerConfigurationDataTag);
 extern void
 cleanupServer(ENetHost*);
 
+// Input
+
+void
+askQuestion(const char* string);
+
+typedef enum UserInputResult
+{
+    UserInputResult_NoInput,
+    UserInputResult_Error,
+    UserInputResult_Input
+} UserInputResult,
+  *pUserInputResult;
+
+extern UserInputResult
+getIndexFromUser(struct pollfd, pBytes, const uint32_t, uint32_t*, const bool);
+
+extern bool
+startWindowStreaming(const struct pollfd, pBytes, pAudioState);
+
+extern bool
+startRecording(const char*, pAudioState);
+
 #define STREAM_TIMEOUT (1000u * 10u)
 
 // Audio
@@ -424,6 +448,7 @@ typedef struct AudioState
         OpusEncoder* encoder;
         OpusDecoder* decoder;
     };
+    int32_tList sinks;
     SDL_AudioDeviceID deviceId;
     float volume;
     SDL_bool running;
@@ -594,3 +619,26 @@ clientHasWriteAccess(const Client* client, const ServerConfiguration* config);
 
 extern bool
 lowMemory();
+
+extern SDL_mutex* clientMutex;
+extern ClientData clientData;
+
+// Pulse Audio
+
+MAKE_DEFAULT_LIST(SinkInput);
+
+extern bool stringToSinkInputs(pTemLangStringList, pSinkInputList);
+
+extern bool
+getSinkName(const int32_t, pTemLangString);
+
+// Process
+
+extern int
+processOutputToNumber(const char*, int*);
+
+extern int
+processOutputToString(const char*, pTemLangString);
+
+extern int
+processOutputToStrings(const char*, pTemLangStringList);

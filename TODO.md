@@ -93,7 +93,8 @@
 - [x] Make authentication work as a plugin
 
 ### Mar 15, 2022
-- [ ] Record window audio
+- [x] Record window audio
+- [ ] Test from another computer
 
 ### Later
 - [ ] Record window display
