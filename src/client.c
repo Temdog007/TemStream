@@ -767,7 +767,7 @@ streamConnectionThread(void* ptr)
             SDL_UnlockAudioDevice(record->deviceId);
 #else
             const int result =
-              SDL_DequeueAudio(record.deviceId, bytes.buffer, bytes.size);
+              SDL_DequeueAudio(record->deviceId, bytes.buffer, bytes.size);
             if (result < 0) {
                 fprintf(
                   stderr, "Failed to dequeue audio: %s\n", SDL_GetError());
@@ -779,7 +779,7 @@ streamConnectionThread(void* ptr)
                       encodeAudioData(record->encoder,
                                       &record->storedAudio,
                                       record->spec,
-                                      &packetList);
+                                      &outgoingPackets);
                     uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
                 }
             }
@@ -1119,7 +1119,8 @@ encodeAudioData(OpusEncoder* encoder,
         bytesRead += bytesUsed;
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
-        NullValue packet = BytesToPacket(temp.buffer, temp.used, false);
+        NullValue packet =
+          BytesToPacket(temp.buffer, temp.used, RELIABLE_AUDIO);
         NullValueListAppend(list, &packet);
     }
     uint8_tListFree(&temp);
@@ -1291,6 +1292,7 @@ playbackCallback(pAudioState state, uint8_t* data, int len)
     float* f = (float*)state->storedAudio.buffer;
     const int size = len / sizeof(float);
     for (int i = 0; i < size; ++i) {
+        f[i] = SDL_clamp(f[i], -1.f, 1.f);
         f[i] *= state->volume;
     }
 #else
@@ -2280,26 +2282,44 @@ userInputThread(void* ptr)
             case ClientCommand_UploadText:
                 selectStreamToSendTextTo(inputfd, &bytes, client);
                 break;
-            case ClientCommand_ShowAllStreams:
-                askQuestion("All Streams");
-                IN_MUTEX(clientData.mutex, endShowALlStreams, {
-                    for (size_t i = 0; i < clientData.allStreams.used; ++i) {
-                        printServerConfigurationForClient(
-                          &clientData.allStreams.buffer[i]);
+            case ClientCommand_ShowStatus:
+                IN_MUTEX(clientData.mutex, endShowStatus, {
+                    askQuestion("Streams Available");
+                    if (ServerConfigurationListIsEmpty(
+                          &clientData.allStreams)) {
+                        puts("None");
+                    } else {
+                        for (size_t i = 0; i < clientData.allStreams.used;
+                             ++i) {
+                            printServerConfigurationForClient(
+                              &clientData.allStreams.buffer[i]);
+                        }
                     }
-                });
-                break;
-            case ClientCommand_ShowConnectedStreams:
-                askQuestion("Connected Streams");
-                IN_MUTEX(clientData.mutex, endConnectedStreams, {
-                    const ServerConfiguration* config = NULL;
-                    for (size_t i = 0; i < clientData.displays.used; ++i) {
-                        if (GetStreamFromName(
-                              &clientData.allStreams,
-                              &clientData.displays.buffer[i].config.name,
-                              &config,
-                              NULL)) {
-                            printServerConfigurationForClient(config);
+                    askQuestion("Streams connected to");
+                    if (StreamDisplayListIsEmpty(&clientData.displays)) {
+                        puts("None");
+                    } else {
+                        const ServerConfiguration* config = NULL;
+                        for (size_t i = 0; i < clientData.displays.used; ++i) {
+                            if (GetStreamFromName(
+                                  &clientData.allStreams,
+                                  &clientData.displays.buffer[i].config.name,
+                                  &config,
+                                  NULL)) {
+                                printServerConfigurationForClient(config);
+                            }
+                        }
+                    }
+                    askQuestion("Audio State");
+                    if (AudioStatePtrListIsEmpty(&audioStates)) {
+                        puts("None");
+                    } else {
+                        for (size_t i = 0; i < audioStates.used; ++i) {
+                            const AudioStatePtr ptr = audioStates.buffer[i];
+                            printf("%zu) %s (%s)\n",
+                                   i + 1,
+                                   ptr->name.buffer,
+                                   ptr->isRecording ? "Recording" : "Playback");
                         }
                     }
                 });

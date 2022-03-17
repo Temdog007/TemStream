@@ -118,7 +118,7 @@ filenameToExtension(const char* filename, pFileExtension f)
     if (index < 0) {
         return false;
     }
-    char buffer[512];
+    char buffer[512] = { 0 };
     TemLangString str = {
         .buffer = buffer, .allocator = NULL, .size = sizeof(buffer), .used = 0
     };
@@ -199,8 +199,7 @@ BytesToPacket(const void* data, const size_t length, const bool reliable)
                               length,
                               (reliable
                                  ? ENET_PACKET_FLAG_RELIABLE
-                                 : (ENET_PACKET_FLAG_UNSEQUENCED |
-                                    ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT)));
+                                 : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT));
 }
 
 int

@@ -1,6 +1,5 @@
 enum ClientCommand {
-    ShowAllStreams
-    ShowConnectedStreams
+    ShowStatus
     ConnectToStream
     DisconnectFromStream
     StartStreaming
@@ -157,8 +156,8 @@ resource ClientData {
 
 enum AudioStreamSource {
     Microphone
-    File
     Window
+    File
 }
 
 enum ImageExtension {

@@ -427,7 +427,8 @@ startRecording(const char*, const int, pAudioState);
 // Audio
 #define ENABLE_FEC 0
 #define TEST_DECODER 0
-#define USE_AUDIO_CALLBACKS 1
+#define USE_AUDIO_CALLBACKS 0
+#define RELIABLE_AUDIO false
 
 #define HIGH_QUALITY_AUDIO 1
 #if HIGH_QUALITY_AUDIO

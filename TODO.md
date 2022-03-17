@@ -92,12 +92,13 @@
 - [x] Allow press to talk and silence to be changed during execution
 - [x] Make authentication work as a plugin
 
-### Mar 15, 2022
+### Mar 16, 2022
 - [x] Record window audio
 - [x] Test from another computer
 
 ### Mar 16, 2022
-- [ ] Don't convert audio on sender side. Have each audio packet send audio spec for conversion
+- [ ] Make circular queue for audio
+- [ ] Weird random files were showing up in directory (not from stream server. SSH server?)
 - [ ] Record window display
 
 ### Later
