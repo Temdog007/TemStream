@@ -524,7 +524,7 @@ AudioStateFree(pAudioState state)
     }
     int32_tListFree(&state->sinks);
     TemLangStringFree(&state->name);
-    uint8_tListFree(&state->storedAudio);
+    CQueueFree(&state->storedAudio);
 }
 
 void

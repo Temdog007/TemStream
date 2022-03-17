@@ -621,8 +621,8 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             if (decodeOpus(playback, &message.audio, &data, &byteSize)) {
 #if USE_AUDIO_CALLBACKS
                 SDL_LockAudioDevice(playback->deviceId);
-                success = uint8_tListQuickAppend(
-                  &playback->storedAudio, data, byteSize);
+                CQueueEnqueue(&playback->storedAudio, data, byteSize);
+                success = true;
                 SDL_UnlockAudioDevice(playback->deviceId);
 #else
                 success =
@@ -757,13 +757,20 @@ streamConnectionThread(void* ptr)
         if (record != NULL && record->encoder != NULL) {
 #if USE_AUDIO_CALLBACKS
             SDL_LockAudioDevice(record->deviceId);
-            if (!uint8_tListIsEmpty(&record->storedAudio)) {
-                const size_t bytesRead = encodeAudioData(record->encoder,
-                                                         &record->storedAudio,
-                                                         record->spec,
-                                                         &outgoingPackets);
-                uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
-            }
+            const size_t queueSize = CQueueCount(&record->storedAudio);
+            Bytes audioBytes = { .allocator = currentAllocator,
+                                 .buffer =
+                                   currentAllocator->allocate(queueSize),
+                                 .size = queueSize,
+                                 .used = 0 };
+            audioBytes.used = CQueueDequeue(
+              &record->storedAudio, audioBytes.buffer, audioBytes.size, false);
+            const size_t bytesRead = encodeAudioData(
+              record->encoder, &audioBytes, record->spec, &outgoingPackets);
+            CQueueEnqueue(&record->storedAudio,
+                          audioBytes.buffer + bytesRead,
+                          audioBytes.used - bytesRead);
+            uint8_tListFree(&audioBytes);
             SDL_UnlockAudioDevice(record->deviceId);
 #else
             const int result =
@@ -772,15 +779,26 @@ streamConnectionThread(void* ptr)
                 fprintf(
                   stderr, "Failed to dequeue audio: %s\n", SDL_GetError());
             } else {
-                uint8_tListQuickAppend(
-                  &record->storedAudio, bytes.buffer, result);
-                if (!uint8_tListIsEmpty(&record->storedAudio)) {
-                    const size_t bytesRead =
-                      encodeAudioData(record->encoder,
-                                      &record->storedAudio,
-                                      record->spec,
-                                      &outgoingPackets);
-                    uint8_tListQuickRemove(&record->storedAudio, 0, bytesRead);
+                CQueueEnqueue(&record->storedAudio, bytes.buffer, result);
+                const size_t queueSize = CQueueCount(&record->storedAudio);
+                if (queueSize != 0) {
+                    Bytes audioBytes = { .allocator = currentAllocator,
+                                         .buffer = currentAllocator->allocate(
+                                           queueSize),
+                                         .size = queueSize,
+                                         .used = 0 };
+                    audioBytes.used = CQueueDequeue(&record->storedAudio,
+                                                    audioBytes.buffer,
+                                                    audioBytes.size,
+                                                    false);
+                    const size_t bytesRead = encodeAudioData(record->encoder,
+                                                             &audioBytes,
+                                                             record->spec,
+                                                             &outgoingPackets);
+                    CQueueEnqueue(&record->storedAudio,
+                                  audioBytes.buffer + bytesRead,
+                                  audioBytes.used - bytesRead);
+                    uint8_tListFree(&audioBytes);
                 }
             }
 #endif
@@ -1205,7 +1223,7 @@ recordCallback(pAudioState state, uint8_t* data, int len)
         return;
     }
 #endif
-    uint8_tListQuickAppend(&state->storedAudio, data, len);
+    CQueueEnqueue(&state->storedAudio, data, len);
 }
 
 bool
@@ -1283,33 +1301,36 @@ startRecording(const char* name, const int application, pAudioState state)
 void
 playbackCallback(pAudioState state, uint8_t* data, int len)
 {
+    const size_t queueSize = CQueueCount(&state->storedAudio);
+
+    pCurrentAudio current = currentAllocator->allocate(sizeof(CurrentAudio));
+    current->id = state->id;
+
+    current->audio = (Bytes){ .allocator = currentAllocator,
+                              .buffer = currentAllocator->allocate(queueSize),
+                              .size = queueSize,
+                              .used = 0 };
+    current->audio.used = CQueueDequeue(
+      &state->storedAudio, current->audio.buffer, current->audio.size, true);
+    updateCurrentAudioDisplay(current);
+
     memset(data, state->spec.silence, len);
-    len = SDL_min(len, (int)state->storedAudio.used);
-    if (len == 0) {
-        return;
-    }
+    CQueueDequeue(&state->storedAudio, data, len, false);
+    len = SDL_min(len, (int)queueSize);
 #if HIGH_QUALITY_AUDIO
-    float* f = (float*)state->storedAudio.buffer;
+    float* f = (float*)data;
     const int size = len / sizeof(float);
     for (int i = 0; i < size; ++i) {
         f[i] = SDL_clamp(f[i], -1.f, 1.f);
         f[i] *= state->volume;
     }
 #else
-    opus_int16* s = (opus_int16*)state->storedAudio.buffer;
+    opus_int16* s = (opus_int16*)data;
     const int size = len / sizeof(opus_int16);
     for (int i = 0; i < size; ++i) {
         s[i] *= state->volume;
     }
 #endif
-    pCurrentAudio current = currentAllocator->allocate(sizeof(CurrentAudio));
-    current->id = state->id;
-    current->audio.allocator = currentAllocator;
-    uint8_tListQuickAppend(&current->audio, state->storedAudio.buffer, len);
-    updateCurrentAudioDisplay(current);
-
-    memcpy(data, state->storedAudio.buffer, len);
-    uint8_tListQuickRemove(&state->storedAudio, 0, len);
 }
 
 bool
@@ -1403,7 +1424,7 @@ sendAudioThread(pAudioSendThreadData data)
         }
         // Each packet is aprox 120 ms. Sleep for less to not
         // flood server but also not have breaks in audio.
-        SDL_Delay(100);
+        SDL_Delay(120U);
     }
     for (; i < packets->used; ++i) {
         enet_packet_destroy(packets->buffer[i]);
@@ -2978,7 +2999,7 @@ handleUserInput(const struct pollfd inputfd,
                 ui.data.tag = UserInputDataTag_Invalid;
                 pAudioState record =
                   currentAllocator->allocate(sizeof(AudioState));
-                record->storedAudio.allocator = currentAllocator;
+                record->storedAudio = CQueueCreate(CQUEUE_SIZE);
                 record->volume = 1.f;
                 if (selectAudioStreamSource(inputfd, bytes, record, &ui)) {
                     handleUserInput(inputfd, &ui, bytes);
@@ -3000,7 +3021,7 @@ handleUserInput(const struct pollfd inputfd,
             if (userInput->data.queryAudio.readAccess) {
                 pAudioState playback =
                   currentAllocator->allocate(sizeof(AudioState));
-                playback->storedAudio.allocator = currentAllocator;
+                playback->storedAudio = CQueueCreate(CQUEUE_SIZE);
                 playback->volume = 1.f;
                 if (startPlayback(inputfd, bytes, playback, ask)) {
                     playback->id = userInput->id;

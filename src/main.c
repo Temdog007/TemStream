@@ -3,6 +3,7 @@
 #include "audio.c"
 #include "base64.c"
 #include "chat.c"
+#include "circular_queue.c"
 #include "client.c"
 #include "decode.c"
 #include "image.c"

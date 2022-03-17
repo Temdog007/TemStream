@@ -97,8 +97,8 @@
 - [x] Test from another computer
 
 ### Mar 16, 2022
-- [ ] Make circular queue for audio
-- [ ] Weird random files were showing up in directory (not from stream server. SSH server?)
+- [x] Make circular queue for audio
+- [x] Weird random files were showing up in directory (from VS code; something about keyring)
 - [ ] Record window display
 
 ### Later

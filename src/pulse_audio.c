@@ -189,6 +189,8 @@ startWindowStreaming(const struct pollfd inputfd,
 #if _DEBUG
     puts(buffer);
 #endif
+    puts("Waiting 1 second for Pulse Audio to (hopefully) update...");
+    SDL_Delay(1000U);
     result = startRecording(buffer, OPUS_APPLICATION_AUDIO, state);
     if (!result) {
         unloadSink(nullHandle);

@@ -36,6 +36,8 @@
 #define MINIMP3_IMPLEMENTATION
 #include <minimp3.h>
 
+#include "circular_queue.h"
+
 #define MAX_PACKET_SIZE KB(64)
 
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
@@ -427,7 +429,7 @@ startRecording(const char*, const int, pAudioState);
 // Audio
 #define ENABLE_FEC 0
 #define TEST_DECODER 0
-#define USE_AUDIO_CALLBACKS 0
+#define USE_AUDIO_CALLBACKS 1
 #define RELIABLE_AUDIO false
 
 #define HIGH_QUALITY_AUDIO 1
@@ -437,9 +439,11 @@ startRecording(const char*, const int, pAudioState);
 #define PCM_SIZE sizeof(opus_int16)
 #endif
 
+#define CQUEUE_SIZE MB(1)
+
 typedef struct AudioState
 {
-    Bytes storedAudio;
+    CQueue storedAudio;
     SDL_AudioSpec spec;
     Guid id;
     TemLangString name;
