@@ -12,6 +12,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <xcb/xcb.h>
 #endif
 
 #include <opus/opus.h>
@@ -466,11 +467,6 @@ typedef AudioState* AudioStatePtr;
 MAKE_COPY_AND_FREE(AudioStatePtr);
 MAKE_DEFAULT_LIST(AudioStatePtr);
 
-typedef struct MicrophoneMuting
-{
-    SDL_AudioDeviceID id;
-} MicrophoneMuting, *pMicrophoneMuting;
-
 extern void
 AudioStateRemoveFromList(pAudioStatePtrList, const Guid*);
 
@@ -499,6 +495,9 @@ decodeMp3(const void*, size_t, pBytes);
 
 extern bool
 decodeOpus(pAudioState, const Bytes*, void**, int*);
+
+extern int
+audioLengthToFrames(const int frequency, const int duration);
 
 // Font
 typedef struct Character

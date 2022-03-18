@@ -210,3 +210,14 @@ struct SinkInput {
     i32 currentSinkId
     i32 processId
 }
+
+struct WindowData {
+    string name
+    Guid id
+    null connection
+    u32 windowId
+    u16 width
+    u16 height
+}
+
+inlineC "MAKE_DEFAULT_LIST(WindowData);"

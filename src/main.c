@@ -1,18 +1,19 @@
 #include <include/main.h>
 
 #include "audio.c"
+#include "audio_decode.c"
+#include "audio_pulse.c"
 #include "base64.c"
 #include "chat.c"
 #include "circular_queue.c"
 #include "client.c"
-#include "decode.c"
 #include "image.c"
 #include "lobby.c"
 #include "misc.c"
-#include "pulse_audio.c"
 #include "rendering.c"
 #include "server.c"
 #include "text.c"
+#include "video_x11.c"
 
 const Allocator* currentAllocator = NULL;
 bool appDone = true;

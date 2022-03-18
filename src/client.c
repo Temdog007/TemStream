@@ -456,6 +456,13 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
             message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(ImageMessage, message, bytes);
         } break;
+        case ServerConfigurationDataTag_video: {
+            VideoMessage message = { 0 };
+            message.tag = ImageMessageTag_general;
+            message.general.tag = GeneralMessageTag_authenticate;
+            message.general.authenticate = authentication;
+            MESSAGE_SERIALIZE(VideoMessage, message, bytes);
+        } break;
         default:
             break;
     }
@@ -640,6 +647,17 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             break;
     }
     AudioMessageFree(&message);
+    return success;
+}
+
+bool
+clientHandleVideoMessage(const Bytes* packetBytes, pStreamDisplay display)
+{
+    (void)display;
+    bool success = false;
+    VideoMessage message = { 0 };
+    MESSAGE_DESERIALIZE(VideoMessage, message, (*packetBytes));
+    VideoMessageFree(&message);
     return success;
 }
 
@@ -844,6 +862,10 @@ streamConnectionThread(void* ptr)
                           display,
                           playback,
                           display->recordings != 0 || record != NULL);
+                        break;
+                    case ServerConfigurationDataTag_video:
+                        success =
+                          clientHandleVideoMessage(&packetBytes, display);
                         break;
                     default:
                         fprintf(stderr,
