@@ -24,6 +24,7 @@ ClientData clientData = { 0 };
 UserInputList userInputs = { 0 };
 AudioStatePtrList audioStates = { 0 };
 SDL_atomic_t continueSelection = { 0 };
+VideoStreamList videoStreams = { 0 };
 
 #define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
     IN_MUTEX(mutex, endLabel, {                                                \
@@ -653,10 +654,32 @@ clientHandleAudioMessage(const Bytes* packetBytes,
 bool
 clientHandleVideoMessage(const Bytes* packetBytes, pStreamDisplay display)
 {
-    (void)display;
     bool success = false;
     VideoMessage message = { 0 };
     MESSAGE_DESERIALIZE(VideoMessage, message, (*packetBytes));
+    switch (message.tag) {
+        case VideoMessageTag_general: {
+            UserInput input = { 0 };
+            input.id = display->id;
+            input.data.tag = UserInputDataTag_queryVideo;
+            display->choosingPlayback = true;
+            success = clientHandleGeneralMessage(&message.general,
+                                                 &input.data.queryVideo.client);
+            if (success &&
+                message.general.tag == GeneralMessageTag_authenticateAck) {
+                input.data.queryVideo.writeAccess = clientHasWriteAccess(
+                  &input.data.queryVideo.client, &display->config);
+                input.data.queryVideo.readAccess = clientHasReadAccess(
+                  &input.data.queryVideo.client, &display->config);
+                success = UserInputListAppend(&userInputs, &input);
+            }
+            UserInputFree(&input);
+        } break;
+        default:
+            printf("Unexpected video message: %s\n",
+                   VideoMessageTagToCharString(message.tag));
+            break;
+    }
     VideoMessageFree(&message);
     return success;
 }
@@ -1168,6 +1191,45 @@ encodeAudioData(OpusEncoder* encoder,
 }
 
 bool
+selectVideoStreamSource(struct pollfd inputfd,
+                        pBytes bytes,
+                        const UserInput* ui)
+{
+    if (!askYesOrNoQuestion(
+          "Do you want record video and stream it?", inputfd, bytes)) {
+        return false;
+    }
+
+    askQuestion("Select video source to stream from");
+    for (VideoStreamSource i = 0; i < VideoStreamSource_Length; ++i) {
+        printf("%d) %s\n", i + 1, VideoStreamSourceToCharString(i));
+    }
+
+    uint32_t selected;
+    if (getIndexFromUser(
+          inputfd, bytes, AudioStreamSource_Length, &selected, true) !=
+        UserInputResult_Input) {
+        puts("Canceled video streaming seleciton");
+        return false;
+    }
+
+    switch (selected) {
+        case VideoStreamSource_None:
+            puts("Canceled video streaming seleciton");
+            break;
+        case VideoStreamSource_Webcam:
+            fprintf(stderr, "Webcame streaming not implemented\n");
+            break;
+        case VideoStreamSource_Window:
+            return startWindowRecording(&ui->id, inputfd, bytes);
+        default:
+            fprintf(stderr, "Unknown option: %d\n", selected);
+            break;
+    }
+    return true;
+}
+
+bool
 selectAudioStreamSource(struct pollfd inputfd,
                         pBytes bytes,
                         pAudioState state,
@@ -1192,6 +1254,9 @@ selectAudioStreamSource(struct pollfd inputfd,
     }
 
     switch (selected) {
+        case AudioStreamSource_None:
+            puts("Canceled audio streaming seleciton");
+            break;
         case AudioStreamSource_File:
             askQuestion("Enter file to stream");
             switch (getStringFromUser(inputfd, bytes, true)) {
@@ -1209,7 +1274,7 @@ selectAudioStreamSource(struct pollfd inputfd,
         case AudioStreamSource_Microphone:
             return askAndStartRecording(inputfd, bytes, state);
         case AudioStreamSource_Window:
-            return startWindowStreaming(inputfd, bytes, state);
+            return startWindowAudioStreaming(inputfd, bytes, state);
         default:
             fprintf(stderr, "Unknown option: %d\n", selected);
             break;
@@ -3008,12 +3073,34 @@ handleUserInput(const struct pollfd inputfd,
             serverType = display->config.data.tag;
         }
     });
+    const Guid* id = &userInput->id;
     switch (userInput->data.tag) {
-        case UserInputDataTag_queryAudio: {
-            const Guid* id = &userInput->id;
+        case UserInputDataTag_queryVideo: {
             bool d;
             USE_DISPLAY(
               clientData.mutex, endD, d, { display->choosingPlayback = true; });
+            if (userInput->data.queryAudio.writeAccess) {
+                if (selectVideoStreamSource(inputfd, bytes, userInput)) {
+                    VideoStream v = { 0 };
+                    USE_DISPLAY(clientData.mutex, endD2659, d, {
+                        if (VideoStreamListAppend(&videoStreams, &v)) {
+                            pVideoStream vptr =
+                              &videoStreams.buffer[videoStreams.used];
+                            vptr->id = *id;
+                            vptr->queue = CQueueCreate(MB(8));
+                        }
+                    });
+                }
+            }
+            USE_DISPLAY(clientData.mutex, endD26, d, {
+                display->choosingPlayback = false;
+            });
+        } break;
+        case UserInputDataTag_queryAudio: {
+            bool d;
+            USE_DISPLAY(clientData.mutex, endD2, d, {
+                display->choosingPlayback = true;
+            });
             bool ask = false;
             if (userInput->data.queryAudio.writeAccess) {
                 UserInput ui = { 0 };
@@ -3058,7 +3145,7 @@ handleUserInput(const struct pollfd inputfd,
                     currentAllocator->free(playback);
                 }
             }
-            USE_DISPLAY(clientData.mutex, endD2, d, {
+            USE_DISPLAY(clientData.mutex, endD26m, d, {
                 display->choosingPlayback = false;
             });
         } break;
@@ -3469,6 +3556,7 @@ runClient(const Configuration* configuration)
 
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
+    videoStreams.allocator = currentAllocator;
     const bool showWindow = !config->noGui;
     {
         uint32_t flags = 0;
@@ -3512,7 +3600,7 @@ runClient(const Configuration* configuration)
           SDL_WINDOWPOS_UNDEFINED,
           config->windowWidth,
           config->windowHeight,
-          SDL_WINDOW_RESIZABLE |
+          SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN |
             (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
         if (window == NULL) {
             fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
@@ -3597,22 +3685,28 @@ runClient(const Configuration* configuration)
     }
 
     ENetEvent event = { 0 };
-    if (enet_host_service(host, &event, 5000U) > 0 &&
-        event.type == ENET_EVENT_TYPE_CONNECT) {
-        char buffer[KB(1)] = { 0 };
-        enet_address_get_host_ip(&event.peer->address, buffer, sizeof(buffer));
-        printf(
-          "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-        displayUserOptions();
-        sendAuthentication(peer, ServerConfigurationDataTag_lobby);
-    } else {
-        fprintf(stderr, "Failed to connect to server\n");
-        enet_peer_reset(peer);
-        peer = NULL;
-        appDone = true;
-        goto end;
+    for (size_t i = 0; i < 50 && !appDone; ++i) {
+        if (enet_host_service(host, &event, 100U) > 0 &&
+            event.type == ENET_EVENT_TYPE_CONNECT) {
+            char buffer[KB(1)] = { 0 };
+            enet_address_get_host_ip(
+              &event.peer->address, buffer, sizeof(buffer));
+            printf(
+              "Connected to server: %s:%u\n", buffer, event.peer->address.port);
+            displayUserOptions();
+            sendAuthentication(peer, ServerConfigurationDataTag_lobby);
+            goto runServerProcedure;
+        }
     }
 
+    fprintf(stderr, "Failed to connect to server\n");
+    enet_peer_reset(peer);
+    peer = NULL;
+    appDone = true;
+    goto end;
+
+runServerProcedure:
+    SDL_ShowWindow(window);
     if (enet_host_service(host, &event, 5000U) > 0 &&
         event.type == ENET_EVENT_TYPE_RECEIVE) {
         const Bytes packetBytes = { .allocator = currentAllocator,
@@ -3935,6 +4029,7 @@ end:
     UserInputListFree(&userInputs);
 
     ClientDataFree(&clientData);
+    VideoStreamListFree(&videoStreams);
     TTF_CloseFont(ttfFont);
     TTF_Quit();
     IMG_Quit();

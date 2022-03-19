@@ -420,7 +420,7 @@ extern UserInputResult
 getIndexFromUser(struct pollfd, pBytes, const uint32_t, uint32_t*, const bool);
 
 extern bool
-startWindowStreaming(const struct pollfd, pBytes, pAudioState);
+startWindowAudioStreaming(const struct pollfd, pBytes, pAudioState);
 
 extern bool
 startRecording(const char*, const int, pAudioState);
@@ -498,6 +498,36 @@ decodeOpus(pAudioState, const Bytes*, void**, int*);
 
 extern int
 audioLengthToFrames(const int frequency, const int duration);
+
+// Video
+
+extern bool
+startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes);
+
+typedef struct VideoStream
+{
+    CQueue queue;
+    Guid id;
+} VideoStream, *pVideoStream;
+
+static inline void
+VideoStreamFree(pVideoStream v)
+{
+    CQueueFree(&v->queue);
+    GuidFree(&v->id);
+}
+
+static inline bool
+VideoStreamCopy(pVideoStream dest, const VideoStream* src, const Allocator* a)
+{
+    VideoStreamFree(dest);
+    return GuidCopy(&dest->id, &src->id, a) &&
+           CQueueCopy(&dest->queue, &src->queue, a);
+}
+
+MAKE_DEFAULT_LIST(VideoStream);
+
+extern VideoStreamList videoStreams;
 
 // Font
 typedef struct Character

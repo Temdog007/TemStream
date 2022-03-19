@@ -75,9 +75,9 @@ processOutputToNumber(const char* command, int* output)
 }
 
 bool
-startWindowStreaming(const struct pollfd inputfd,
-                     pBytes bytes,
-                     pAudioState state)
+startWindowAudioStreaming(const struct pollfd inputfd,
+                          pBytes bytes,
+                          pAudioState state)
 {
     if (state->sinks.allocator == NULL) {
         state->sinks.allocator = currentAllocator;

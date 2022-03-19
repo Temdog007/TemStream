@@ -24,3 +24,6 @@ CQueueEnqueue(pCQueue, const uint8_t*, const size_t);
 
 extern size_t
 CQueueDequeue(pCQueue, uint8_t*, const size_t, const bool peek);
+
+extern bool
+CQueueCopy(pCQueue, const CQueue*, const Allocator*);

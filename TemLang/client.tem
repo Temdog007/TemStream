@@ -31,7 +31,7 @@ struct Client {
     u64 lastMessage
 }
 
-struct ClientAudioQuery {
+struct ClientQuery {
     Client client
     bool readAccess
     bool writeAccess
@@ -39,7 +39,8 @@ struct ClientAudioQuery {
 
 variant UserInputData {
     null startStream
-    ClientAudioQuery queryAudio
+    ClientQuery queryAudio
+    ClientQuery queryVideo
     string file
     string text
 }
@@ -155,9 +156,16 @@ resource ClientData {
 }
 
 enum AudioStreamSource {
+    None
     Microphone
     Window
     File
+}
+
+enum VideoStreamSource {
+    None
+    Webcam
+    Window
 }
 
 enum ImageExtension {

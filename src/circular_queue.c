@@ -11,6 +11,17 @@ void
 CQueueFree(pCQueue queue)
 {
     currentAllocator->free(queue->data);
+    memset(queue, 0, sizeof(CQueue));
+}
+
+bool
+CQueueCopy(pCQueue dest, const CQueue* src, const Allocator* a)
+{
+    (void)a;
+    CQueueFree(dest);
+    *dest = CQueueCreate(src->len);
+    memcpy(dest->data, src->data, src->len);
+    return true;
 }
 
 size_t
