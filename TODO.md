@@ -104,7 +104,7 @@
 - [x] Record window display
 
 ### Mar 20, 2022
-- [ ] Improve video recording performance
+- [ ] Improve video recording performance (opencv)
 
 ### Later
 - [ ] Record webcam
