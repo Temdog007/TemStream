@@ -395,6 +395,21 @@ screenRecordThread(pWindowData data)
                    data->name.buffer);
             displayMissing = true;
         } else {
+#if TIME_VIDEO_STREAMING
+            xcb_get_image_cookie_t cookie = { 0 };
+            xcb_get_image_reply_t* reply = NULL;
+            TIME("Get window image", {
+                cookie = xcb_get_image(data->connection,
+                                       XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                       data->windowId,
+                                       0,
+                                       0,
+                                       geom->width,
+                                       geom->height,
+                                       ~0U);
+                reply = xcb_get_image_reply(data->connection, cookie, &error);
+            });
+#else
             xcb_get_image_cookie_t cookie =
               xcb_get_image(data->connection,
                             XCB_IMAGE_FORMAT_Z_PIXMAP,
@@ -406,6 +421,7 @@ screenRecordThread(pWindowData data)
                             ~0U);
             xcb_get_image_reply_t* reply =
               xcb_get_image_reply(data->connection, cookie, &error);
+#endif
             if (xcb_connection_has_error(data->connection)) {
                 fprintf(stderr,
                         "X11 connection has an error. Recording will stop\n");
@@ -431,14 +447,33 @@ screenRecordThread(pWindowData data)
 
             windowHidden = false;
             uint8_t* imageData = xcb_get_image_data(reply);
-            if (SDL_ConvertPixels(geom->width,
-                                  geom->height,
-                                  SDL_PIXELFORMAT_RGBA32,
-                                  imageData,
-                                  geom->width * 4,
-                                  SDL_PIXELFORMAT_YV12,
-                                  YUV,
-                                  geom->width) == 0) {
+            // TIME("Compress to JPEG", {
+            //     Bytes bytes = rgbaToJpeg(imageData, data->width,
+            //     data->height); uint8_tListFree(&bytes);
+            // });
+#if TIME_VIDEO_STREAMING
+            int result;
+            TIME("Convert pixels to YV12", {
+                result = SDL_ConvertPixels(geom->width,
+                                           geom->height,
+                                           SDL_PIXELFORMAT_RGBA32,
+                                           imageData,
+                                           geom->width * 4,
+                                           SDL_PIXELFORMAT_IYUV,
+                                           YUV,
+                                           geom->width);
+            });
+#else
+            const int result = SDL_ConvertPixels(geom->width,
+                                                 geom->height,
+                                                 SDL_PIXELFORMAT_RGBA32,
+                                                 imageData,
+                                                 geom->width * 4,
+                                                 SDL_PIXELFORMAT_IYUV,
+                                                 YUV,
+                                                 geom->width);
+#endif
+            if (result == 0) {
                 uint8_t* ptr = YUV;
                 for (int plane = 0; plane < 3; ++plane) {
                     unsigned char* buf = img.planes[plane];

@@ -12,6 +12,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <xcb/xcb.h>
 #endif
 
@@ -402,6 +403,30 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
         displayMissing = false;                                                \
         f                                                                      \
     });
+
+extern double
+diff_timespec(const struct timespec*, const struct timespec*);
+
+#define NANO_TO_MILLI(x) (x / 1000000)
+
+#define TIME_VIDEO_STREAMING false
+
+#define TIME(str, f)                                                           \
+    {                                                                          \
+        struct timespec start = { 0 };                                         \
+        struct timespec end = { 0 };                                           \
+        timespec_get(&start, TIME_UTC);                                        \
+        f;                                                                     \
+        timespec_get(&end, TIME_UTC);                                          \
+        const double diff = diff_timespec(&end, &start);                       \
+        printf("'%s' took %f seconds (%f milliseconds) \n",                    \
+               str,                                                            \
+               diff,                                                           \
+               diff * 1000.0);                                                 \
+    }
+
+extern Bytes
+rgbaToJpeg(uint8_t*, uint16_t width, uint16_t height);
 
 extern bool
 authenticateClient(pClient,
