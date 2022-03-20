@@ -301,7 +301,7 @@ screenRecordThread(pWindowData data)
     vpx_codec_ctx_t codec = { 0 };
     vpx_codec_enc_cfg_t cfg = { 0 };
     int frame_count = 0;
-    vpx_image_t raw = { 0 };
+    vpx_image_t img = { 0 };
 
     Bytes bytes = { .allocator = currentAllocator };
     VideoMessage message = { .size = { data->width, data->height },
@@ -327,7 +327,7 @@ screenRecordThread(pWindowData data)
 
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
 
-    if (vpx_img_alloc(&raw, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
+    if (vpx_img_alloc(&img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
         NULL) {
         fprintf(stderr, "Failed to allocate image\n");
         goto end;
@@ -438,15 +438,29 @@ screenRecordThread(pWindowData data)
                                   SDL_PIXELFORMAT_YV12,
                                   YUV,
                                   geom->width) == 0) {
+                uint8_t* ptr = YUV;
+                for (int plane = 0; plane < 3; ++plane) {
+                    unsigned char* buf = img.planes[plane];
+                    const int stride = img.stride[plane];
+                    const int w =
+                      vpx_img_plane_width(&img, plane) *
+                      ((img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+                    const int h = vpx_img_plane_height(&img, plane);
+
+                    for (int y = 0; y < h; ++y) {
+                        memcpy(buf, ptr, w);
+                        ptr += w;
+                        buf += stride;
+                    }
+                }
                 int flags = 0;
                 if (data->keyFrameInterval > 0 &&
                     frame_count % data->keyFrameInterval == 0) {
                     flags |= VPX_EFLAG_FORCE_KF;
                 }
                 res = vpx_codec_encode(
-                  &codec, &raw, frame_count++, 1, flags, VPX_DL_REALTIME);
+                  &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
                 if (res == VPX_CODEC_OK) {
-                    printf("Encoded frame: %d\n", frame_count);
                     vpx_codec_iter_t iter = NULL;
                     const vpx_codec_cx_pkt_t* pkt = NULL;
                     while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) !=
@@ -455,6 +469,9 @@ screenRecordThread(pWindowData data)
                         uint8_tListQuickAppend(&message.video,
                                                pkt->data.frame.buf,
                                                pkt->data.frame.sz);
+                        printf("Encoded %u -> %zu kilobytes\n",
+                               (data->width * data->height * 3) / 1024,
+                               pkt->data.frame.sz / 1024);
                         MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                         ENetPacket* packet =
                           BytesToPacket(bytes.buffer, bytes.used, false);
@@ -488,7 +505,7 @@ screenRecordThread(pWindowData data)
 end:
     uint8_tListFree(&bytes);
     VideoMessageFree(&message);
-    vpx_img_free(&raw);
+    vpx_img_free(&img);
     vpx_codec_destroy(&codec);
     currentAllocator->free(YUV);
 

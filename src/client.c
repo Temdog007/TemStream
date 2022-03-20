@@ -698,6 +698,9 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                         buf += stride;
                     }
                 }
+                printf("Decoded %u -> %u kilobytes\n",
+                       message.video.used / 1024,
+                       m->video.used / 1024);
                 SDL_Event e = { 0 };
                 e.type = SDL_USEREVENT;
                 e.user.code = CustomEvent_UpdateVideoDisplay;
@@ -984,6 +987,7 @@ end:
     for (size_t i = 0; i < outgoingPackets.used; ++i) {
         enet_packet_destroy(outgoingPackets.buffer[i]);
     }
+    vpx_codec_destroy(&codec);
     NullValueListFree(&outgoingPackets);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);
@@ -2696,7 +2700,7 @@ updateVideoDisplay(SDL_Renderer* renderer,
 
     if (display->texture == NULL) {
         display->texture = SDL_CreateTexture(renderer,
-                                             SDL_PIXELFORMAT_YV12,
+                                             SDL_PIXELFORMAT_IYUV,
                                              SDL_TEXTUREACCESS_STREAMING,
                                              width,
                                              height);
