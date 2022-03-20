@@ -121,15 +121,24 @@ defaultConfiguration();
 extern ENetPeer*
 FindPeerFromData(ENetPeer*, size_t, const void*);
 
+typedef enum SendFlags
+{
+    SendFlags_Normal = ENET_PACKET_FLAG_RELIABLE,
+    SendFlags_Video =
+      ENET_PACKET_FLAG_UNSEQUENCED | ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT,
+    SendFlags_Audio = ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT
+} SendFlags,
+  *pSendFlags;
+
 extern ENetPacket*
-BytesToPacket(const void* data, const size_t length, const bool);
+BytesToPacket(const void* data, const size_t length, const SendFlags);
 
 extern void
 sendBytes(ENetPeer*,
           const size_t peerCount,
           const enet_uint32,
           const Bytes*,
-          const bool);
+          const SendFlags);
 
 extern void
 cleanupServer(ENetHost*);
@@ -329,7 +338,7 @@ SERVER_FUNCTIONS(Video);
         lm.tag = T##MessageTag_general;                                        \
         lm.general = *m;                                                       \
         MESSAGE_SERIALIZE(T##Message, lm, (*bytes));                           \
-        sendBytes(peer, 1, SERVER_CHANNEL, bytes, true);                       \
+        sendBytes(peer, 1, SERVER_CHANNEL, bytes, SendFlags_Normal);           \
     }
 
 // Parse failures
@@ -458,7 +467,6 @@ startRecording(const char*, const int, pAudioState);
 #define ENABLE_FEC false
 #define TEST_DECODER false
 #define USE_AUDIO_CALLBACKS true
-#define RELIABLE_AUDIO false
 
 #define HIGH_QUALITY_AUDIO true
 #if HIGH_QUALITY_AUDIO
@@ -527,8 +535,6 @@ extern int
 audioLengthToFrames(const int frequency, const int duration);
 
 // Video
-
-#define RELIABLE_VIDEO false
 
 extern bool
 startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes);

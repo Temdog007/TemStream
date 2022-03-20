@@ -309,7 +309,8 @@ screenRecordThread(pWindowData data)
 
     MESSAGE_SERIALIZE(VideoMessage, message, bytes);
     {
-        ENetPacket* packet = BytesToPacket(bytes.buffer, bytes.used, true);
+        ENetPacket* packet =
+          BytesToPacket(bytes.buffer, bytes.used, SendFlags_Normal);
         IN_MUTEX(clientData.mutex, end3, {
             size_t i = 0;
             if (GetStreamDisplayFromGuid(
@@ -469,12 +470,12 @@ screenRecordThread(pWindowData data)
                         uint8_tListQuickAppend(&message.video,
                                                pkt->data.frame.buf,
                                                pkt->data.frame.sz);
-                        printf("Encoded %u -> %zu kilobytes\n",
-                               (data->width * data->height * 3) / 1024,
-                               pkt->data.frame.sz / 1024);
+                        // printf("Encoded %u -> %zu kilobytes\n",
+                        //        (data->width * data->height * 3) / 1024,
+                        //        pkt->data.frame.sz / 1024);
                         MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-                        ENetPacket* packet =
-                          BytesToPacket(bytes.buffer, bytes.used, false);
+                        ENetPacket* packet = BytesToPacket(
+                          bytes.buffer, bytes.used, SendFlags_Video);
                         IN_MUTEX(clientData.mutex, end2, {
                             size_t i = 0;
                             if (GetStreamDisplayFromGuid(

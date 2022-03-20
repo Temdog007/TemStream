@@ -99,7 +99,12 @@
 ### Mar 16, 2022
 - [x] Make circular queue for audio
 - [x] Weird random files were showing up in directory (from VS code; something about keyring)
-- [ ] Record window display
+
+### Mar 19, 2022
+- [x] Record window display
+
+### Mar 20, 2022
+- [ ] Improve video recording performance
 
 ### Later
 - [ ] Record webcam

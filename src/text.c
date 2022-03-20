@@ -53,7 +53,8 @@ bool
 onConnectForText(ENetPeer* peer, pServerData serverData)
 {
     if (getServerFileBytes(serverData->config, &serverData->bytes)) {
-        sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+        sendBytes(
+          peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
     }
     return true;
 }
@@ -72,7 +73,11 @@ handleTextMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
               &message->general, serverData, &textMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(TextMessage, textMessage, serverData->bytes);
-                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+                sendBytes(peer,
+                          1,
+                          SERVER_CHANNEL,
+                          &serverData->bytes,
+                          SendFlags_Normal);
             }
             TextMessageFree(&textMessage);
         } break;
@@ -92,8 +97,9 @@ handleTextMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             printf("Text server updated with '%s'\n", message->text.buffer);
             MESSAGE_SERIALIZE(TextMessage, (*message), serverData->bytes);
             writeServerFileBytes(serverData->config, &serverData->bytes, true);
-            ENetPacket* packet = BytesToPacket(
-              serverData->bytes.buffer, serverData->bytes.used, true);
+            ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
+                                               serverData->bytes.used,
+                                               SendFlags_Normal);
             sendPacketToReaders(
               serverData->host, packet, &serverData->config->readers);
         } break;

@@ -61,7 +61,7 @@ main(int argc, char** argv)
         message.general.authenticate.tag = ClientAuthenticationTag_none;
         message.general.authenticate.none = NULL;
         MESSAGE_SERIALIZE(ChatMessage, message, bytes);
-        sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
+        sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, SendFlags_Normal);
     } else {
         fprintf(stderr, "Failed to connect to server\n");
         enet_peer_reset(peer);
@@ -109,7 +109,7 @@ main(int argc, char** argv)
                 message.message = RandomString(&rs, 10U, 128U);
                 printf("Sending message: %s\n", message.message.buffer);
                 MESSAGE_SERIALIZE(ChatMessage, message, bytes);
-                sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
+                sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, SendFlags_Normal);
                 ++sent;
                 if (sent >= messages) {
                     enet_peer_disconnect(peer, 0);

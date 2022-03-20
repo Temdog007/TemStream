@@ -32,8 +32,8 @@ onImageDownTime(pServerData serverData)
         m.tag = ImageMessageTag_imageStart;
         m.imageStart = NULL;
         MESSAGE_SERIALIZE(ImageMessage, m, serverData->bytes);
-        packet =
-          BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
+        packet = BytesToPacket(
+          serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
         sendPacketToReaders(host, packet, &serverData->config->readers);
     }
 
@@ -57,8 +57,8 @@ onImageDownTime(pServerData serverData)
         m.imageChunk.used = s;
         m.imageChunk.size = s;
         MESSAGE_SERIALIZE(ImageMessage, m, serverData->bytes);
-        packet =
-          BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
+        packet = BytesToPacket(
+          serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
         sendPacketToReaders(host, packet, &serverData->config->readers);
         imageSendOffset += s;
 #if PRINT_CHUNKS
@@ -70,8 +70,8 @@ onImageDownTime(pServerData serverData)
         m.tag = ImageMessageTag_imageEnd;
         m.imageEnd = NULL;
         MESSAGE_SERIALIZE(ImageMessage, m, serverData->bytes);
-        packet =
-          BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
+        packet = BytesToPacket(
+          serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
         sendPacketToReaders(host, packet, &serverData->config->readers);
         needImageSend = false;
     }
@@ -124,7 +124,11 @@ handleImageMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             if (result) {
                 MESSAGE_SERIALIZE(
                   ImageMessage, imageMessage, serverData->bytes);
-                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+                sendBytes(peer,
+                          1,
+                          SERVER_CHANNEL,
+                          &serverData->bytes,
+                          SendFlags_Normal);
             }
             ImageMessageFree(&imageMessage);
         } break;

@@ -62,7 +62,8 @@ bool
 onConnectForChat(ENetPeer* peer, pServerData serverData)
 {
     if (getServerFileBytes(serverData->config, &serverData->bytes)) {
-        sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+        sendBytes(
+          peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
     }
     return true;
 }
@@ -82,7 +83,11 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
               &message->general, serverData, &chatMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
-                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+                sendBytes(peer,
+                          1,
+                          SERVER_CHANNEL,
+                          &serverData->bytes,
+                          SendFlags_Normal);
             }
             break;
         case ChatMessageTag_message:

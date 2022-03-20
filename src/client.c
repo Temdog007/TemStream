@@ -449,7 +449,7 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
             break;
     }
 
-    sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, true);
+    sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, SendFlags_Normal);
 }
 
 bool
@@ -698,9 +698,9 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                         buf += stride;
                     }
                 }
-                printf("Decoded %u -> %u kilobytes\n",
-                       message.video.used / 1024,
-                       m->video.used / 1024);
+                // printf("Decoded %u -> %u kilobytes\n",
+                //        message.video.used / 1024,
+                //        m->video.used / 1024);
                 SDL_Event e = { 0 };
                 e.type = SDL_USEREVENT;
                 e.user.code = CustomEvent_UpdateVideoDisplay;
@@ -1232,7 +1232,7 @@ encodeAudioData(OpusEncoder* encoder,
 
         MESSAGE_SERIALIZE(AudioMessage, message, temp);
         NullValue packet =
-          BytesToPacket(temp.buffer, temp.used, RELIABLE_AUDIO);
+          BytesToPacket(temp.buffer, temp.used, SendFlags_Audio);
         NullValueListAppend(list, &packet);
     }
     uint8_tListFree(&temp);
@@ -2704,7 +2704,18 @@ updateVideoDisplay(SDL_Renderer* renderer,
                                              SDL_TEXTUREACCESS_STREAMING,
                                              width,
                                              height);
+        if (display->texture == NULL) {
+            fprintf(stderr, "Failed to create texture: %s\n", SDL_GetError());
+            return;
+        }
         printf("Created texture for video display: %dx%d\n", width, height);
+        display->srcRect.none = NULL;
+        display->srcRect.tag = OptionalRectTag_none;
+
+        display->dstRect.x = 0;
+        display->dstRect.y = 0;
+        display->dstRect.w = width;
+        display->dstRect.h = height;
     }
 
     void* pixels = NULL;
@@ -3038,7 +3049,7 @@ refreshClients(ENetPeer* peer, pBytes bytes)
     lm.general.getClients = NULL;
     lm.general.tag = GeneralMessageTag_getClients;
     MESSAGE_SERIALIZE(LobbyMessage, lm, (*bytes));
-    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+    sendBytes(peer, 1, CLIENT_CHANNEL, bytes, SendFlags_Normal);
 }
 
 bool
@@ -3234,8 +3245,8 @@ handleUserInput(const struct pollfd inputfd,
                     message.text = TemLangStringClone(&userInput->data.text,
                                                       currentAllocator);
                     MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
-                    ENetPacket* packet =
-                      BytesToPacket(bytes->buffer, bytes->used, true);
+                    ENetPacket* packet = BytesToPacket(
+                      bytes->buffer, bytes->used, SendFlags_Normal);
                     IN_MUTEX(clientData.mutex, textEnd, {
                         size_t i = 0;
                         if (GetStreamDisplayFromGuid(
@@ -3255,8 +3266,8 @@ handleUserInput(const struct pollfd inputfd,
                     message.message = TemLangStringClone(&userInput->data.text,
                                                          currentAllocator);
                     MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
-                    ENetPacket* packet =
-                      BytesToPacket(bytes->buffer, bytes->used, true);
+                    ENetPacket* packet = BytesToPacket(
+                      bytes->buffer, bytes->used, SendFlags_Normal);
                     IN_MUTEX(clientData.mutex, chatEnd, {
                         size_t i = 0;
                         if (GetStreamDisplayFromGuid(
@@ -3315,8 +3326,8 @@ handleUserInput(const struct pollfd inputfd,
                     message.text =
                       TemLangStringCreateFromSize(ptr, size, currentAllocator);
                     MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
-                    ENetPacket* packet =
-                      BytesToPacket(bytes->buffer, bytes->used, true);
+                    ENetPacket* packet = BytesToPacket(
+                      bytes->buffer, bytes->used, SendFlags_Normal);
                     IN_MUTEX(clientData.mutex, fileTextEnd, {
                         size_t i = 0;
                         if (GetStreamDisplayFromGuid(
@@ -3336,8 +3347,8 @@ handleUserInput(const struct pollfd inputfd,
                     message.message =
                       TemLangStringCreateFromSize(ptr, size, currentAllocator);
                     MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
-                    ENetPacket* packet =
-                      BytesToPacket(bytes->buffer, bytes->used, true);
+                    ENetPacket* packet = BytesToPacket(
+                      bytes->buffer, bytes->used, SendFlags_Normal);
                     IN_MUTEX(clientData.mutex, fileChatEnd, {
                         size_t i = 0;
                         if (GetStreamDisplayFromGuid(
@@ -3359,8 +3370,8 @@ handleUserInput(const struct pollfd inputfd,
                         message.tag = ImageMessageTag_imageStart;
                         message.imageStart = NULL;
                         MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-                        ENetPacket* packet =
-                          BytesToPacket(bytes->buffer, bytes->used, true);
+                        ENetPacket* packet = BytesToPacket(
+                          bytes->buffer, bytes->used, SendFlags_Normal);
 
                         IN_MUTEX(clientData.mutex, imageEnd1, {
                             size_t i = 0;
@@ -3388,8 +3399,8 @@ handleUserInput(const struct pollfd inputfd,
                         message.imageChunk.used = s;
                         message.imageChunk.size = s;
                         MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-                        ENetPacket* packet =
-                          BytesToPacket(bytes->buffer, bytes->used, true);
+                        ENetPacket* packet = BytesToPacket(
+                          bytes->buffer, bytes->used, SendFlags_Normal);
                         bool sent = false;
                         IN_MUTEX(clientData.mutex, imageEnd2, {
                             size_t i = 0;
@@ -3421,8 +3432,8 @@ handleUserInput(const struct pollfd inputfd,
                     message.tag = ImageMessageTag_imageEnd;
                     message.imageEnd = NULL;
                     MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-                    ENetPacket* packet =
-                      BytesToPacket(bytes->buffer, bytes->used, true);
+                    ENetPacket* packet = BytesToPacket(
+                      bytes->buffer, bytes->used, SendFlags_Normal);
                     IN_MUTEX(clientData.mutex, imageEnd3, {
                         size_t i = 0;
                         if (GetStreamDisplayFromGuid(
@@ -3572,7 +3583,7 @@ handleUserEvent(const SDL_UserEvent* e,
         case CustomEvent_SendLobbyMessage: {
             MESSAGE_SERIALIZE(
               LobbyMessage, (*(const LobbyMessage*)e->data1), (*bytes));
-            sendBytes(peer, 1, CLIENT_CHANNEL, bytes, true);
+            sendBytes(peer, 1, CLIENT_CHANNEL, bytes, SendFlags_Normal);
             LobbyMessageFree(e->data1);
             currentAllocator->free(e->data1);
         } break;

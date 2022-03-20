@@ -8,12 +8,12 @@ sendBytes(ENetPeer* peers,
           const size_t peerCount,
           const enet_uint32 channel,
           const Bytes* bytes,
-          const bool reliable)
+          const SendFlags flags)
 {
     if (bytes->used == 0) {
         return;
     }
-    ENetPacket* packet = BytesToPacket(bytes->buffer, bytes->used, reliable);
+    ENetPacket* packet = BytesToPacket(bytes->buffer, bytes->used, flags);
     for (size_t i = 0; i < peerCount; ++i) {
         PEER_SEND(&peers[i], channel, packet);
     }
@@ -185,13 +185,9 @@ FindPeerFromData(ENetPeer* peers, const size_t count, const void* data)
 }
 
 ENetPacket*
-BytesToPacket(const void* data, const size_t length, const bool reliable)
+BytesToPacket(const void* data, const size_t length, const SendFlags flags)
 {
-    return enet_packet_create(data,
-                              length,
-                              (reliable
-                                 ? ENET_PACKET_FLAG_RELIABLE
-                                 : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT));
+    return enet_packet_create(data, length, flags);
 }
 
 int
@@ -784,7 +780,7 @@ int
 vpx_img_plane_height(const vpx_image_t* img, const int plane)
 {
     if (plane > 0 && img->y_chroma_shift > 0) {
-        return (img->d_w + 1) >> img->y_chroma_shift;
+        return (img->d_h + 1) >> img->y_chroma_shift;
     } else {
         return img->d_h;
     }

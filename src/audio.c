@@ -65,15 +65,20 @@ handleAudioMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             if (result) {
                 MESSAGE_SERIALIZE(
                   AudioMessage, audioMessage, serverData->bytes);
-                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+                sendBytes(peer,
+                          1,
+                          SERVER_CHANNEL,
+                          &serverData->bytes,
+                          SendFlags_Normal);
             }
             AudioMessageFree(&audioMessage);
         } break;
         case AudioMessageTag_audio: {
             result = true;
             MESSAGE_SERIALIZE(AudioMessage, (*message), serverData->bytes);
-            ENetPacket* packet = BytesToPacket(
-              serverData->bytes.buffer, serverData->bytes.used, RELIABLE_AUDIO);
+            ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
+                                               serverData->bytes.used,
+                                               SendFlags_Audio);
             sendPacketToReaders(
               serverData->host, packet, &serverData->config->readers);
         } break;

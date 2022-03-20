@@ -42,11 +42,13 @@ parseVideoConfiguration(const int argc,
     return true;
 }
 
+VideoMessage sizeMessage = { .tag = VideoMessageTag_size, .size = { 0, 0 } };
+
 bool
 onConnectForVideo(ENetPeer* peer, pServerData serverData)
 {
-    (void)serverData;
-    (void)peer;
+    MESSAGE_SERIALIZE(VideoMessage, sizeMessage, serverData->bytes);
+    sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
     return true;
 }
 
@@ -65,16 +67,29 @@ handleVideoMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             if (result) {
                 MESSAGE_SERIALIZE(
                   VideoMessage, videoMessage, serverData->bytes);
-                sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+                sendBytes(peer,
+                          1,
+                          SERVER_CHANNEL,
+                          &serverData->bytes,
+                          SendFlags_Normal);
             }
             VideoMessageFree(&videoMessage);
         } break;
-        case VideoMessageTag_video:
         case VideoMessageTag_size: {
+            MESSAGE_SERIALIZE(VideoMessage, (*message), serverData->bytes);
+            ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
+                                               serverData->bytes.used,
+                                               SendFlags_Normal);
+            sendPacketToReaders(
+              serverData->host, packet, &serverData->config->readers);
+            result = VideoMessageCopy(&sizeMessage, message, currentAllocator);
+        } break;
+        case VideoMessageTag_video: {
             result = true;
             MESSAGE_SERIALIZE(VideoMessage, (*message), serverData->bytes);
-            ENetPacket* packet = BytesToPacket(
-              serverData->bytes.buffer, serverData->bytes.used, RELIABLE_VIDEO);
+            ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
+                                               serverData->bytes.used,
+                                               SendFlags_Video);
             sendPacketToReaders(
               serverData->host, packet, &serverData->config->readers);
         } break;

@@ -27,8 +27,8 @@ updateLobbyClients(pServerData serverData)
         c->record = false;
     }
     MESSAGE_SERIALIZE(LobbyMessage, message, serverData->bytes);
-    ENetPacket* packet =
-      BytesToPacket(serverData->bytes.buffer, serverData->bytes.used, true);
+    ENetPacket* packet = BytesToPacket(
+      serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
     sendPacketToReaders(serverData->host, packet, &serverData->config->readers);
     LobbyMessageFree(&message);
 }
@@ -227,7 +227,8 @@ handleLobbyMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
     }
     if (result) {
         MESSAGE_SERIALIZE(LobbyMessage, lobbyMessage, serverData->bytes);
-        sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, true);
+        sendBytes(
+          peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
     } else {
 #if _DEBUG
         printf("Unexpected lobby message '%s' from client\n",

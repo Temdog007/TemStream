@@ -508,8 +508,7 @@ continueServer:
                       &rs)) {
                         case AuthenticateResult_Success: {
                             if ((!clientHasReadAccess(client, config) &&
-                                 !clientHasWriteAccess(client, config)) ||
-                                !funcs.onConnect(event.peer, &serverData)) {
+                                 !clientHasWriteAccess(client, config))) {
                                 enet_peer_disconnect(event.peer, 0);
                                 break;
                             }
@@ -521,6 +520,11 @@ continueServer:
                             funcs.sendGeneral(
                               &gm, &serverData.bytes, event.peer);
                             GeneralMessageFree(&gm);
+
+                            if (!funcs.onConnect(event.peer, &serverData)) {
+                                enet_peer_disconnect(event.peer, 0);
+                                break;
+                            }
                         } break;
                         case AuthenticateResult_NotNeeded:
                             if (!funcs.handleMessage(
