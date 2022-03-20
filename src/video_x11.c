@@ -447,10 +447,26 @@ screenRecordThread(pWindowData data)
 
             windowHidden = false;
             uint8_t* imageData = xcb_get_image_data(reply);
-            // TIME("Compress to JPEG", {
-            //     Bytes bytes = rgbaToJpeg(imageData, data->width,
-            //     data->height); uint8_tListFree(&bytes);
-            // });
+#if TIME_JPEG
+            Bytes jpegBytes = { 0 };
+            uint8_t* rgb = NULL;
+            TIME("Compress to JPEG", {
+                rgb =
+                  currentAllocator->allocate(data->width * data->height * 3);
+                SDL_ConvertPixels(data->width,
+                                  data->height,
+                                  SDL_PIXELFORMAT_RGBA32,
+                                  imageData,
+                                  data->width * 4,
+                                  SDL_PIXELFORMAT_RGB24,
+                                  rgb,
+                                  data->width * 3);
+                jpegBytes = rgbaToJpeg(rgb, data->width, data->height);
+            });
+            printf("JPEG is %u kilobytes\n", jpegBytes.used / 1024);
+            uint8_tListFree(&jpegBytes);
+            currentAllocator->free(rgb);
+#endif
 #if TIME_VIDEO_STREAMING
             int result;
             TIME("Convert pixels to YV12", {
@@ -459,7 +475,7 @@ screenRecordThread(pWindowData data)
                                            SDL_PIXELFORMAT_RGBA32,
                                            imageData,
                                            geom->width * 4,
-                                           SDL_PIXELFORMAT_IYUV,
+                                           SDL_PIXELFORMAT_YV12,
                                            YUV,
                                            geom->width);
             });
@@ -469,7 +485,7 @@ screenRecordThread(pWindowData data)
                                                  SDL_PIXELFORMAT_RGBA32,
                                                  imageData,
                                                  geom->width * 4,
-                                                 SDL_PIXELFORMAT_IYUV,
+                                                 SDL_PIXELFORMAT_YV12,
                                                  YUV,
                                                  geom->width);
 #endif

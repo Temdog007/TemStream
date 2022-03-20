@@ -38,6 +38,8 @@
 #include <vpx/vpx_decoder.h>
 #include <vpx/vpx_encoder.h>
 
+#include <jpeglib.h>
+
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO
 #define MINIMP3_IMPLEMENTATION
@@ -426,7 +428,7 @@ diff_timespec(const struct timespec*, const struct timespec*);
     }
 
 extern Bytes
-rgbaToJpeg(uint8_t*, uint16_t width, uint16_t height);
+rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
 
 extern bool
 authenticateClient(pClient,

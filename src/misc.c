@@ -792,3 +792,78 @@ diff_timespec(const struct timespec* time1, const struct timespec* time0)
     return (time1->tv_sec - time0->tv_sec) +
            (time1->tv_nsec - time0->tv_nsec) / 1000000000.0;
 }
+
+void
+initJpegDest(j_compress_ptr cinfo)
+{
+    pBytes bytes = (pBytes)cinfo->client_data;
+    cinfo->dest->next_output_byte = &bytes->buffer[0];
+    cinfo->dest->free_in_buffer = bytes->size;
+}
+
+boolean
+emptyJpegDst(j_compress_ptr cinfo)
+{
+    pBytes bytes = (pBytes)cinfo->client_data;
+    const uint32_t oldSize = bytes->size;
+    bytes->used = bytes->size - cinfo->dest->free_in_buffer;
+    const bool result = uint8_tListRellocateIfNeeded(bytes);
+    cinfo->dest->next_output_byte = &bytes->buffer[oldSize];
+    cinfo->dest->free_in_buffer = bytes->size - oldSize;
+    return result;
+}
+
+void
+termJpegDest(j_compress_ptr cinfo)
+{
+    pBytes bytes = (pBytes)cinfo->client_data;
+    bytes->used = bytes->size - cinfo->dest->free_in_buffer;
+}
+
+Bytes
+rgbaToJpeg(const uint8_t* buffer, const uint16_t width, const uint16_t height)
+{
+    struct jpeg_compress_struct cinfo;
+
+    struct jpeg_error_mgr jerr;
+    cinfo.err = jpeg_std_error(&jerr);
+
+    jpeg_create_compress(&cinfo);
+
+    const uint32_t byteSize = width * height * 3;
+
+    Bytes bytes = { .allocator = currentAllocator,
+                    .buffer = currentAllocator->allocate(byteSize),
+                    .size = byteSize,
+                    .used = 0 };
+    cinfo.client_data = &bytes;
+
+    struct jpeg_destination_mgr dest = { .init_destination = &initJpegDest,
+                                         .empty_output_buffer = &emptyJpegDst,
+                                         .term_destination = &termJpegDest };
+    cinfo.dest = &dest;
+
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_RGB;
+    jpeg_set_defaults(&cinfo);
+
+    jpeg_set_quality(&cinfo, 50, TRUE);
+
+    cinfo.dct_method = JDCT_FLOAT;
+
+    jpeg_start_compress(&cinfo, TRUE);
+
+    const int stride = width * 3;
+    while (cinfo.next_scanline < cinfo.image_height) {
+        JSAMPROW row[] = { (JSAMPROW)&buffer[cinfo.next_scanline * stride] };
+        jpeg_write_scanlines(&cinfo, row, 1);
+    }
+
+    jpeg_finish_compress(&cinfo);
+
+    jpeg_destroy_compress(&cinfo);
+
+    return bytes;
+}
