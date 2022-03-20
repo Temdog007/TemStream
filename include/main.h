@@ -411,7 +411,7 @@ diff_timespec(const struct timespec*, const struct timespec*);
 
 #define NANO_TO_MILLI(x) (x / 1000000)
 
-#define TIME_VIDEO_STREAMING false
+#define TIME_VIDEO_STREAMING true
 
 #define TIME(str, f)                                                           \
     {                                                                          \

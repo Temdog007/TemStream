@@ -510,8 +510,15 @@ screenRecordThread(pWindowData data)
                     frame_count % data->keyFrameInterval == 0) {
                     flags |= VPX_EFLAG_FORCE_KF;
                 }
+#if TIME_VIDEO_STREAMING
+                TIME("VPX encoding", {
+                    res = vpx_codec_encode(
+                      &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
+                });
+#else
                 res = vpx_codec_encode(
                   &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
+#endif
                 if (res == VPX_CODEC_OK) {
                     vpx_codec_iter_t iter = NULL;
                     const vpx_codec_cx_pkt_t* pkt = NULL;
