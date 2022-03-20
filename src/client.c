@@ -24,25 +24,6 @@ ClientData clientData = { 0 };
 UserInputList userInputs = { 0 };
 AudioStatePtrList audioStates = { 0 };
 SDL_atomic_t continueSelection = { 0 };
-VideoStreamList videoStreams = { 0 };
-
-#define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
-    IN_MUTEX(mutex, endLabel, {                                                \
-        pStreamDisplay display = NULL;                                         \
-        const ServerConfiguration* config = NULL;                              \
-        {                                                                      \
-            size_t index = 0;                                                  \
-            if (!GetStreamDisplayFromGuid(                                     \
-                  &clientData.displays, id, NULL, &index)) {                   \
-                displayMissing = true;                                         \
-                goto endLabel;                                                 \
-            }                                                                  \
-            display = &clientData.displays.buffer[index];                      \
-        }                                                                      \
-        config = &display->config;                                             \
-        displayMissing = false;                                                \
-        f                                                                      \
-    });
 
 size_t
 encodeAudioData(OpusEncoder* encoder,
@@ -652,7 +633,11 @@ clientHandleAudioMessage(const Bytes* packetBytes,
 }
 
 bool
-clientHandleVideoMessage(const Bytes* packetBytes, pStreamDisplay display)
+clientHandleVideoMessage(const Bytes* packetBytes,
+                         pStreamDisplay display,
+                         vpx_codec_ctx_t* codec,
+                         uint16_t* width,
+                         uint16_t* height)
 {
     bool success = false;
     VideoMessage message = { 0 };
@@ -674,6 +659,47 @@ clientHandleVideoMessage(const Bytes* packetBytes, pStreamDisplay display)
                 success = UserInputListAppend(&userInputs, &input);
             }
             UserInputFree(&input);
+        } break;
+        case VideoMessageTag_size:
+            *width = message.size[0];
+            *height = message.size[1];
+            break;
+        case VideoMessageTag_video: {
+            if (vpx_codec_decode(codec,
+                                 message.video.buffer,
+                                 message.video.used,
+                                 NULL,
+                                 VPX_DL_REALTIME) != 0) {
+                fprintf(stderr, "Failed to decode video frame.\n");
+                break;
+            }
+            vpx_codec_iter_t iter = NULL;
+            vpx_image_t* img = NULL;
+            while ((img = vpx_codec_get_frame(codec, &iter)) != NULL) {
+                pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
+                m->id = display->id;
+                m->width = *width;
+                m->height = *height;
+                m->video.allocator = currentAllocator;
+
+                for (int plane = 0; plane < 3; ++plane) {
+                    const unsigned char* buf = img->planes[plane];
+                    const int stride = img->stride[plane];
+                    const int w =
+                      vpx_img_plane_width(img, plane) *
+                      ((img->fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+                    const int h = vpx_img_plane_height(img, plane);
+                    for (int y = 0; y < h; ++y) {
+                        uint8_tListQuickAppend(&m->video, buf, w);
+                        buf += stride;
+                    }
+                }
+                SDL_Event e = { 0 };
+                e.type = SDL_USEREVENT;
+                e.user.code = CustomEvent_UpdateVideoDisplay;
+                e.user.data1 = m;
+                SDL_PushEvent(&e);
+            }
         } break;
         default:
             printf("Unexpected video message: %s\n",
@@ -699,7 +725,9 @@ streamConnectionThread(void* ptr)
                     .buffer = currentAllocator->allocate(MAX_PACKET_SIZE) };
     int result = EXIT_FAILURE;
     bool displayMissing = false;
+    ServerConfigurationDataTag tag = { 0 };
     USE_DISPLAY(clientData.mutex, fend, displayMissing, {
+        tag = config->data.tag;
         if (config->port.tag != PortTag_port) {
             printf("Cannot open connection to stream due "
                    "to an invalid port\n");
@@ -745,6 +773,17 @@ streamConnectionThread(void* ptr)
         enet_peer_reset(peer);
         peer = NULL;
         goto end;
+    }
+
+    // For video connections
+    vpx_codec_ctx_t codec = { 0 };
+    uint16_t vidWidth = 0;
+    uint16_t vidHeight = 0;
+    if (tag == ServerConfigurationDataTag_video) {
+        if (vpx_codec_dec_init(&codec, vpx_codec_vp8_dx(), NULL, 0) != 0) {
+            fprintf(stderr, "Failed to create video decoder\n");
+            goto end;
+        }
     }
 
     while (!appDone && !displayMissing) {
@@ -887,8 +926,8 @@ streamConnectionThread(void* ptr)
                           display->recordings != 0 || record != NULL);
                         break;
                     case ServerConfigurationDataTag_video:
-                        success =
-                          clientHandleVideoMessage(&packetBytes, display);
+                        success = clientHandleVideoMessage(
+                          &packetBytes, display, &codec, &vidWidth, &vidHeight);
                         break;
                     default:
                         fprintf(stderr,
@@ -1693,6 +1732,9 @@ selectStreamToStart(struct pollfd inputfd, pBytes bytes, const Client* client)
         case ServerConfigurationDataTag_audio:
             message.startStreaming.data.audio = defaultAudioConfiguration();
             break;
+        case ServerConfigurationDataTag_video:
+            message.startStreaming.data.video = defaultVideoConfiguration();
+            break;
         default:
             puts("Canceling start stream");
             goto end;
@@ -1939,7 +1981,7 @@ saveScreenshot(SDL_Renderer* renderer, const StreamDisplay* display)
         goto end;
     }
     temp = SDL_CreateTexture(renderer,
-                             SDL_PIXELFORMAT_RGBA8888,
+                             SDL_PIXELFORMAT_RGBA32,
                              SDL_TEXTUREACCESS_TARGET,
                              width,
                              height);
@@ -2571,7 +2613,7 @@ updateAudioDisplay(SDL_Renderer* renderer,
 
     if (display->texture == NULL) {
         display->texture = SDL_CreateTexture(renderer,
-                                             SDL_PIXELFORMAT_RGBA8888,
+                                             SDL_PIXELFORMAT_RGBA32,
                                              SDL_TEXTUREACCESS_TARGET,
                                              AUDIO_SIZE,
                                              AUDIO_SIZE);
@@ -2630,6 +2672,40 @@ updateAudioDisplay(SDL_Renderer* renderer,
     if (display->dstRect.h < MIN_HEIGHT) {
         display->dstRect.h = 128.f;
     }
+
+end:
+    return;
+}
+
+void
+updateVideoDisplay(SDL_Renderer* renderer,
+                   pStreamDisplay display,
+                   const int width,
+                   const int height,
+                   const Bytes* bytes)
+{
+    if (renderer == NULL) {
+        return;
+    }
+
+    if (display->texture == NULL) {
+        display->texture = SDL_CreateTexture(renderer,
+                                             SDL_PIXELFORMAT_YV12,
+                                             SDL_TEXTUREACCESS_STREAMING,
+                                             width,
+                                             height);
+    }
+
+    void* pixels = NULL;
+    int pitch = 0;
+    if (SDL_LockTexture(display->texture, NULL, &pixels, &pitch) != 0) {
+        fprintf(stderr, "Failed to update texture: %s\n", SDL_GetError());
+        goto end;
+    }
+
+    memcpy(pixels, bytes->buffer, bytes->used);
+
+    SDL_UnlockTexture(display->texture);
 
 end:
     return;
@@ -3080,17 +3156,7 @@ handleUserInput(const struct pollfd inputfd,
             USE_DISPLAY(
               clientData.mutex, endD, d, { display->choosingPlayback = true; });
             if (userInput->data.queryAudio.writeAccess) {
-                if (selectVideoStreamSource(inputfd, bytes, userInput)) {
-                    VideoStream v = { 0 };
-                    USE_DISPLAY(clientData.mutex, endD2659, d, {
-                        if (VideoStreamListAppend(&videoStreams, &v)) {
-                            pVideoStream vptr =
-                              &videoStreams.buffer[videoStreams.used];
-                            vptr->id = *id;
-                            vptr->queue = CQueueCreate(MB(8));
-                        }
-                    });
-                }
+                selectVideoStreamSource(inputfd, bytes, userInput);
             }
             USE_DISPLAY(clientData.mutex, endD26, d, {
                 display->choosingPlayback = false;
@@ -3529,6 +3595,21 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             SDL_AddEventWatch((SDL_EventFilter)handleMicrophoneMute, e->data1);
         } break;
+        case CustomEvent_UpdateVideoDisplay: {
+            pVideoFrame ptr = (pVideoFrame)e->data1;
+            const Guid id = ptr->id;
+            size_t i = 0;
+            if (GetStreamDisplayFromGuid(&clientData.displays, &id, NULL, &i)) {
+                updateVideoDisplay(renderer,
+                                   &clientData.displays.buffer[i],
+                                   ptr->width,
+                                   ptr->height,
+                                   &ptr->video);
+            }
+            VideoFrameFree(ptr);
+            currentAllocator->free(ptr);
+            RENDER_NOW(w, h);
+        } break;
         default:
             break;
     }
@@ -3556,7 +3637,6 @@ runClient(const Configuration* configuration)
 
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
-    videoStreams.allocator = currentAllocator;
     const bool showWindow = !config->noGui;
     {
         uint32_t flags = 0;
@@ -4029,7 +4109,6 @@ end:
     UserInputListFree(&userInputs);
 
     ClientDataFree(&clientData);
-    VideoStreamListFree(&videoStreams);
     TTF_CloseFont(ttfFont);
     TTF_Quit();
     IMG_Quit();
@@ -4053,6 +4132,10 @@ end:
                 break;
             case CustomEvent_UpdateAudioDisplay:
                 CurrentAudioFree(e.user.data1);
+                currentAllocator->free(e.user.data1);
+                break;
+            case CustomEvent_UpdateVideoDisplay:
+                VideoFrameFree(e.user.data1);
                 currentAllocator->free(e.user.data1);
                 break;
             default:

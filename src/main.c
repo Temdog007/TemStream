@@ -13,6 +13,7 @@
 #include "rendering.c"
 #include "server.c"
 #include "text.c"
+#include "video.c"
 #include "video_x11.c"
 
 const Allocator* currentAllocator = NULL;
@@ -57,8 +58,7 @@ main(const int argc, const char** argv)
                 continue;
             }
 
-            char* end = NULL;
-            memory = SDL_strtoull(argv[i + 1], &end, 10);
+            memory = SDL_strtoull(argv[i + 1], NULL, 10);
             break;
         }
         if (memory == 0) {
@@ -146,6 +146,8 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
         STR_EQUALS(streamType, "image", len, { goto runImage; });
         STR_EQUALS(streamType, "A", len, { goto runAudio; });
         STR_EQUALS(streamType, "audio", len, { goto runAudio; });
+        STR_EQUALS(streamType, "V", len, { goto runVideo; });
+        STR_EQUALS(streamType, "video", len, { goto runVideo; });
     }
     switch (configuration->tag) {
         case ConfigurationTag_none:
@@ -173,6 +175,9 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
                     goto end;
                 case ServerConfigurationDataTag_lobby:
                     result = runLobbyServer(configuration);
+                    goto end;
+                case ServerConfigurationDataTag_video:
+                    result = runVideoServer(configuration);
                     goto end;
                 default:
                     break;
@@ -220,6 +225,14 @@ runAudio : {
     configuration->server = defaultServerConfiguration();
     if (parseAudioConfiguration(argc, argv, configuration)) {
         result = runAudioServer(configuration);
+    }
+    goto end;
+}
+runVideo : {
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    if (parseVideoConfiguration(argc, argv, configuration)) {
+        result = runVideoServer(configuration);
     }
     goto end;
 }

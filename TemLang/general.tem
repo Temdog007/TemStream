@@ -149,6 +149,7 @@ variant AudioMessage {
 variant VideoMessage {
     GeneralMessage general
     [0 u8] video
+    [ 2 u16 ] size
 }
 
 inlineFile "TemLang/client.tem"

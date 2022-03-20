@@ -67,8 +67,7 @@ processOutputToNumber(const char* command, int* output)
     TemLangString str = { .allocator = currentAllocator };
     const int result = processOutputToString(command, &str);
     if (result == 0) {
-        char* end = NULL;
-        *output = (int)strtol(str.buffer, &end, 10);
+        *output = (int)strtol(str.buffer, NULL, 10);
     }
     TemLangStringFree(&str);
     return result;
@@ -259,7 +258,6 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
         pTemLangString str = &list->buffer[i];
         // Look for Sink, application.name, and application.process.id
         TemLangStringTrim(str);
-        char* end = NULL;
         if (!foundName &&
             TemLangStringStartsWith(str, "application.name = \"")) {
             // Will have quotes
@@ -276,14 +274,14 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
             foundPID = true;
             sink->processId = (int32_t)strtol(
               str->buffer + (sizeof("application.process.id = \"") - 1),
-              &end,
+              NULL,
               10);
             continue;
         }
         if (!foundSink && TemLangStringStartsWith(str, "Sink: ")) {
             foundSink = true;
             sink->currentSinkId =
-              (int32_t)strtol(str->buffer + (sizeof("Sink: ") - 1), &end, 10);
+              (int32_t)strtol(str->buffer + (sizeof("Sink: ") - 1), NULL, 10);
 #if _DEBUG
             printf("%s = %d\n", str->buffer, sink->currentSinkId);
 #endif
@@ -292,7 +290,7 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
         if (!foundId && TemLangStringStartsWith(str, "Sink Input #")) {
             foundId = true;
             sink->inputId = (int32_t)strtol(
-              str->buffer + (sizeof("Sink Input #") - 1), &end, 10);
+              str->buffer + (sizeof("Sink Input #") - 1), NULL, 10);
 #if _DEBUG
             printf("%s = %d\n", str->buffer, sink->inputId);
 #endif

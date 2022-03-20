@@ -153,12 +153,6 @@ filenameToExtension(const char* filename, pFileExtension f)
         return true;
     }
 
-    f->video = VideoExtensionFromString(&str);
-    if (f->video != ImageExtension_Invalid) {
-        f->tag = FileExtensionTag_video;
-        return true;
-    }
-
     return false;
 }
 
@@ -169,8 +163,6 @@ CanSendFileToStream(const FileExtensionTag tag,
     switch (s) {
         case ServerConfigurationDataTag_audio:
             return tag == FileExtensionTag_audio;
-        case ServerConfigurationDataTag_video:
-            return tag == FileExtensionTag_video;
         case ServerConfigurationDataTag_chat:
         case ServerConfigurationDataTag_text:
             return tag == FileExtensionTag_text;
@@ -776,4 +768,24 @@ cleanupConfigurationsInRedis(redisContext* ctx)
     }
     ServerConfigurationListFree(&servers);
     PRINT_MEMORY;
+}
+
+int
+vpx_img_plane_width(const vpx_image_t* img, const int plane)
+{
+    if (plane > 0 && img->x_chroma_shift > 0) {
+        return (img->d_w + 1) >> img->x_chroma_shift;
+    } else {
+        return img->d_w;
+    }
+}
+
+int
+vpx_img_plane_height(const vpx_image_t* img, const int plane)
+{
+    if (plane > 0 && img->y_chroma_shift > 0) {
+        return (img->d_w + 1) >> img->y_chroma_shift;
+    } else {
+        return img->d_h;
+    }
 }

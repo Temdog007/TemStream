@@ -29,7 +29,7 @@ loadFont(const char* filename,
     font->characters.allocator = currentAllocator;
 
     font->texture = SDL_CreateTexture(renderer,
-                                      SDL_PIXELFORMAT_RGBA8888,
+                                      SDL_PIXELFORMAT_RGBA32,
                                       SDL_TEXTUREACCESS_STATIC,
                                       FONT_TEXTURE_WIDTH,
                                       FONT_TEXTURE_HEIGHT);

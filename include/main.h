@@ -32,6 +32,10 @@
 
 #include <vorbis/codec.h>
 
+#include <vpx/vp8dx.h>
+#include <vpx/vpx_decoder.h>
+#include <vpx/vpx_encoder.h>
+
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO
 #define MINIMP3_IMPLEMENTATION
@@ -272,6 +276,7 @@ SERVER_FUNCTIONS(Text);
 SERVER_FUNCTIONS(Chat);
 SERVER_FUNCTIONS(Image);
 SERVER_FUNCTIONS(Audio);
+SERVER_FUNCTIONS(Video);
 
 #define DEFINE_RUN_SERVER(T)                                                   \
     int run##T##Server(pConfiguration configuration)                           \
@@ -370,6 +375,24 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
     endLabel:                                                                  \
     SDL_UnlockMutex(mutex);
 
+#define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
+    IN_MUTEX(mutex, endLabel, {                                                \
+        pStreamDisplay display = NULL;                                         \
+        const ServerConfiguration* config = NULL;                              \
+        {                                                                      \
+            size_t index = 0;                                                  \
+            if (!GetStreamDisplayFromGuid(                                     \
+                  &clientData.displays, id, NULL, &index)) {                   \
+                displayMissing = true;                                         \
+                goto endLabel;                                                 \
+            }                                                                  \
+            display = &clientData.displays.buffer[index];                      \
+        }                                                                      \
+        config = &display->config;                                             \
+        displayMissing = false;                                                \
+        f                                                                      \
+    });
+
 extern bool
 authenticateClient(pClient,
                    const AuthenticateFunc,
@@ -419,6 +442,9 @@ typedef enum UserInputResult
 extern UserInputResult
 getIndexFromUser(struct pollfd, pBytes, const uint32_t, uint32_t*, const bool);
 
+extern UserInputResult
+getStringFromUser(struct pollfd, pBytes, const bool);
+
 extern bool
 startWindowAudioStreaming(const struct pollfd, pBytes, pAudioState);
 
@@ -428,12 +454,12 @@ startRecording(const char*, const int, pAudioState);
 #define STREAM_TIMEOUT (1000u * 10u)
 
 // Audio
-#define ENABLE_FEC 0
-#define TEST_DECODER 0
-#define USE_AUDIO_CALLBACKS 1
+#define ENABLE_FEC false
+#define TEST_DECODER false
+#define USE_AUDIO_CALLBACKS true
 #define RELIABLE_AUDIO false
 
-#define HIGH_QUALITY_AUDIO 1
+#define HIGH_QUALITY_AUDIO true
 #if HIGH_QUALITY_AUDIO
 #define PCM_SIZE sizeof(float)
 #else
@@ -501,33 +527,16 @@ audioLengthToFrames(const int frequency, const int duration);
 
 // Video
 
+#define RELIABLE_VIDEO false
+
 extern bool
 startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes);
 
-typedef struct VideoStream
-{
-    CQueue queue;
-    Guid id;
-} VideoStream, *pVideoStream;
+extern int
+vpx_img_plane_width(const vpx_image_t*, int);
 
-static inline void
-VideoStreamFree(pVideoStream v)
-{
-    CQueueFree(&v->queue);
-    GuidFree(&v->id);
-}
-
-static inline bool
-VideoStreamCopy(pVideoStream dest, const VideoStream* src, const Allocator* a)
-{
-    VideoStreamFree(dest);
-    return GuidCopy(&dest->id, &src->id, a) &&
-           CQueueCopy(&dest->queue, &src->queue, a);
-}
-
-MAKE_DEFAULT_LIST(VideoStream);
-
-extern VideoStreamList videoStreams;
+extern int
+vpx_img_plane_height(const vpx_image_t*, int);
 
 // Font
 typedef struct Character

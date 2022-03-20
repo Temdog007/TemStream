@@ -190,6 +190,7 @@ handleLobbyMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                 case ServerConfigurationDataTag_text:
                 case ServerConfigurationDataTag_chat:
                 case ServerConfigurationDataTag_audio:
+                case ServerConfigurationDataTag_video:
                 case ServerConfigurationDataTag_image: {
                     ServerConfiguration c = *serverData->config;
                     c.name = newConfig->name;

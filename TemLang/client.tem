@@ -20,7 +20,15 @@ enum CustomEvent {
     SendLobbyMessage
     SaveScreenshot
     UpdateAudioDisplay
+    UpdateVideoDisplay
     RecordingAudio
+}
+
+struct VideoFrame {
+    [0 u8] video
+    Guid id
+    u16 width
+    u16 height
 }
 
 struct Client {
@@ -186,13 +194,6 @@ enum ImageExtension {
     XV 
 }
 
-enum VideoExtension {
-    WMV
-    MP4
-    MPV
-    GIF
-}
-
 enum AudioExtension {
     WAV
     MP3
@@ -200,7 +201,6 @@ enum AudioExtension {
 }
 
 variant FileExtension {
-    VideoExtension video
     AudioExtension audio
     ImageExtension image
     null font
@@ -224,8 +224,11 @@ struct WindowData {
     Guid id
     null connection
     u32 windowId
+    u32 bitrate
     u16 width
     u16 height
+    u16 fps
+    u16 keyFrameInterval
 }
 
 inlineC "MAKE_DEFAULT_LIST(WindowData);"
