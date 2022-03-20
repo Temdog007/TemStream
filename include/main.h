@@ -32,6 +32,7 @@
 
 #include <vorbis/codec.h>
 
+#include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 #include <vpx/vpx_decoder.h>
 #include <vpx/vpx_encoder.h>
@@ -537,6 +538,12 @@ vpx_img_plane_width(const vpx_image_t*, int);
 
 extern int
 vpx_img_plane_height(const vpx_image_t*, int);
+
+extern vpx_codec_iface_t*
+codec_encoder_interface();
+
+extern vpx_codec_iface_t*
+codec_decoder_interface();
 
 // Font
 typedef struct Character

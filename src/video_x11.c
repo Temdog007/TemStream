@@ -65,6 +65,15 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
       SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
     printf("FPS set to: %u\n", fps);
 
+    askQuestion("Enter key frame interval");
+    if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
+        puts("Canceling window record");
+        goto end;
+    }
+    const uint16_t keyInterval =
+      SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
+    printf("Key frame interval set to: %u\n", keyInterval);
+
     askQuestion("Enter bitrate (in kilobits per second)");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling window record");
@@ -78,6 +87,7 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     WindowDataCopy(win, &list.buffer[selected], currentAllocator);
     win->id = *id;
     win->fps = fps;
+    win->keyFrameInterval = keyInterval;
     win->bitrate = bitrate;
 
     SDL_Thread* thread =
@@ -271,10 +281,22 @@ getDesktopWindows(xcb_connection_t* con,
     }
 }
 
+vpx_codec_iface_t*
+codec_encoder_interface()
+{
+    return vpx_codec_vp8_cx();
+}
+
+vpx_codec_iface_t*
+codec_decoder_interface()
+{
+    return vpx_codec_vp8_dx();
+}
+
 int
 screenRecordThread(pWindowData data)
 {
-    bool doneWithThread = false;
+    bool displayMissing = false;
 
     vpx_codec_ctx_t codec = { 0 };
     vpx_codec_enc_cfg_t cfg = { 0 };
@@ -305,13 +327,23 @@ screenRecordThread(pWindowData data)
 
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
 
-    if (!vpx_img_alloc(&raw, VPX_IMG_FMT_I420, data->width, data->height, 1)) {
+    if (vpx_img_alloc(&raw, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
+        NULL) {
         fprintf(stderr, "Failed to allocate image\n");
         goto end;
     }
 
-    if (vpx_codec_enc_config_default(vpx_codec_vp8_dx(), &cfg, 0) != 0) {
-        fprintf(stderr, "Failed to get default video encoder configuration\n");
+#if _DEBUG
+    printf("Using encoder: %s\n",
+           vpx_codec_iface_name(codec_encoder_interface()));
+#endif
+
+    vpx_codec_err_t res =
+      vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
+    if (res) {
+        fprintf(stderr,
+                "Failed to get default video encoder configuration: %s\n",
+                vpx_codec_err_to_string(res));
         goto end;
     }
 
@@ -323,14 +355,15 @@ screenRecordThread(pWindowData data)
     cfg.g_error_resilient =
       VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
 
-    if (vpx_codec_enc_init(&codec, vpx_codec_vp8_dx(), &cfg, 0) != 0) {
+    if (vpx_codec_enc_init(&codec, codec_encoder_interface(), &cfg, 0) != 0) {
         fprintf(stderr, "Failed to initialize encoder\n");
         goto end;
     }
 
     const uint64_t delay = 1000 / data->fps;
     uint64_t last = 0;
-    while (!appDone && !doneWithThread) {
+    bool windowHidden = false;
+    while (!appDone && !displayMissing) {
 
         const uint64_t now = SDL_GetTicks64();
         const uint64_t diff = now - last;
@@ -341,94 +374,113 @@ screenRecordThread(pWindowData data)
         last = now;
 
         xcb_generic_error_t* error = NULL;
-        xcb_get_geometry_cookie_t cookie =
+        xcb_get_geometry_cookie_t geomCookie =
           xcb_get_geometry(data->connection, data->windowId);
         xcb_get_geometry_reply_t* geom =
-          xcb_get_geometry_reply(data->connection, cookie, &error);
+          xcb_get_geometry_reply(data->connection, geomCookie, &error);
         if (error) {
             printf("XCB Error: %d\n", error->error_code);
             free(error);
-            doneWithThread = true;
-        } else if (geom) {
-            if (geom->width != data->width || geom->height != data->height) {
-                printf("Window '%s' has changed size. Recording will stop\n",
-                       data->name.buffer);
-                doneWithThread = true;
-            } else {
-                xcb_get_image_cookie_t cookie =
-                  xcb_get_image(data->connection,
-                                XCB_IMAGE_FORMAT_Z_PIXMAP,
-                                data->windowId,
-                                0,
-                                0,
-                                geom->width,
-                                geom->height,
-                                ~0U);
-                xcb_get_image_reply_t* reply =
-                  xcb_get_image_reply(data->connection, cookie, &error);
-                if (error) {
-                    // printf("XCB Error: %d\n", error->error_code);
-                    free(error);
-                    // Window may be minimized. Don't end the thread for this
-                    // error
-                } else if (reply) {
-                    uint8_t* imageData = xcb_get_image_data(reply);
-
-                    if (SDL_ConvertPixels(geom->width,
-                                          geom->height,
-                                          SDL_PIXELFORMAT_RGBA32,
-                                          imageData,
-                                          geom->width * 4,
-                                          SDL_PIXELFORMAT_YV12,
-                                          YUV,
-                                          geom->width) == 0) {
-                        int flags = 0;
-                        if (data->keyFrameInterval > 0 &&
-                            frame_count % data->keyFrameInterval == 0) {
-                            flags |= VPX_EFLAG_FORCE_KF;
-                        }
-                        if (vpx_codec_encode(&codec,
-                                             &raw,
-                                             frame_count++,
-                                             1,
-                                             flags,
-                                             VPX_DL_REALTIME) == VPX_CODEC_OK) {
-                            vpx_codec_iter_t iter = NULL;
-                            const vpx_codec_cx_pkt_t* pkt = NULL;
-                            while ((pkt = vpx_codec_get_cx_data(
-                                      &codec, &iter)) != NULL) {
-                                message.video.used = 0;
-                                uint8_tListQuickAppend(&message.video,
-                                                       pkt->data.frame.buf,
-                                                       pkt->data.frame.sz);
-                                MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-                                ENetPacket* packet = BytesToPacket(
-                                  bytes.buffer, bytes.used, false);
-                                IN_MUTEX(clientData.mutex, end2, {
-                                    size_t i = 0;
-                                    if (GetStreamDisplayFromGuid(
-                                          &clientData.displays,
-                                          &data->id,
-                                          NULL,
-                                          &i)) {
-                                        NullValueListAppend(
-                                          &clientData.displays.buffer[i]
-                                             .outgoing,
-                                          (NullValue)&packet);
-                                    } else {
-                                        enet_packet_destroy(packet);
-                                    }
-                                });
-                            }
-                        }
-                    } else {
-                        fprintf(stderr,
-                                "Image conversion failure: %s\n",
-                                SDL_GetError());
-                    }
-                }
-                free(reply);
+            if (geom != NULL) {
+                free(geom);
             }
+            displayMissing = true;
+        } else if (!geom) {
+            continue;
+        }
+
+        if (geom->width != data->width || geom->height != data->height) {
+            printf("Window '%s' has changed size. Recording will stop\n",
+                   data->name.buffer);
+            displayMissing = true;
+        } else {
+            xcb_get_image_cookie_t cookie =
+              xcb_get_image(data->connection,
+                            XCB_IMAGE_FORMAT_Z_PIXMAP,
+                            data->windowId,
+                            0,
+                            0,
+                            geom->width,
+                            geom->height,
+                            ~0U);
+            xcb_get_image_reply_t* reply =
+              xcb_get_image_reply(data->connection, cookie, &error);
+            if (xcb_connection_has_error(data->connection)) {
+                fprintf(stderr,
+                        "X11 connection has an error. Recording will stop\n");
+                displayMissing = true;
+            } else if (error) {
+                if (!windowHidden) {
+                    printf("XCB Error %d (window may not be visible. This "
+                           "error will only show once until the window is "
+                           "visible again)\n",
+                           error->error_code);
+                    windowHidden = true;
+                }
+                free(error);
+                if (reply) {
+                    free(reply);
+                }
+                // Window may be minimized. Don't end the thread for this
+                // error
+                continue;
+            } else if (!reply) {
+                continue;
+            }
+
+            windowHidden = false;
+            uint8_t* imageData = xcb_get_image_data(reply);
+            if (SDL_ConvertPixels(geom->width,
+                                  geom->height,
+                                  SDL_PIXELFORMAT_RGBA32,
+                                  imageData,
+                                  geom->width * 4,
+                                  SDL_PIXELFORMAT_YV12,
+                                  YUV,
+                                  geom->width) == 0) {
+                int flags = 0;
+                if (data->keyFrameInterval > 0 &&
+                    frame_count % data->keyFrameInterval == 0) {
+                    flags |= VPX_EFLAG_FORCE_KF;
+                }
+                res = vpx_codec_encode(
+                  &codec, &raw, frame_count++, 1, flags, VPX_DL_REALTIME);
+                if (res == VPX_CODEC_OK) {
+                    printf("Encoded frame: %d\n", frame_count);
+                    vpx_codec_iter_t iter = NULL;
+                    const vpx_codec_cx_pkt_t* pkt = NULL;
+                    while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) !=
+                           NULL) {
+                        message.video.used = 0;
+                        uint8_tListQuickAppend(&message.video,
+                                               pkt->data.frame.buf,
+                                               pkt->data.frame.sz);
+                        MESSAGE_SERIALIZE(VideoMessage, message, bytes);
+                        ENetPacket* packet =
+                          BytesToPacket(bytes.buffer, bytes.used, false);
+                        IN_MUTEX(clientData.mutex, end2, {
+                            size_t i = 0;
+                            if (GetStreamDisplayFromGuid(
+                                  &clientData.displays, &data->id, NULL, &i)) {
+                                NullValueListAppend(
+                                  &clientData.displays.buffer[i].outgoing,
+                                  (NullValue)&packet);
+                            } else {
+                                displayMissing = true;
+                                enet_packet_destroy(packet);
+                            }
+                        });
+                    }
+                } else {
+                    fprintf(stderr,
+                            "Failed to encode frame: %s\n",
+                            vpx_codec_err_to_string(res));
+                }
+            } else {
+                fprintf(
+                  stderr, "Image conversion failure: %s\n", SDL_GetError());
+            }
+            free(reply);
         }
         free(geom);
     }
@@ -439,7 +491,12 @@ end:
     vpx_img_free(&raw);
     vpx_codec_destroy(&codec);
     currentAllocator->free(YUV);
+
+    xcb_disconnect(data->connection);
     WindowDataFree(data);
     currentAllocator->free(data);
+
+    SDL_AtomicDecRef(&runningThreads);
+
     return EXIT_SUCCESS;
 }

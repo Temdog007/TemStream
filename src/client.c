@@ -639,7 +639,7 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                          uint16_t* width,
                          uint16_t* height)
 {
-    bool success = false;
+    bool success = true;
     VideoMessage message = { 0 };
     MESSAGE_DESERIALIZE(VideoMessage, message, (*packetBytes));
     switch (message.tag) {
@@ -663,14 +663,18 @@ clientHandleVideoMessage(const Bytes* packetBytes,
         case VideoMessageTag_size:
             *width = message.size[0];
             *height = message.size[1];
+            printf("Video size set to %dx%d\n", *width, *height);
             break;
         case VideoMessageTag_video: {
-            if (vpx_codec_decode(codec,
-                                 message.video.buffer,
-                                 message.video.used,
-                                 NULL,
-                                 VPX_DL_REALTIME) != 0) {
-                fprintf(stderr, "Failed to decode video frame.\n");
+            vpx_codec_err_t res = vpx_codec_decode(codec,
+                                                   message.video.buffer,
+                                                   message.video.used,
+                                                   NULL,
+                                                   VPX_DL_REALTIME);
+            if (res != VPX_CODEC_OK) {
+                fprintf(stderr,
+                        "Failed to decode video frame: %s\n",
+                        vpx_codec_err_to_string(res));
                 break;
             }
             vpx_codec_iter_t iter = NULL;
@@ -704,6 +708,7 @@ clientHandleVideoMessage(const Bytes* packetBytes,
         default:
             printf("Unexpected video message: %s\n",
                    VideoMessageTagToCharString(message.tag));
+            success = false;
             break;
     }
     VideoMessageFree(&message);
@@ -780,7 +785,8 @@ streamConnectionThread(void* ptr)
     uint16_t vidWidth = 0;
     uint16_t vidHeight = 0;
     if (tag == ServerConfigurationDataTag_video) {
-        if (vpx_codec_dec_init(&codec, vpx_codec_vp8_dx(), NULL, 0) != 0) {
+        if (vpx_codec_dec_init(&codec, codec_decoder_interface(), NULL, 0) !=
+            0) {
             fprintf(stderr, "Failed to create video decoder\n");
             goto end;
         }
@@ -2694,6 +2700,7 @@ updateVideoDisplay(SDL_Renderer* renderer,
                                              SDL_TEXTUREACCESS_STREAMING,
                                              width,
                                              height);
+        printf("Created texture for video display: %dx%d\n", width, height);
     }
 
     void* pixels = NULL;
@@ -3597,14 +3604,17 @@ handleUserEvent(const SDL_UserEvent* e,
         } break;
         case CustomEvent_UpdateVideoDisplay: {
             pVideoFrame ptr = (pVideoFrame)e->data1;
-            const Guid id = ptr->id;
             size_t i = 0;
-            if (GetStreamDisplayFromGuid(&clientData.displays, &id, NULL, &i)) {
+            if (GetStreamDisplayFromGuid(
+                  &clientData.displays, &ptr->id, NULL, &i)) {
                 updateVideoDisplay(renderer,
                                    &clientData.displays.buffer[i],
                                    ptr->width,
                                    ptr->height,
                                    &ptr->video);
+            } else {
+                fprintf(stderr,
+                        "Tried to update stream display that doesn't exist\n");
             }
             VideoFrameFree(ptr);
             currentAllocator->free(ptr);
