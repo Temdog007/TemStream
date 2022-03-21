@@ -40,8 +40,6 @@
 
 #include <jpeglib.h>
 
-#include <image.hpp>
-
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO
 #define MINIMP3_IMPLEMENTATION
@@ -414,8 +412,6 @@ diff_timespec(const struct timespec*, const struct timespec*);
 #define NANO_TO_MILLI(x) (x / 1000000)
 
 #define TIME_VIDEO_STREAMING false
-
-#define USE_SDL_PIXEL_CONVERSION false
 
 #define TIME(str, f)                                                           \
     {                                                                          \

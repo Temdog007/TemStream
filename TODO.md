@@ -104,10 +104,15 @@
 - [x] Record window display
 
 ### Mar 20, 2022
-- [ ] Improve video recording performance (opencv)
+- [x] Improve video recording performance (deemed to complex)
+
+### Mar 21, 2022
+- [x] Remove video streaming code (opencv)
+- [ ] Acquire window frames in another thread
+- [ ] Use multi-threading (or GPU?) to convert RGBA to YV12
 
 ### Later
-- [ ] Record webcam
+- [ ] Display RTMP servers on client windows
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

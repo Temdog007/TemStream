@@ -326,11 +326,7 @@ screenRecordThread(pWindowData data)
     message.tag = VideoMessageTag_video;
     message.video = INIT_ALLOCATOR(MB(1));
 
-#if USE_SDL_PIXEL_CONVERSION
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
-#else
-    void* mat = currentAllocator->allocate(getMatSize());
-#endif
 
     if (vpx_img_alloc(&img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
         NULL) {
@@ -483,7 +479,7 @@ screenRecordThread(pWindowData data)
                                            YUV,
                                            geom->width);
             });
-#elif USE_SDL_PIXEL_CONVERSION
+#else
             const int result = SDL_ConvertPixels(geom->width,
                                                  geom->height,
                                                  SDL_PIXELFORMAT_RGBA32,
@@ -492,23 +488,8 @@ screenRecordThread(pWindowData data)
                                                  SDL_PIXELFORMAT_YV12,
                                                  YUV,
                                                  geom->width);
-#else
-            bool result;
-            // TIME("RGBA To YUV", {
-            const int w = geom->width - (geom->width % 2);
-            const int h = geom->height - (geom->height % 2);
-            rgbaToYUV(imageData, w, h, mat);
-            void* YUV = NULL;
-            int yuvSize = 0;
-            result = getMatData(mat, &YUV, &yuvSize);
-            const int oneThird = yuvSize / 3;
-            memcpy(img.planes[0], YUV, oneThird);
-            memcpy(img.planes[1], YUV + oneThird, oneThird);
-            memcpy(img.planes[2], YUV + oneThird * 2, oneThird);
-            // });
 #endif
-            if (result) {
-#if USE_SDL_PIXEL_CONVERSION
+            if (result == 0) {
                 uint8_t* ptr = YUV;
                 for (int plane = 0; plane < 3; ++plane) {
                     unsigned char* buf = img.planes[plane];
@@ -524,7 +505,6 @@ screenRecordThread(pWindowData data)
                         buf += stride;
                     }
                 }
-#endif
                 int flags = 0;
                 if (data->keyFrameInterval > 0 &&
                     frame_count % data->keyFrameInterval == 0) {
@@ -573,10 +553,8 @@ screenRecordThread(pWindowData data)
                             vpx_codec_err_to_string(res));
                 }
             } else {
-#if USE_SDL_PIXEL_CONVERSION
                 fprintf(
                   stderr, "Image conversion failure: %s\n", SDL_GetError());
-#endif
             }
             free(reply);
         }
@@ -588,11 +566,7 @@ end:
     VideoMessageFree(&message);
     vpx_img_free(&img);
     vpx_codec_destroy(&codec);
-#if USE_SDL_PIXEL_CONVERSION
     currentAllocator->free(YUV);
-#else
-    currentAllocator->free(mat);
-#endif
 
     xcb_disconnect(data->connection);
     WindowDataFree(data);
