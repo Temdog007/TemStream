@@ -335,8 +335,9 @@ screenRecordThread(pWindowData data)
     }
 
 #if _DEBUG
-    printf("Using encoder: %s\n",
-           vpx_codec_iface_name(codec_encoder_interface()));
+    printf("Using encoder: %s with %d threads\n",
+           vpx_codec_iface_name(codec_encoder_interface()),
+           SDL_GetCPUCount());
 #endif
 
     vpx_codec_err_t res =
@@ -353,6 +354,7 @@ screenRecordThread(pWindowData data)
     cfg.g_timebase.num = 1;
     cfg.g_timebase.den = data->fps;
     cfg.rc_target_bitrate = data->bitrate;
+    cfg.g_threads = SDL_GetCPUCount();
     cfg.g_error_resilient =
       VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
 
@@ -524,6 +526,9 @@ screenRecordThread(pWindowData data)
                     const vpx_codec_cx_pkt_t* pkt = NULL;
                     while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) !=
                            NULL) {
+                        if (pkt->kind != VPX_CODEC_CX_FRAME_PKT) {
+                            continue;
+                        }
                         message.video.used = 0;
                         uint8_tListQuickAppend(&message.video,
                                                pkt->data.frame.buf,

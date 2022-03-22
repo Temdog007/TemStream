@@ -108,11 +108,10 @@
 
 ### Mar 21, 2022
 - [x] Remove video streaming code (opencv)
-- [ ] Acquire window frames in another thread
 - [ ] Use multi-threading (or GPU?) to convert RGBA to YV12
+- [x] Use multi-threading to encode video frames faster (not possible)
 
 ### Later
-- [ ] Display RTMP servers on client windows
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message
