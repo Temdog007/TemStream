@@ -327,7 +327,7 @@ screenRecordThread(pWindowData data)
     message.video = INIT_ALLOCATOR(MB(1));
 
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
-    uint8_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
+    uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
 
     if (vpx_img_alloc(&img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
         NULL) {
@@ -449,7 +449,7 @@ screenRecordThread(pWindowData data)
             }
 
             windowHidden = false;
-            uint8_t* imageData = xcb_get_image_data(reply);
+            uint32_t* imageData = (uint32_t*)xcb_get_image_data(reply);
 #if TIME_JPEG
             Bytes jpegBytes = { 0 };
             uint8_t* rgb = NULL;

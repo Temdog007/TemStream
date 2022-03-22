@@ -108,10 +108,14 @@
 
 ### Mar 21, 2022
 - [x] Remove video streaming code (opencv)
-- [ ] Use multi-threading (or GPU?) to convert RGBA to YV12
-- [x] Use multi-threading to encode video frames faster (not possible)
+- [x] Use multi-threading to encode video frames faster (is already done)
+
+### Mar 22, 2022
+- [ ] Make compute shader for color conversion for texture
+- [ ] Implement x264 video encoding
 
 ### Later
+- [ ] Record webcam
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message
@@ -121,4 +125,5 @@
 - [ ] SSL encryption (dtls, use proxy)
 
 ### Maybe
+- [ ] Make plug in library for OBS to send video frames to server
 - [ ] Add logging library (or make one)

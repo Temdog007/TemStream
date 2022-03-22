@@ -164,13 +164,19 @@ renderFont(SDL_Renderer* renderer,
 }
 
 bool
-rgbaToYuv(const uint8_t* rgba,
+rgbaToYuv(const uint32_t* rgba,
           const int width,
           const int height,
-          uint8_t* argb,
+          uint32_t* argb,
           uint8_t* yuv)
 {
-#if USE_SDL_RGB_2_YUV_SINGLE_THREAD
+    // for (size_t i = 0, n = width * height; i < n; ++i) {
+    //     const uint32_t r = rgba[i] >> 24;
+    //     const uint32_t g = rgba[i] >> 16;
+    //     const uint32_t b = rgba[i] >> 8;
+    //     const uint32_t a = rgba[i] >> 0;
+    //     argb[i] = (a << 24) | (r << 16) | (g << 8) | b;
+    // }
     return SDL_ConvertPixels(width,
                              height,
                              SDL_PIXELFORMAT_RGBA32,
@@ -187,7 +193,4 @@ rgbaToYuv(const uint8_t* rgba,
                              SDL_PIXELFORMAT_YV12,
                              yuv,
                              width) == 0;
-#else
-
-#endif
 }

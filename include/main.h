@@ -430,13 +430,11 @@ diff_timespec(const struct timespec*, const struct timespec*);
 extern Bytes
 rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
 
-#define USE_SDL_RGB_2_YUV_SINGLE_THREAD true
-
 extern bool
-rgbaToYuv(const uint8_t* rgba,
+rgbaToYuv(const uint32_t* rgba,
           int width,
           int height,
-          uint8_t* rgb,
+          uint32_t* argb,
           uint8_t* yuv);
 
 extern bool
