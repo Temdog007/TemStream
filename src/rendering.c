@@ -162,3 +162,32 @@ renderFont(SDL_Renderer* renderer,
     }
     return totalRect;
 }
+
+bool
+rgbaToYuv(const uint8_t* rgba,
+          const int width,
+          const int height,
+          uint8_t* argb,
+          uint8_t* yuv)
+{
+#if USE_SDL_RGB_2_YUV_SINGLE_THREAD
+    return SDL_ConvertPixels(width,
+                             height,
+                             SDL_PIXELFORMAT_RGBA32,
+                             rgba,
+                             width * 4,
+                             SDL_PIXELFORMAT_ARGB8888,
+                             argb,
+                             width * 4) == 0 &&
+           SDL_ConvertPixels(width,
+                             height,
+                             SDL_PIXELFORMAT_ARGB8888,
+                             argb,
+                             width * 4,
+                             SDL_PIXELFORMAT_YV12,
+                             yuv,
+                             width) == 0;
+#else
+
+#endif
+}

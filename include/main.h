@@ -411,7 +411,7 @@ diff_timespec(const struct timespec*, const struct timespec*);
 
 #define NANO_TO_MILLI(x) (x / 1000000)
 
-#define TIME_VIDEO_STREAMING false
+#define TIME_VIDEO_STREAMING true
 
 #define TIME(str, f)                                                           \
     {                                                                          \
@@ -429,6 +429,15 @@ diff_timespec(const struct timespec*, const struct timespec*);
 
 extern Bytes
 rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
+
+#define USE_SDL_RGB_2_YUV_SINGLE_THREAD true
+
+extern bool
+rgbaToYuv(const uint8_t* rgba,
+          int width,
+          int height,
+          uint8_t* rgb,
+          uint8_t* yuv);
 
 extern bool
 authenticateClient(pClient,

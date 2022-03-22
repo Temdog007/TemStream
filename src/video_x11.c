@@ -327,6 +327,7 @@ screenRecordThread(pWindowData data)
     message.video = INIT_ALLOCATOR(MB(1));
 
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
+    uint8_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
 
     if (vpx_img_alloc(&img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
         NULL) {
@@ -470,28 +471,16 @@ screenRecordThread(pWindowData data)
             currentAllocator->free(rgb);
 #endif
 #if TIME_VIDEO_STREAMING
-            int result;
+            bool success;
             TIME("Convert pixels to YV12", {
-                result = SDL_ConvertPixels(geom->width,
-                                           geom->height,
-                                           SDL_PIXELFORMAT_RGBA32,
-                                           imageData,
-                                           geom->width * 4,
-                                           SDL_PIXELFORMAT_YV12,
-                                           YUV,
-                                           geom->width);
+                success =
+                  rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV);
             });
 #else
-            const int result = SDL_ConvertPixels(geom->width,
-                                                 geom->height,
-                                                 SDL_PIXELFORMAT_RGBA32,
-                                                 imageData,
-                                                 geom->width * 4,
-                                                 SDL_PIXELFORMAT_YV12,
-                                                 YUV,
-                                                 geom->width);
+            const bool success =
+              rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV);
 #endif
-            if (result == 0) {
+            if (success) {
                 uint8_t* ptr = YUV;
                 for (int plane = 0; plane < 3; ++plane) {
                     unsigned char* buf = img.planes[plane];
@@ -572,6 +561,7 @@ end:
     vpx_img_free(&img);
     vpx_codec_destroy(&codec);
     currentAllocator->free(YUV);
+    currentAllocator->free(ARGB);
 
     xcb_disconnect(data->connection);
     WindowDataFree(data);
