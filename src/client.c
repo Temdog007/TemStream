@@ -636,12 +636,11 @@ bool
 clientHandleVideoMessage(const Bytes* packetBytes,
                          pStreamDisplay display,
 #if USE_VP8
-                         vpx_codec_ctx_t* codec,
+                         vpx_codec_ctx_t* codec
 #else
-                         void* decoder,
+                         void* decoder
 #endif
-                         uint16_t* width,
-                         uint16_t* height)
+)
 {
     bool success = true;
     VideoMessage message = { 0 };
@@ -664,11 +663,19 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             }
             UserInputFree(&input);
         } break;
-        case VideoMessageTag_size:
-            *width = message.size[0];
-            *height = message.size[1];
-            printf("Video size set to %dx%d\n", *width, *height);
-            break;
+        case VideoMessageTag_size: {
+            pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
+            m->id = display->id;
+            m->width = message.size[0];
+            m->height = message.size[1];
+            m->video.allocator = currentAllocator;
+            printf("Video size set to %dx%d\n", m->width, m->height);
+            SDL_Event e = { 0 };
+            e.type = SDL_USEREVENT;
+            e.user.code = CustomEvent_UpdateVideoDisplay;
+            e.user.data1 = m;
+            SDL_PushEvent(&e);
+        } break;
         case VideoMessageTag_video: {
 #if USE_VP8
             vpx_codec_err_t res = vpx_codec_decode(codec,
@@ -687,6 +694,7 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             while ((img = vpx_codec_get_frame(codec, &iter)) != NULL) {
                 pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
                 m->id = display->id;
+                // Need to update
                 m->width = *width;
                 m->height = *height;
                 m->video.allocator = currentAllocator;
@@ -735,9 +743,33 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                     pVideoFrame m =
                       currentAllocator->allocate(sizeof(VideoFrame));
                     m->id = display->id;
-                    m->width = *width;
-                    m->height = *height;
+                    m->width = yWidth;
+                    m->height = yHeight;
                     m->video.allocator = currentAllocator;
+
+#if CONVERT_TO_RGB_EARLY
+                    // if (*width != yWidth || *height != yHeight) {
+                    //     fprintf(stderr,
+                    //             "Mismatch dimensions [%ux%u] and [%dx%d]\n",
+                    //             *width,
+                    //             *height,
+                    //             yWidth,
+                    //             yHeight);
+
+                    m->video.buffer =
+                      currentAllocator->allocate(yWidth * yHeight * 3);
+                    m->video.used = m->video.size = yWidth * yHeight * 3;
+                    yuv420_rgb24_sseu(yWidth,
+                                      yHeight,
+                                      yuv[0],
+                                      yuv[1],
+                                      yuv[2],
+                                      strides[0],
+                                      strides[1],
+                                      m->video.buffer,
+                                      yWidth,
+                                      YCBCR_601);
+#else
                     {
                         unsigned char* y = yuv[0];
                         for (int i = 0; i < yHeight; ++i) {
@@ -764,6 +796,7 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                     // printf("Decoded video %u -> %u kilobytes\n",
                     //        message.video.used / 1024,
                     //        m->video.used / 1024);
+#endif
                     SDL_Event e = { 0 };
                     e.type = SDL_USEREVENT;
                     e.user.code = CustomEvent_UpdateVideoDisplay;
@@ -859,8 +892,6 @@ streamConnectionThread(void* ptr)
 #else
     void* decoder = NULL;
 #endif
-    uint16_t vidWidth = 0;
-    uint16_t vidHeight = 0;
     if (tag == ServerConfigurationDataTag_video) {
 #if USE_VP8
         if (vpx_codec_dec_init(&codec, codec_decoder_interface(), NULL, 0) !=
@@ -1019,12 +1050,11 @@ streamConnectionThread(void* ptr)
                         success = clientHandleVideoMessage(&packetBytes,
                                                            display,
 #if USE_VP8
-                                                           &codec,
+                                                           &codec
 #else
-                          decoder,
+                          decoder
 #endif
-                                                           &vidWidth,
-                                                           &vidHeight);
+                        );
                         break;
                     default:
                         fprintf(stderr,
@@ -2790,9 +2820,15 @@ updateVideoDisplay(SDL_Renderer* renderer,
         return;
     }
 
-    if (display->texture == NULL) {
+    if (display->texture == NULL || display->data.videoDimensions[0] != width ||
+        display->data.videoDimensions[1] != height) {
+        SDL_DestroyTexture(display->texture);
         display->texture = SDL_CreateTexture(renderer,
+#if CONVERT_TO_RGB_EARLY
+                                             SDL_PIXELFORMAT_RGB24,
+#else
                                              SDL_PIXELFORMAT_IYUV,
+#endif
                                              SDL_TEXTUREACCESS_STREAMING,
                                              width,
                                              height);
@@ -2808,6 +2844,9 @@ updateVideoDisplay(SDL_Renderer* renderer,
         display->dstRect.y = 0;
         display->dstRect.w = width;
         display->dstRect.h = height;
+
+        display->data.videoDimensions[0] = width;
+        display->data.videoDimensions[1] = height;
     }
 
     void* pixels = NULL;

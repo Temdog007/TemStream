@@ -108,8 +108,8 @@ create_h264_decoder(void** ptr)
     SDecodingParam param;
     memset(&param, 0, sizeof(SDecodingParam));
 
-    param.eEcActiveIdc = ERROR_CON_DISABLE;
-    // param.eEcActiveIdc = ERROR_CON_SLICE_COPY;
+    // param.eEcActiveIdc = ERROR_CON_DISABLE;
+    param.eEcActiveIdc = ERROR_CON_SLICE_COPY;
     param.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_DEFAULT;
     param.bParseOnly = false;
 

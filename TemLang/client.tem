@@ -118,6 +118,7 @@ variant StreamDisplayData {
     [ 0 u8 ] image
     StreamDisplayChat chat
     string text
+    [2 i32] videoDimensions
 }
 
 struct CurrentAudio {

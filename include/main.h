@@ -33,6 +33,12 @@
 
 #include <vorbis/codec.h>
 
+#define CONVERT_TO_RGB_EARLY false
+
+#if CONVERT_TO_RGB_EARLY
+#include <video/yuv2rgb/yuv_rgb.h>
+#endif
+
 #define USE_VP8 false
 
 #if USE_VP8
