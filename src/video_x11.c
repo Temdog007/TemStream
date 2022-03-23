@@ -65,6 +65,7 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
       SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
     printf("FPS set to: %u\n", fps);
 
+#if USE_VP8
     askQuestion("Enter key frame interval");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling window record");
@@ -73,6 +74,9 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     const uint16_t keyInterval =
       SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
     printf("Key frame interval set to: %u\n", keyInterval);
+#else
+    const uint16_t keyInterval = 0;
+#endif
 
     askQuestion("Enter bitrate (in kilobits per second)");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
@@ -281,6 +285,7 @@ getDesktopWindows(xcb_connection_t* con,
     }
 }
 
+#if USE_VP8
 vpx_codec_iface_t*
 codec_encoder_interface()
 {
@@ -292,16 +297,13 @@ codec_decoder_interface()
 {
     return vpx_codec_vp8_dx();
 }
+#endif
 
 int
 screenRecordThread(pWindowData data)
 {
+    const Guid* id = &data->id;
     bool displayMissing = false;
-
-    vpx_codec_ctx_t codec = { 0 };
-    vpx_codec_enc_cfg_t cfg = { 0 };
-    int frame_count = 0;
-    vpx_image_t img = { 0 };
 
     Bytes bytes = { .allocator = currentAllocator };
     VideoMessage message = { .size = { data->width, data->height },
@@ -311,16 +313,12 @@ screenRecordThread(pWindowData data)
     {
         ENetPacket* packet =
           BytesToPacket(bytes.buffer, bytes.used, SendFlags_Normal);
-        IN_MUTEX(clientData.mutex, end3, {
-            size_t i = 0;
-            if (GetStreamDisplayFromGuid(
-                  &clientData.displays, &data->id, NULL, &i)) {
-                NullValueListAppend(&clientData.displays.buffer[i].outgoing,
-                                    (NullValue)&packet);
-            } else {
-                enet_packet_destroy(packet);
-            }
+        USE_DISPLAY(clientData.mutex, end3, displayMissing, {
+            NullValueListAppend(&display->outgoing, (NullValue)&packet);
         });
+        if (displayMissing) {
+            enet_packet_destroy(packet);
+        }
     }
 
     message.tag = VideoMessageTag_video;
@@ -328,6 +326,11 @@ screenRecordThread(pWindowData data)
 
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
+#if USE_VP8
+    int frame_count = 0;
+    vpx_codec_ctx_t codec = { 0 };
+    vpx_codec_enc_cfg_t cfg = { 0 };
+    vpx_image_t img = { 0 };
 
     if (vpx_img_alloc(&img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
         NULL) {
@@ -363,6 +366,14 @@ screenRecordThread(pWindowData data)
         fprintf(stderr, "Failed to initialize encoder\n");
         goto end;
     }
+#else
+    void* encoder = NULL;
+    if (!create_h264_encoder(
+          &encoder, data->width, data->height, data->fps, data->bitrate)) {
+        fprintf(stderr, "Failed to initalize encoder\n");
+        goto end;
+    }
+#endif
 
     const uint64_t delay = 1000 / data->fps;
     uint64_t last = 0;
@@ -480,6 +491,7 @@ screenRecordThread(pWindowData data)
             const bool success =
               rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV);
 #endif
+#if USE_VP8
             if (success) {
                 uint8_t* ptr = YUV;
                 for (int plane = 0; plane < 3; ++plane) {
@@ -501,6 +513,7 @@ screenRecordThread(pWindowData data)
                     frame_count % data->keyFrameInterval == 0) {
                     flags |= VPX_EFLAG_FORCE_KF;
                 }
+
 #if TIME_VIDEO_STREAMING
                 TIME("VPX encoding", {
                     res = vpx_codec_encode(
@@ -528,46 +541,89 @@ screenRecordThread(pWindowData data)
                         MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                         ENetPacket* packet = BytesToPacket(
                           bytes.buffer, bytes.used, SendFlags_Video);
-                        IN_MUTEX(clientData.mutex, end2, {
-                            size_t i = 0;
-                            if (GetStreamDisplayFromGuid(
-                                  &clientData.displays, &data->id, NULL, &i)) {
-                                NullValueListAppend(
-                                  &clientData.displays.buffer[i].outgoing,
-                                  (NullValue)&packet);
-                            } else {
-                                displayMissing = true;
-                                enet_packet_destroy(packet);
-                            }
+                        USE_DISPLAY(clientData.mutex, end2, displayMissing, {
+                            NullValueListAppend(&display->outgoing,
+                                                (NullValue)&packet);
                         });
+                        if (displayMissing) {
+                            enet_packet_destroy(packet);
+                        }
                     }
                 } else {
                     fprintf(stderr,
                             "Failed to encode frame: %s\n",
                             vpx_codec_err_to_string(res));
                 }
+
             } else {
                 fprintf(
                   stderr, "Image conversion failure: %s\n", SDL_GetError());
             }
-            free(reply);
+#else
+            if (success) {
+#if TIME_VIDEO_STREAMING
+                int encoded;
+                TIME("H264 encoding", {
+                    encoded = h264_encode(encoder,
+                                          YUV,
+                                          geom->width,
+                                          geom->height,
+                                          message.video.buffer,
+                                          message.video.size);
+                });
+#else
+                const int encoded = h264_encode(encoder,
+                                                YUV,
+                                                geom->width,
+                                                geom->height,
+                                                message.video.buffer,
+                                                message.video.size);
+#endif
+                if (encoder < 0) {
+                    fprintf(stderr, "Failed to encode frame\n");
+                } else if (encoder == 0) {
+                } else {
+                    message.video.used = (uint32_t)encoded;
+                    MESSAGE_SERIALIZE(VideoMessage, message, bytes);
+                    ENetPacket* packet =
+                      BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
+                    USE_DISPLAY(clientData.mutex, end2, displayMissing, {
+                        NullValueListAppend(&display->outgoing,
+                                            (NullValue)&packet);
+                    });
+                    if (displayMissing) {
+                        enet_packet_destroy(packet);
+                    }
+                }
+#endif
         }
-        free(geom);
+        else
+        {
+            fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
+        }
+        free(reply);
     }
+    free(geom);
+}
 
-end:
-    uint8_tListFree(&bytes);
-    VideoMessageFree(&message);
-    vpx_img_free(&img);
-    vpx_codec_destroy(&codec);
-    currentAllocator->free(YUV);
-    currentAllocator->free(ARGB);
+goto end;
+end : uint8_tListFree(&bytes);
+VideoMessageFree(&message);
 
-    xcb_disconnect(data->connection);
-    WindowDataFree(data);
-    currentAllocator->free(data);
+currentAllocator->free(YUV);
+currentAllocator->free(ARGB);
+#if USE_VP8
+vpx_img_free(&img);
+vpx_codec_destroy(&codec);
+#else
+    destroy_h264_encoder(encoder);
+#endif
 
-    SDL_AtomicDecRef(&runningThreads);
+xcb_disconnect(data->connection);
+WindowDataFree(data);
+currentAllocator->free(data);
 
-    return EXIT_SUCCESS;
+SDL_AtomicDecRef(&runningThreads);
+
+return EXIT_SUCCESS;
 }

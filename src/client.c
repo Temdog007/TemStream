@@ -635,7 +635,11 @@ clientHandleAudioMessage(const Bytes* packetBytes,
 bool
 clientHandleVideoMessage(const Bytes* packetBytes,
                          pStreamDisplay display,
+#if USE_VP8
                          vpx_codec_ctx_t* codec,
+#else
+                         void* decoder,
+#endif
                          uint16_t* width,
                          uint16_t* height)
 {
@@ -666,6 +670,7 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             printf("Video size set to %dx%d\n", *width, *height);
             break;
         case VideoMessageTag_video: {
+#if USE_VP8
             vpx_codec_err_t res = vpx_codec_decode(codec,
                                                    message.video.buffer,
                                                    message.video.used,
@@ -707,6 +712,41 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                 e.user.data1 = m;
                 SDL_PushEvent(&e);
             }
+#else
+            int i = 0;
+            while (true) {
+                pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
+                m->id = display->id;
+                m->width = *width;
+                m->height = *height;
+                m->video = INIT_ALLOCATOR(MB(1));
+                const int result = h264_decode(decoder,
+                                               message.video.buffer,
+                                               message.video.used,
+                                               m->video.buffer,
+                                               m->video.size,
+                                               i != 0);
+                if (result > 0) {
+                    m->video.used = result;
+                    SDL_Event e = { 0 };
+                    e.type = SDL_USEREVENT;
+                    e.user.code = CustomEvent_UpdateVideoDisplay;
+                    e.user.data1 = m;
+                    SDL_PushEvent(&e);
+                    ++i;
+                } else if (result == 0) {
+                    VideoFrameFree(m);
+                    currentAllocator->free(m);
+                    break;
+                } else {
+                    fprintf(stderr, "Failed to decode video frame\n");
+                    success = false;
+                    VideoFrameFree(m);
+                    currentAllocator->free(m);
+                    break;
+                }
+            }
+#endif
         } break;
         default:
             printf("Unexpected video message: %s\n",
@@ -783,16 +823,27 @@ streamConnectionThread(void* ptr)
         goto end;
     }
 
-    // For video connections
+// For video connections
+#if USE_VP8
     vpx_codec_ctx_t codec = { 0 };
+#else
+    void* decoder = NULL;
+#endif
     uint16_t vidWidth = 0;
     uint16_t vidHeight = 0;
     if (tag == ServerConfigurationDataTag_video) {
+#if USE_VP8
         if (vpx_codec_dec_init(&codec, codec_decoder_interface(), NULL, 0) !=
             0) {
             fprintf(stderr, "Failed to create video decoder\n");
             goto end;
         }
+#else
+        if (!create_h264_decoder(&decoder)) {
+            fprintf(stderr, "Failed to create video decoder\n");
+            goto end;
+        }
+#endif
     }
 
     while (!appDone && !displayMissing) {
@@ -935,8 +986,15 @@ streamConnectionThread(void* ptr)
                           display->recordings != 0 || record != NULL);
                         break;
                     case ServerConfigurationDataTag_video:
-                        success = clientHandleVideoMessage(
-                          &packetBytes, display, &codec, &vidWidth, &vidHeight);
+                        success = clientHandleVideoMessage(&packetBytes,
+                                                           display,
+#if USE_VP8
+                                                           &codec,
+#else
+                          decoder,
+#endif
+                                                           &vidWidth,
+                                                           &vidHeight);
                         break;
                     default:
                         fprintf(stderr,
@@ -987,7 +1045,11 @@ end:
     for (size_t i = 0; i < outgoingPackets.used; ++i) {
         enet_packet_destroy(outgoingPackets.buffer[i]);
     }
+#if USE_VP8
     vpx_codec_destroy(&codec);
+#else
+    destroy_h264_decoder(decoder);
+#endif
     NullValueListFree(&outgoingPackets);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);

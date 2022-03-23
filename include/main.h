@@ -33,10 +33,28 @@
 
 #include <vorbis/codec.h>
 
+#define USE_VP8 false
+
+#if USE_VP8
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 #include <vpx/vpx_decoder.h>
 #include <vpx/vpx_encoder.h>
+
+extern int
+vpx_img_plane_width(const vpx_image_t*, int);
+
+extern int
+vpx_img_plane_height(const vpx_image_t*, int);
+
+extern vpx_codec_iface_t*
+codec_encoder_interface();
+
+extern vpx_codec_iface_t*
+codec_decoder_interface();
+#else
+#include "open264.h"
+#endif
 
 #include <jpeglib.h>
 
@@ -411,7 +429,7 @@ diff_timespec(const struct timespec*, const struct timespec*);
 
 #define NANO_TO_MILLI(x) (x / 1000000)
 
-#define TIME_VIDEO_STREAMING true
+#define TIME_VIDEO_STREAMING false
 
 #define TIME(str, f)                                                           \
     {                                                                          \
@@ -572,18 +590,6 @@ audioLengthToFrames(const int frequency, const int duration);
 
 extern bool
 startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes);
-
-extern int
-vpx_img_plane_width(const vpx_image_t*, int);
-
-extern int
-vpx_img_plane_height(const vpx_image_t*, int);
-
-extern vpx_codec_iface_t*
-codec_encoder_interface();
-
-extern vpx_codec_iface_t*
-codec_decoder_interface();
 
 // Font
 typedef struct Character

@@ -766,6 +766,7 @@ cleanupConfigurationsInRedis(redisContext* ctx)
     PRINT_MEMORY;
 }
 
+#if USE_VP8
 int
 vpx_img_plane_width(const vpx_image_t* img, const int plane)
 {
@@ -785,6 +786,7 @@ vpx_img_plane_height(const vpx_image_t* img, const int plane)
         return img->d_h;
     }
 }
+#endif
 
 double
 diff_timespec(const struct timespec* time1, const struct timespec* time0)
