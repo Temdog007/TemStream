@@ -433,7 +433,7 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
 extern double
 diff_timespec(const struct timespec*, const struct timespec*);
 
-#define TIME_VIDEO_STREAMING false
+#define TIME_VIDEO_STREAMING true
 
 #define TIME(str, f)                                                           \
     {                                                                          \
@@ -460,7 +460,11 @@ extern void
 makeComputeShaderTextures(int, int, GLuint textures[4]);
 
 extern void
-rgbaToYuv(const uint32_t* rgba, GLuint prog, const int width, const int height);
+rgbaToYuv(const void* imageData,
+          const uint32_t pbo,
+          GLuint prog,
+          const int width,
+          const int height);
 
 #else
 extern bool

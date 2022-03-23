@@ -373,6 +373,9 @@ OnGLMessage(GLenum source,
     (void)id;
     (void)length;
     (void)userParam;
+    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
+        return;
+    }
     fprintf(stderr,
             "GL Callback: source=%s, type = %s, serverity = %s, message = %s\n",
             glSourceString(source),
@@ -381,7 +384,7 @@ OnGLMessage(GLenum source,
             message);
 }
 #define RGBA_TO_YUV                                                            \
-    rgbaToYuv(imageData, prog, geom->width, geom->height);                     \
+    rgbaToYuv(imageData, pbos[3], prog, data->width, data->height);            \
     for (int i = 0; i < 3; ++i) {                                              \
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
         glActiveTexture(GL_TEXTURE1 + i);                                      \
@@ -404,18 +407,18 @@ OnGLMessage(GLenum source,
                                    Y,                                          \
                                    U,                                          \
                                    V,                                          \
-                                   geom->width,                                \
-                                   geom->height,                               \
+                                   data->width,                                \
+                                   data->height,                               \
                                    message.video.buffer,                       \
                                    message.video.size)
 #else
 #define RGBA_TO_YUV                                                            \
-    success = rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV)
+    success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
 #define ENCODE_TO_H264                                                         \
     encoded = h264_encode(encoder,                                             \
                           YUV,                                                 \
-                          geom->width,                                         \
-                          geom->height,                                        \
+                          data->width,                                         \
+                          data->height,                                        \
                           message.video.buffer,                                \
                           message.video.size)
 #endif
@@ -451,7 +454,7 @@ screenRecordThread(pWindowData data)
     GLuint prog = 0;
     GLuint cs = 0;
     GLuint textures[4] = { 0 };
-    GLuint pbos[3] = { 0 };
+    GLuint pbos[4] = { 0 };
     void* context = NULL;
     window = SDL_CreateWindow("unused",
                               0,
@@ -531,7 +534,7 @@ screenRecordThread(pWindowData data)
     }
 
     makeComputeShaderTextures(data->width, data->height, textures);
-    glGenBuffers(3, pbos);
+    glGenBuffers(4, pbos);
     for (int i = 0; i < 3; ++i) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
         glBufferData(GL_PIXEL_PACK_BUFFER,
@@ -597,6 +600,7 @@ screenRecordThread(pWindowData data)
 #endif
 
     const uint64_t delay = 1000 / data->fps;
+    uint64_t lastGeoCheck = 0;
     uint64_t last = 0;
     bool windowHidden = false;
     while (!appDone && !displayMissing) {
@@ -609,199 +613,181 @@ screenRecordThread(pWindowData data)
         }
         last = now;
 
+        // Tell the GPU to get the texture from pixel buffer
+        // Image will be written to pixel buffer
+        glActiveTexture(GL_TEXTURE0);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[3]);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER,
+                     data->width * data->height * 4,
+                     NULL,
+                     GL_STREAM_COPY);
+        glTexSubImage2D(GL_TEXTURE_2D,
+                        0,
+                        0,
+                        0,
+                        data->width,
+                        data->height,
+                        GL_RGBA,
+                        GL_UNSIGNED_BYTE,
+                        NULL);
+
         xcb_generic_error_t* error = NULL;
-        xcb_get_geometry_cookie_t geomCookie =
-          xcb_get_geometry(data->connection, data->windowId);
-        xcb_get_geometry_reply_t* geom =
-          xcb_get_geometry_reply(data->connection, geomCookie, &error);
-        if (error) {
-            printf("XCB Error: %d\n", error->error_code);
-            free(error);
-            if (geom != NULL) {
+
+        if (now - lastGeoCheck > 1000) {
+            xcb_get_geometry_cookie_t geomCookie =
+              xcb_get_geometry(data->connection, data->windowId);
+            xcb_get_geometry_reply_t* geom =
+              xcb_get_geometry_reply(data->connection, geomCookie, &error);
+            if (error) {
+                printf("XCB Error: %d\n", error->error_code);
+                free(error);
+                if (geom != NULL) {
+                    free(geom);
+                }
+                displayMissing = true;
+            } else if (geom) {
+                if (geom->width != data->width ||
+                    geom->height != data->height) {
+                    printf(
+                      "Window '%s' has changed size. Recording will stop\n",
+                      data->name.buffer);
+                    displayMissing = true;
+                }
                 free(geom);
             }
+            lastGeoCheck = now;
+            if (displayMissing) {
+                continue;
+            }
+        }
+
+#if TIME_VIDEO_STREAMING
+        xcb_get_image_cookie_t cookie = { 0 };
+        xcb_get_image_reply_t* reply = NULL;
+        TIME("Get window image", {
+            cookie = xcb_get_image(data->connection,
+                                   XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                   data->windowId,
+                                   0,
+                                   0,
+                                   data->width,
+                                   data->height,
+                                   ~0U);
+            reply = xcb_get_image_reply(data->connection, cookie, &error);
+        });
+#else
+        xcb_get_image_cookie_t cookie = xcb_get_image(data->connection,
+                                                      XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                                      data->windowId,
+                                                      0,
+                                                      0,
+                                                      data->width,
+                                                      data->height,
+                                                      ~0U);
+        xcb_get_image_reply_t* reply =
+          xcb_get_image_reply(data->connection, cookie, &error);
+#endif
+        if (xcb_connection_has_error(data->connection)) {
+            fprintf(stderr,
+                    "X11 connection has an error. Recording will stop\n");
             displayMissing = true;
-        } else if (!geom) {
+        } else if (error) {
+            if (!windowHidden) {
+                printf("XCB Error %d (window may not be visible. This "
+                       "error will only show once until the window is "
+                       "visible again)\n",
+                       error->error_code);
+                windowHidden = true;
+            }
+            free(error);
+            if (reply) {
+                free(reply);
+            }
+            // Window may be minimized. Don't end the thread for this
+            // error
+            continue;
+        } else if (!reply) {
             continue;
         }
 
-        if (geom->width != data->width || geom->height != data->height) {
-            printf("Window '%s' has changed size. Recording will stop\n",
-                   data->name.buffer);
-            displayMissing = true;
-        } else {
-#if TIME_VIDEO_STREAMING
-            xcb_get_image_cookie_t cookie = { 0 };
-            xcb_get_image_reply_t* reply = NULL;
-            TIME("Get window image", {
-                cookie = xcb_get_image(data->connection,
-                                       XCB_IMAGE_FORMAT_Z_PIXMAP,
-                                       data->windowId,
-                                       0,
-                                       0,
-                                       geom->width,
-                                       geom->height,
-                                       ~0U);
-                reply = xcb_get_image_reply(data->connection, cookie, &error);
-            });
-#else
-            xcb_get_image_cookie_t cookie =
-              xcb_get_image(data->connection,
-                            XCB_IMAGE_FORMAT_Z_PIXMAP,
-                            data->windowId,
-                            0,
-                            0,
-                            geom->width,
-                            geom->height,
-                            ~0U);
-            xcb_get_image_reply_t* reply =
-              xcb_get_image_reply(data->connection, cookie, &error);
-#endif
-            if (xcb_connection_has_error(data->connection)) {
-                fprintf(stderr,
-                        "X11 connection has an error. Recording will stop\n");
-                displayMissing = true;
-            } else if (error) {
-                if (!windowHidden) {
-                    printf("XCB Error %d (window may not be visible. This "
-                           "error will only show once until the window is "
-                           "visible again)\n",
-                           error->error_code);
-                    windowHidden = true;
-                }
-                free(error);
-                if (reply) {
-                    free(reply);
-                }
-                // Window may be minimized. Don't end the thread for this
-                // error
-                continue;
-            } else if (!reply) {
-                continue;
-            }
+        windowHidden = false;
+        uint32_t* imageData = (uint32_t*)xcb_get_image_data(reply);
 
-            windowHidden = false;
-            uint32_t* imageData = (uint32_t*)xcb_get_image_data(reply);
 #if TIME_JPEG
-            Bytes jpegBytes = { 0 };
-            uint8_t* rgb = NULL;
-            TIME("Compress to JPEG", {
-                rgb =
-                  currentAllocator->allocate(data->width * data->height * 3);
-                SDL_ConvertPixels(data->width,
-                                  data->height,
-                                  SDL_PIXELFORMAT_RGBA32,
-                                  imageData,
-                                  data->width * 4,
-                                  SDL_PIXELFORMAT_RGB24,
-                                  rgb,
-                                  data->width * 3);
-                jpegBytes = rgbaToJpeg(rgb, data->width, data->height);
-            });
-            printf("JPEG is %u kilobytes\n", jpegBytes.used / 1024);
-            uint8_tListFree(&jpegBytes);
-            currentAllocator->free(rgb);
+        Bytes jpegBytes = { 0 };
+        uint8_t* rgb = NULL;
+        TIME("Compress to JPEG", {
+            rgb = currentAllocator->allocate(data->width * data->height * 3);
+            SDL_ConvertPixels(data->width,
+                              data->height,
+                              SDL_PIXELFORMAT_RGBA32,
+                              imageData,
+                              data->width * 4,
+                              SDL_PIXELFORMAT_RGB24,
+                              rgb,
+                              data->width * 3);
+            jpegBytes = rgbaToJpeg(rgb, data->width, data->height);
+        });
+        printf("JPEG is %u kilobytes\n", jpegBytes.used / 1024);
+        uint8_tListFree(&jpegBytes);
+        currentAllocator->free(rgb);
 #endif
-            bool success;
-            void* ptrs[3] = { NULL };
+        bool success;
+        void* ptrs[3] = { NULL };
 #if TIME_VIDEO_STREAMING
-            TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
+        TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
 #else
-            RGBA_TO_YUV;
+        RGBA_TO_YUV;
 #endif
 
 #if USE_VP8
-            if (success) {
-                uint8_t* ptr = YUV;
-                for (int plane = 0; plane < 3; ++plane) {
-                    unsigned char* buf = img.planes[plane];
-                    const int stride = img.stride[plane];
-                    const int w =
-                      vpx_img_plane_width(&img, plane) *
-                      ((img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
-                    const int h = vpx_img_plane_height(&img, plane);
+        if (success) {
+            uint8_t* ptr = YUV;
+            for (int plane = 0; plane < 3; ++plane) {
+                unsigned char* buf = img.planes[plane];
+                const int stride = img.stride[plane];
+                const int w = vpx_img_plane_width(&img, plane) *
+                              ((img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+                const int h = vpx_img_plane_height(&img, plane);
 
-                    for (int y = 0; y < h; ++y) {
-                        memcpy(buf, ptr, w);
-                        ptr += w;
-                        buf += stride;
-                    }
+                for (int y = 0; y < h; ++y) {
+                    memcpy(buf, ptr, w);
+                    ptr += w;
+                    buf += stride;
                 }
-                int flags = 0;
-                if (data->keyFrameInterval > 0 &&
-                    frame_count % data->keyFrameInterval == 0) {
-                    flags |= VPX_EFLAG_FORCE_KF;
-                }
+            }
+            int flags = 0;
+            if (data->keyFrameInterval > 0 &&
+                frame_count % data->keyFrameInterval == 0) {
+                flags |= VPX_EFLAG_FORCE_KF;
+            }
 
 #if TIME_VIDEO_STREAMING
-                TIME("VPX encoding", {
-                    res = vpx_codec_encode(
-                      &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
-                });
-#else
+            TIME("VPX encoding", {
                 res = vpx_codec_encode(
                   &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
+            });
+#else
+            res = vpx_codec_encode(
+              &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
 #endif
-                if (res == VPX_CODEC_OK) {
-                    vpx_codec_iter_t iter = NULL;
-                    const vpx_codec_cx_pkt_t* pkt = NULL;
-                    while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) !=
-                           NULL) {
-                        if (pkt->kind != VPX_CODEC_CX_FRAME_PKT) {
-                            continue;
-                        }
-                        message.video.used = 0;
-                        uint8_tListQuickAppend(&message.video,
-                                               pkt->data.frame.buf,
-                                               pkt->data.frame.sz);
-                        // printf("Encoded %u -> %zu kilobytes\n",
-                        //        (data->width * data->height * 3) / 1024,
-                        //        pkt->data.frame.sz / 1024);
-                        MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-                        ENetPacket* packet = BytesToPacket(
-                          bytes.buffer, bytes.used, SendFlags_Video);
-                        USE_DISPLAY(clientData.mutex, end2, displayMissing, {
-                            NullValueListAppend(&display->outgoing,
-                                                (NullValue)&packet);
-                        });
-                        if (displayMissing) {
-                            enet_packet_destroy(packet);
-                        }
+            if (res == VPX_CODEC_OK) {
+                vpx_codec_iter_t iter = NULL;
+                const vpx_codec_cx_pkt_t* pkt = NULL;
+                while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) != NULL) {
+                    if (pkt->kind != VPX_CODEC_CX_FRAME_PKT) {
+                        continue;
                     }
-                } else {
-                    fprintf(stderr,
-                            "Failed to encode frame: %s\n",
-                            vpx_codec_err_to_string(res));
-                }
-
-            } else {
-                fprintf(
-                  stderr, "Image conversion failure: %s\n", SDL_GetError());
-            }
-#else
-            if (success) {
-                void* Y = ptrs[0];
-                void* U = ptrs[1];
-                void* V = ptrs[2];
-                int encoded;
-#if TIME_VIDEO_STREAMING
-                TIME("H264 encoding", { ENCODE_TO_H264; });
-#else
-                ENCODE_TO_H264;
-#endif
-                if (encoded < 0) {
-                    fprintf(stderr, "Failed to encode frame\n");
-                } else if (encoded == 0) {
-                    USE_DISPLAY(clientData.mutex, end564, displayMissing, {});
-                } else {
-                    // printf("Encoded video %u -> %d kilobytes\n",
-                    //        (geom->width * geom->height * 3u / 2u) / 1024,
-                    //        encoded / 1024);
-                    message.video.used = (uint32_t)encoded;
+                    message.video.used = 0;
+                    uint8_tListQuickAppend(
+                      &message.video, pkt->data.frame.buf, pkt->data.frame.sz);
+                    // printf("Encoded %u -> %zu kilobytes\n",
+                    //        (data->width * data->height * 3) / 1024,
+                    //        pkt->data.frame.sz / 1024);
                     MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                     ENetPacket* packet =
                       BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
-                    USE_DISPLAY(clientData.mutex, end256, displayMissing, {
+                    USE_DISPLAY(clientData.mutex, end2, displayMissing, {
                         NullValueListAppend(&display->outgoing,
                                             (NullValue)&packet);
                     });
@@ -810,20 +796,56 @@ screenRecordThread(pWindowData data)
                     }
                 }
             } else {
-                // GPU didn't copy buffer fast enough (shouldn't it wait until
-                // it completes?). Just skip this frame...
+                fprintf(stderr,
+                        "Failed to encode frame: %s\n",
+                        vpx_codec_err_to_string(res));
             }
-            for (int i = 0; i < 3; ++i) {
-                if (ptrs[i] == NULL) {
-                    continue;
-                }
-                glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
-                glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-            }
-#endif
-            free(reply);
+
+        } else {
+            fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
         }
-        free(geom);
+#else
+        if (success) {
+            void* Y = ptrs[0];
+            void* U = ptrs[1];
+            void* V = ptrs[2];
+            int encoded;
+#if TIME_VIDEO_STREAMING
+            TIME("H264 encoding", { ENCODE_TO_H264; });
+#else
+            ENCODE_TO_H264;
+#endif
+            if (encoded < 0) {
+                fprintf(stderr, "Failed to encode frame\n");
+            } else if (encoded == 0) {
+                USE_DISPLAY(clientData.mutex, end564, displayMissing, {});
+            } else {
+                // printf("Encoded video %u -> %d kilobytes\n",
+                //        (geom->width * geom->height * 3u / 2u) / 1024,
+                //        encoded / 1024);
+                message.video.used = (uint32_t)encoded;
+                MESSAGE_SERIALIZE(VideoMessage, message, bytes);
+                ENetPacket* packet =
+                  BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
+                USE_DISPLAY(clientData.mutex, end256, displayMissing, {
+                    NullValueListAppend(&display->outgoing, (NullValue)&packet);
+                });
+                if (displayMissing) {
+                    enet_packet_destroy(packet);
+                }
+            }
+        } else {
+            // GPU didn't copy buffer fast enough. Just skip this frame...
+        }
+        for (int i = 0; i < 3; ++i) {
+            if (ptrs[i] == NULL) {
+                continue;
+            }
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        }
+#endif
+        free(reply);
     }
 
     goto end;
@@ -837,7 +859,7 @@ end:
     glDeleteProgram(prog);
     glDeleteShader(cs);
     glDeleteTextures(4, textures);
-    glDeleteBuffers(3, pbos);
+    glDeleteBuffers(4, pbos);
     SDL_GL_DeleteContext(context);
     SDL_DestroyWindow(window);
 #else

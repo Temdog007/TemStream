@@ -14,6 +14,8 @@ void main(){
     vec4 color = imageLoad(rgbaTexture, pixel_coords);
 
     imageStore(Y,pixel_coords, vec4((0.257 * color.r) + (0.504 * color.g) + (0.098 * color.b)) + (1.0 / 16.0));
-    imageStore(U,pixel_coords, vec4(-(0.148 * color.r) - (0.291 * color.g) + (0.439 * color.b)) + 0.5);
-    imageStore(V,pixel_coords, vec4((0.439 * color.r) - (0.368 * color.g) - (0.071 *color.b)) + 0.5);
+    if(pixel_coords.x < gl_NumWorkGroups.x / 2 && pixel_coords.y < gl_NumWorkGroups.y / 2){
+        imageStore(U,pixel_coords, vec4(-(0.148 * color.r) - (0.291 * color.g) + (0.439 * color.b)) + 0.5);
+        imageStore(V,pixel_coords, vec4((0.439 * color.r) - (0.368 * color.g) - (0.071 *color.b)) + 0.5);
+    }
 }

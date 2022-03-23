@@ -115,7 +115,7 @@
 - [x] Implement h.264 video encoding
 
 ### Mar 23, 2022
-- [ ] Figure out color issue with h.264 encoding
+- [ ] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
 - [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
 - [ ] Test on laptop
 

@@ -176,45 +176,76 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        // last texture is the input rgba texture
-        if (i != 0) {
-            glTexImage2D(GL_TEXTURE_2D,
-                         0,
-                         GL_RED,
-                         width,
-                         height,
-                         0,
-                         GL_RED,
-                         GL_UNSIGNED_BYTE,
-                         data);
-            glBindImageTexture(
-              i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-        } else {
-            glTexImage2D(GL_TEXTURE_2D,
-                         0,
-                         GL_RGBA,
-                         width,
-                         height,
-                         0,
-                         GL_RGBA,
-                         GL_UNSIGNED_BYTE,
-                         data);
-            glBindImageTexture(
-              i, textures[i], 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
+        // first texture: input texture
+        // seconds texture: Y texture
+        // third and fourth texture: U/V textures
+        switch (i) {
+            case 0:
+                glTexImage2D(GL_TEXTURE_2D,
+                             0,
+                             GL_RGBA,
+                             width,
+                             height,
+                             0,
+                             GL_RGBA,
+                             GL_UNSIGNED_BYTE,
+                             data);
+                glBindImageTexture(
+                  i, textures[i], 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
+                break;
+            case 1:
+                glTexImage2D(GL_TEXTURE_2D,
+                             0,
+                             GL_RED,
+                             width,
+                             height,
+                             0,
+                             GL_RED,
+                             GL_UNSIGNED_BYTE,
+                             data);
+                glBindImageTexture(
+                  i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+                break;
+            default:
+                glTexImage2D(GL_TEXTURE_2D,
+                             0,
+                             GL_RED,
+                             (width + 1) / 2,
+                             (height + 1) / 2,
+                             0,
+                             GL_RED,
+                             GL_UNSIGNED_BYTE,
+                             data);
+                glBindImageTexture(
+                  i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+                break;
         }
     }
     currentAllocator->free(data);
 }
 
 void
-rgbaToYuv(const uint32_t* rgba, GLuint prog, const int width, const int height)
+rgbaToYuv(const void* imageData,
+          const uint32_t pbo,
+          GLuint prog,
+          const int width,
+          const int height)
 {
+    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    GLint result;
+    do {
+        glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);
+        SDL_Delay(0);
+    } while (result != GL_SIGNALED);
+
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+    void* rgba = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+    memcpy(rgba, imageData, width * height * 4);
+    glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
     glUseProgram(prog);
-    glActiveTexture(GL_TEXTURE0);
-    glTexSubImage2D(
-      GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
     glDispatchCompute(width, height, 1);
-    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    // glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
     // glActiveTexture(GL_TEXTURE0 + 1);
     // glGetTexSubImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, y);
