@@ -108,9 +108,9 @@ create_h264_decoder(void** ptr)
     SDecodingParam param;
     memset(&param, 0, sizeof(SDecodingParam));
 
-    // param.eEcActiveIdc = ERROR_CON_DISABLE;
-    param.eEcActiveIdc = ERROR_CON_SLICE_COPY;
-    param.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_AVC;
+    param.eEcActiveIdc = ERROR_CON_DISABLE;
+    // param.eEcActiveIdc = ERROR_CON_SLICE_COPY;
+    param.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_DEFAULT;
     param.bParseOnly = false;
 
     int log = 2;
@@ -135,10 +135,10 @@ h264_decode(void* ptr,
     memset(&info, 0, sizeof(SBufferInfo));
 
     if (continuation) {
-        if (decoder->DecodeFrame2(NULL, 0, ptrs, &info) != 0) {
+        if (decoder->DecodeFrameNoDelay(NULL, 0, ptrs, &info) != 0) {
             return false;
         }
-    } else if (decoder->DecodeFrame2(src, srcSize, ptrs, &info) != 0) {
+    } else if (decoder->DecodeFrameNoDelay(src, srcSize, ptrs, &info) != 0) {
         return false;
     }
 

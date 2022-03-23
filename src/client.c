@@ -745,8 +745,8 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                             y += strides[0];
                         }
                     }
-                    const int halfWidth = yWidth / 2;
-                    const int halfHeight = yHeight / 2;
+                    const int halfWidth = (yWidth + 1) / 2;
+                    const int halfHeight = (yHeight + 1) / 2;
                     {
                         unsigned char* u = yuv[1];
                         for (int i = 0; i < halfHeight; ++i) {
