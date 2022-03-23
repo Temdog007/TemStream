@@ -300,6 +300,86 @@ codec_decoder_interface()
 #endif
 
 #if USE_COMPUTE_SHADER
+const char*
+glSourceString(GLenum source)
+{
+    switch (source) {
+        case GL_DEBUG_SOURCE_API:
+            return "API";
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+            return "Window System";
+        case GL_DEBUG_SOURCE_SHADER_COMPILER:
+            return "Shader Compiler";
+        case GL_DEBUG_SOURCE_THIRD_PARTY:
+            return "Third Party";
+        case GL_DEBUG_SOURCE_APPLICATION:
+            return "Application";
+        default:
+            return "Unknown";
+    }
+}
+const char*
+glTypeString(GLenum type)
+{
+    switch (type) {
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+            return "Deprecated Behavoir";
+        case GL_DEBUG_TYPE_ERROR:
+            return "Error";
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+            return "Undefined Behavoir";
+        case GL_DEBUG_TYPE_PORTABILITY:
+            return "Portability";
+        case GL_DEBUG_TYPE_PERFORMANCE:
+            return "Performance";
+        case GL_DEBUG_TYPE_MARKER:
+            return "Marker";
+        case GL_DEBUG_TYPE_PUSH_GROUP:
+            return "Push Group";
+        case GL_DEBUG_TYPE_POP_GROUP:
+            return "Pop Group";
+        case GL_DEBUG_TYPE_OTHER:
+            return "Other";
+        default:
+            return "Unknown";
+    }
+}
+const char*
+glSeverityString(GLenum severity)
+{
+    switch (severity) {
+        case GL_DEBUG_SEVERITY_HIGH:
+            return "High";
+        case GL_DEBUG_SEVERITY_MEDIUM:
+            return "Medium";
+        case GL_DEBUG_SEVERITY_LOW:
+            return "Low";
+        case GL_DEBUG_SEVERITY_NOTIFICATION:
+            return "Notification";
+        default:
+            return "Unknown";
+    }
+}
+void GLAPIENTRY
+OnGLMessage(GLenum source,
+            GLenum type,
+            GLuint id,
+            GLenum severity,
+            GLsizei length,
+            const GLchar* message,
+            const void* userParam)
+{
+    (void)source;
+    (void)id;
+    (void)length;
+    (void)userParam;
+    fprintf(stderr,
+            "GL Callback: source=%s, type = %s, serverity = %s, message = %s\n",
+            glSourceString(source),
+            glTypeString(type),
+            glSeverityString(severity),
+            message);
+}
 #define RGBA_TO_YUV                                                            \
     rgbaToYuv(imageData, prog, geom->width, geom->height, textures, Y, U, V);  \
     success = true;
@@ -351,41 +431,70 @@ screenRecordThread(pWindowData data)
 
     void* encoder = NULL;
 #if USE_COMPUTE_SHADER
+    SDL_Window* window = NULL;
     GLuint prog = 0;
     GLuint cs = 0;
     GLuint textures[4] = { 0 };
-    uint8_t* Y = currentAllocator->allocate(data->width * data->height);
-    uint8_t* U = currentAllocator->allocate((data->width * data->height) / 2);
-    uint8_t* V = currentAllocator->allocate((data->width * data->height) / 2);
+    uint8_t* Y = currentAllocator->allocate(data->width * data->height * 4);
+    uint8_t* U = currentAllocator->allocate(data->width * data->height * 4);
+    uint8_t* V = currentAllocator->allocate(data->width * data->height * 4);
     void* context = NULL;
-    if (SDL_GL_LoadLibrary(NULL) != 0) {
-        fprintf(stderr, "Failed to load library: %s\n", SDL_GetError());
+    window = SDL_CreateWindow("",
+                              0,
+                              0,
+                              512,
+                              512,
+                              SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL |
+                                SDL_WINDOW_SKIP_TASKBAR);
+    if (window == NULL) {
+        fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
         goto end;
     }
-    context = SDL_GL_CreateContext(NULL);
+    context = SDL_GL_CreateContext(window);
     if (context == NULL) {
-        fprintf(stderr, "Failed to load library: %s\n", SDL_GetError());
+        fprintf(
+          stderr, "Failed to create opengl context: %s\n", SDL_GetError());
         goto end;
     }
-    if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
-        fprintf(stderr, "Failed to load opengl functions\n");
-        goto end;
+    static bool openglLoaded = false;
+    if (!openglLoaded) {
+        if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
+            fprintf(stderr, "Failed to load opengl functions\n");
+            goto end;
+        }
+        openglLoaded = true;
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        printf("Vendor:   %s\n", glGetString(GL_VENDOR));
+        printf("Renderer: %s\n", glGetString(GL_RENDERER));
+        printf("Version:  %s\n", glGetString(GL_VERSION));
+
+        int work_grp_cnt[3];
+
+        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &work_grp_cnt[0]);
+        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &work_grp_cnt[1]);
+        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &work_grp_cnt[2]);
+
+        printf("max global (total) work group counts x:%i y:%i z:%i\n",
+               work_grp_cnt[0],
+               work_grp_cnt[1],
+               work_grp_cnt[2]);
+#if _DEBUG
+        glEnable(GL_DEBUG_OUTPUT);
+        glDebugMessageCallback(OnGLMessage, NULL);
+#endif
     }
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    printf("Vendor:   %s\n", glGetString(GL_VENDOR));
-    printf("Renderer: %s\n", glGetString(GL_RENDERER));
-    printf("Version:  %s\n", glGetString(GL_VERSION));
     prog = glCreateProgram();
     cs = glCreateShader(GL_COMPUTE_SHADER);
     const char* ptr = (const char*)rgbaToYuvShader;
     glShaderSource(cs, 1, &ptr, NULL);
+    glCompileShader(cs);
     {
         int result = 0;
         glGetShaderiv(cs, GL_COMPILE_STATUS, &result);
-        if (result == 0) {
+        if (!result) {
             GLchar log[KB(5)];
             glGetShaderInfoLog(cs, sizeof(log), &result, log);
-            fprintf(stderr, "Failed to make compiler: %s\n", log);
+            fprintf(stderr, "Failed to compiler compute shader: %s\n", log);
             goto end;
         }
     }
@@ -394,12 +503,17 @@ screenRecordThread(pWindowData data)
     {
         int result;
         glGetProgramiv(prog, GL_LINK_STATUS, &result);
-        if (result == 0) {
+        if (!result) {
             GLchar log[KB(5)];
-            glGetProgramInfoLog(cs, sizeof(log), &result, log);
+            glGetProgramInfoLog(prog, sizeof(log), &result, log);
             fprintf(stderr, "Failed to make compiler: %s\n", log);
             goto end;
         }
+    }
+
+    glUseProgram(prog);
+    for (int i = 0; i < 4; ++i) {
+        glUniform1i(i, i);
     }
 
     makeComputeShaderTextures(data->width, data->height, textures);
@@ -689,7 +803,7 @@ end:
     glDeleteShader(cs);
     glDeleteTextures(4, textures);
     SDL_GL_DeleteContext(context);
-    SDL_GL_UnloadLibrary();
+    SDL_DestroyWindow(window);
 #else
     currentAllocator->free(YUV);
     currentAllocator->free(ARGB);

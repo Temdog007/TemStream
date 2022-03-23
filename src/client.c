@@ -900,7 +900,7 @@ streamConnectionThread(void* ptr)
             goto end;
         }
 #else
-        if (!create_h264_decoder(&decoder)) {
+        if (!create_h264_decoder(&decoder, SDL_GetCPUCount())) {
             fprintf(stderr, "Failed to create video decoder\n");
             goto end;
         }

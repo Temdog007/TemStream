@@ -35,7 +35,7 @@ extern "C"
 
     void destroy_h264_encoder(void*);
 
-    bool create_h264_decoder(void** decoder);
+    bool create_h264_decoder(void** decoder, int threadCount);
 
     bool h264_decode(void*,
                      unsigned char* src,

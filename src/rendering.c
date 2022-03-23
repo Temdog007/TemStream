@@ -168,6 +168,7 @@ void
 makeComputeShaderTextures(int width, int height, GLuint textures[4])
 {
     glGenTextures(4, textures);
+    void* data = currentAllocator->allocate(width * height * 4);
     for (int i = 0; i < 4; ++i) {
         glActiveTexture(GL_TEXTURE0 + i);
         glBindTexture(GL_TEXTURE_2D, textures[i]);
@@ -176,7 +177,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         // last texture is the input rgba texture
-        if (i < 3) {
+        if (i != 0) {
             glTexImage2D(GL_TEXTURE_2D,
                          0,
                          GL_RED,
@@ -185,9 +186,9 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
                          0,
                          GL_RED,
                          GL_UNSIGNED_BYTE,
-                         NULL);
+                         data);
             glBindImageTexture(
-              i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RED);
+              i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
         } else {
             glTexImage2D(GL_TEXTURE_2D,
                          0,
@@ -197,9 +198,12 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
                          0,
                          GL_RGBA,
                          GL_UNSIGNED_BYTE,
-                         NULL);
+                         data);
+            glBindImageTexture(
+              i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
         }
     }
+    currentAllocator->free(data);
 }
 
 void
@@ -214,16 +218,17 @@ rgbaToYuv(const uint32_t* rgba,
 {
     (void)textures;
     glUseProgram(prog);
-    // Uniform should always be zero
-    glActiveTexture(GL_TEXTURE0 + 3);
+    glActiveTexture(GL_TEXTURE0);
     glTexSubImage2D(
       GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-    glUniform1i(0, 3);
     glDispatchCompute(width, height, 1);
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
-    glActiveTexture(GL_TEXTURE0);
+    glActiveTexture(GL_TEXTURE0 + 1);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, y);
+    glActiveTexture(GL_TEXTURE0 + 2);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, u);
+    glActiveTexture(GL_TEXTURE0 + 3);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, v);
 }
 #else

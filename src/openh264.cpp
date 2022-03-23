@@ -24,6 +24,7 @@ create_h264_encoder(void** ptr,
     param.fMaxFrameRate = frameRate;
     param.iPicWidth = width;
     param.iPicHeight = height;
+    // param.iRCMode = RC_MODES::RC_BITRATE_MODE;
     param.iTargetBitrate = bitrateKps * 1024;
     if (encoder->Initialize(&param) != 0) {
         return false;
@@ -116,7 +117,7 @@ destroy_h264_encoder(void* ptr)
 }
 
 bool
-create_h264_decoder(void** ptr)
+create_h264_decoder(void** ptr, int threadCount)
 {
     ISVCDecoder** decoderPtr = reinterpret_cast<ISVCDecoder**>(ptr);
     const int result = WelsCreateDecoder(decoderPtr);
@@ -134,6 +135,8 @@ create_h264_decoder(void** ptr)
     param.bParseOnly = false;
 
     int log = 2;
+    (void)threadCount;
+    // decoder->SetOption(DECODER_OPTION_NUM_OF_THREADS, &threadCount) == 0;
     return decoder->Initialize(&param) == 0 &&
            decoder->SetOption(DECODER_OPTION_TRACE_LEVEL, &log) == 0;
 }

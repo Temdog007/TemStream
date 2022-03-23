@@ -454,7 +454,7 @@ diff_timespec(const struct timespec*, const struct timespec*);
 extern Bytes
 rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
 
-#define USE_COMPUTE_SHADER false && !USE_VP8
+#define USE_COMPUTE_SHADER true && !USE_VP8
 
 #if USE_COMPUTE_SHADER
 #include <glad/glad.h>
