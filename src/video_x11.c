@@ -585,8 +585,12 @@ screenRecordThread(pWindowData data)
         goto end;
     }
 #else
-    if (!create_h264_encoder(
-          &encoder, data->width, data->height, data->fps, data->bitrate)) {
+    if (!create_h264_encoder(&encoder,
+                             data->width,
+                             data->height,
+                             data->fps,
+                             data->bitrate,
+                             SDL_GetCPUCount())) {
         fprintf(stderr, "Failed to initalize encoder\n");
         goto end;
     }

@@ -116,7 +116,8 @@
 
 ### Mar 23, 2022
 - [ ] Figure out color issue with h.264 encoding
-- [ ] See if h.264 can go faster (force down sampling?)
+- [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
+- [ ] Test on laptop
 
 ### Later
 - [ ] Record webcam

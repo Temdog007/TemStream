@@ -9,7 +9,8 @@ create_h264_encoder(void** ptr,
                     const int width,
                     const int height,
                     const float frameRate,
-                    const int bitrateKps)
+                    const int bitrateKps,
+                    const int threadCount)
 {
     ISVCEncoder** encoderPtr = reinterpret_cast<ISVCEncoder**>(ptr);
     const int result = WelsCreateSVCEncoder(encoderPtr);
@@ -18,15 +19,27 @@ create_h264_encoder(void** ptr,
         return false;
     }
 
-    SEncParamBase param;
-    memset(&param, 0, sizeof(SEncParamBase));
+    SEncParamExt param;
+    memset(&param, 0, sizeof(SEncParamExt));
+    encoder->GetDefaultParams(&param);
     param.iUsageType = EUsageType::SCREEN_CONTENT_REAL_TIME;
     param.fMaxFrameRate = frameRate;
     param.iPicWidth = width;
     param.iPicHeight = height;
-    // param.iRCMode = RC_MODES::RC_BITRATE_MODE;
+    param.iMultipleThreadIdc = threadCount;
+    param.iRCMode = RC_MODES::RC_BITRATE_MODE;
     param.iTargetBitrate = bitrateKps * 1024;
-    if (encoder->Initialize(&param) != 0) {
+    param.iMaxBitrate = UNSPECIFIED_BIT_RATE;
+    param.iSpatialLayerNum = 1;
+    for (int i = 0; i < 1; ++i) {
+        param.sSpatialLayers[0].uiProfileIdc = PRO_BASELINE;
+        param.sSpatialLayers[0].iVideoWidth = param.iPicWidth >> 1;
+        param.sSpatialLayers[0].iVideoHeight = param.iPicHeight >> 1;
+        param.sSpatialLayers[0].fFrameRate = param.fMaxFrameRate;
+        param.sSpatialLayers[0].iSpatialBitrate = param.iTargetBitrate;
+        param.sSpatialLayers[0].iMaxSpatialBitrate = UNSPECIFIED_BIT_RATE;
+    }
+    if (encoder->InitializeExt(&param) != 0) {
         return false;
     }
 

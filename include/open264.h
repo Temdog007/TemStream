@@ -12,7 +12,8 @@ extern "C"
                              const int width,
                              const int height,
                              const float frameRate,
-                             const int bitrate);
+                             const int bitrate,
+                             const int threadCount);
 
     // -1 = failure
     // 0 = skip frame
