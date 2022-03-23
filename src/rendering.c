@@ -200,7 +200,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
                          GL_UNSIGNED_BYTE,
                          data);
             glBindImageTexture(
-              i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+              i, textures[i], 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
         }
     }
     currentAllocator->free(data);
