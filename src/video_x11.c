@@ -299,6 +299,31 @@ codec_decoder_interface()
 }
 #endif
 
+#if USE_COMPUTE_SHADER
+#define RGBA_TO_YUV                                                            \
+    rgbaToYuv(imageData, prog, geom->width, geom->height, textures, Y, U, V);  \
+    success = true;
+#define ENCODE_TO_H264                                                         \
+    encoded = h264_encode_separate(encoder,                                    \
+                                   Y,                                          \
+                                   U,                                          \
+                                   V,                                          \
+                                   geom->width,                                \
+                                   geom->height,                               \
+                                   message.video.buffer,                       \
+                                   message.video.size)
+#else
+#define RGBA_TO_YUV                                                            \
+    success = rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV)
+#define ENCODE_TO_H264                                                         \
+    encoded = h264_encode(encoder,                                             \
+                          YUV,                                                 \
+                          geom->width,                                         \
+                          geom->height,                                        \
+                          message.video.buffer,                                \
+                          message.video.size)
+#endif
+
 int
 screenRecordThread(pWindowData data)
 {
@@ -324,8 +349,65 @@ screenRecordThread(pWindowData data)
     message.tag = VideoMessageTag_video;
     message.video = INIT_ALLOCATOR(MB(1));
 
+    void* encoder = NULL;
+#if USE_COMPUTE_SHADER
+    GLuint prog = 0;
+    GLuint cs = 0;
+    GLuint textures[4] = { 0 };
+    uint8_t* Y = currentAllocator->allocate(data->width * data->height);
+    uint8_t* U = currentAllocator->allocate((data->width * data->height) / 2);
+    uint8_t* V = currentAllocator->allocate((data->width * data->height) / 2);
+    void* context = NULL;
+    if (SDL_GL_LoadLibrary(NULL) != 0) {
+        fprintf(stderr, "Failed to load library: %s\n", SDL_GetError());
+        goto end;
+    }
+    context = SDL_GL_CreateContext(NULL);
+    if (context == NULL) {
+        fprintf(stderr, "Failed to load library: %s\n", SDL_GetError());
+        goto end;
+    }
+    if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
+        fprintf(stderr, "Failed to load opengl functions\n");
+        goto end;
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    printf("Vendor:   %s\n", glGetString(GL_VENDOR));
+    printf("Renderer: %s\n", glGetString(GL_RENDERER));
+    printf("Version:  %s\n", glGetString(GL_VERSION));
+    prog = glCreateProgram();
+    cs = glCreateShader(GL_COMPUTE_SHADER);
+    const char* ptr = (const char*)rgbaToYuvShader;
+    glShaderSource(cs, 1, &ptr, NULL);
+    {
+        int result = 0;
+        glGetShaderiv(cs, GL_COMPILE_STATUS, &result);
+        if (result == 0) {
+            GLchar log[KB(5)];
+            glGetShaderInfoLog(cs, sizeof(log), &result, log);
+            fprintf(stderr, "Failed to make compiler: %s\n", log);
+            goto end;
+        }
+    }
+    glAttachShader(prog, cs);
+    glLinkProgram(prog);
+    {
+        int result;
+        glGetProgramiv(prog, GL_LINK_STATUS, &result);
+        if (result == 0) {
+            GLchar log[KB(5)];
+            glGetProgramInfoLog(cs, sizeof(log), &result, log);
+            fprintf(stderr, "Failed to make compiler: %s\n", log);
+            goto end;
+        }
+    }
+
+    makeComputeShaderTextures(data->width, data->height, textures);
+#else
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
+#endif
+
 #if USE_VP8
     int frame_count = 0;
     vpx_codec_ctx_t codec = { 0 };
@@ -367,7 +449,6 @@ screenRecordThread(pWindowData data)
         goto end;
     }
 #else
-    void* encoder = NULL;
     if (!create_h264_encoder(
           &encoder, data->width, data->height, data->fps, data->bitrate)) {
         fprintf(stderr, "Failed to initalize encoder\n");
@@ -481,15 +562,11 @@ screenRecordThread(pWindowData data)
             uint8_tListFree(&jpegBytes);
             currentAllocator->free(rgb);
 #endif
-#if TIME_VIDEO_STREAMING
             bool success;
-            TIME("Convert pixels to YV12", {
-                success =
-                  rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV);
-            });
+#if TIME_VIDEO_STREAMING
+            TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
 #else
-            const bool success =
-              rgbaToYuv(imageData, geom->width, geom->height, ARGB, YUV);
+            RGBA_TO_YUV;
 #endif
 #if USE_VP8
             if (success) {
@@ -561,23 +638,11 @@ screenRecordThread(pWindowData data)
             }
 #else
             if (success) {
-#if TIME_VIDEO_STREAMING
                 int encoded;
-                TIME("H264 encoding", {
-                    encoded = h264_encode(encoder,
-                                          YUV,
-                                          geom->width,
-                                          geom->height,
-                                          message.video.buffer,
-                                          message.video.size);
-                });
+#if TIME_VIDEO_STREAMING
+                TIME("H264 encoding", { ENCODE_TO_H264; });
 #else
-                const int encoded = h264_encode(encoder,
-                                                YUV,
-                                                geom->width,
-                                                geom->height,
-                                                message.video.buffer,
-                                                message.video.size);
+                ENCODE_TO_H264;
 #endif
                 if (encoded < 0) {
                     fprintf(stderr, "Failed to encode frame\n");
@@ -591,7 +656,7 @@ screenRecordThread(pWindowData data)
                     MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                     ENetPacket* packet =
                       BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
-                    USE_DISPLAY(clientData.mutex, end2, displayMissing, {
+                    USE_DISPLAY(clientData.mutex, end256, displayMissing, {
                         NullValueListAppend(&display->outgoing,
                                             (NullValue)&packet);
                     });
@@ -599,35 +664,49 @@ screenRecordThread(pWindowData data)
                         enet_packet_destroy(packet);
                     }
                 }
+            } else {
+                fprintf(
+                  stderr, "Image conversion failure: %s\n", SDL_GetError());
+            }
 #endif
+            free(reply);
         }
-        else
-        {
-            fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
-        }
-        free(reply);
+        free(geom);
     }
-    free(geom);
-}
 
-goto end;
-end : uint8_tListFree(&bytes);
-VideoMessageFree(&message);
+    goto end;
 
-currentAllocator->free(YUV);
-currentAllocator->free(ARGB);
+end:
+
+    uint8_tListFree(&bytes);
+    VideoMessageFree(&message);
+
+#if USE_COMPUTE_SHADER
+    currentAllocator->free(Y);
+    currentAllocator->free(U);
+    currentAllocator->free(V);
+    glDeleteProgram(prog);
+    glDeleteShader(cs);
+    glDeleteTextures(4, textures);
+    SDL_GL_DeleteContext(context);
+    SDL_GL_UnloadLibrary();
+#else
+    currentAllocator->free(YUV);
+    currentAllocator->free(ARGB);
+#endif
 #if USE_VP8
-vpx_img_free(&img);
-vpx_codec_destroy(&codec);
+    (void)encoder;
+    vpx_img_free(&img);
+    vpx_codec_destroy(&codec);
 #else
     destroy_h264_encoder(encoder);
 #endif
 
-xcb_disconnect(data->connection);
-WindowDataFree(data);
-currentAllocator->free(data);
+    xcb_disconnect(data->connection);
+    WindowDataFree(data);
+    currentAllocator->free(data);
 
-SDL_AtomicDecRef(&runningThreads);
+    SDL_AtomicDecRef(&runningThreads);
 
-return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }

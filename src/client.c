@@ -695,8 +695,8 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                 pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
                 m->id = display->id;
                 // Need to update
-                m->width = *width;
-                m->height = *height;
+                m->width = 0;
+                m->height = 0;
                 m->video.allocator = currentAllocator;
 
                 for (int plane = 0; plane < 3; ++plane) {
@@ -2820,6 +2820,9 @@ updateVideoDisplay(SDL_Renderer* renderer,
         return;
     }
 
+    if (display->texture == NULL && (width == 0 || height == 0)) {
+        return;
+    }
     if (display->texture == NULL || display->data.videoDimensions[0] != width ||
         display->data.videoDimensions[1] != height) {
         SDL_DestroyTexture(display->texture);
@@ -3791,6 +3794,10 @@ runClient(const Configuration* configuration)
                     .size = MAX_PACKET_SIZE,
                     .used = 0 };
 
+    ENetHost* host = NULL;
+    ENetPeer* peer = NULL;
+    Client client = { 0 };
+
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
     const bool showWindow = !config->noGui;
@@ -3890,10 +3897,6 @@ runClient(const Configuration* configuration)
     size_t targetDisplay = UINT32_MAX;
     MoveMode moveMode = MoveMode_None;
     bool hasTarget = false;
-
-    ENetHost* host = NULL;
-    ENetPeer* peer = NULL;
-    Client client = { 0 };
 
     userInputs.allocator = currentAllocator;
     audioStates.allocator = currentAllocator;

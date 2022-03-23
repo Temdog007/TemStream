@@ -163,6 +163,70 @@ renderFont(SDL_Renderer* renderer,
     return totalRect;
 }
 
+#if USE_COMPUTE_SHADER
+void
+makeComputeShaderTextures(int width, int height, GLuint textures[4])
+{
+    glGenTextures(4, textures);
+    for (int i = 0; i < 4; ++i) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, textures[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        // last texture is the input rgba texture
+        if (i < 3) {
+            glTexImage2D(GL_TEXTURE_2D,
+                         0,
+                         GL_RED,
+                         width,
+                         height,
+                         0,
+                         GL_RED,
+                         GL_UNSIGNED_BYTE,
+                         NULL);
+            glBindImageTexture(
+              i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RED);
+        } else {
+            glTexImage2D(GL_TEXTURE_2D,
+                         0,
+                         GL_RGBA,
+                         width,
+                         height,
+                         0,
+                         GL_RGBA,
+                         GL_UNSIGNED_BYTE,
+                         NULL);
+        }
+    }
+}
+
+void
+rgbaToYuv(const uint32_t* rgba,
+          GLuint prog,
+          const int width,
+          const int height,
+          GLuint textures[4],
+          uint8_t* y,
+          uint8_t* u,
+          uint8_t* v)
+{
+    (void)textures;
+    glUseProgram(prog);
+    // Uniform should always be zero
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glTexSubImage2D(
+      GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glUniform1i(0, 3);
+    glDispatchCompute(width, height, 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, y);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, u);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, v);
+}
+#else
 bool
 rgbaToYuv(const uint32_t* rgba,
           const int width,
@@ -194,3 +258,4 @@ rgbaToYuv(const uint32_t* rgba,
                              yuv,
                              width) == 0;
 }
+#endif

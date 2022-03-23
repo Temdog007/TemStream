@@ -41,7 +41,27 @@ h264_encode(void* ptr,
             const int width,
             const int height,
             uint8_t* dst,
-            const size_t dstSize)
+            const size_t size)
+{
+    return h264_encode_separate(ptr,
+                                src,
+                                src + width * height,
+                                src + (width * height) + (width * height >> 2),
+                                width,
+                                height,
+                                dst,
+                                size);
+}
+
+int
+h264_encode_separate(void* ptr,
+                     unsigned char* y,
+                     unsigned char* u,
+                     unsigned char* v,
+                     const int width,
+                     const int height,
+                     uint8_t* dst,
+                     const size_t dstSize)
 {
     ISVCEncoder* encoder = reinterpret_cast<ISVCEncoder*>(ptr);
 
@@ -56,9 +76,9 @@ h264_encode(void* ptr,
     pic.iColorFormat = videoFormatI420;
     pic.iStride[0] = pic.iPicWidth;
     pic.iStride[1] = pic.iStride[2] = pic.iPicWidth >> 1;
-    pic.pData[0] = src;
-    pic.pData[1] = pic.pData[0] + width * height;
-    pic.pData[2] = pic.pData[1] + (width * height >> 2);
+    pic.pData[0] = y;
+    pic.pData[1] = u;
+    pic.pData[2] = v;
 
     if (encoder->EncodeFrame(&pic, &info) != 0) {
         return -1;

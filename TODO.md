@@ -112,7 +112,8 @@
 
 ### Mar 22, 2022
 - [ ] Make compute shader for color conversion for texture
-- [ ] Implement x264 video encoding
+- [x] Implement h.264 video encoding
+- [ ] Figure out color issue with h.264 encoding
 
 ### Later
 - [ ] Record webcam

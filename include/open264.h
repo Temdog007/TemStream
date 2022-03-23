@@ -24,6 +24,15 @@ extern "C"
                     uint8_t* dst,
                     size_t);
 
+    int h264_encode_separate(void*,
+                             unsigned char* y,
+                             unsigned char* u,
+                             unsigned char* v,
+                             const int width,
+                             const int height,
+                             uint8_t* dst,
+                             size_t);
+
     void destroy_h264_encoder(void*);
 
     bool create_h264_decoder(void** decoder);

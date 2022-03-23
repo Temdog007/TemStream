@@ -454,12 +454,31 @@ diff_timespec(const struct timespec*, const struct timespec*);
 extern Bytes
 rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
 
+#define USE_COMPUTE_SHADER false && !USE_VP8
+
+#if USE_COMPUTE_SHADER
+#include <glad/glad.h>
+extern void
+makeComputeShaderTextures(int, int, GLuint textures[4]);
+
+extern void
+rgbaToYuv(const uint32_t* rgba,
+          GLuint prog,
+          const int width,
+          const int height,
+          GLuint textures[4],
+          uint8_t* y,
+          uint8_t* u,
+          uint8_t* v);
+
+#else
 extern bool
 rgbaToYuv(const uint32_t* rgba,
           int width,
           int height,
           uint32_t* argb,
           uint8_t* yuv);
+#endif
 
 extern bool
 authenticateClient(pClient,
