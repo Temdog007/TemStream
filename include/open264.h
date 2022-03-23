@@ -28,12 +28,15 @@ extern "C"
 
     bool create_h264_decoder(void** decoder);
 
-    int h264_decode(void*,
-                    unsigned char* src,
-                    int size,
-                    uint8_t* dst,
-                    size_t,
-                    const bool continuation);
+    bool h264_decode(void*,
+                     unsigned char* src,
+                     int size,
+                     unsigned char* yuv[3],
+                     int* width,
+                     int* height,
+                     int strides[2],
+                     bool* status,
+                     const bool continuation);
 
     void destroy_h264_decoder(void*);
 

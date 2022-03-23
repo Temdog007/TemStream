@@ -579,10 +579,14 @@ screenRecordThread(pWindowData data)
                                                 message.video.buffer,
                                                 message.video.size);
 #endif
-                if (encoder < 0) {
+                if (encoded < 0) {
                     fprintf(stderr, "Failed to encode frame\n");
-                } else if (encoder == 0) {
+                } else if (encoded == 0) {
+                    USE_DISPLAY(clientData.mutex, end564, displayMissing, {});
                 } else {
+                    // printf("Encoded video %u -> %d kilobytes\n",
+                    //        (geom->width * geom->height * 3u / 2u) / 1024,
+                    //        encoded / 1024);
                     message.video.used = (uint32_t)encoded;
                     MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                     ENetPacket* packet =

@@ -714,35 +714,65 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             }
 #else
             int i = 0;
+            int yWidth, yHeight;
+            int strides[2];
+            bool status;
+            unsigned char* yuv[3] = { NULL };
             while (true) {
-                pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
-                m->id = display->id;
-                m->width = *width;
-                m->height = *height;
-                m->video = INIT_ALLOCATOR(MB(1));
-                const int result = h264_decode(decoder,
-                                               message.video.buffer,
-                                               message.video.used,
-                                               m->video.buffer,
-                                               m->video.size,
-                                               i != 0);
-                if (result > 0) {
-                    m->video.used = result;
+                if (h264_decode(decoder,
+                                message.video.buffer,
+                                message.video.used,
+                                yuv,
+                                &yWidth,
+                                &yHeight,
+                                strides,
+                                &status,
+                                i != 0)) {
+                    if (!status) {
+                        break;
+                    }
+
+                    pVideoFrame m =
+                      currentAllocator->allocate(sizeof(VideoFrame));
+                    m->id = display->id;
+                    m->width = *width;
+                    m->height = *height;
+                    m->video.allocator = currentAllocator;
+                    {
+                        unsigned char* y = yuv[0];
+                        for (int i = 0; i < yHeight; ++i) {
+                            uint8_tListQuickAppend(&m->video, y, yWidth);
+                            y += strides[0];
+                        }
+                    }
+                    const int halfWidth = yWidth / 2;
+                    const int halfHeight = yHeight / 2;
+                    {
+                        unsigned char* u = yuv[1];
+                        for (int i = 0; i < halfHeight; ++i) {
+                            uint8_tListQuickAppend(&m->video, u, halfWidth);
+                            u += strides[1];
+                        }
+                    }
+                    {
+                        unsigned char* v = yuv[2];
+                        for (int i = 0; i < halfHeight; ++i) {
+                            uint8_tListQuickAppend(&m->video, v, halfWidth);
+                            v += strides[1];
+                        }
+                    }
+                    // printf("Decoded video %u -> %u kilobytes\n",
+                    //        message.video.used / 1024,
+                    //        m->video.used / 1024);
                     SDL_Event e = { 0 };
                     e.type = SDL_USEREVENT;
                     e.user.code = CustomEvent_UpdateVideoDisplay;
                     e.user.data1 = m;
                     SDL_PushEvent(&e);
                     ++i;
-                } else if (result == 0) {
-                    VideoFrameFree(m);
-                    currentAllocator->free(m);
-                    break;
                 } else {
                     fprintf(stderr, "Failed to decode video frame\n");
                     success = false;
-                    VideoFrameFree(m);
-                    currentAllocator->free(m);
                     break;
                 }
             }

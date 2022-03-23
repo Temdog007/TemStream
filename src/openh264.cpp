@@ -118,12 +118,15 @@ create_h264_decoder(void** ptr)
            decoder->SetOption(DECODER_OPTION_TRACE_LEVEL, &log) == 0;
 }
 
-int
+bool
 h264_decode(void* ptr,
             unsigned char* src,
             const int srcSize,
-            uint8_t* dst,
-            const size_t dstSize,
+            unsigned char* ptrs[3],
+            int* width,
+            int* height,
+            int strides[2],
+            bool* status,
             const bool continuation)
 {
     ISVCDecoder* decoder = reinterpret_cast<ISVCDecoder*>(ptr);
@@ -131,33 +134,20 @@ h264_decode(void* ptr,
     SBufferInfo info;
     memset(&info, 0, sizeof(SBufferInfo));
 
-    unsigned char* ptrs[3] = { 0 };
     if (continuation) {
-        if (decoder->DecodeFrameNoDelay(NULL, 0, ptrs, &info) != 0) {
-            return -1;
+        if (decoder->DecodeFrame2(NULL, 0, ptrs, &info) != 0) {
+            return false;
         }
-    } else {
-        if (decoder->DecodeFrameNoDelay(src, srcSize, ptrs, &info) != 0) {
-            return -1;
-        }
+    } else if (decoder->DecodeFrame2(src, srcSize, ptrs, &info) != 0) {
+        return false;
     }
 
-    if (info.iBufferStatus != 1) {
-        return 0;
-    }
-
-    const int lineSize[3] = { info.UsrData.sSystemBuffer.iStride[0],
-                              info.UsrData.sSystemBuffer.iStride[1],
-                              info.UsrData.sSystemBuffer.iStride[1] };
-    int offset = 0;
-    for (int i = 0; i < 3; ++i) {
-        if (offset + lineSize[i] > dstSize) {
-            return offset;
-        }
-        memcpy(dst + offset, ptrs[i], lineSize[i]);
-        offset += lineSize[i];
-    }
-    return offset;
+    *width = info.UsrData.sSystemBuffer.iWidth;
+    *height = info.UsrData.sSystemBuffer.iHeight;
+    strides[0] = info.UsrData.sSystemBuffer.iStride[0];
+    strides[1] = info.UsrData.sSystemBuffer.iStride[1];
+    *status = info.iBufferStatus == 1;
+    return true;
 }
 
 void
