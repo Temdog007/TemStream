@@ -207,16 +207,8 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
 }
 
 void
-rgbaToYuv(const uint32_t* rgba,
-          GLuint prog,
-          const int width,
-          const int height,
-          GLuint textures[4],
-          uint8_t* y,
-          uint8_t* u,
-          uint8_t* v)
+rgbaToYuv(const uint32_t* rgba, GLuint prog, const int width, const int height)
 {
-    (void)textures;
     glUseProgram(prog);
     glActiveTexture(GL_TEXTURE0);
     glTexSubImage2D(
@@ -224,12 +216,12 @@ rgbaToYuv(const uint32_t* rgba,
     glDispatchCompute(width, height, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
-    glActiveTexture(GL_TEXTURE0 + 1);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, y);
-    glActiveTexture(GL_TEXTURE0 + 2);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, u);
-    glActiveTexture(GL_TEXTURE0 + 3);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, v);
+    // glActiveTexture(GL_TEXTURE0 + 1);
+    // glGetTexSubImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, y);
+    // glActiveTexture(GL_TEXTURE0 + 2);
+    // glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, u);
+    // glActiveTexture(GL_TEXTURE0 + 3);
+    // glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, v);
 }
 #else
 bool

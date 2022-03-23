@@ -381,8 +381,24 @@ OnGLMessage(GLenum source,
             message);
 }
 #define RGBA_TO_YUV                                                            \
-    rgbaToYuv(imageData, prog, geom->width, geom->height, textures, Y, U, V);  \
-    success = true;
+    rgbaToYuv(imageData, prog, geom->width, geom->height);                     \
+    for (int i = 0; i < 3; ++i) {                                              \
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
+        glActiveTexture(GL_TEXTURE1 + i);                                      \
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);       \
+    }                                                                          \
+    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);               \
+    GLint result;                                                              \
+    glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);          \
+    for (int t = 0; t < 10 && result != GL_SIGNALED; ++t) {                    \
+        SDL_Delay(0);                                                          \
+        glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);      \
+    }                                                                          \
+    for (int i = 0; i < 3; ++i) {                                              \
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
+        ptrs[i] = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);             \
+    }                                                                          \
+    success = ptrs[0] != NULL && ptrs[1] != NULL && ptrs[2] != NULL;
 #define ENCODE_TO_H264                                                         \
     encoded = h264_encode_separate(encoder,                                    \
                                    Y,                                          \
@@ -435,17 +451,15 @@ screenRecordThread(pWindowData data)
     GLuint prog = 0;
     GLuint cs = 0;
     GLuint textures[4] = { 0 };
-    uint8_t* Y = currentAllocator->allocate(data->width * data->height * 4);
-    uint8_t* U = currentAllocator->allocate(data->width * data->height * 4);
-    uint8_t* V = currentAllocator->allocate(data->width * data->height * 4);
+    GLuint pbos[3] = { 0 };
     void* context = NULL;
-    window = SDL_CreateWindow("",
+    window = SDL_CreateWindow("unused",
                               0,
                               0,
                               512,
                               512,
                               SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL |
-                                SDL_WINDOW_SKIP_TASKBAR);
+                                SDL_WINDOW_SKIP_TASKBAR | SDL_WINDOW_UTILITY);
     if (window == NULL) {
         fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
         goto end;
@@ -517,6 +531,14 @@ screenRecordThread(pWindowData data)
     }
 
     makeComputeShaderTextures(data->width, data->height, textures);
+    glGenBuffers(3, pbos);
+    for (int i = 0; i < 3; ++i) {
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
+        glBufferData(GL_PIXEL_PACK_BUFFER,
+                     data->width * data->height,
+                     NULL,
+                     GL_STREAM_COPY);
+    }
 #else
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
@@ -677,11 +699,13 @@ screenRecordThread(pWindowData data)
             currentAllocator->free(rgb);
 #endif
             bool success;
+            void* ptrs[3] = { NULL };
 #if TIME_VIDEO_STREAMING
             TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
 #else
             RGBA_TO_YUV;
 #endif
+
 #if USE_VP8
             if (success) {
                 uint8_t* ptr = YUV;
@@ -752,6 +776,9 @@ screenRecordThread(pWindowData data)
             }
 #else
             if (success) {
+                void* Y = ptrs[0];
+                void* U = ptrs[1];
+                void* V = ptrs[2];
                 int encoded;
 #if TIME_VIDEO_STREAMING
                 TIME("H264 encoding", { ENCODE_TO_H264; });
@@ -779,8 +806,15 @@ screenRecordThread(pWindowData data)
                     }
                 }
             } else {
-                fprintf(
-                  stderr, "Image conversion failure: %s\n", SDL_GetError());
+                // GPU didn't copy buffer fast enough (shouldn't it wait until
+                // it completes?). Just skip this frame...
+            }
+            for (int i = 0; i < 3; ++i) {
+                if (ptrs[i] == NULL) {
+                    continue;
+                }
+                glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
+                glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
             }
 #endif
             free(reply);
@@ -796,12 +830,10 @@ end:
     VideoMessageFree(&message);
 
 #if USE_COMPUTE_SHADER
-    currentAllocator->free(Y);
-    currentAllocator->free(U);
-    currentAllocator->free(V);
     glDeleteProgram(prog);
     glDeleteShader(cs);
     glDeleteTextures(4, textures);
+    glDeleteBuffers(3, pbos);
     SDL_GL_DeleteContext(context);
     SDL_DestroyWindow(window);
 #else

@@ -111,9 +111,12 @@
 - [x] Use multi-threading to encode video frames faster (is already done)
 
 ### Mar 22, 2022
-- [ ] Make compute shader for color conversion for texture (might have to use opencv)
+- [x] Make compute shader for color conversion for texture
 - [x] Implement h.264 video encoding
+
+### Mar 23, 2022
 - [ ] Figure out color issue with h.264 encoding
+- [ ] See if h.264 can go faster (force down sampling?)
 
 ### Later
 - [ ] Record webcam

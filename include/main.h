@@ -460,14 +460,7 @@ extern void
 makeComputeShaderTextures(int, int, GLuint textures[4]);
 
 extern void
-rgbaToYuv(const uint32_t* rgba,
-          GLuint prog,
-          const int width,
-          const int height,
-          GLuint textures[4],
-          uint8_t* y,
-          uint8_t* u,
-          uint8_t* v);
+rgbaToYuv(const uint32_t* rgba, GLuint prog, const int width, const int height);
 
 #else
 extern bool
