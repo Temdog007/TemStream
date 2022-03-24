@@ -786,8 +786,9 @@ screenRecordThread(pWindowData data)
         if (success) {
 #if USE_COMPUTE_SHADER
             memcpy(img.planes[0], ptrs[0], data->width * data->height);
-            memcpy(img.planes[1], ptrs[1], (data->width * data->height) / 4);
-            memcpy(img.planes[2], ptrs[2], (data->width * data->height) / 4);
+            int size = ((data->width + 1) / 2) * ((data->height + 1) / 2);
+            memcpy(img.planes[1], ptrs[1], size);
+            memcpy(img.planes[2], ptrs[2], size);
 #else
             uint8_t* ptr = YUV;
             for (int plane = 0; plane < 3; ++plane) {

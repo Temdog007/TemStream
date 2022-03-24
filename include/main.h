@@ -33,7 +33,7 @@
 
 #include <vorbis/codec.h>
 
-#define USE_COMPUTE_SHADER false
+#define USE_COMPUTE_SHADER true
 #define TIME_VIDEO_STREAMING false
 
 #if USE_COMPUTE_SHADER
