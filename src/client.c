@@ -3052,7 +3052,7 @@ drawTextures(SDL_Renderer* renderer,
     SDL_RenderClear(renderer);
 
     const StreamDisplay* display = NULL;
-    if (target < clientData.displays.used) {
+    if (target < clientData.displays.used && mouseInWindow) {
         display = &clientData.displays.buffer[target];
         if (display->texture != NULL && display->visible) {
             SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);

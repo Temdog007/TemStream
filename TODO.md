@@ -116,7 +116,7 @@
 
 ### Mar 23, 2022
 - [x] Use computer shader with VP8
-- [ ] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
+- [x] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
 - [ ] Test on laptop
 
 ### Later

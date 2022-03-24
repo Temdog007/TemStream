@@ -58,7 +58,7 @@ rgbaToYuv(const uint8_t* rgba,
           uint8_t* yuv);
 #endif
 
-#define USE_VP8 true
+#define USE_VP8 false
 
 #if USE_VP8
 #include <vpx/vp8cx.h>
