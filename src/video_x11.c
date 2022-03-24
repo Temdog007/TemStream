@@ -406,19 +406,19 @@ OnGLMessage(GLenum source,
             const GLchar* message,
             const void* userParam)
 {
-    (void)source;
-    (void)id;
     (void)length;
     (void)userParam;
     if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
         return;
     }
-    fprintf(stderr,
-            "GL Callback: source=%s, type = %s, serverity = %s, message = %s\n",
-            glSourceString(source),
-            glTypeString(type),
-            glSeverityString(severity),
-            message);
+    fprintf(
+      stderr,
+      "GL Callback %u: source=%s, type = %s, serverity = %s, message = %s\n",
+      id,
+      glSourceString(source),
+      glTypeString(type),
+      glSeverityString(severity),
+      message);
 }
 #define RGBA_TO_YUV                                                            \
     rgbaToYuv(imageData, pbos[3], prog, data->width, data->height);            \
@@ -617,6 +617,7 @@ screenRecordThread(pWindowData data)
                work_grp_cnt[2]);
 #if _DEBUG
         glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
         glDebugMessageCallback(OnGLMessage, NULL);
 #endif
     }

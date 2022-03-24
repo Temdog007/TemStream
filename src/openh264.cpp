@@ -19,6 +19,7 @@ create_h264_encoder(void** ptr,
         return false;
     }
 
+#if USE_EXT_PARAMS
     SEncParamExt param;
     memset(&param, 0, sizeof(SEncParamExt));
     encoder->GetDefaultParams(&param);
@@ -42,6 +43,19 @@ create_h264_encoder(void** ptr,
     if (encoder->InitializeExt(&param) != 0) {
         return false;
     }
+#else
+    SEncParamBase param;
+    memset(&param, 0, sizeof(SEncParamBase));
+    param.iUsageType = EUsageType::SCREEN_CONTENT_REAL_TIME;
+    param.fMaxFrameRate = frameRate;
+    param.iPicWidth = width;
+    param.iPicHeight = height;
+    param.iRCMode = RC_MODES::RC_BITRATE_MODE;
+    param.iTargetBitrate = bitrateKps * 1024;
+    if (encoder->Initialize(&param) != 0) {
+        return false;
+    }
+#endif
 
     int log = 2;
     int videoFormat = EVideoFormatType::videoFormatI420;

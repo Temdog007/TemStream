@@ -117,10 +117,13 @@
 ### Mar 23, 2022
 - [x] Use computer shader with VP8
 - [x] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
-- [ ] Test on laptop
+
+### Mar 24, 2022
+- [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
 
 ### Later
-- [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
+- [ ] Look into writing own video encoder/decoder
+- [ ] Test on laptop (client from another computer cannot parse video)
 - [ ] Record webcam
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
@@ -129,6 +132,10 @@
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
 - [ ] Add websocket connection (use proxy)
 - [ ] SSL encryption (dtls, use proxy)
+
+### Bugs
+- [ ] When using H.264, it changes size which causes OpenGL errors for PBOs
+- [ ] Certain resolutions cause the display to be jank (lack of better word)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video frames to server

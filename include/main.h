@@ -58,7 +58,7 @@ rgbaToYuv(const uint8_t* rgba,
           uint8_t* yuv);
 #endif
 
-#define USE_VP8 false
+#define USE_VP8 true
 
 #if USE_VP8
 #include <vpx/vp8cx.h>
@@ -434,16 +434,14 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
 #define USE_DISPLAY(mutex, endLabel, displayMissing, f)                        \
     IN_MUTEX(mutex, endLabel, {                                                \
         pStreamDisplay display = NULL;                                         \
+        size_t streamDisplayIndex = 0;                                         \
         const ServerConfiguration* config = NULL;                              \
-        {                                                                      \
-            size_t index = 0;                                                  \
-            if (!GetStreamDisplayFromGuid(                                     \
-                  &clientData.displays, id, NULL, &index)) {                   \
-                displayMissing = true;                                         \
-                goto endLabel;                                                 \
-            }                                                                  \
-            display = &clientData.displays.buffer[index];                      \
+        if (!GetStreamDisplayFromGuid(                                         \
+              &clientData.displays, id, NULL, &streamDisplayIndex)) {          \
+            displayMissing = true;                                             \
+            goto endLabel;                                                     \
         }                                                                      \
+        display = &clientData.displays.buffer[streamDisplayIndex];             \
         config = &display->config;                                             \
         displayMissing = false;                                                \
         f                                                                      \

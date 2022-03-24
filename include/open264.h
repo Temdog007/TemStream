@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define USE_EXT_PARAMS false
+
 #if __cplusplus
 extern "C"
 {
