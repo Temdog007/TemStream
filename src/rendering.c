@@ -231,12 +231,12 @@ rgbaToYuv(const void* imageData,
           const int width,
           const int height)
 {
-    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    GLint result;
-    do {
-        glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);
-        SDL_Delay(0);
-    } while (result != GL_SIGNALED);
+    // GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    // GLint result;
+    // do {
+    //     glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);
+    //     SDL_Delay(0);
+    // } while (result != GL_SIGNALED);
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
     void* rgba = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);

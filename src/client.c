@@ -747,29 +747,6 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                     m->height = yHeight;
                     m->video.allocator = currentAllocator;
 
-#if CONVERT_TO_RGB_EARLY
-                    // if (*width != yWidth || *height != yHeight) {
-                    //     fprintf(stderr,
-                    //             "Mismatch dimensions [%ux%u] and [%dx%d]\n",
-                    //             *width,
-                    //             *height,
-                    //             yWidth,
-                    //             yHeight);
-
-                    m->video.buffer =
-                      currentAllocator->allocate(yWidth * yHeight * 3);
-                    m->video.used = m->video.size = yWidth * yHeight * 3;
-                    yuv420_rgb24_sseu(yWidth,
-                                      yHeight,
-                                      yuv[0],
-                                      yuv[1],
-                                      yuv[2],
-                                      strides[0],
-                                      strides[1],
-                                      m->video.buffer,
-                                      yWidth,
-                                      YCBCR_601);
-#else
                     {
                         unsigned char* y = yuv[0];
                         for (int i = 0; i < yHeight; ++i) {
@@ -796,7 +773,6 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                     // printf("Decoded video %u -> %u kilobytes\n",
                     //        message.video.used / 1024,
                     //        m->video.used / 1024);
-#endif
                     SDL_Event e = { 0 };
                     e.type = SDL_USEREVENT;
                     e.user.code = CustomEvent_UpdateVideoDisplay;
@@ -2820,18 +2796,20 @@ updateVideoDisplay(SDL_Renderer* renderer,
         return;
     }
 
-    if (display->texture == NULL && (width == 0 || height == 0)) {
-        return;
+    void* pixels = NULL;
+    int pitch = 0;
+    const bool validDimensions = width != 0 && height != 0;
+    if (!validDimensions) {
+        if (display->texture == NULL) {
+            return;
+        }
+        goto doDraw;
     }
     if (display->texture == NULL || display->data.videoDimensions[0] != width ||
         display->data.videoDimensions[1] != height) {
         SDL_DestroyTexture(display->texture);
         display->texture = SDL_CreateTexture(renderer,
-#if CONVERT_TO_RGB_EARLY
-                                             SDL_PIXELFORMAT_RGB24,
-#else
                                              SDL_PIXELFORMAT_IYUV,
-#endif
                                              SDL_TEXTUREACCESS_STREAMING,
                                              width,
                                              height);
@@ -2852,8 +2830,7 @@ updateVideoDisplay(SDL_Renderer* renderer,
         display->data.videoDimensions[1] = height;
     }
 
-    void* pixels = NULL;
-    int pitch = 0;
+doDraw:
     if (SDL_LockTexture(display->texture, NULL, &pixels, &pitch) != 0) {
         fprintf(stderr, "Failed to update texture: %s\n", SDL_GetError());
         goto end;

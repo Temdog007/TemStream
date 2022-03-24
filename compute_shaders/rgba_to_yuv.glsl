@@ -13,9 +13,33 @@ void main(){
 
     vec4 color = imageLoad(rgbaTexture, pixel_coords);
 
-    imageStore(Y,pixel_coords, vec4((0.257 * color.r) + (0.504 * color.g) + (0.098 * color.b)) + (1.0 / 16.0));
-    if(pixel_coords.x < gl_NumWorkGroups.x / 2 && pixel_coords.y < gl_NumWorkGroups.y / 2){
-        imageStore(U,pixel_coords, vec4(-(0.148 * color.r) - (0.291 * color.g) + (0.439 * color.b)) + 0.5);
-        imageStore(V,pixel_coords, vec4((0.439 * color.r) - (0.368 * color.g) - (0.071 *color.b)) + 0.5);
+    imageStore(Y,pixel_coords, vec4((0.2568 * color.r) + (0.5041 * color.g) + (0.0979 * color.b)) + (1.0 / 16.0));
+    bool goodX = pixel_coords.x < (gl_NumWorkGroups.x+1) / 2;
+    bool goodY =  pixel_coords.y < (gl_NumWorkGroups.y+1) / 2;
+
+    vec4 avg;
+    if(goodX){
+        if(goodY){
+            vec4 p1 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(0,0));
+            vec4 p2 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(1,0));
+            vec4 p3 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(0,1));
+            vec4 p4 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(1,1));
+            avg = (p1+p2+p3+p4) / 4.0;
+        }
+        else{
+            vec4 p1 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(0,0));
+            vec4 p2 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(1,0));
+            avg = (p1+p2) / 2.0;
+        }
+    }
+    else if(goodY) {
+        vec4 p3 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(0,1));
+        vec4 p4 = imageLoad(rgbaTexture, pixel_coords * ivec2(2,1) + ivec2(1,1));
+        avg = (p3+p4) / 2.0;
+    }
+
+    if(goodX || goodY){
+        imageStore(U,pixel_coords, vec4((-0.1482 * avg.r) + (-0.2910 * avg.g) + (0.4392 * avg.b)) + 0.5);
+        imageStore(V,pixel_coords, vec4((0.4392 * avg.r) + (-0.3678 * avg.g) + (-0.0714 *avg.b)) + 0.5);
     }
 }

@@ -33,13 +33,31 @@
 
 #include <vorbis/codec.h>
 
-#define CONVERT_TO_RGB_EARLY false
+#define USE_COMPUTE_SHADER false
+#define TIME_VIDEO_STREAMING false
 
-#if CONVERT_TO_RGB_EARLY
-#include <video/yuv2rgb/yuv_rgb.h>
+#if USE_COMPUTE_SHADER
+#include <glad/glad.h>
+extern void
+makeComputeShaderTextures(int, int, GLuint textures[4]);
+
+extern void
+rgbaToYuv(const void* imageData,
+          const uint32_t pbo,
+          GLuint prog,
+          const int width,
+          const int height);
+
+#else
+extern bool
+rgbaToYuv(const uint32_t* rgba,
+          int width,
+          int height,
+          uint32_t* argb,
+          uint8_t* yuv);
 #endif
 
-#define USE_VP8 false
+#define USE_VP8 true
 
 #if USE_VP8
 #include <vpx/vp8cx.h>
@@ -433,8 +451,6 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
 extern double
 diff_timespec(const struct timespec*, const struct timespec*);
 
-#define TIME_VIDEO_STREAMING true
-
 #define TIME(str, f)                                                           \
     {                                                                          \
         struct timespec start = { 0 };                                         \
@@ -451,29 +467,6 @@ diff_timespec(const struct timespec*, const struct timespec*);
 
 extern Bytes
 rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
-
-#define USE_COMPUTE_SHADER true && !USE_VP8
-
-#if USE_COMPUTE_SHADER
-#include <glad/glad.h>
-extern void
-makeComputeShaderTextures(int, int, GLuint textures[4]);
-
-extern void
-rgbaToYuv(const void* imageData,
-          const uint32_t pbo,
-          GLuint prog,
-          const int width,
-          const int height);
-
-#else
-extern bool
-rgbaToYuv(const uint32_t* rgba,
-          int width,
-          int height,
-          uint32_t* argb,
-          uint8_t* yuv);
-#endif
 
 extern bool
 authenticateClient(pClient,

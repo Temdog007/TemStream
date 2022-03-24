@@ -423,6 +423,70 @@ OnGLMessage(GLenum source,
                           message.video.size)
 #endif
 
+#if USE_VP8
+bool
+initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
+{
+    vpx_img_free(img);
+    vpx_codec_destroy(codec);
+
+    vpx_codec_enc_cfg_t cfg = { 0 };
+
+    if (vpx_img_alloc(img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
+        NULL) {
+        fprintf(stderr, "Failed to allocate image\n");
+        return false;
+    }
+
+#if _DEBUG
+    printf("Using encoder: %s with %d threads\n",
+           vpx_codec_iface_name(codec_encoder_interface()),
+           SDL_GetCPUCount());
+#endif
+
+    vpx_codec_err_t res =
+      vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
+    if (res) {
+        fprintf(stderr,
+                "Failed to get default video encoder configuration: %s\n",
+                vpx_codec_err_to_string(res));
+        return false;
+    }
+
+    cfg.g_w = data->width;
+    cfg.g_h = data->height;
+    cfg.g_timebase.num = 1;
+    cfg.g_timebase.den = data->fps;
+    cfg.rc_target_bitrate = data->bitrate;
+    cfg.g_threads = SDL_GetCPUCount();
+    cfg.g_error_resilient =
+      VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
+
+    if (vpx_codec_enc_init(codec, codec_encoder_interface(), &cfg, 0) != 0) {
+        fprintf(stderr, "Failed to initialize encoder\n");
+        return false;
+    }
+    return true;
+}
+#else
+bool
+initEncoder(void** encoder, const WindowData* data)
+{
+    destroy_h264_encoder(*encoder);
+    if (!create_h264_encoder(encoder,
+                             data->width,
+                             data->height,
+                             data->fps,
+                             data->bitrate,
+                             SDL_GetCPUCount())) {
+        fprintf(stderr, "Failed to initalize encoder\n");
+        return false;
+    }
+
+    return true;
+}
+#endif
+
 int
 screenRecordThread(pWindowData data)
 {
@@ -448,7 +512,6 @@ screenRecordThread(pWindowData data)
     message.tag = VideoMessageTag_video;
     message.video = INIT_ALLOCATOR(MB(1));
 
-    void* encoder = NULL;
 #if USE_COMPUTE_SHADER
     SDL_Window* window = NULL;
     GLuint prog = 0;
@@ -456,13 +519,34 @@ screenRecordThread(pWindowData data)
     GLuint textures[4] = { 0 };
     GLuint pbos[4] = { 0 };
     void* context = NULL;
+    void* ptrs[3] = { NULL };
+#else
+    uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
+    uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
+#endif
+
+#if USE_VP8
+    int frame_count = 0;
+    vpx_codec_ctx_t codec = { 0 };
+    vpx_image_t img = { 0 };
+    if (!initEncoder(&codec, &img, data)) {
+        goto end;
+    }
+#else
+    void* encoder = NULL;
+    if (!initEncoder(&encoder, data)) {
+        goto end;
+    }
+#endif
+
+#if USE_COMPUTE_SHADER
     window = SDL_CreateWindow("unused",
                               0,
                               0,
                               512,
                               512,
                               SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL |
-                                SDL_WINDOW_SKIP_TASKBAR | SDL_WINDOW_UTILITY);
+                                SDL_WINDOW_SKIP_TASKBAR | SDL_WINDOW_TOOLTIP);
     if (window == NULL) {
         fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
         goto end;
@@ -473,13 +557,13 @@ screenRecordThread(pWindowData data)
           stderr, "Failed to create opengl context: %s\n", SDL_GetError());
         goto end;
     }
-    static bool openglLoaded = false;
-    if (!openglLoaded) {
+    static SDL_atomic_t openglLoaded = { 0 };
+    if (SDL_AtomicGet(&openglLoaded) == 0) {
         if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
             fprintf(stderr, "Failed to load opengl functions\n");
             goto end;
         }
-        openglLoaded = true;
+        SDL_AtomicSet(&openglLoaded, 1);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         printf("Vendor:   %s\n", glGetString(GL_VENDOR));
         printf("Renderer: %s\n", glGetString(GL_RENDERER));
@@ -502,8 +586,10 @@ screenRecordThread(pWindowData data)
     }
     prog = glCreateProgram();
     cs = glCreateShader(GL_COMPUTE_SHADER);
-    const char* ptr = (const char*)rgbaToYuvShader;
-    glShaderSource(cs, 1, &ptr, NULL);
+    {
+        const char* ptr = (const char*)rgbaToYuvShader;
+        glShaderSource(cs, 1, &ptr, NULL);
+    }
     glCompileShader(cs);
     {
         int result = 0;
@@ -542,61 +628,6 @@ screenRecordThread(pWindowData data)
                      NULL,
                      GL_STREAM_COPY);
     }
-#else
-    uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
-    uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
-#endif
-
-#if USE_VP8
-    int frame_count = 0;
-    vpx_codec_ctx_t codec = { 0 };
-    vpx_codec_enc_cfg_t cfg = { 0 };
-    vpx_image_t img = { 0 };
-
-    if (vpx_img_alloc(&img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
-        NULL) {
-        fprintf(stderr, "Failed to allocate image\n");
-        goto end;
-    }
-
-#if _DEBUG
-    printf("Using encoder: %s with %d threads\n",
-           vpx_codec_iface_name(codec_encoder_interface()),
-           SDL_GetCPUCount());
-#endif
-
-    vpx_codec_err_t res =
-      vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
-    if (res) {
-        fprintf(stderr,
-                "Failed to get default video encoder configuration: %s\n",
-                vpx_codec_err_to_string(res));
-        goto end;
-    }
-
-    cfg.g_w = data->width;
-    cfg.g_h = data->height;
-    cfg.g_timebase.num = 1;
-    cfg.g_timebase.den = data->fps;
-    cfg.rc_target_bitrate = data->bitrate;
-    cfg.g_threads = SDL_GetCPUCount();
-    cfg.g_error_resilient =
-      VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
-
-    if (vpx_codec_enc_init(&codec, codec_encoder_interface(), &cfg, 0) != 0) {
-        fprintf(stderr, "Failed to initialize encoder\n");
-        goto end;
-    }
-#else
-    if (!create_h264_encoder(&encoder,
-                             data->width,
-                             data->height,
-                             data->fps,
-                             data->bitrate,
-                             SDL_GetCPUCount())) {
-        fprintf(stderr, "Failed to initalize encoder\n");
-        goto end;
-    }
 #endif
 
     const uint64_t delay = 1000 / data->fps;
@@ -613,6 +644,7 @@ screenRecordThread(pWindowData data)
         }
         last = now;
 
+#if USE_COMPUTE_SHADER
         // Tell the GPU to get the texture from pixel buffer
         // Image will be written to pixel buffer
         glActiveTexture(GL_TEXTURE0);
@@ -630,10 +662,11 @@ screenRecordThread(pWindowData data)
                         GL_RGBA,
                         GL_UNSIGNED_BYTE,
                         NULL);
+#endif
 
         xcb_generic_error_t* error = NULL;
 
-        if (now - lastGeoCheck > 1000) {
+        if (now - lastGeoCheck > 1000U) {
             xcb_get_geometry_cookie_t geomCookie =
               xcb_get_geometry(data->connection, data->windowId);
             xcb_get_geometry_reply_t* geom =
@@ -648,10 +681,20 @@ screenRecordThread(pWindowData data)
             } else if (geom) {
                 if (geom->width != data->width ||
                     geom->height != data->height) {
-                    printf(
-                      "Window '%s' has changed size. Recording will stop\n",
-                      data->name.buffer);
-                    displayMissing = true;
+                    printf("Window '%s' has changed size from [%ux%u] to "
+                           "[%ux%u].\n",
+                           data->name.buffer,
+                           data->width,
+                           data->height,
+                           geom->width,
+                           geom->height);
+                    data->width = geom->width;
+                    data->height = geom->height;
+#if USE_VP8
+                    displayMissing = !initEncoder(&codec, &img, data);
+#else
+                    displayMissing = !initEncoder(&encoder, data);
+#endif
                 }
                 free(geom);
             }
@@ -733,7 +776,6 @@ screenRecordThread(pWindowData data)
         currentAllocator->free(rgb);
 #endif
         bool success;
-        void* ptrs[3] = { NULL };
 #if TIME_VIDEO_STREAMING
         TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
 #else
@@ -742,6 +784,11 @@ screenRecordThread(pWindowData data)
 
 #if USE_VP8
         if (success) {
+#if USE_COMPUTE_SHADER
+            memcpy(img.planes[0], ptrs[0], data->width * data->height);
+            memcpy(img.planes[1], ptrs[1], (data->width * data->height) / 4);
+            memcpy(img.planes[2], ptrs[2], (data->width * data->height) / 4);
+#else
             uint8_t* ptr = YUV;
             for (int plane = 0; plane < 3; ++plane) {
                 unsigned char* buf = img.planes[plane];
@@ -756,12 +803,14 @@ screenRecordThread(pWindowData data)
                     buf += stride;
                 }
             }
+#endif
             int flags = 0;
             if (data->keyFrameInterval > 0 &&
                 frame_count % data->keyFrameInterval == 0) {
                 flags |= VPX_EFLAG_FORCE_KF;
             }
 
+            vpx_codec_err_t res = { 0 };
 #if TIME_VIDEO_STREAMING
             TIME("VPX encoding", {
                 res = vpx_codec_encode(
@@ -800,15 +849,16 @@ screenRecordThread(pWindowData data)
                         "Failed to encode frame: %s\n",
                         vpx_codec_err_to_string(res));
             }
-
         } else {
             fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
         }
 #else
         if (success) {
+#if USE_COMPUTE_SHADER
             void* Y = ptrs[0];
             void* U = ptrs[1];
             void* V = ptrs[2];
+#endif
             int encoded;
 #if TIME_VIDEO_STREAMING
             TIME("H264 encoding", { ENCODE_TO_H264; });
@@ -837,6 +887,8 @@ screenRecordThread(pWindowData data)
         } else {
             // GPU didn't copy buffer fast enough. Just skip this frame...
         }
+#endif
+#if USE_COMPUTE_SHADER
         for (int i = 0; i < 3; ++i) {
             if (ptrs[i] == NULL) {
                 continue;
@@ -867,7 +919,6 @@ end:
     currentAllocator->free(ARGB);
 #endif
 #if USE_VP8
-    (void)encoder;
     vpx_img_free(&img);
     vpx_codec_destroy(&codec);
 #else
