@@ -183,7 +183,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
             case 0:
                 glTexImage2D(GL_TEXTURE_2D,
                              0,
-                             GL_RGBA,
+                             GL_RGBA8,
                              width,
                              height,
                              0,
@@ -196,7 +196,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
             case 1:
                 glTexImage2D(GL_TEXTURE_2D,
                              0,
-                             GL_RED,
+                             GL_R8,
                              width,
                              height,
                              0,
@@ -209,7 +209,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
             default:
                 glTexImage2D(GL_TEXTURE_2D,
                              0,
-                             GL_RED,
+                             GL_R8,
                              (width + 1) / 2,
                              (height + 1) / 2,
                              0,
@@ -227,7 +227,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
 void
 rgbaToYuv(const void* imageData,
           const uint32_t pbo,
-          GLuint prog,
+          GLuint progs[2],
           const int width,
           const int height)
 {
@@ -243,8 +243,11 @@ rgbaToYuv(const void* imageData,
     memcpy(rgba, imageData, width * height * 4);
     glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 
-    glUseProgram(prog);
+    glUseProgram(progs[0]);
     glDispatchCompute(width, height, 1);
+
+    glUseProgram(progs[1]);
+    glDispatchCompute((width + 1) / 2, (height + 1) / 2, 1);
     // glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
     // glActiveTexture(GL_TEXTURE0 + 1);

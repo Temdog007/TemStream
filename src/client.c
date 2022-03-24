@@ -8,7 +8,8 @@
                  ttfFont,                                                      \
                  targetDisplay,                                                \
                  (float)w - MIN_WIDTH,                                         \
-                 (float)h - MIN_HEIGHT)
+                 (float)h - MIN_HEIGHT,                                        \
+                 mouseInWindow)
 
 #define RENDER_NOW_CALC                                                        \
     {                                                                          \
@@ -3037,7 +3038,8 @@ drawTextures(SDL_Renderer* renderer,
              TTF_Font* ttfFont,
              const size_t target,
              const float maxX,
-             const float maxY)
+             const float maxY,
+             const bool mouseInWindow)
 {
     if (renderer == NULL) {
         return;
@@ -3090,7 +3092,7 @@ drawTextures(SDL_Renderer* renderer,
 
     const ClientConfiguration* config =
       (const ClientConfiguration*)clientData.configuration;
-    if (config->showLabel && display != NULL) {
+    if (config->showLabel && mouseInWindow && display != NULL) {
         const SDL_Color fg = { .a = 128u, .r = 255u, .g = 255u, .b = 255u };
         const SDL_Color bg = { .a = 128u, .r = 0u, .g = 0u, .b = 0u };
         SDL_Surface* text =
@@ -3639,7 +3641,8 @@ handleUserEvent(const SDL_UserEvent* e,
                 TTF_Font* ttfFont,
                 const size_t targetDisplay,
                 ENetPeer* peer,
-                pBytes bytes)
+                pBytes bytes,
+                const bool mouseInWindow)
 {
     int w;
     int h;
@@ -3965,6 +3968,7 @@ runServerProcedure:
         SDL_DetachThread(thread);
     }
 
+    bool mouseInWindow = true;
     while (!appDone) {
         if (!checkForMessagesFromLobby(host, &event, &client)) {
             appDone = true;
@@ -3977,6 +3981,16 @@ runServerProcedure:
                     appDone = true;
                     break;
                 case SDL_WINDOWEVENT:
+                    switch (e.window.event) {
+                        case SDL_WINDOWEVENT_ENTER:
+                            mouseInWindow = true;
+                            break;
+                        case SDL_WINDOWEVENT_LEAVE:
+                            mouseInWindow = false;
+                            break;
+                        default:
+                            break;
+                    }
                     RENDER_NOW_CALC;
                     break;
                 case SDL_KEYDOWN:
@@ -4137,7 +4151,8 @@ runServerProcedure:
                                     ttfFont,
                                     targetDisplay,
                                     peer,
-                                    &bytes);
+                                    &bytes,
+                                    mouseInWindow);
                     break;
                 case SDL_DROPFILE: {
                     // Look for image stream

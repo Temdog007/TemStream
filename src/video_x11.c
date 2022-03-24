@@ -300,6 +300,43 @@ codec_decoder_interface()
 #endif
 
 #if USE_COMPUTE_SHADER
+bool
+compileShader(const char* str, GLuint* progPtr)
+{
+    bool success = false;
+    GLuint prog = glCreateProgram();
+    GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
+    glShaderSource(cs, 1, &str, NULL);
+    glCompileShader(cs);
+    {
+        int result = 0;
+        glGetShaderiv(cs, GL_COMPILE_STATUS, &result);
+        if (!result) {
+            GLchar log[KB(5)];
+            glGetShaderInfoLog(cs, sizeof(log), &result, log);
+            fprintf(stderr, "Failed to compiler compute shader: %s\n", log);
+            goto end;
+        }
+    }
+    glAttachShader(prog, cs);
+    glLinkProgram(prog);
+    {
+        int result;
+        glGetProgramiv(prog, GL_LINK_STATUS, &result);
+        if (!result) {
+            GLchar log[KB(5)];
+            glGetProgramInfoLog(prog, sizeof(log), &result, log);
+            fprintf(stderr, "Failed to make compiler: %s\n", log);
+            goto end;
+        }
+    }
+
+    *progPtr = prog;
+    success = true;
+end:
+    glDeleteShader(cs);
+    return success;
+}
 const char*
 glSourceString(GLenum source)
 {
@@ -384,7 +421,7 @@ OnGLMessage(GLenum source,
             message);
 }
 #define RGBA_TO_YUV                                                            \
-    rgbaToYuv(imageData, pbos[3], prog, data->width, data->height);            \
+    rgbaToYuv(imageData, pbos[3], progs, data->width, data->height);           \
     for (int i = 0; i < 3; ++i) {                                              \
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
         glActiveTexture(GL_TEXTURE1 + i);                                      \
@@ -514,7 +551,7 @@ screenRecordThread(pWindowData data)
 
 #if USE_COMPUTE_SHADER
     SDL_Window* window = NULL;
-    GLuint prog = 0;
+    GLuint progs[2] = { 0 };
     GLuint cs = 0;
     GLuint textures[4] = { 0 };
     GLuint pbos[4] = { 0 };
@@ -584,40 +621,19 @@ screenRecordThread(pWindowData data)
         glDebugMessageCallback(OnGLMessage, NULL);
 #endif
     }
-    prog = glCreateProgram();
-    cs = glCreateShader(GL_COMPUTE_SHADER);
-    {
-        const char* ptr = (const char*)rgbaToYuvShader;
-        glShaderSource(cs, 1, &ptr, NULL);
-    }
-    glCompileShader(cs);
-    {
-        int result = 0;
-        glGetShaderiv(cs, GL_COMPILE_STATUS, &result);
-        if (!result) {
-            GLchar log[KB(5)];
-            glGetShaderInfoLog(cs, sizeof(log), &result, log);
-            fprintf(stderr, "Failed to compiler compute shader: %s\n", log);
-            goto end;
-        }
-    }
-    glAttachShader(prog, cs);
-    glLinkProgram(prog);
-    {
-        int result;
-        glGetProgramiv(prog, GL_LINK_STATUS, &result);
-        if (!result) {
-            GLchar log[KB(5)];
-            glGetProgramInfoLog(prog, sizeof(log), &result, log);
-            fprintf(stderr, "Failed to make compiler: %s\n", log);
-            goto end;
-        }
+    if (!compileShader(rgbaToYShader, &progs[0]) ||
+        !compileShader(rgbaToUVShader, &progs[1])) {
+        goto end;
     }
 
-    glUseProgram(prog);
-    for (int i = 0; i < 4; ++i) {
-        glUniform1i(i, i);
-    }
+    glUseProgram(progs[0]);
+    glUniform1i(0, 0);
+    glUniform1i(1, 1);
+
+    glUseProgram(progs[1]);
+    glUniform1i(0, 0);
+    glUniform1i(1, 2);
+    glUniform1i(2, 3);
 
     makeComputeShaderTextures(data->width, data->height, textures);
     glGenBuffers(4, pbos);
@@ -626,7 +642,7 @@ screenRecordThread(pWindowData data)
         glBufferData(GL_PIXEL_PACK_BUFFER,
                      data->width * data->height,
                      NULL,
-                     GL_STREAM_COPY);
+                     GL_STREAM_READ);
     }
 #endif
 
@@ -652,7 +668,7 @@ screenRecordThread(pWindowData data)
         glBufferData(GL_PIXEL_UNPACK_BUFFER,
                      data->width * data->height * 4,
                      NULL,
-                     GL_STREAM_COPY);
+                     GL_STREAM_DRAW);
         glTexSubImage2D(GL_TEXTURE_2D,
                         0,
                         0,
@@ -682,7 +698,7 @@ screenRecordThread(pWindowData data)
                 if (geom->width != data->width ||
                     geom->height != data->height) {
                     printf("Window '%s' has changed size from [%ux%u] to "
-                           "[%ux%u].\n",
+                           "[%ux%u]. Stopping stream...\n",
                            data->name.buffer,
                            data->width,
                            data->height,
@@ -690,11 +706,14 @@ screenRecordThread(pWindowData data)
                            geom->height);
                     data->width = geom->width;
                     data->height = geom->height;
-#if USE_VP8
-                    displayMissing = !initEncoder(&codec, &img, data);
-#else
-                    displayMissing = !initEncoder(&encoder, data);
-#endif
+                    // #if USE_VP8
+                    //                     displayMissing = !initEncoder(&codec,
+                    //                     &img, data);
+                    // #else
+                    //                     displayMissing =
+                    //                     !initEncoder(&encoder, data);
+                    // #endif
+                    displayMissing = true;
                 }
                 free(geom);
             }
@@ -909,7 +928,9 @@ end:
     VideoMessageFree(&message);
 
 #if USE_COMPUTE_SHADER
-    glDeleteProgram(prog);
+    for (int i = 0; i < 2; ++i) {
+        glDeleteProgram(progs[i]);
+    }
     glDeleteShader(cs);
     glDeleteTextures(4, textures);
     glDeleteBuffers(4, pbos);

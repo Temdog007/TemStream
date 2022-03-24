@@ -44,7 +44,7 @@ makeComputeShaderTextures(int, int, GLuint textures[4]);
 extern void
 rgbaToYuv(const void* imageData,
           const uint32_t pbo,
-          GLuint prog,
+          GLuint progs[2],
           const int width,
           const int height);
 
@@ -57,7 +57,7 @@ rgbaToYuv(const uint32_t* rgba,
           uint8_t* yuv);
 #endif
 
-#define USE_VP8 true
+#define USE_VP8 false
 
 #if USE_VP8
 #include <vpx/vp8cx.h>
