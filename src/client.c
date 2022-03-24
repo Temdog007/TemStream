@@ -781,8 +781,9 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                     SDL_PushEvent(&e);
                     ++i;
                 } else {
+#if _DEBUG
                     fprintf(stderr, "Failed to decode video frame\n");
-                    success = false;
+#endif
                     break;
                 }
             }

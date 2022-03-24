@@ -116,12 +116,11 @@
 
 ### Mar 23, 2022
 - [x] Use computer shader with VP8
-- [ ] Message clients to reset decoder on resize
 - [ ] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
-- [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
 - [ ] Test on laptop
 
 ### Later
+- [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
 - [ ] Record webcam
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version

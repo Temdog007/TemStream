@@ -22,5 +22,5 @@ void main(){
     float v = (0.439 * color.r) + (-0.368 * color.g) + (-0.071 * color.b) + 0.5;
 
     imageStore(U,pixel_coords, vec4(clamp(u, 0.0, 1.0)));
-    imageStore(V,pixel_coords, vec4(clamp(u, 0.0, 1.0)));
+    imageStore(V,pixel_coords, vec4(clamp(v, 0.0, 1.0)));
 }
