@@ -421,7 +421,7 @@ OnGLMessage(GLenum source,
             message);
 }
 #define RGBA_TO_YUV                                                            \
-    rgbaToYuv(imageData, pbos[3], progs, data->width, data->height);           \
+    rgbaToYuv(imageData, pbos[3], prog, data->width, data->height);            \
     for (int i = 0; i < 3; ++i) {                                              \
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
         glActiveTexture(GL_TEXTURE1 + i);                                      \
@@ -551,8 +551,7 @@ screenRecordThread(pWindowData data)
 
 #if USE_COMPUTE_SHADER
     SDL_Window* window = NULL;
-    GLuint progs[2] = { 0 };
-    GLuint cs = 0;
+    GLuint prog = 0;
     GLuint textures[4] = { 0 };
     GLuint pbos[4] = { 0 };
     void* context = NULL;
@@ -621,19 +620,14 @@ screenRecordThread(pWindowData data)
         glDebugMessageCallback(OnGLMessage, NULL);
 #endif
     }
-    if (!compileShader(rgbaToYShader, &progs[0]) ||
-        !compileShader(rgbaToUVShader, &progs[1])) {
+    if (!compileShader(rgbaToYUVShader, &prog)) {
         goto end;
     }
 
-    glUseProgram(progs[0]);
-    glUniform1i(0, 0);
-    glUniform1i(1, 1);
-
-    glUseProgram(progs[1]);
-    glUniform1i(0, 0);
-    glUniform1i(1, 2);
-    glUniform1i(2, 3);
+    glUseProgram(prog);
+    for (int i = 0; i < 4; ++i) {
+        glUniform1i(i, i);
+    }
 
     makeComputeShaderTextures(data->width, data->height, textures);
     glGenBuffers(4, pbos);
@@ -773,7 +767,7 @@ screenRecordThread(pWindowData data)
         }
 
         windowHidden = false;
-        uint32_t* imageData = (uint32_t*)xcb_get_image_data(reply);
+        void* imageData = xcb_get_image_data(reply);
 
 #if TIME_JPEG
         Bytes jpegBytes = { 0 };
@@ -805,7 +799,7 @@ screenRecordThread(pWindowData data)
         if (success) {
 #if USE_COMPUTE_SHADER
             memcpy(img.planes[0], ptrs[0], data->width * data->height);
-            int size = ((data->width + 1) / 2) * ((data->height + 1) / 2);
+            const int size = ((data->width + 1) / 2) * ((data->height + 1) / 2);
             memcpy(img.planes[1], ptrs[1], size);
             memcpy(img.planes[2], ptrs[2], size);
 #else
@@ -928,10 +922,7 @@ end:
     VideoMessageFree(&message);
 
 #if USE_COMPUTE_SHADER
-    for (int i = 0; i < 2; ++i) {
-        glDeleteProgram(progs[i]);
-    }
-    glDeleteShader(cs);
+    glDeleteProgram(prog);
     glDeleteTextures(4, textures);
     glDeleteBuffers(4, pbos);
     SDL_GL_DeleteContext(context);

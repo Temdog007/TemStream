@@ -227,7 +227,7 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
 void
 rgbaToYuv(const void* imageData,
           const uint32_t pbo,
-          GLuint progs[2],
+          GLuint prog,
           const int width,
           const int height)
 {
@@ -243,11 +243,9 @@ rgbaToYuv(const void* imageData,
     memcpy(rgba, imageData, width * height * 4);
     glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 
-    glUseProgram(progs[0]);
+    glUseProgram(prog);
     glDispatchCompute(width, height, 1);
 
-    glUseProgram(progs[1]);
-    glDispatchCompute((width + 1) / 2, (height + 1) / 2, 1);
     // glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
     // glActiveTexture(GL_TEXTURE0 + 1);
@@ -259,19 +257,13 @@ rgbaToYuv(const void* imageData,
 }
 #else
 bool
-rgbaToYuv(const uint32_t* rgba,
+rgbaToYuv(const uint8_t* rgba,
           const int width,
           const int height,
           uint32_t* argb,
           uint8_t* yuv)
 {
-    // for (size_t i = 0, n = width * height; i < n; ++i) {
-    //     const uint32_t r = rgba[i] >> 24;
-    //     const uint32_t g = rgba[i] >> 16;
-    //     const uint32_t b = rgba[i] >> 8;
-    //     const uint32_t a = rgba[i] >> 0;
-    //     argb[i] = (a << 24) | (r << 16) | (g << 8) | b;
-    // }
+#if USE_SDL_CONVERSION
     return SDL_ConvertPixels(width,
                              height,
                              SDL_PIXELFORMAT_RGBA32,
@@ -288,5 +280,46 @@ rgbaToYuv(const uint32_t* rgba,
                              SDL_PIXELFORMAT_YV12,
                              yuv,
                              width) == 0;
+#else
+    (void)argb;
+    uint8_t* y = yuv;
+    uint8_t* v = y + (width * height);
+    uint8_t* u = v + ((width + 1) / 2 * (height + 1) / 2);
+    const int halfWidth = width / 2;
+    static bool first = true;
+    for (int j = 0; j < height; ++j) {
+        const uint8_t* rgbaPtr = rgba + width * j * 4;
+        for (int i = 0; i < width; ++i) {
+            uint8_t r = rgbaPtr[0];
+            uint8_t g = rgbaPtr[1];
+            uint8_t b = rgbaPtr[2];
+            // uint8_t a = rgbaPtr[3];
+            rgbaPtr += 4;
+
+            *y = (uint8_t)((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+            *y = SDL_clamp(*y, 0, 255);
+            ++y;
+
+            const int index = halfWidth * (j / 2) + (i / 2) % halfWidth;
+            if (j % 2 == 0 && i % 2 == 0) {
+                if (first && index < 2000) {
+                    printf("%d (%d,%d)\n",
+                           index,
+                           index % halfWidth,
+                           index / halfWidth);
+                }
+                u[index] =
+                  (uint8_t)((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+                u[index] = SDL_clamp(u[index], 0, 255);
+            } else if (i % 2 == 0) {
+                v[index] =
+                  (uint8_t)((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+                v[index] = SDL_clamp(v[index], 0, 255);
+            }
+        }
+    }
+    first = false;
+    return true;
+#endif
 }
 #endif

@@ -35,6 +35,7 @@
 
 #define USE_COMPUTE_SHADER true
 #define TIME_VIDEO_STREAMING false
+#define USE_SDL_CONVERSION false
 
 #if USE_COMPUTE_SHADER
 #include <glad/glad.h>
@@ -44,13 +45,13 @@ makeComputeShaderTextures(int, int, GLuint textures[4]);
 extern void
 rgbaToYuv(const void* imageData,
           const uint32_t pbo,
-          GLuint progs[2],
+          GLuint prog,
           const int width,
           const int height);
 
 #else
 extern bool
-rgbaToYuv(const uint32_t* rgba,
+rgbaToYuv(const uint8_t* rgba,
           int width,
           int height,
           uint32_t* argb,
