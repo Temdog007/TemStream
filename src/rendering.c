@@ -164,6 +164,47 @@ renderFont(SDL_Renderer* renderer,
 }
 
 #if USE_OPENCL
+bool
+rgbaToYuv(const uint8_t* data,
+          int width,
+          int height,
+          uint8_t* ptrs[3],
+          pOpenCLVideo vid)
+{
+    const size_t size = width * height * 4;
+    cl_int ret = clEnqueueWriteBuffer(
+      vid->command_queue, vid->args[0], CL_TRUE, 0, size, data, 0, NULL, NULL);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to write OpenCL argument buffer: %d\n", ret);
+        return false;
+    }
+    const size_t half = size / 4;
+    ret = clEnqueueNDRangeKernel(
+      vid->command_queue, vid->kernel, 1, NULL, &size, &half, 0, NULL, NULL);
+
+    cl_event events[3] = { 0 };
+    for (int i = 0; i < 3; ++i) {
+        ret = clEnqueueReadBuffer(vid->command_queue,
+                                  vid->args[i + 1],
+                                  CL_FALSE,
+                                  0,
+                                  width * height / (i == 0 ? 1 : 4),
+                                  ptrs[i],
+                                  0,
+                                  NULL,
+                                  &events[i]);
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to read OpenCL buffer: %d\n", ret);
+            return false;
+        }
+    }
+    ret = clWaitForEvents(3, events);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to wait for OpenCL events: %d\n", ret);
+        return false;
+    }
+    return true;
+}
 #else
 bool
 rgbaToYuv(const uint8_t* rgba,

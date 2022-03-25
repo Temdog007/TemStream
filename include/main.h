@@ -38,7 +38,27 @@
 #define USE_SDL_CONVERSION false
 
 #if USE_OPENCL
+#include <CL/cl.h>
+typedef struct OpenCLVideo
+{
+    cl_kernel kernel;
+    cl_context context;
+    cl_command_queue command_queue;
+    cl_program program;
+    cl_mem args[4];
+} OpenCLVideo, *pOpenCLVideo;
 
+extern bool
+OpenCLVideoInit(pOpenCLVideo, int, int);
+
+extern void OpenCLVideoFree(pOpenCLVideo);
+
+extern bool
+rgbaToYuv(const uint8_t*,
+          int width,
+          int height,
+          uint8_t* ptrs[3],
+          pOpenCLVideo);
 #else
 extern bool
 rgbaToYuv(const uint8_t* rgba,
@@ -48,9 +68,6 @@ rgbaToYuv(const uint8_t* rgba,
           uint8_t* yuv);
 #endif
 
-#define USE_VP8 true
-
-#if USE_VP8
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 #include <vpx/vpx_decoder.h>
@@ -67,9 +84,6 @@ codec_encoder_interface();
 
 extern vpx_codec_iface_t*
 codec_decoder_interface();
-#else
-#include "open264.h"
-#endif
 
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO

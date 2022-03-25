@@ -766,7 +766,6 @@ cleanupConfigurationsInRedis(redisContext* ctx)
     PRINT_MEMORY;
 }
 
-#if USE_VP8
 int
 vpx_img_plane_width(const vpx_image_t* img, const int plane)
 {
@@ -786,7 +785,6 @@ vpx_img_plane_height(const vpx_image_t* img, const int plane)
         return img->d_h;
     }
 }
-#endif
 
 double
 diff_timespec(const struct timespec* time1, const struct timespec* time0)
@@ -794,3 +792,109 @@ diff_timespec(const struct timespec* time1, const struct timespec* time0)
     return (time1->tv_sec - time0->tv_sec) +
            (time1->tv_nsec - time0->tv_nsec) / 1000000000.0;
 }
+
+#if USE_OPENCL
+bool
+OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
+{
+    cl_platform_id platform_id = NULL;
+
+    cl_int ret = clGetPlatformIDs(1, &platform_id, NULL);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to get OpenCL platforms: %d\n", ret);
+        return false;
+    }
+
+    cl_uint deviceNum;
+    cl_device_id device_id = NULL;
+
+    ret = clGetDeviceIDs(
+      platform_id, CL_DEVICE_TYPE_DEFAULT, 1, &device_id, &deviceNum);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to get device ID: %d\n", ret);
+        return false;
+    }
+
+    vid->context = clCreateContext(NULL, 1, &device_id, NULL, NULL, &ret);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to create OpenCL context: %d\n", ret);
+        return false;
+    }
+
+    vid->command_queue =
+      clCreateCommandQueueWithProperties(vid->context, device_id, 0, &ret);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to create OpenCL command queue: %d\n", ret);
+        return false;
+    }
+
+    const size_t size = sizeof(rgbaToClKernel) - 1;
+    vid->program = clCreateProgramWithSource(
+      vid->context, 1, (const char**)&rgbaToClKernel, &size, &ret);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to create OpenCL program: %d\n", ret);
+        return false;
+    }
+
+    ret = clBuildProgram(vid->program, 1, &device_id, NULL, NULL, NULL);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to build OpenCL program: %d\n", ret);
+        return false;
+    }
+
+    vid->kernel = clCreateKernel(vid->program, "rgba2Yuv", &ret);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to create OpenCL kernel: %d\n", ret);
+        return false;
+    }
+
+    for (int i = 0; i < 4; ++i) {
+        switch (i) {
+            case 0:
+                vid->args[i] = clCreateBuffer(vid->context,
+                                              CL_MEM_READ_ONLY,
+                                              width * height * 4,
+                                              NULL,
+                                              &ret);
+                break;
+            case 1:
+                vid->args[i] = clCreateBuffer(
+                  vid->context, CL_MEM_WRITE_ONLY, width * height, NULL, &ret);
+                break;
+            default:
+                vid->args[i] = clCreateBuffer(vid->context,
+                                              CL_MEM_WRITE_ONLY,
+                                              width * height / 4,
+                                              NULL,
+                                              &ret);
+                break;
+        }
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to create OpenCL buffer %d: %d\n", i, ret);
+            return false;
+        }
+        ret =
+          clSetKernelArg(vid->kernel, i, sizeof(cl_mem), (void*)&vid->args[i]);
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", i, ret);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void
+OpenCLVideoFree(pOpenCLVideo vid)
+{
+    clFlush(vid->command_queue);
+    clFinish(vid->command_queue);
+    clReleaseKernel(vid->kernel);
+    clReleaseProgram(vid->program);
+    for (int i = 0; i < 4; ++i) {
+        clReleaseMemObject(vid->args[i]);
+    }
+    clReleaseCommandQueue(vid->command_queue);
+    clReleaseContext(vid->context);
+}
+#endif

@@ -234,4 +234,4 @@ struct WindowData {
 
 inlineC "MAKE_DEFAULT_LIST(WindowData);"
 
-inlineText rgbaToYUVShader "compute_shaders/rgba_to_yuv.glsl"
+inlineText rgbaToClKernel "kernel/rgba_to_yuv.cl"

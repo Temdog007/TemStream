@@ -636,12 +636,7 @@ clientHandleAudioMessage(const Bytes* packetBytes,
 bool
 clientHandleVideoMessage(const Bytes* packetBytes,
                          pStreamDisplay display,
-#if USE_VP8
-                         vpx_codec_ctx_t* codec
-#else
-                         void* decoder
-#endif
-)
+                         vpx_codec_ctx_t* codec)
 {
     bool success = true;
     VideoMessage message = { 0 };
@@ -678,7 +673,6 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             SDL_PushEvent(&e);
         } break;
         case VideoMessageTag_video: {
-#if USE_VP8
             vpx_codec_err_t res = vpx_codec_decode(codec,
                                                    message.video.buffer,
                                                    message.video.used,
@@ -695,11 +689,19 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             while ((img = vpx_codec_get_frame(codec, &iter)) != NULL) {
                 pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
                 m->id = display->id;
-                // Need to update
-                m->width = 0;
-                m->height = 0;
+                m->width = vpx_img_plane_width(img, 0);
+                m->height = vpx_img_plane_height(img, 0);
                 m->video.allocator = currentAllocator;
+                const size_t size = m->width * m->height * 3 / 2;
+                m->video.buffer = currentAllocator->allocate(size);
+                m->video.size = size;
 
+                // uint8_tListQuickAppend(
+                //   &m->video, img->planes[0], img->stride[0] * m->height);
+                // uint8_tListQuickAppend(
+                //   &m->video, img->planes[1], img->stride[1] * m->height / 4);
+                // uint8_tListQuickAppend(
+                //   &m->video, img->planes[2], img->stride[2] * m->height / 4);
                 for (int plane = 0; plane < 3; ++plane) {
                     const unsigned char* buf = img->planes[plane];
                     const int stride = img->stride[plane];
@@ -721,73 +723,6 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                 e.user.data1 = m;
                 SDL_PushEvent(&e);
             }
-#else
-            int i = 0;
-            int yWidth, yHeight;
-            int strides[2];
-            bool status;
-            unsigned char* yuv[3] = { NULL };
-            while (true) {
-                if (h264_decode(decoder,
-                                message.video.buffer,
-                                message.video.used,
-                                yuv,
-                                &yWidth,
-                                &yHeight,
-                                strides,
-                                &status,
-                                i != 0)) {
-                    if (!status) {
-                        break;
-                    }
-
-                    pVideoFrame m =
-                      currentAllocator->allocate(sizeof(VideoFrame));
-                    m->id = display->id;
-                    m->width = yWidth;
-                    m->height = yHeight;
-                    m->video.allocator = currentAllocator;
-
-                    {
-                        unsigned char* y = yuv[0];
-                        for (int i = 0; i < yHeight; ++i) {
-                            uint8_tListQuickAppend(&m->video, y, yWidth);
-                            y += strides[0];
-                        }
-                    }
-                    const int halfWidth = (yWidth + 1) / 2;
-                    const int halfHeight = (yHeight + 1) / 2;
-                    {
-                        unsigned char* u = yuv[1];
-                        for (int i = 0; i < halfHeight; ++i) {
-                            uint8_tListQuickAppend(&m->video, u, halfWidth);
-                            u += strides[1];
-                        }
-                    }
-                    {
-                        unsigned char* v = yuv[2];
-                        for (int i = 0; i < halfHeight; ++i) {
-                            uint8_tListQuickAppend(&m->video, v, halfWidth);
-                            v += strides[1];
-                        }
-                    }
-                    // printf("Decoded video %u -> %u kilobytes\n",
-                    //        message.video.used / 1024,
-                    //        m->video.used / 1024);
-                    SDL_Event e = { 0 };
-                    e.type = SDL_USEREVENT;
-                    e.user.code = CustomEvent_UpdateVideoDisplay;
-                    e.user.data1 = m;
-                    SDL_PushEvent(&e);
-                    ++i;
-                } else {
-#if _DEBUG
-                    fprintf(stderr, "Failed to decode video frame\n");
-#endif
-                    break;
-                }
-            }
-#endif
         } break;
         default:
             printf("Unexpected video message: %s\n",
@@ -864,25 +799,14 @@ streamConnectionThread(void* ptr)
         goto end;
     }
 
-// For video connections
-#if USE_VP8
+    // For video connections
     vpx_codec_ctx_t codec = { 0 };
-#else
-    void* decoder = NULL;
-#endif
     if (tag == ServerConfigurationDataTag_video) {
-#if USE_VP8
         if (vpx_codec_dec_init(&codec, codec_decoder_interface(), NULL, 0) !=
             0) {
             fprintf(stderr, "Failed to create video decoder\n");
             goto end;
         }
-#else
-        if (!create_h264_decoder(&decoder, SDL_GetCPUCount())) {
-            fprintf(stderr, "Failed to create video decoder\n");
-            goto end;
-        }
-#endif
     }
 
     while (!appDone && !displayMissing) {
@@ -1025,14 +949,8 @@ streamConnectionThread(void* ptr)
                           display->recordings != 0 || record != NULL);
                         break;
                     case ServerConfigurationDataTag_video:
-                        success = clientHandleVideoMessage(&packetBytes,
-                                                           display,
-#if USE_VP8
-                                                           &codec
-#else
-                          decoder
-#endif
-                        );
+                        success = clientHandleVideoMessage(
+                          &packetBytes, display, &codec);
                         break;
                     default:
                         fprintf(stderr,
@@ -1083,11 +1001,7 @@ end:
     for (size_t i = 0; i < outgoingPackets.used; ++i) {
         enet_packet_destroy(outgoingPackets.buffer[i]);
     }
-#if USE_VP8
     vpx_codec_destroy(&codec);
-#else
-    destroy_h264_decoder(decoder);
-#endif
     NullValueListFree(&outgoingPackets);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);

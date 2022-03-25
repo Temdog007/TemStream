@@ -65,7 +65,6 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
       SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
     printf("FPS set to: %u\n", fps);
 
-#if USE_VP8
     askQuestion("Enter key frame interval");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling window record");
@@ -74,9 +73,6 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     const uint16_t keyInterval =
       SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
     printf("Key frame interval set to: %u\n", keyInterval);
-#else
-    const uint16_t keyInterval = 0;
-#endif
 
     askQuestion("Enter bitrate (in kilobits per second)");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
@@ -285,7 +281,6 @@ getDesktopWindows(xcb_connection_t* con,
     }
 }
 
-#if USE_VP8
 vpx_codec_iface_t*
 codec_encoder_interface()
 {
@@ -297,22 +292,15 @@ codec_decoder_interface()
 {
     return vpx_codec_vp8_dx();
 }
-#endif
 
 #if USE_OPENCL
+#define RGBA_TO_YUV                                                            \
+    success = rgbaToYuv(imageData, data->width, data->height, img.planes, &vid)
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
-#define ENCODE_TO_H264                                                         \
-    encoded = h264_encode(encoder,                                             \
-                          YUV,                                                 \
-                          data->width,                                         \
-                          data->height,                                        \
-                          message.video.buffer,                                \
-                          message.video.size)
 #endif
 
-#if USE_VP8
 bool
 initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
 {
@@ -357,24 +345,6 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
     }
     return true;
 }
-#else
-bool
-initEncoder(void** encoder, const WindowData* data)
-{
-    destroy_h264_encoder(*encoder);
-    if (!create_h264_encoder(encoder,
-                             data->width,
-                             data->height,
-                             data->fps,
-                             data->bitrate,
-                             SDL_GetCPUCount())) {
-        fprintf(stderr, "Failed to initalize encoder\n");
-        return false;
-    }
-
-    return true;
-}
-#endif
 
 bool
 sendWindowSize(const uint16_t width, const uint16_t height, const Guid* id)
@@ -407,25 +377,21 @@ screenRecordThread(pWindowData data)
     message.video = INIT_ALLOCATOR(MB(1));
 
 #if USE_OPENCL
-
+    OpenCLVideo vid = { 0 };
+    if (!OpenCLVideoInit(&vid, data->width, data->height)) {
+        goto end;
+    }
 #else
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
 #endif
 
-#if USE_VP8
     int frame_count = 0;
     vpx_codec_ctx_t codec = { 0 };
     vpx_image_t img = { 0 };
     if (!initEncoder(&codec, &img, data)) {
         goto end;
     }
-#else
-    void* encoder = NULL;
-    if (!initEncoder(&encoder, data)) {
-        goto end;
-    }
-#endif
 
 #if USE_OPENCL
 #endif
@@ -477,11 +443,7 @@ screenRecordThread(pWindowData data)
                            realHeight);
                     data->width = realWidth;
                     data->height = realHeight;
-#if USE_VP8
                     displayMissing = !initEncoder(&codec, &img, data);
-#else
-                    displayMissing = !initEncoder(&encoder, data);
-#endif
                     if (!displayMissing) {
                         displayMissing =
                           sendWindowSize(data->width, data->height, id);
@@ -562,11 +524,8 @@ screenRecordThread(pWindowData data)
         RGBA_TO_YUV;
 #endif
 
-#if USE_VP8
         if (success) {
-#if USE_OPENCL
-
-#else
+#if !USE_OPENCL
             uint8_t* ptr = YUV;
             for (int plane = 0; plane < 3; ++plane) {
                 unsigned char* buf = img.planes[plane];
@@ -630,37 +589,6 @@ screenRecordThread(pWindowData data)
         } else {
             fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
         }
-#else
-        if (success) {
-#if USE_OPENCL
-
-#endif
-            int encoded;
-#if TIME_VIDEO_STREAMING
-            TIME("H264 encoding", { ENCODE_TO_H264; });
-#else
-            ENCODE_TO_H264;
-#endif
-            if (encoded < 0) {
-                fprintf(stderr, "Failed to encode frame\n");
-            } else if (encoded == 0) {
-                USE_DISPLAY(clientData.mutex, end564, displayMissing, {});
-            } else {
-                message.video.used = (uint32_t)encoded;
-                MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-                ENetPacket* packet =
-                  BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
-                USE_DISPLAY(clientData.mutex, end256, displayMissing, {
-                    NullValueListAppend(&display->outgoing, (NullValue)&packet);
-                });
-                if (displayMissing) {
-                    enet_packet_destroy(packet);
-                }
-            }
-        } else {
-            // GPU didn't copy buffer fast enough. Just skip this frame...
-        }
-#endif
         free(reply);
     }
 
@@ -672,16 +600,13 @@ end:
     VideoMessageFree(&message);
 
 #if USE_OPENCL
+    OpenCLVideoFree(&vid);
 #else
     currentAllocator->free(YUV);
     currentAllocator->free(ARGB);
 #endif
-#if USE_VP8
     vpx_img_free(&img);
     vpx_codec_destroy(&codec);
-#else
-    destroy_h264_encoder(encoder);
-#endif
 
     xcb_disconnect(data->connection);
     WindowDataFree(data);
