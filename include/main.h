@@ -33,21 +33,11 @@
 
 #include <vorbis/codec.h>
 
-#define USE_COMPUTE_SHADER true
+#define USE_OPENCL false
 #define TIME_VIDEO_STREAMING false
 #define USE_SDL_CONVERSION false
 
-#if USE_COMPUTE_SHADER
-#include <glad/glad.h>
-extern void
-makeComputeShaderTextures(int, int, GLuint textures[4], GLuint pbos[4]);
-
-extern void
-rgbaToYuv(const void* imageData,
-          const uint32_t pbo,
-          GLuint prog,
-          const int width,
-          const int height);
+#if USE_OPENCL
 
 #else
 extern bool

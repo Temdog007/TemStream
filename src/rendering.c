@@ -163,120 +163,7 @@ renderFont(SDL_Renderer* renderer,
     return totalRect;
 }
 
-#if USE_COMPUTE_SHADER
-void
-makeComputeShaderTextures(int width,
-                          int height,
-                          GLuint textures[4],
-                          GLuint pbos[4])
-{
-    glDeleteBuffers(4, pbos);
-    glGenBuffers(4, pbos);
-    for (int i = 0; i < 4; ++i) {
-        if (i == 3) {
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[i]);
-            glBufferData(
-              GL_PIXEL_UNPACK_BUFFER, width * height * 4, NULL, GL_STREAM_DRAW);
-            glMapBuffer(pbos[i], GL_STREAM_DRAW);
-        } else {
-            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
-            glBufferData(
-              GL_PIXEL_PACK_BUFFER, width * height, NULL, GL_STREAM_READ);
-            glMapBuffer(pbos[i], GL_STREAM_READ);
-        }
-        // If reload, need to unmap buffers
-        glUnmapBuffer(pbos[i]);
-    }
-
-    glDeleteTextures(4, textures);
-    glGenTextures(4, textures);
-    void* data = currentAllocator->allocate(width * height * 4);
-    for (int i = 0; i < 4; ++i) {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, textures[i]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        // first texture: input texture
-        // seconds texture: Y texture
-        // third and fourth texture: U/V textures
-        switch (i) {
-            case 0:
-                glTexImage2D(GL_TEXTURE_2D,
-                             0,
-                             GL_RGBA8,
-                             width,
-                             height,
-                             0,
-                             GL_RGBA,
-                             GL_UNSIGNED_BYTE,
-                             data);
-                glBindImageTexture(
-                  i, textures[i], 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
-                break;
-            case 1:
-                glTexImage2D(GL_TEXTURE_2D,
-                             0,
-                             GL_R8,
-                             width,
-                             height,
-                             0,
-                             GL_RED,
-                             GL_UNSIGNED_BYTE,
-                             data);
-                glBindImageTexture(
-                  i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-                break;
-            default:
-                glTexImage2D(GL_TEXTURE_2D,
-                             0,
-                             GL_R8,
-                             width / 2,
-                             height / 2,
-                             0,
-                             GL_RED,
-                             GL_UNSIGNED_BYTE,
-                             data);
-                glBindImageTexture(
-                  i, textures[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-                break;
-        }
-    }
-    currentAllocator->free(data);
-}
-
-void
-rgbaToYuv(const void* imageData,
-          const uint32_t pbo,
-          GLuint prog,
-          const int width,
-          const int height)
-{
-    // GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    // GLint result;
-    // do {
-    //     glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);
-    //     SDL_Delay(0);
-    // } while (result != GL_SIGNALED);
-
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
-    void* rgba = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-    memcpy(rgba, imageData, width * height * 4);
-    glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-
-    glUseProgram(prog);
-    glDispatchCompute(width, height, 1);
-
-    // glMemoryBarrier(GL_ALL_BARRIER_BITS);
-
-    // glActiveTexture(GL_TEXTURE0 + 1);
-    // glGetTexSubImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, y);
-    // glActiveTexture(GL_TEXTURE0 + 2);
-    // glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, u);
-    // glActiveTexture(GL_TEXTURE0 + 3);
-    // glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, v);
-}
+#if USE_OPENCL
 #else
 bool
 rgbaToYuv(const uint8_t* rgba,
@@ -306,9 +193,9 @@ rgbaToYuv(const uint8_t* rgba,
     (void)argb;
     uint8_t* y = yuv;
     uint8_t* v = y + (width * height);
-    uint8_t* u = v + ((width + 1) / 2 * (height + 1) / 2);
+    uint8_t* u = v + width * height / 4;
     const int halfWidth = width / 2;
-    static bool first = true;
+    // static bool first = true;
     for (int j = 0; j < height; ++j) {
         const uint8_t* rgbaPtr = rgba + width * j * 4;
         for (int i = 0; i < width; ++i) {
@@ -324,12 +211,12 @@ rgbaToYuv(const uint8_t* rgba,
 
             const int index = halfWidth * (j / 2) + (i / 2) % halfWidth;
             if (j % 2 == 0 && i % 2 == 0) {
-                if (first && index < 2000) {
-                    printf("%d (%d,%d)\n",
-                           index,
-                           index % halfWidth,
-                           index / halfWidth);
-                }
+                // if (first && index < 2000) {
+                //     printf("%d (%d,%d)\n",
+                //            index,
+                //            index % halfWidth,
+                //            index / halfWidth);
+                // }
                 u[index] =
                   (uint8_t)((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                 u[index] = SDL_clamp(u[index], 0, 255);
@@ -340,7 +227,7 @@ rgbaToYuv(const uint8_t* rgba,
             }
         }
     }
-    first = false;
+    // first = false;
     return true;
 #endif
 }

@@ -299,155 +299,7 @@ codec_decoder_interface()
 }
 #endif
 
-#if USE_COMPUTE_SHADER
-bool
-compileShader(const char* str, GLuint* progPtr)
-{
-    bool success = false;
-    GLuint prog = glCreateProgram();
-    GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(cs, 1, &str, NULL);
-    glCompileShader(cs);
-    {
-        int result = 0;
-        glGetShaderiv(cs, GL_COMPILE_STATUS, &result);
-        if (!result) {
-            GLchar log[KB(5)];
-            glGetShaderInfoLog(cs, sizeof(log), &result, log);
-            fprintf(stderr, "Failed to compiler compute shader: %s\n", log);
-            goto end;
-        }
-    }
-    glAttachShader(prog, cs);
-    glLinkProgram(prog);
-    {
-        int result;
-        glGetProgramiv(prog, GL_LINK_STATUS, &result);
-        if (!result) {
-            GLchar log[KB(5)];
-            glGetProgramInfoLog(prog, sizeof(log), &result, log);
-            fprintf(stderr, "Failed to make compiler: %s\n", log);
-            goto end;
-        }
-    }
-
-    *progPtr = prog;
-    success = true;
-end:
-    glDeleteShader(cs);
-    return success;
-}
-const char*
-glSourceString(GLenum source)
-{
-    switch (source) {
-        case GL_DEBUG_SOURCE_API:
-            return "API";
-        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
-            return "Window System";
-        case GL_DEBUG_SOURCE_SHADER_COMPILER:
-            return "Shader Compiler";
-        case GL_DEBUG_SOURCE_THIRD_PARTY:
-            return "Third Party";
-        case GL_DEBUG_SOURCE_APPLICATION:
-            return "Application";
-        default:
-            return "Unknown";
-    }
-}
-const char*
-glTypeString(GLenum type)
-{
-    switch (type) {
-        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
-            return "Deprecated Behavoir";
-        case GL_DEBUG_TYPE_ERROR:
-            return "Error";
-        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
-            return "Undefined Behavoir";
-        case GL_DEBUG_TYPE_PORTABILITY:
-            return "Portability";
-        case GL_DEBUG_TYPE_PERFORMANCE:
-            return "Performance";
-        case GL_DEBUG_TYPE_MARKER:
-            return "Marker";
-        case GL_DEBUG_TYPE_PUSH_GROUP:
-            return "Push Group";
-        case GL_DEBUG_TYPE_POP_GROUP:
-            return "Pop Group";
-        case GL_DEBUG_TYPE_OTHER:
-            return "Other";
-        default:
-            return "Unknown";
-    }
-}
-const char*
-glSeverityString(GLenum severity)
-{
-    switch (severity) {
-        case GL_DEBUG_SEVERITY_HIGH:
-            return "High";
-        case GL_DEBUG_SEVERITY_MEDIUM:
-            return "Medium";
-        case GL_DEBUG_SEVERITY_LOW:
-            return "Low";
-        case GL_DEBUG_SEVERITY_NOTIFICATION:
-            return "Notification";
-        default:
-            return "Unknown";
-    }
-}
-void GLAPIENTRY
-OnGLMessage(GLenum source,
-            GLenum type,
-            GLuint id,
-            GLenum severity,
-            GLsizei length,
-            const GLchar* message,
-            const void* userParam)
-{
-    (void)length;
-    (void)userParam;
-    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
-        return;
-    }
-    fprintf(
-      stderr,
-      "GL Callback %u: source=%s, type = %s, serverity = %s, message = %s\n",
-      id,
-      glSourceString(source),
-      glTypeString(type),
-      glSeverityString(severity),
-      message);
-}
-#define RGBA_TO_YUV                                                            \
-    rgbaToYuv(imageData, pbos[3], prog, data->width, data->height);            \
-    for (int i = 0; i < 3; ++i) {                                              \
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
-        glActiveTexture(GL_TEXTURE1 + i);                                      \
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);       \
-    }                                                                          \
-    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);               \
-    GLint result;                                                              \
-    glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);          \
-    for (int t = 0; t < 10 && result != GL_SIGNALED; ++t) {                    \
-        SDL_Delay(0);                                                          \
-        glGetSynciv(sync, GL_SYNC_STATUS, sizeof(result), NULL, &result);      \
-    }                                                                          \
-    for (int i = 0; i < 3; ++i) {                                              \
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);                           \
-        ptrs[i] = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);             \
-    }                                                                          \
-    success = ptrs[0] != NULL && ptrs[1] != NULL && ptrs[2] != NULL;
-#define ENCODE_TO_H264                                                         \
-    encoded = h264_encode_separate(encoder,                                    \
-                                   Y,                                          \
-                                   U,                                          \
-                                   V,                                          \
-                                   data->width,                                \
-                                   data->height,                               \
-                                   message.video.buffer,                       \
-                                   message.video.size)
+#if USE_OPENCL
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
@@ -554,13 +406,8 @@ screenRecordThread(pWindowData data)
     VideoMessage message = { .tag = VideoMessageTag_video };
     message.video = INIT_ALLOCATOR(MB(1));
 
-#if USE_COMPUTE_SHADER
-    SDL_Window* window = NULL;
-    GLuint prog = 0;
-    GLuint textures[4] = { 0 };
-    GLuint pbos[4] = { 0 };
-    void* context = NULL;
-    void* ptrs[3] = { NULL };
+#if USE_OPENCL
+
 #else
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
@@ -580,62 +427,7 @@ screenRecordThread(pWindowData data)
     }
 #endif
 
-#if USE_COMPUTE_SHADER
-    window = SDL_CreateWindow("unused",
-                              0,
-                              0,
-                              256,
-                              256,
-                              SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL |
-                                SDL_WINDOW_SKIP_TASKBAR | SDL_WINDOW_TOOLTIP);
-    if (window == NULL) {
-        fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
-        goto end;
-    }
-    context = SDL_GL_CreateContext(window);
-    if (context == NULL) {
-        fprintf(
-          stderr, "Failed to create opengl context: %s\n", SDL_GetError());
-        goto end;
-    }
-    static SDL_atomic_t openglLoaded = { 0 };
-    if (SDL_AtomicGet(&openglLoaded) == 0) {
-        if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
-            fprintf(stderr, "Failed to load opengl functions\n");
-            goto end;
-        }
-        SDL_AtomicSet(&openglLoaded, 1);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        printf("Vendor:   %s\n", glGetString(GL_VENDOR));
-        printf("Renderer: %s\n", glGetString(GL_RENDERER));
-        printf("Version:  %s\n", glGetString(GL_VERSION));
-
-        int work_grp_cnt[3];
-
-        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &work_grp_cnt[0]);
-        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &work_grp_cnt[1]);
-        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &work_grp_cnt[2]);
-
-        printf("max global (total) work group counts x:%i y:%i z:%i\n",
-               work_grp_cnt[0],
-               work_grp_cnt[1],
-               work_grp_cnt[2]);
-#if _DEBUG
-        glEnable(GL_DEBUG_OUTPUT);
-        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-        glDebugMessageCallback(OnGLMessage, NULL);
-#endif
-    }
-    if (!compileShader(rgbaToYUVShader, &prog)) {
-        goto end;
-    }
-
-    glUseProgram(prog);
-    for (int i = 0; i < 4; ++i) {
-        glUniform1i(i, i);
-    }
-
-    makeComputeShaderTextures(data->width, data->height, textures, pbos);
+#if USE_OPENCL
 #endif
 
     const uint64_t delay = 1000 / data->fps;
@@ -652,24 +444,7 @@ screenRecordThread(pWindowData data)
         }
         last = now;
 
-#if USE_COMPUTE_SHADER
-        // Tell the GPU to get the texture from pixel buffer
-        // Image will be written to pixel buffer
-        glActiveTexture(GL_TEXTURE0);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[3]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER,
-                     data->width * data->height * 4,
-                     NULL,
-                     GL_STREAM_DRAW);
-        glTexSubImage2D(GL_TEXTURE_2D,
-                        0,
-                        0,
-                        0,
-                        data->width,
-                        data->height,
-                        GL_RGBA,
-                        GL_UNSIGNED_BYTE,
-                        NULL);
+#if USE_OPENCL
 #endif
 
         xcb_generic_error_t* error = NULL;
@@ -698,8 +473,8 @@ screenRecordThread(pWindowData data)
                            data->name.buffer,
                            data->width,
                            data->height,
-                           geom->width,
-                           geom->height);
+                           realWidth,
+                           realHeight);
                     data->width = realWidth;
                     data->height = realHeight;
 #if USE_VP8
@@ -710,8 +485,14 @@ screenRecordThread(pWindowData data)
                     if (!displayMissing) {
                         displayMissing =
                           sendWindowSize(data->width, data->height, id);
-                        makeComputeShaderTextures(
-                          data->width, data->height, textures, pbos);
+#if USE_OPENCL
+
+#else
+                        YUV = currentAllocator->reallocate(
+                          YUV, data->width * data->height * 3);
+                        ARGB = currentAllocator->reallocate(
+                          ARGB, data->width * data->height * 4);
+#endif
                     }
                 }
                 free(geom);
@@ -783,11 +564,8 @@ screenRecordThread(pWindowData data)
 
 #if USE_VP8
         if (success) {
-#if USE_COMPUTE_SHADER
-            memcpy(img.planes[0], ptrs[0], data->width * data->height);
-            const int size = ((data->width + 1) / 2) * ((data->height + 1) / 2);
-            memcpy(img.planes[1], ptrs[1], size);
-            memcpy(img.planes[2], ptrs[2], size);
+#if USE_OPENCL
+
 #else
             uint8_t* ptr = YUV;
             for (int plane = 0; plane < 3; ++plane) {
@@ -854,10 +632,8 @@ screenRecordThread(pWindowData data)
         }
 #else
         if (success) {
-#if USE_COMPUTE_SHADER
-            void* Y = ptrs[0];
-            void* U = ptrs[1];
-            void* V = ptrs[2];
+#if USE_OPENCL
+
 #endif
             int encoded;
 #if TIME_VIDEO_STREAMING
@@ -885,15 +661,6 @@ screenRecordThread(pWindowData data)
             // GPU didn't copy buffer fast enough. Just skip this frame...
         }
 #endif
-#if USE_COMPUTE_SHADER
-        for (int i = 0; i < 3; ++i) {
-            if (ptrs[i] == NULL) {
-                continue;
-            }
-            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
-            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-        }
-#endif
         free(reply);
     }
 
@@ -904,12 +671,7 @@ end:
     uint8_tListFree(&bytes);
     VideoMessageFree(&message);
 
-#if USE_COMPUTE_SHADER
-    glDeleteProgram(prog);
-    glDeleteTextures(4, textures);
-    glDeleteBuffers(4, pbos);
-    SDL_GL_DeleteContext(context);
-    SDL_DestroyWindow(window);
+#if USE_OPENCL
 #else
     currentAllocator->free(YUV);
     currentAllocator->free(ARGB);
