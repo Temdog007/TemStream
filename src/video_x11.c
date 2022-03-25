@@ -315,11 +315,9 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
         return false;
     }
 
-#if _DEBUG
     printf("Using encoder: %s with %d threads\n",
            vpx_codec_iface_name(codec_encoder_interface()),
            SDL_GetCPUCount());
-#endif
 
     vpx_codec_err_t res =
       vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);

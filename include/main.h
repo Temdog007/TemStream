@@ -162,14 +162,16 @@ defaultConfiguration();
 
 // ENet
 
+#define MAX_PACKETS 5
+
 extern ENetPeer*
 FindPeerFromData(ENetPeer*, size_t, const void*);
 
 typedef enum SendFlags
 {
     SendFlags_Normal = ENET_PACKET_FLAG_RELIABLE,
-    SendFlags_Video =
-      ENET_PACKET_FLAG_UNSEQUENCED | ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT,
+    SendFlags_Video = ENET_PACKET_FLAG_RELIABLE,
+    // ENET_PACKET_FLAG_UNSEQUENCED | ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT,
     SendFlags_Audio = ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT
 } SendFlags,
   *pSendFlags;

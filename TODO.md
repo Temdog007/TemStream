@@ -115,7 +115,7 @@
 - [x] Implement h.264 video encoding
 
 ### Mar 23, 2022
-- [x] Use computer shader with VP8
+- [x] Use compute shader with VP8
 - [x] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
 
 ### Mar 24, 2022
@@ -123,10 +123,14 @@
 - [x] Allow resizing of streamed window
 - [x] Fix image with OpenCL conversion
 
-### Later
-- [ ] Look into writing own video encoder/decoder
-- [ ] Test on laptop (client from another computer cannot parse video)
+### Mar 25, 2022
+- [ ] Use jpeg turbo for jpeg files
 - [ ] Record webcam
+- [ ] Allow video streams have multiple resolutions
+- [x] Limit incoming and outgoing packets
+- [x] Test on laptop (memory issues were occuring when video frames couldn't be processed fast enough)
+
+### Later
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message
@@ -134,10 +138,8 @@
 - [ ] Make configuration files that also connects to streams on startup and sets display rects
 - [ ] Add websocket connection (use proxy)
 - [ ] SSL encryption (dtls, use proxy)
-
-### Bugs
-- [ ] When using H.264, it changes size which causes OpenGL errors for PBOs
-- [ ] Certain resolutions cause the display to be jank (lack of better word)
+- [ ] Make separate browser version
+- [ ] Make separate android version
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video frames to server

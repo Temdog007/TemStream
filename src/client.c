@@ -636,7 +636,8 @@ clientHandleAudioMessage(const Bytes* packetBytes,
 bool
 clientHandleVideoMessage(const Bytes* packetBytes,
                          pStreamDisplay display,
-                         vpx_codec_ctx_t* codec)
+                         vpx_codec_ctx_t* codec,
+                         uint64_t* lastError)
 {
     bool success = true;
     VideoMessage message = { 0 };
@@ -673,15 +674,27 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             SDL_PushEvent(&e);
         } break;
         case VideoMessageTag_video: {
+            if (lowMemory()) {
+                const uint64_t now = SDL_GetTicks64();
+                if (now - *lastError > 1000) {
+                    fprintf(stderr, "Low memory. Not decoding video...\n");
+                }
+                *lastError = now;
+                break;
+            }
             vpx_codec_err_t res = vpx_codec_decode(codec,
                                                    message.video.buffer,
                                                    message.video.used,
                                                    NULL,
                                                    VPX_DL_REALTIME);
             if (res != VPX_CODEC_OK) {
-                fprintf(stderr,
-                        "Failed to decode video frame: %s\n",
-                        vpx_codec_err_to_string(res));
+                const uint64_t now = SDL_GetTicks64();
+                if (now - *lastError > 1000) {
+                    fprintf(stderr,
+                            "Failed to decode video frame: %s\n",
+                            vpx_codec_err_to_string(res));
+                }
+                *lastError = now;
                 break;
             }
             vpx_codec_iter_t iter = NULL;
@@ -726,6 +739,19 @@ clientHandleVideoMessage(const Bytes* packetBytes,
     }
     VideoMessageFree(&message);
     return success;
+}
+
+int
+VerifyMemory(ENetHost* host, ENetEvent* e)
+{
+    (void)e;
+    if (host->receivedDataLength > MAX_PACKET_SIZE || lowMemory()) {
+#if _DEBUG
+        puts("Dropping packet");
+#endif
+        return 1;
+    }
+    return 0;
 }
 
 int
@@ -795,24 +821,42 @@ streamConnectionThread(void* ptr)
 
     // For video connections
     vpx_codec_ctx_t codec = { 0 };
+    uint64_t lastVideoError = 0;
     if (tag == ServerConfigurationDataTag_video) {
-        if (vpx_codec_dec_init(&codec, codec_decoder_interface(), NULL, 0) !=
+        struct vpx_codec_dec_cfg cfg = {
+            .threads = SDL_GetCPUCount(),
+        };
+        if (vpx_codec_dec_init(&codec, codec_decoder_interface(), &cfg, 0) !=
             0) {
             fprintf(stderr, "Failed to create video decoder\n");
             goto end;
         }
+        printf("Using decoder: %s with %d threads\n",
+               vpx_codec_iface_name(codec_decoder_interface()),
+               SDL_GetCPUCount());
     }
+
+    host->intercept = VerifyMemory;
 
     while (!appDone && !displayMissing) {
         USE_DISPLAY(clientData.mutex, endPakce, displayMissing, {
-            for (size_t i = 0; i < display->outgoing.used; ++i) {
-                NullValue packet = display->outgoing.buffer[i];
-                PEER_SEND(peer, CLIENT_CHANNEL, packet);
+            if (display->outgoing.used < MAX_PACKETS) {
+                for (size_t i = 0; i < display->outgoing.used; ++i) {
+                    NullValue packet = display->outgoing.buffer[i];
+                    PEER_SEND(peer, CLIENT_CHANNEL, packet);
+                }
+            } else {
+                fprintf(stderr,
+                        "Bandwith issue. Dropping all outgoing packets\n");
+                for (size_t i = 0; i < display->outgoing.used; ++i) {
+                    NullValue packet = display->outgoing.buffer[i];
+                    enet_host_destroy(packet);
+                }
             }
-            NullValueListFree(&display->outgoing);
-            display->outgoing.allocator = currentAllocator;
+            display->outgoing.used = 0;
         });
-        if (enet_host_service(host, &event, 100U) > 0) {
+        while (incomingPackets.used < MAX_PACKETS &&
+               enet_host_service(host, &event, 0U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     USE_DISPLAY(clientData.mutex, fend3, displayMissing, {
@@ -905,6 +949,10 @@ streamConnectionThread(void* ptr)
             PEER_SEND(peer, CLIENT_CHANNEL, packet);
         }
         outgoingPackets.used = 0;
+        if (incomingPackets.used == 0) {
+            SDL_Delay(1U);
+            continue;
+        }
         USE_DISPLAY(clientData.mutex, fend563, displayMissing, {
             pAudioState playback = NULL;
             {
@@ -944,7 +992,7 @@ streamConnectionThread(void* ptr)
                         break;
                     case ServerConfigurationDataTag_video:
                         success = clientHandleVideoMessage(
-                          &packetBytes, display, &codec);
+                          &packetBytes, display, &codec, &lastVideoError);
                         break;
                     default:
                         fprintf(stderr,
