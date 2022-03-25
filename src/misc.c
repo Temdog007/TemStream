@@ -829,8 +829,8 @@ OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
     }
 
     const size_t size = sizeof(rgbaToClKernel) - 1;
-    vid->program = clCreateProgramWithSource(
-      vid->context, 1, (const char**)&rgbaToClKernel, &size, &ret);
+    const char* c = rgbaToClKernel;
+    vid->program = clCreateProgramWithSource(vid->context, 1, &c, &size, &ret);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to create OpenCL program: %d\n", ret);
         return false;
@@ -838,7 +838,15 @@ OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
 
     ret = clBuildProgram(vid->program, 1, &device_id, NULL, NULL, NULL);
     if (ret != CL_SUCCESS) {
-        fprintf(stderr, "Failed to build OpenCL program: %d\n", ret);
+        char buffer[KB(4)];
+        clGetProgramBuildInfo(vid->program,
+                              device_id,
+                              CL_PROGRAM_BUILD_LOG,
+                              sizeof(buffer),
+                              buffer,
+                              0);
+        fprintf(
+          stderr, "Failed to build OpenCL program: %d\n%s\n", ret, buffer);
         return false;
     }
 

@@ -376,6 +376,10 @@ screenRecordThread(pWindowData data)
     VideoMessage message = { .tag = VideoMessageTag_video };
     message.video = INIT_ALLOCATOR(MB(1));
 
+    int frame_count = 0;
+    vpx_codec_ctx_t codec = { 0 };
+    vpx_image_t img = { 0 };
+
 #if USE_OPENCL
     OpenCLVideo vid = { 0 };
     if (!OpenCLVideoInit(&vid, data->width, data->height)) {
@@ -385,16 +389,9 @@ screenRecordThread(pWindowData data)
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
 #endif
-
-    int frame_count = 0;
-    vpx_codec_ctx_t codec = { 0 };
-    vpx_image_t img = { 0 };
     if (!initEncoder(&codec, &img, data)) {
         goto end;
     }
-
-#if USE_OPENCL
-#endif
 
     const uint64_t delay = 1000 / data->fps;
     uint64_t lastGeoCheck = 0;
@@ -448,7 +445,9 @@ screenRecordThread(pWindowData data)
                         displayMissing =
                           sendWindowSize(data->width, data->height, id);
 #if USE_OPENCL
-
+                        OpenCLVideoFree(&vid);
+                        displayMissing =
+                          !OpenCLVideoInit(&vid, data->width, data->height);
 #else
                         YUV = currentAllocator->reallocate(
                           YUV, data->width * data->height * 3);

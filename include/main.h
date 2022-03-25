@@ -33,7 +33,7 @@
 
 #include <vorbis/codec.h>
 
-#define USE_OPENCL false
+#define USE_OPENCL true
 #define TIME_VIDEO_STREAMING false
 #define USE_SDL_CONVERSION false
 

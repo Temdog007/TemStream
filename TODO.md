@@ -119,8 +119,9 @@
 - [x] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
 
 ### Mar 24, 2022
-- [ ] Close command doesn't work when video streaming (replace compute shader with OpenCL)
-- [ ] Allow resizing of streamed window
+- [x] Close command doesn't work when video streaming (replace compute shader with OpenCL)
+- [x] Allow resizing of streamed window
+- [ ] Fix image with OpenCL conversion
 
 ### Later
 - [ ] Look into writing own video encoder/decoder

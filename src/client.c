@@ -692,16 +692,10 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                 m->width = vpx_img_plane_width(img, 0);
                 m->height = vpx_img_plane_height(img, 0);
                 m->video.allocator = currentAllocator;
-                const size_t size = m->width * m->height * 3 / 2;
+                const size_t size = m->width * m->height * 2;
                 m->video.buffer = currentAllocator->allocate(size);
                 m->video.size = size;
 
-                // uint8_tListQuickAppend(
-                //   &m->video, img->planes[0], img->stride[0] * m->height);
-                // uint8_tListQuickAppend(
-                //   &m->video, img->planes[1], img->stride[1] * m->height / 4);
-                // uint8_tListQuickAppend(
-                //   &m->video, img->planes[2], img->stride[2] * m->height / 4);
                 for (int plane = 0; plane < 3; ++plane) {
                     const unsigned char* buf = img->planes[plane];
                     const int stride = img->stride[plane];

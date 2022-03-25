@@ -171,18 +171,31 @@ rgbaToYuv(const uint8_t* data,
           uint8_t* ptrs[3],
           pOpenCLVideo vid)
 {
-    const size_t size = width * height * 4;
-    cl_int ret = clEnqueueWriteBuffer(
-      vid->command_queue, vid->args[0], CL_TRUE, 0, size, data, 0, NULL, NULL);
+    const size_t size = width * height;
+    cl_int ret = clEnqueueWriteBuffer(vid->command_queue,
+                                      vid->args[0],
+                                      CL_TRUE,
+                                      0,
+                                      size * 4,
+                                      data,
+                                      0,
+                                      NULL,
+                                      NULL);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to write OpenCL argument buffer: %d\n", ret);
         return false;
     }
-    const size_t half = size / 4;
+
+    const size_t half = 2;
     ret = clEnqueueNDRangeKernel(
       vid->command_queue, vid->kernel, 1, NULL, &size, &half, 0, NULL, NULL);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to run OpenCL command: %d\n", ret);
+        return false;
+    }
 
     cl_event events[3] = { 0 };
+    bool success = true;
     for (int i = 0; i < 3; ++i) {
         ret = clEnqueueReadBuffer(vid->command_queue,
                                   vid->args[i + 1],
@@ -195,15 +208,19 @@ rgbaToYuv(const uint8_t* data,
                                   &events[i]);
         if (ret != CL_SUCCESS) {
             fprintf(stderr, "Failed to read OpenCL buffer: %d\n", ret);
-            return false;
+            success = false;
+            break;
         }
     }
     ret = clWaitForEvents(3, events);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to wait for OpenCL events: %d\n", ret);
-        return false;
+        success = false;
     }
-    return true;
+    for (int i = 0; i < 3; ++i) {
+        clReleaseEvent(events[i]);
+    }
+    return success;
 }
 #else
 bool
