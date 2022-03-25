@@ -165,8 +165,30 @@ renderFont(SDL_Renderer* renderer,
 
 #if USE_COMPUTE_SHADER
 void
-makeComputeShaderTextures(int width, int height, GLuint textures[4])
+makeComputeShaderTextures(int width,
+                          int height,
+                          GLuint textures[4],
+                          GLuint pbos[4])
 {
+    glDeleteBuffers(4, pbos);
+    glGenBuffers(4, pbos);
+    for (int i = 0; i < 4; ++i) {
+        if (i == 3) {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[i]);
+            glBufferData(
+              GL_PIXEL_UNPACK_BUFFER, width * height * 4, NULL, GL_STREAM_DRAW);
+            glMapBuffer(pbos[i], GL_STREAM_DRAW);
+        } else {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
+            glBufferData(
+              GL_PIXEL_PACK_BUFFER, width * height, NULL, GL_STREAM_READ);
+            glMapBuffer(pbos[i], GL_STREAM_READ);
+        }
+        // If reload, need to unmap buffers
+        glUnmapBuffer(pbos[i]);
+    }
+
+    glDeleteTextures(4, textures);
     glGenTextures(4, textures);
     void* data = currentAllocator->allocate(width * height * 4);
     for (int i = 0; i < 4; ++i) {
@@ -210,8 +232,8 @@ makeComputeShaderTextures(int width, int height, GLuint textures[4])
                 glTexImage2D(GL_TEXTURE_2D,
                              0,
                              GL_R8,
-                             (width + 1) / 2,
-                             (height + 1) / 2,
+                             width / 2,
+                             height / 2,
                              0,
                              GL_RED,
                              GL_UNSIGNED_BYTE,

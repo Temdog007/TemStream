@@ -40,7 +40,7 @@
 #if USE_COMPUTE_SHADER
 #include <glad/glad.h>
 extern void
-makeComputeShaderTextures(int, int, GLuint textures[4]);
+makeComputeShaderTextures(int, int, GLuint textures[4], GLuint pbos[4]);
 
 extern void
 rgbaToYuv(const void* imageData,
@@ -80,8 +80,6 @@ codec_decoder_interface();
 #else
 #include "open264.h"
 #endif
-
-#include <jpeglib.h>
 
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO

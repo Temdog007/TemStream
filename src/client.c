@@ -3804,7 +3804,7 @@ runClient(const Configuration* configuration)
     }
 
     if (showWindow) {
-        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_WEBP;
+        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_WEBP;
         if (IMG_Init(flags) != flags) {
             fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
             displayError(window, "Failed to start", showWindow);

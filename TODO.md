@@ -119,7 +119,8 @@
 - [x] Figure out color issue with h.264 encoding (might be easier to seperate Y and UV calculation)
 
 ### Mar 24, 2022
-- [ ] Close command doesn't work when video streaming (a Window Manager issue, Need to change attributes on temp window or handle its events)
+- [ ] Close command doesn't work when video streaming (replace compute shader with OpenCL)
+- [ ] Allow resizing of streamed window
 
 ### Later
 - [ ] Look into writing own video encoder/decoder

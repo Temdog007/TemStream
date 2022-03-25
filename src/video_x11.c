@@ -206,21 +206,21 @@ getDesktopWindows(xcb_connection_t* con,
         WindowData data = { .connection = con, .windowId = window };
         {
             xcb_get_geometry_cookie_t cookie = xcb_get_geometry(con, window);
-            xcb_get_geometry_reply_t* reply =
+            xcb_get_geometry_reply_t* geom =
               xcb_get_geometry_reply(con, cookie, &error);
             if (error) {
                 free(error);
-                if (reply) {
-                    free(reply);
+                if (geom) {
+                    free(geom);
                 }
                 goto endWin;
             }
-            if (!reply) {
+            if (!geom) {
                 goto endWin;
             }
-            data.width = reply->width;
-            data.height = reply->height;
-            free(reply);
+            data.width = geom->width - (geom->width % 2);
+            data.height = geom->height - (geom->height % 2);
+            free(geom);
         }
         {
             xcb_atom_t atom = { 0 };
@@ -524,29 +524,34 @@ initEncoder(void** encoder, const WindowData* data)
 }
 #endif
 
+bool
+sendWindowSize(const uint16_t width, const uint16_t height, const Guid* id)
+{
+    bool displayMissing = false;
+    uint8_t buffer[KB(1)];
+    Bytes bytes = { .buffer = buffer, .size = sizeof(buffer), .used = 0 };
+    VideoMessage message = { .size = { width, height },
+                             .tag = VideoMessageTag_size };
+    MESSAGE_SERIALIZE(VideoMessage, message, bytes);
+    ENetPacket* packet =
+      BytesToPacket(bytes.buffer, bytes.used, SendFlags_Normal);
+    USE_DISPLAY(clientData.mutex, end3, displayMissing, {
+        NullValueListAppend(&display->outgoing, (NullValue)&packet);
+    });
+    if (displayMissing) {
+        enet_packet_destroy(packet);
+    }
+    return displayMissing;
+}
+
 int
 screenRecordThread(pWindowData data)
 {
     const Guid* id = &data->id;
-    bool displayMissing = false;
+    bool displayMissing = sendWindowSize(data->width, data->height, id);
 
     Bytes bytes = { .allocator = currentAllocator };
-    VideoMessage message = { .size = { data->width, data->height },
-                             .tag = VideoMessageTag_size };
-
-    MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-    {
-        ENetPacket* packet =
-          BytesToPacket(bytes.buffer, bytes.used, SendFlags_Normal);
-        USE_DISPLAY(clientData.mutex, end3, displayMissing, {
-            NullValueListAppend(&display->outgoing, (NullValue)&packet);
-        });
-        if (displayMissing) {
-            enet_packet_destroy(packet);
-        }
-    }
-
-    message.tag = VideoMessageTag_video;
+    VideoMessage message = { .tag = VideoMessageTag_video };
     message.video = INIT_ALLOCATOR(MB(1));
 
 #if USE_COMPUTE_SHADER
@@ -579,8 +584,8 @@ screenRecordThread(pWindowData data)
     window = SDL_CreateWindow("unused",
                               0,
                               0,
-                              512,
-                              512,
+                              256,
+                              256,
                               SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL |
                                 SDL_WINDOW_SKIP_TASKBAR | SDL_WINDOW_TOOLTIP);
     if (window == NULL) {
@@ -630,15 +635,7 @@ screenRecordThread(pWindowData data)
         glUniform1i(i, i);
     }
 
-    makeComputeShaderTextures(data->width, data->height, textures);
-    glGenBuffers(4, pbos);
-    for (int i = 0; i < 3; ++i) {
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
-        glBufferData(GL_PIXEL_PACK_BUFFER,
-                     data->width * data->height,
-                     NULL,
-                     GL_STREAM_READ);
-    }
+    makeComputeShaderTextures(data->width, data->height, textures, pbos);
 #endif
 
     const uint64_t delay = 1000 / data->fps;
@@ -678,6 +675,7 @@ screenRecordThread(pWindowData data)
         xcb_generic_error_t* error = NULL;
 
         if (now - lastGeoCheck > 1000U) {
+            bool needResize = false;
             xcb_get_geometry_cookie_t geomCookie =
               xcb_get_geometry(data->connection, data->windowId);
             xcb_get_geometry_reply_t* geom =
@@ -690,30 +688,36 @@ screenRecordThread(pWindowData data)
                 }
                 displayMissing = true;
             } else if (geom) {
-                if (geom->width != data->width ||
-                    geom->height != data->height) {
+                const int realWidth = geom->width - (geom->width % 2);
+                const int realHeight = geom->height - (geom->height % 2);
+                needResize =
+                  realWidth != data->width || realHeight != data->height;
+                if (needResize) {
                     printf("Window '%s' has changed size from [%ux%u] to "
-                           "[%ux%u]. Stopping stream...\n",
+                           "[%ux%u].\n",
                            data->name.buffer,
                            data->width,
                            data->height,
                            geom->width,
                            geom->height);
-                    data->width = geom->width;
-                    data->height = geom->height;
-                    // #if USE_VP8
-                    //                     displayMissing = !initEncoder(&codec,
-                    //                     &img, data);
-                    // #else
-                    //                     displayMissing =
-                    //                     !initEncoder(&encoder, data);
-                    // #endif
-                    displayMissing = true;
+                    data->width = realWidth;
+                    data->height = realHeight;
+#if USE_VP8
+                    displayMissing = !initEncoder(&codec, &img, data);
+#else
+                    displayMissing = !initEncoder(&encoder, data);
+#endif
+                    if (!displayMissing) {
+                        displayMissing =
+                          sendWindowSize(data->width, data->height, id);
+                        makeComputeShaderTextures(
+                          data->width, data->height, textures, pbos);
+                    }
                 }
                 free(geom);
             }
             lastGeoCheck = now;
-            if (displayMissing) {
+            if (displayMissing || needResize) {
                 continue;
             }
         }
@@ -770,25 +774,6 @@ screenRecordThread(pWindowData data)
         windowHidden = false;
         void* imageData = xcb_get_image_data(reply);
 
-#if TIME_JPEG
-        Bytes jpegBytes = { 0 };
-        uint8_t* rgb = NULL;
-        TIME("Compress to JPEG", {
-            rgb = currentAllocator->allocate(data->width * data->height * 3);
-            SDL_ConvertPixels(data->width,
-                              data->height,
-                              SDL_PIXELFORMAT_RGBA32,
-                              imageData,
-                              data->width * 4,
-                              SDL_PIXELFORMAT_RGB24,
-                              rgb,
-                              data->width * 3);
-            jpegBytes = rgbaToJpeg(rgb, data->width, data->height);
-        });
-        printf("JPEG is %u kilobytes\n", jpegBytes.used / 1024);
-        uint8_tListFree(&jpegBytes);
-        currentAllocator->free(rgb);
-#endif
         bool success;
 #if TIME_VIDEO_STREAMING
         TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
@@ -885,9 +870,6 @@ screenRecordThread(pWindowData data)
             } else if (encoded == 0) {
                 USE_DISPLAY(clientData.mutex, end564, displayMissing, {});
             } else {
-                // printf("Encoded video %u -> %d kilobytes\n",
-                //        (geom->width * geom->height * 3u / 2u) / 1024,
-                //        encoded / 1024);
                 message.video.used = (uint32_t)encoded;
                 MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                 ENetPacket* packet =
