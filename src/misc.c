@@ -889,6 +889,12 @@ OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
         }
     }
 
+    ret = clSetKernelArg(vid->kernel, 4, sizeof(cl_int), (void*)&width);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 4, ret);
+        return false;
+    }
+
     return true;
 }
 

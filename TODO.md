@@ -121,7 +121,7 @@
 ### Mar 24, 2022
 - [x] Close command doesn't work when video streaming (replace compute shader with OpenCL)
 - [x] Allow resizing of streamed window
-- [ ] Fix image with OpenCL conversion
+- [x] Fix image with OpenCL conversion
 
 ### Later
 - [ ] Look into writing own video encoder/decoder

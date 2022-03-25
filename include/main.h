@@ -54,11 +54,7 @@ OpenCLVideoInit(pOpenCLVideo, int, int);
 extern void OpenCLVideoFree(pOpenCLVideo);
 
 extern bool
-rgbaToYuv(const uint8_t*,
-          int width,
-          int height,
-          uint8_t* ptrs[3],
-          pOpenCLVideo);
+rgbaToYuv(const uint8_t*, int width, int height, void* ptrs[3], pOpenCLVideo);
 #else
 extern bool
 rgbaToYuv(const uint8_t* rgba,
