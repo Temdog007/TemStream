@@ -1,8 +1,5 @@
 #include <include/main.h>
 
-int
-xioctl(int fd, int request, void* arg);
-
 typedef struct WebCamData
 {
     WindowData data;
@@ -22,14 +19,14 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
         goto err;
     }
 
-    fd = open((char*)bytes->buffer, O_RDWR);
+    fd = v4l2_open((char*)bytes->buffer, O_RDWR | O_NONBLOCK, 0);
     if (fd == -1) {
         perror("Opening video device");
         goto err;
     }
 
     struct v4l2_capability caps = { 0 };
-    if (xioctl(fd, VIDIOC_QUERYCAP, &caps) == -1) {
+    if (v4l2_ioctl(fd, VIDIOC_QUERYCAP, &caps) == -1) {
         perror("Querying video capabilities");
         goto err;
     }
@@ -65,7 +62,7 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     fmt.fmt.pix.height = (uint32_t)strtoul((char*)bytes->buffer, NULL, 10);
     fmt.fmt.pix.height -= fmt.fmt.pix.height % 2;
 
-    if (xioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
+    if (v4l2_ioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
         perror("Setting video format");
         goto err;
     }
@@ -85,7 +82,7 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     req.count = 3;
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
-    if (xioctl(fd, VIDIOC_REQBUFS, &req) == -1) {
+    if (v4l2_ioctl(fd, VIDIOC_REQBUFS, &req) == -1) {
         perror("Requesting video buffer");
         goto err;
     }
@@ -149,17 +146,6 @@ err:
 }
 
 int
-xioctl(int fd, int request, void* arg)
-{
-    int r = -1;
-    for (int i = 0; r == -1 && i < 3; ++i) {
-        r = ioctl(fd, request, arg);
-        SDL_Delay(0);
-    }
-    return r;
-}
-
-int
 recordWebcamThread(pWebCamData ptr)
 {
     const int fd = ptr->fd;
@@ -190,18 +176,18 @@ recordWebcamThread(pWebCamData ptr)
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index = i;
-        if (xioctl(fd, VIDIOC_QUERYBUF, &buf) == -1) {
+        if (v4l2_ioctl(fd, VIDIOC_QUERYBUF, &buf) == -1) {
             perror("Querying video buffer");
             goto end;
         }
 
         buffers[i].length = buf.length;
-        buffers[i].start = mmap(NULL,
-                                buf.length,
-                                PROT_READ | PROT_WRITE,
-                                MAP_SHARED,
-                                fd,
-                                buf.m.offset);
+        buffers[i].start = v4l2_mmap(NULL,
+                                     buf.length,
+                                     PROT_READ | PROT_WRITE,
+                                     MAP_SHARED,
+                                     fd,
+                                     buf.m.offset);
         if (buffers[i].start == MAP_FAILED) {
             perror("Map memory");
             goto end;
@@ -209,7 +195,7 @@ recordWebcamThread(pWebCamData ptr)
     }
     {
         enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        if (xioctl(fd, VIDIOC_STREAMON, &type) == -1) {
+        if (v4l2_ioctl(fd, VIDIOC_STREAMON, &type) == -1) {
             perror("Starting video capture");
             goto end;
         }
@@ -245,7 +231,7 @@ recordWebcamThread(pWebCamData ptr)
         struct v4l2_buffer buf = { 0 };
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
-        if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
+        if (v4l2_ioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
             switch (errno) {
                 case EAGAIN:
                 case ETIME:
@@ -258,6 +244,7 @@ recordWebcamThread(pWebCamData ptr)
             }
         }
 
+        printf("%d\n", buf.index);
         memcpy(img.planes[buf.index],
                buffers[buf.index].start,
                buffers[buf.index].length);
@@ -307,15 +294,19 @@ recordWebcamThread(pWebCamData ptr)
         }
     }
 
-end : {
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    xioctl(fd, VIDIOC_STREAMOFF, &type);
-}
+end:
     uint8_tListFree(&bytes);
     VideoMessageFree(&message);
+    {
+        enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        v4l2_ioctl(fd, VIDIOC_STREAMOFF, &type);
+    }
     vpx_img_free(&img);
     vpx_codec_destroy(&codec);
-    close(fd);
+    for (int i = 0; i < 3; ++i) {
+        v4l2_munmap(buffers[i].start, buffers[i].length);
+    }
+    v4l2_close(fd);
     WindowDataFree(data);
     currentAllocator->free(ptr);
     SDL_AtomicDecRef(&runningThreads);
