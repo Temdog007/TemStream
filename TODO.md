@@ -127,6 +127,7 @@
 - [ ] Use jpeg turbo for jpeg files
 - [ ] Record webcam
 - [ ] Allow video streams have multiple resolutions
+- [ ] Allow quality to be selectable
 - [x] Limit incoming and outgoing packets
 - [x] Test on laptop (memory issues were occuring when video frames couldn't be processed fast enough)
 

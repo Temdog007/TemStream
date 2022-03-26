@@ -74,14 +74,15 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
       SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 1u, 1000u);
     printf("Key frame interval set to: %u\n", keyInterval);
 
-    askQuestion("Enter bitrate (in kilobits per second)");
+    askQuestion("Enter bitrate (in megabits per second)");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         puts("Canceling window record");
         goto end;
     }
-    const uint32_t bitrate =
-      SDL_clamp(strtoul((char*)bytes->buffer, NULL, 10), 100, 10000);
-    printf("Bitrate set to: %u\n", bitrate);
+    const double bitrate_double =
+      SDL_clamp(strtod((char*)bytes->buffer, NULL), 1.0, 100.0);
+    const uint32_t bitrate = (uint32_t)floor(bitrate_double);
+    printf("Bitrate set to: %u Mbps\n", bitrate);
 
     pWindowData win = currentAllocator->allocate(sizeof(WindowData));
     WindowDataCopy(win, &list.buffer[selected], currentAllocator);
@@ -332,7 +333,7 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
     cfg.g_h = data->height;
     cfg.g_timebase.num = 1;
     cfg.g_timebase.den = data->fps;
-    cfg.rc_target_bitrate = data->bitrate;
+    cfg.rc_target_bitrate = data->bitrate * 1024;
     cfg.g_threads = SDL_GetCPUCount();
     cfg.g_error_resilient =
       VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
@@ -578,7 +579,7 @@ screenRecordThread(pWindowData data)
                     uint8_tListQuickAppend(
                       &message.video, pkt->data.frame.buf, pkt->data.frame.sz);
                     // printf("Encoded %u -> %zu kilobytes\n",
-                    //        (data->width * data->height * 3) / 1024,
+                    //        (data->width * data->height * 4) / 1024,
                     //        pkt->data.frame.sz / 1024);
                     MESSAGE_SERIALIZE(VideoMessage, message, bytes);
                     ENetPacket* packet =
