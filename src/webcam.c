@@ -15,7 +15,6 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     pWebCamData data = currentAllocator->allocate(sizeof(WebCamData));
     askQuestion("What is the device name?");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
-        puts("Canceling webcam recording");
         goto err;
     }
 
@@ -48,7 +47,6 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
 
     askQuestion("What is the recording width?");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
-        puts("Canceling webcam recording");
         goto err;
     }
     fmt.fmt.pix.width = (uint32_t)strtoul((char*)bytes->buffer, NULL, 10);
@@ -56,7 +54,6 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
 
     askQuestion("What is the recording height?");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
-        puts("Canceling webcam recording");
         goto err;
     }
     fmt.fmt.pix.height = (uint32_t)strtoul((char*)bytes->buffer, NULL, 10);
@@ -137,6 +134,7 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     return true;
 
 err:
+    puts("Canceling webcam recording");
     close(fd);
     if (data != NULL) {
         WindowDataFree(&data->data);
