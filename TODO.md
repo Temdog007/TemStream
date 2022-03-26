@@ -124,12 +124,14 @@
 - [x] Fix image with OpenCL conversion
 
 ### Mar 25, 2022
-- [ ] Use jpeg turbo for jpeg files
+- [x] Use jpeg turbo for jpeg files (no changes needed?)
 - [ ] Record webcam
-- [ ] Allow video streams have multiple resolutions
-- [ ] Allow quality to be selectable
 - [x] Limit incoming and outgoing packets
 - [x] Test on laptop (memory issues were occuring when video frames couldn't be processed fast enough)
+
+### Mar 26, 2022
+- [ ] Allow video streams have multiple resolutions
+- [ ] Allow quality to be selectable
 
 ### Later
 - [ ] Implement stream recording and playback (need to timestamp messages)
@@ -145,3 +147,5 @@
 ### Maybe
 - [ ] Make plug in library for OBS to send video frames to server
 - [ ] Add logging library (or make one)
+- [ ] Make replay buffer for current ongoing streams
+- [ ] Fix loading tga files

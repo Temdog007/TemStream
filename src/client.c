@@ -840,20 +840,24 @@ streamConnectionThread(void* ptr)
 
     while (!appDone && !displayMissing) {
         USE_DISPLAY(clientData.mutex, endPakce, displayMissing, {
-            if (display->outgoing.used < MAX_PACKETS) {
-                for (size_t i = 0; i < display->outgoing.used; ++i) {
-                    NullValue packet = display->outgoing.buffer[i];
-                    PEER_SEND(peer, CLIENT_CHANNEL, packet);
-                }
-            } else {
-                fprintf(stderr,
-                        "Bandwith issue. Dropping all outgoing packets\n");
-                for (size_t i = 0; i < display->outgoing.used; ++i) {
-                    NullValue packet = display->outgoing.buffer[i];
-                    enet_host_destroy(packet);
-                }
+            size_t i = 0;
+            for (; i < display->outgoing.used && !lowMemory(); ++i) {
+                NullValue packet = display->outgoing.buffer[i];
+                PEER_SEND(peer, CLIENT_CHANNEL, packet);
             }
-            display->outgoing.used = 0;
+
+            if (i < display->outgoing.used) {
+                fprintf(
+                  stderr, "Bandwith issue. Dropping %zu outgoing packets\n", i);
+                for (; i < display->outgoing.used; ++i) {
+                    NullValue packet = display->outgoing.buffer[i];
+                    enet_packet_destroy(packet);
+                }
+                NullValueListFree(&display->outgoing);
+                display->outgoing.allocator = currentAllocator;
+            } else {
+                display->outgoing.used = 0;
+            }
         });
         while (incomingPackets.used < MAX_PACKETS &&
                enet_host_service(host, &event, 0U) > 0) {
@@ -3760,7 +3764,7 @@ runClient(const Configuration* configuration)
     }
 
     if (showWindow) {
-        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_WEBP;
+        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_WEBP | IMG_INIT_TIF;
         if (IMG_Init(flags) != flags) {
             fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
             displayError(window, "Failed to start", showWindow);
