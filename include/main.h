@@ -3,9 +3,6 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-#if __EMSCRIPTEN__
-#include <emscripten.h>
-#else
 #include <enet/enet.h>
 #include <errno.h>
 #include <hiredis.h>
@@ -14,7 +11,10 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <xcb/xcb.h>
-#endif
+
+#include <libv4l2.h>
+#include <linux/videodev2.h>
+#include <sys/ioctl.h>
 
 #include <opus/opus.h>
 
@@ -602,6 +602,9 @@ audioLengthToFrames(const int frequency, const int duration);
 
 extern bool
 startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes);
+
+extern bool
+recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes);
 
 // Font
 typedef struct Character

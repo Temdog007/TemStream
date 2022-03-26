@@ -1327,8 +1327,7 @@ selectVideoStreamSource(struct pollfd inputfd,
             puts("Canceled video streaming seleciton");
             break;
         case VideoStreamSource_Webcam:
-            fprintf(stderr, "Webcame streaming not implemented\n");
-            break;
+            return recordWebcam(&ui->id, inputfd, bytes);
         case VideoStreamSource_Window:
             return startWindowRecording(&ui->id, inputfd, bytes);
         default:

@@ -15,6 +15,7 @@
 #include "text.c"
 #include "video.c"
 #include "video_x11.c"
+#include "webcam.c"
 
 const Allocator* currentAllocator = NULL;
 bool appDone = true;

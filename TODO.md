@@ -126,6 +126,7 @@
 ### Mar 25, 2022
 - [x] Use jpeg turbo for jpeg files (no changes needed?)
 - [ ] Record webcam
+- [ ] Use XComposite for screen recording
 - [x] Limit incoming and outgoing packets
 - [x] Test on laptop (memory issues were occuring when video frames couldn't be processed fast enough)
 

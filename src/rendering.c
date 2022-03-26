@@ -196,16 +196,15 @@ rgbaToYuv(const uint8_t* data,
     cl_event events[3] = { 0 };
     bool success = true;
     for (int i = 0; i < 3; ++i) {
-        ptrs[i] = clEnqueueMapBuffer(vid->command_queue,
-                                     vid->args[i + 1],
-                                     CL_MAP_READ,
-                                     CL_FALSE,
-                                     0,
-                                     width * height / (i == 0 ? 1 : 4),
-                                     0,
-                                     NULL,
-                                     &events[i],
-                                     &ret);
+        ret = clEnqueueReadBuffer(vid->command_queue,
+                                  vid->args[i + 1],
+                                  CL_FALSE,
+                                  0,
+                                  width * height / (i == 0 ? 1 : 4),
+                                  ptrs[i],
+                                  0,
+                                  NULL,
+                                  &events[i]);
         if (ret != CL_SUCCESS) {
             fprintf(stderr, "Failed to read OpenCL buffer: %d\n", ret);
             success = false;

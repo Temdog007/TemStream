@@ -296,7 +296,8 @@ codec_decoder_interface()
 
 #if USE_OPENCL
 #define RGBA_TO_YUV                                                            \
-    success = rgbaToYuv(imageData, data->width, data->height, ptrs, &vid)
+    success = rgbaToYuv(                                                       \
+      imageData, data->width, data->height, (void**)&img.planes, &vid)
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
@@ -384,7 +385,6 @@ screenRecordThread(pWindowData data)
     if (!OpenCLVideoInit(&vid, data->width, data->height)) {
         goto end;
     }
-    void* ptrs[3] = { NULL };
 #else
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
@@ -521,22 +521,7 @@ screenRecordThread(pWindowData data)
 #endif
 
         if (success) {
-#if USE_OPENCL
-            for (int plane = 0; plane < 3; ++plane) {
-                unsigned char* buf = img.planes[plane];
-                const int stride = img.stride[plane];
-                const int w = vpx_img_plane_width(&img, plane) *
-                              ((img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
-                const int h = vpx_img_plane_height(&img, plane);
-
-                uint8_t* ptr = ptrs[plane];
-                for (int y = 0; y < h; ++y) {
-                    memcpy(buf, ptr, w);
-                    ptr += w;
-                    buf += stride;
-                }
-            }
-#else
+#if !USE_OPENCL
             uint8_t* ptr = YUV;
             for (int plane = 0; plane < 3; ++plane) {
                 unsigned char* buf = img.planes[plane];
@@ -600,15 +585,6 @@ screenRecordThread(pWindowData data)
         } else {
             fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
         }
-#if USE_OPENCL
-        for (int i = 0; i < 3; ++i) {
-            if (ptrs[i] == NULL) {
-                continue;
-            }
-            clEnqueueUnmapMemObject(
-              vid.command_queue, vid.args[i + 1], ptrs[i], 0, NULL, NULL);
-        }
-#endif
         free(reply);
     }
 
