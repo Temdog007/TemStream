@@ -700,12 +700,24 @@ clientHandleVideoMessage(const Bytes* packetBytes,
             vpx_codec_iter_t iter = NULL;
             vpx_image_t* img = NULL;
             while ((img = vpx_codec_get_frame(codec, &iter)) != NULL) {
+                if (lowMemory()) {
+                    continue;
+                }
+                const int width = vpx_img_plane_width(img, 0);
+                const int height = vpx_img_plane_height(img, 0);
+
+                const size_t size = width * height * 2;
+
+                if (size + currentAllocator->used() >
+                    currentAllocator->totalSize()) {
+                    continue;
+                }
+
                 pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
                 m->id = display->id;
-                m->width = vpx_img_plane_width(img, 0);
-                m->height = vpx_img_plane_height(img, 0);
+                m->width = width;
+                m->height = height;
                 m->video.allocator = currentAllocator;
-                const size_t size = m->width * m->height * 2;
                 m->video.buffer = currentAllocator->allocate(size);
                 m->video.size = size;
 
@@ -840,15 +852,16 @@ streamConnectionThread(void* ptr)
 
     while (!appDone && !displayMissing) {
         USE_DISPLAY(clientData.mutex, endPakce, displayMissing, {
-            size_t i = 0;
+            uint32_t i = 0;
             for (; i < display->outgoing.used && !lowMemory(); ++i) {
                 NullValue packet = display->outgoing.buffer[i];
                 PEER_SEND(peer, CLIENT_CHANNEL, packet);
             }
 
             if (i < display->outgoing.used) {
-                fprintf(
-                  stderr, "Bandwith issue. Dropping %zu outgoing packets\n", i);
+                fprintf(stderr,
+                        "Bandwith issue. Dropping %u outgoing packets\n",
+                        display->outgoing.used - i);
                 for (; i < display->outgoing.used; ++i) {
                     NullValue packet = display->outgoing.buffer[i];
                     enet_packet_destroy(packet);
@@ -2753,7 +2766,7 @@ updateVideoDisplay(SDL_Renderer* renderer,
                    const int height,
                    const Bytes* bytes)
 {
-    if (renderer == NULL) {
+    if (renderer == NULL || display->visible == false) {
         return;
     }
 

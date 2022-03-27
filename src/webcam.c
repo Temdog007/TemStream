@@ -12,7 +12,7 @@ bool
 recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
 {
     int fd = -1;
-    pWebCamData data = currentAllocator->allocate(sizeof(WebCamData));
+    pWebCamData webcam = currentAllocator->allocate(sizeof(WebCamData));
     askQuestion("What is the device name?");
     if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
         goto err;
@@ -76,11 +76,16 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
            fmt.fmt.pix.height);
 
     struct v4l2_requestbuffers req = { 0 };
-    req.count = 3;
+    req.count = 1;
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
     if (v4l2_ioctl(fd, VIDIOC_REQBUFS, &req) == -1) {
         perror("Requesting video buffer");
+        goto err;
+    }
+
+    if (req.count == 0) {
+        fprintf(stderr, "Failed to get video buffer\n");
         goto err;
     }
 
@@ -112,16 +117,16 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     const uint32_t bitrate = (uint32_t)floor(bitrate_double);
     printf("Bitrate set to: %u Mbps\n", bitrate);
 
-    data->data.width = fmt.fmt.pix.width;
-    data->data.height = fmt.fmt.pix.height;
-    data->data.fps = fps;
-    data->data.bitrate = bitrate;
-    data->data.keyFrameInterval = keyInterval;
-    data->data.id = *id;
-    data->fd = fd;
+    webcam->data.width = fmt.fmt.pix.width;
+    webcam->data.height = fmt.fmt.pix.height;
+    webcam->data.fps = fps;
+    webcam->data.bitrate = bitrate;
+    webcam->data.keyFrameInterval = keyInterval;
+    webcam->data.id = *id;
+    webcam->fd = fd;
 
-    SDL_Thread* thread =
-      SDL_CreateThread((SDL_ThreadFunction)recordWebcamThread, "webcam", data);
+    SDL_Thread* thread = SDL_CreateThread(
+      (SDL_ThreadFunction)recordWebcamThread, "webcam", webcam);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
         goto err;
@@ -129,16 +134,14 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     SDL_AtomicIncRef(&runningThreads);
     SDL_DetachThread(thread);
 
-    data = NULL;
-
     return true;
 
 err:
     puts("Canceling webcam recording");
     close(fd);
-    if (data != NULL) {
-        WindowDataFree(&data->data);
-        currentAllocator->free(data);
+    if (webcam != NULL) {
+        WindowDataFree(&webcam->data);
+        currentAllocator->free(webcam);
     }
     return false;
 }
@@ -156,7 +159,7 @@ recordWebcamThread(pWebCamData ptr)
         void* start;
         size_t length;
     };
-    struct Buffer buffers[3] = { 0 };
+    struct Buffer buffer = { 0 };
 
     int frame_count = 0;
     vpx_codec_ctx_t codec = { 0 };
@@ -169,28 +172,32 @@ recordWebcamThread(pWebCamData ptr)
                                           currentAllocator->allocate(MB(1)) } };
     Bytes bytes = { .allocator = currentAllocator };
 
-    for (int i = 0; i < 3; ++i) {
-        struct v4l2_buffer buf = { 0 };
-        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        buf.index = i;
-        if (v4l2_ioctl(fd, VIDIOC_QUERYBUF, &buf) == -1) {
-            perror("Querying video buffer");
-            goto end;
-        }
-
-        buffers[i].length = buf.length;
-        buffers[i].start = v4l2_mmap(NULL,
-                                     buf.length,
-                                     PROT_READ | PROT_WRITE,
-                                     MAP_SHARED,
-                                     fd,
-                                     buf.m.offset);
-        if (buffers[i].start == MAP_FAILED) {
-            perror("Map memory");
-            goto end;
-        }
+    struct v4l2_buffer buf = { 0 };
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    buf.index = 0;
+    if (v4l2_ioctl(fd, VIDIOC_QUERYBUF, &buf) == -1) {
+        perror("Querying video buffer");
+        goto end;
     }
+
+    buffer.length = buf.length;
+    buffer.start = v4l2_mmap(
+      NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+    if (buffer.start == MAP_FAILED) {
+        perror("Map memory");
+        goto end;
+    }
+
+    buf = (struct v4l2_buffer){ 0 };
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    buf.index = 0;
+    if (v4l2_ioctl(fd, VIDIOC_QBUF, &buf) == -1) {
+        perror("Query video buffer");
+        goto end;
+    }
+
     {
         enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         if (v4l2_ioctl(fd, VIDIOC_STREAMON, &type) == -1) {
@@ -205,7 +212,6 @@ recordWebcamThread(pWebCamData ptr)
 
     const uint64_t delay = 1000 / data->fps;
     uint64_t last = 0;
-    size_t planesAdded[3] = { 0 };
     while (!appDone && !displayMissing) {
         const uint64_t now = SDL_GetTicks64();
         const uint64_t diff = now - last;
@@ -220,10 +226,16 @@ recordWebcamThread(pWebCamData ptr)
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(fd, &fds);
-        struct timeval tv = { .tv_sec = 0, .tv_usec = MILLI_TO_MICRO(1) };
-        if (select(fd + 1, &fds, NULL, NULL, &tv) == -1) {
-            perror("Waiting for video frame");
-            goto end;
+        // struct timeval tv = { .tv_sec = 0, .tv_usec = MILLI_TO_MICRO(1) };
+        struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
+        switch (select(fd + 1, &fds, NULL, NULL, &tv)) {
+            case -1:
+                perror("Waiting for video frame");
+                goto end;
+            case 0:
+                continue;
+            default:
+                break;
         }
 
         struct v4l2_buffer buf = { 0 };
@@ -242,15 +254,19 @@ recordWebcamThread(pWebCamData ptr)
             }
         }
 
-        printf("%d\n", buf.index);
-        memcpy(img.planes[buf.index],
-               buffers[buf.index].start,
-               buffers[buf.index].length);
-        ++planesAdded[buf.index];
+        uint8_t* ptr = buffer.start;
+        for (int plane = 0; plane < 3; ++plane) {
+            unsigned char* buf = img.planes[plane];
+            const int stride = img.stride[plane];
+            const int w = vpx_img_plane_width(&img, plane) *
+                          ((img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+            const int h = vpx_img_plane_height(&img, plane);
 
-        if (planesAdded[0] != planesAdded[1] ||
-            planesAdded[1] != planesAdded[2]) {
-            continue;
+            for (int y = 0; y < h; ++y) {
+                memcpy(buf, ptr, w);
+                ptr += w;
+                buf += stride;
+            }
         }
 
         int flags = 0;
@@ -290,6 +306,8 @@ recordWebcamThread(pWebCamData ptr)
                     "Failed to encode frame: %s\n",
                     vpx_codec_err_to_string(res));
         }
+
+        v4l2_ioctl(fd, VIDIOC_QBUF, &buf);
     }
 
 end:
@@ -301,9 +319,7 @@ end:
     }
     vpx_img_free(&img);
     vpx_codec_destroy(&codec);
-    for (int i = 0; i < 3; ++i) {
-        v4l2_munmap(buffers[i].start, buffers[i].length);
-    }
+    v4l2_munmap(buffer.start, buffer.length);
     v4l2_close(fd);
     WindowDataFree(data);
     currentAllocator->free(ptr);
