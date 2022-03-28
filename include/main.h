@@ -46,18 +46,17 @@ typedef struct OpenCLVideo
     cl_program program;
     cl_kernel rgba2YuvKernel;
     cl_mem rgba2YuvArgs[4];
+    cl_kernel scaleImageKernel;
+    cl_mem scaleImageArgs[3];
 } OpenCLVideo, *pOpenCLVideo;
 
-extern bool OpenCLVideoInit(pOpenCLVideo, uint32_t, uint32_t);
+extern bool
+OpenCLVideoInit(pOpenCLVideo, const WindowData*);
 
 extern void OpenCLVideoFree(pOpenCLVideo);
 
 extern bool
-rgbaToYuv(const uint8_t*,
-          const uint32_t width,
-          const uint32_t height,
-          void* ptrs[3],
-          pOpenCLVideo);
+rgbaToYuv(const uint8_t*, const WindowData*, void* ptrs[3], pOpenCLVideo);
 #else
 extern bool
 rgbaToYuv(const uint8_t* rgba,

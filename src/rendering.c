@@ -166,12 +166,14 @@ renderFont(SDL_Renderer* renderer,
 #if USE_OPENCL
 bool
 rgbaToYuv(const uint8_t* data,
-          const uint32_t width,
-          const uint32_t height,
+          const WindowData* windowData,
           void* ptrs[3],
           pOpenCLVideo vid)
 {
-    const size_t size = width * height;
+    bool success = false;
+    cl_event events[3] = { 0 };
+
+    const size_t size = windowData->width * windowData->height;
     cl_int ret = clEnqueueWriteBuffer(vid->command_queue,
                                       vid->rgba2YuvArgs[0],
                                       CL_TRUE,
@@ -183,7 +185,7 @@ rgbaToYuv(const uint8_t* data,
                                       NULL);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to write OpenCL argument buffer: %d\n", ret);
-        return false;
+        goto end;
     }
 
     ret = clEnqueueNDRangeKernel(vid->command_queue,
@@ -194,37 +196,78 @@ rgbaToYuv(const uint8_t* data,
                                  NULL,
                                  0,
                                  NULL,
-                                 NULL);
+                                 &events[0]);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to run OpenCL command: %d\n", ret);
-        return false;
+        goto end;
     }
 
-    cl_event events[3] = { 0 };
-    bool success = true;
+    ret = clWaitForEvents(1, events);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr,
+                "Failed to wait for event after converting rgba to yuv: %d\n",
+                ret);
+        goto end;
+    }
+
+    cl_mem* target = NULL;
+    if (windowData->ratio.numerator == windowData->ratio.denominator) {
+        target = &vid->rgba2YuvArgs[1];
+    } else {
+        target = vid->scaleImageArgs;
+
+        const size_t scaledSize =
+          size * windowData->ratio.numerator / windowData->ratio.denominator;
+        ret = clEnqueueNDRangeKernel(vid->command_queue,
+                                     vid->scaleImageKernel,
+                                     1,
+                                     NULL,
+                                     &scaledSize,
+                                     NULL,
+                                     0,
+                                     NULL,
+                                     &events[0]);
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to run OpenCL command: %d\n", ret);
+            goto end;
+        }
+
+        ret = clWaitForEvents(1, events);
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr,
+                    "Failed to wait for event after scaling images: %d\n",
+                    ret);
+            goto end;
+        }
+    }
+
     for (int i = 0; i < 3; ++i) {
         ret = clEnqueueReadBuffer(vid->command_queue,
-                                  vid->rgba2YuvArgs[i + 1],
+                                  target[i],
                                   CL_FALSE,
                                   0,
-                                  width * height / (i == 0 ? 1 : 4),
+                                  (windowData->width * windowData->height *
+                                   windowData->ratio.numerator /
+                                   windowData->ratio.denominator) /
+                                    (i == 0 ? 1 : 4),
                                   ptrs[i],
                                   0,
                                   NULL,
                                   &events[i]);
         if (ret != CL_SUCCESS) {
             fprintf(stderr, "Failed to read OpenCL buffer: %d\n", ret);
-            success = false;
-            break;
+            goto end;
         }
     }
-    if (success) {
-        ret = clWaitForEvents(3, events);
-        if (ret != CL_SUCCESS) {
-            fprintf(stderr, "Failed to wait for OpenCL events: %d\n", ret);
-            success = false;
-        }
+    ret = clWaitForEvents(3, events);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to wait for OpenCL events: %d\n", ret);
+        goto end;
     }
+
+    success = true;
+
+end:
     for (int i = 0; i < 3; ++i) {
         clReleaseEvent(events[i]);
     }

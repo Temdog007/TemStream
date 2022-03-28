@@ -3,7 +3,7 @@ rgba2Yuv(__global const uchar* rgba,
          __global uchar* Y,
          __global uchar* U,
          __global uchar* V,
-         const int width)
+         const uint width)
 {
     size_t i = get_global_id(0);
 
@@ -29,4 +29,40 @@ rgba2Yuv(__global const uchar* rgba,
             V[index] = (uchar)(clamp(vValue, 0u, 255u));
         }
     }
+}
+
+void
+scalePlane(__global const uchar* orig,
+           const uint2 origSize,
+           __global uchar* img,
+           const uint2 size)
+{
+    size_t i = get_global_id(0);
+
+    size_t x = i % size.x;
+    size_t y = i / size.x;
+
+    float xpercent = clamp((float)x / (float)size.x, 0.f, 1.f);
+    float ypercent = clamp((float)y / (float)size.y, 0.f, 1.f);
+
+    size_t ox = clamp((uint)(xpercent * origSize.x), 0u, origSize.x - 1u);
+    size_t oy = clamp((uint)(ypercent * origSize.y), 0u, origSize.y - 1u);
+
+    img[i] = orig[ox + oy * origSize.x];
+}
+
+__kernel void
+scaleYUV(__global const uchar* inY,
+         __global const uchar* inU,
+         __global const uchar* inV,
+         const uint2 inSize,
+         __global uchar* outY,
+         __global uchar* outU,
+         __global uchar* outV,
+         const uint2 outSize,
+         const uint2 scale)
+{
+    scalePlane(inY, inSize, outY, outSize * scale.x / scale.y);
+    scalePlane(inU, inSize, outU, (outSize / 4) * scale.x / scale.y);
+    scalePlane(inV, inSize, outV, (outSize / 4) * scale.x / scale.y);
 }

@@ -45,7 +45,11 @@ onLobbyDownTime(pServerData serverData)
             serverData->config->data.lobby.refreshRate * 1000U) {
             lastStreamRefresh = now;
 #if _DEBUG
-            puts("Refreshed streams to clients");
+            char buffer[KB(2)];
+            time_t rawtime = time(NULL);
+            struct tm* t = localtime(&rawtime);
+            strftime(buffer, sizeof(buffer), "%c", t);
+            printf("Refreshed streams to clients: %s\n", buffer);
 #endif
             updateLobbyClients(serverData);
         }

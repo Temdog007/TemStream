@@ -578,8 +578,6 @@ continueServer:
                        config->timeout / 1000U);
                 appDone = true;
                 continue;
-            } else {
-                lastCheck = now;
             }
         } else {
             lastCheck = now;

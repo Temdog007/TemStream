@@ -98,7 +98,7 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     win->fps = fps;
     win->keyFrameInterval = keyInterval;
     win->bitrate = bitrate;
-    win->ratio.numerator = p;
+    win->ratio.numerator = p + 1;
     win->ratio.denominator = 100;
 
     SDL_Thread* thread =
@@ -306,8 +306,7 @@ codec_decoder_interface()
 
 #if USE_OPENCL
 #define RGBA_TO_YUV                                                            \
-    success = rgbaToYuv(                                                       \
-      imageData, data->width, data->height, (void**)&img.planes, &vid)
+    success = rgbaToYuv(imageData, data, (void**)&img.planes, &vid)
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
@@ -392,7 +391,7 @@ screenRecordThread(pWindowData data)
 
 #if USE_OPENCL
     OpenCLVideo vid = { 0 };
-    if (!OpenCLVideoInit(&vid, data->width, data->height)) {
+    if (!OpenCLVideoInit(&vid, data)) {
         goto end;
     }
 #else
@@ -407,6 +406,7 @@ screenRecordThread(pWindowData data)
     uint64_t lastGeoCheck = 0;
     uint64_t last = 0;
     bool windowHidden = false;
+    uint32_t errors = 0;
     while (!appDone && !displayMissing) {
 
         const uint64_t now = SDL_GetTicks64();
@@ -453,8 +453,7 @@ screenRecordThread(pWindowData data)
                           sendWindowSize(data->width, data->height, id);
 #if USE_OPENCL
                         OpenCLVideoFree(&vid);
-                        displayMissing =
-                          !OpenCLVideoInit(&vid, data->width, data->height);
+                        displayMissing = !OpenCLVideoInit(&vid, data);
 #else
                         YUV = currentAllocator->reallocate(
                           YUV, data->width * data->height * 3);
@@ -592,13 +591,18 @@ screenRecordThread(pWindowData data)
                         "Failed to encode frame: %s\n",
                         vpx_codec_err_to_string(res));
             }
+            errors = 0;
         } else {
-            fprintf(stderr, "Image conversion failure: %s\n", SDL_GetError());
+            ++errors;
+            if (errors > 3) {
+                fprintf(
+                  stderr,
+                  "Too many consecutive errors. Ending video streaming...\n");
+                displayMissing = true;
+            }
         }
         free(reply);
     }
-
-    goto end;
 
 end:
 

@@ -795,7 +795,7 @@ diff_timespec(const struct timespec* time1, const struct timespec* time0)
 
 #if USE_OPENCL
 bool
-OpenCLVideoInit(pOpenCLVideo vid, const uint32_t width, const uint32_t height)
+OpenCLVideoInit(pOpenCLVideo vid, const WindowData* data)
 {
     cl_platform_id platform_id = NULL;
 
@@ -855,31 +855,98 @@ OpenCLVideoInit(pOpenCLVideo vid, const uint32_t width, const uint32_t height)
         return false;
     }
 
+    vid->scaleImageKernel = clCreateKernel(vid->program, "scaleYUV", &ret);
+    if (ret != CL_SUCCESS) {
+        fprintf(stderr, "Failed to create OpenCL kernel: %d\n", ret);
+        return false;
+    }
+
     for (int i = 0; i < 4; ++i) {
         switch (i) {
             case 0:
-                vid->rgba2YuvArgs[i] = clCreateBuffer(vid->context,
-                                                      CL_MEM_READ_ONLY,
-                                                      width * height * 4,
-                                                      NULL,
-                                                      &ret);
+                vid->rgba2YuvArgs[i] =
+                  clCreateBuffer(vid->context,
+                                 CL_MEM_READ_ONLY,
+                                 data->width * data->height * 4,
+                                 NULL,
+                                 &ret);
+                if (ret != CL_SUCCESS) {
+                    fprintf(stderr,
+                            "Failed to create OpenCL buffer %d: %d\n",
+                            i,
+                            ret);
+                    return false;
+                }
+                vid->scaleImageArgs[i] = clCreateBuffer(
+                  vid->context,
+                  CL_MEM_WRITE_ONLY,
+                  data->width * data->height * data->ratio.numerator /
+                    data->ratio.denominator,
+                  NULL,
+                  &ret);
                 break;
             case 1:
-                vid->rgba2YuvArgs[i] = clCreateBuffer(
-                  vid->context, CL_MEM_WRITE_ONLY, width * height, NULL, &ret);
+                vid->rgba2YuvArgs[i] =
+                  clCreateBuffer(vid->context,
+                                 CL_MEM_READ_WRITE,
+                                 data->width * data->height,
+                                 NULL,
+                                 &ret);
+                if (ret != CL_SUCCESS) {
+                    fprintf(stderr,
+                            "Failed to create OpenCL buffer %d: %d\n",
+                            i,
+                            ret);
+                    return false;
+                }
+                vid->scaleImageArgs[i] = clCreateBuffer(
+                  vid->context,
+                  CL_MEM_WRITE_ONLY,
+                  (data->width * data->height * data->ratio.numerator /
+                   data->ratio.denominator) /
+                    4,
+                  NULL,
+                  &ret);
+                break;
+            case 2:
+                vid->rgba2YuvArgs[i] =
+                  clCreateBuffer(vid->context,
+                                 CL_MEM_READ_WRITE,
+                                 data->width * data->height / 4,
+                                 NULL,
+                                 &ret);
+                if (ret != CL_SUCCESS) {
+                    fprintf(stderr,
+                            "Failed to create OpenCL buffer %d: %d\n",
+                            i,
+                            ret);
+                    return false;
+                }
+                vid->scaleImageArgs[i] = clCreateBuffer(
+                  vid->context,
+                  CL_MEM_WRITE_ONLY,
+                  (data->width * data->height * data->ratio.numerator /
+                   data->ratio.denominator) /
+                    4,
+                  NULL,
+                  &ret);
+                break;
+            case 3:
+                vid->rgba2YuvArgs[i] =
+                  clCreateBuffer(vid->context,
+                                 CL_MEM_READ_WRITE,
+                                 data->width * data->height / 4,
+                                 NULL,
+                                 &ret);
                 break;
             default:
-                vid->rgba2YuvArgs[i] = clCreateBuffer(vid->context,
-                                                      CL_MEM_WRITE_ONLY,
-                                                      width * height / 4,
-                                                      NULL,
-                                                      &ret);
-                break;
+                return false;
         }
         if (ret != CL_SUCCESS) {
             fprintf(stderr, "Failed to create OpenCL buffer %d: %d\n", i, ret);
             return false;
         }
+
         ret = clSetKernelArg(
           vid->rgba2YuvKernel, i, sizeof(cl_mem), (void*)&vid->rgba2YuvArgs[i]);
         if (ret != CL_SUCCESS) {
@@ -888,10 +955,68 @@ OpenCLVideoInit(pOpenCLVideo vid, const uint32_t width, const uint32_t height)
         }
     }
 
-    ret = clSetKernelArg(vid->rgba2YuvKernel, 4, sizeof(cl_int), (void*)&width);
-    if (ret != CL_SUCCESS) {
-        fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 4, ret);
-        return false;
+    {
+        const cl_uint rWidth = data->width;
+        ret = clSetKernelArg(
+          vid->rgba2YuvKernel, 4, sizeof(cl_uint), (void*)&rWidth);
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 4, ret);
+            return false;
+        }
+    }
+
+    {
+        cl_uint2 size = { .x = data->width, .y = data->height };
+        ret = clSetKernelArg(vid->scaleImageKernel,
+                             3,
+                             sizeof(cl_uint2),
+                             (void*)&size); // inSize
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 3, ret);
+            return false;
+        }
+
+        size.x = data->width * data->ratio.numerator / data->ratio.denominator;
+        size.y = data->height * data->ratio.numerator / data->ratio.denominator;
+        ret = clSetKernelArg(vid->scaleImageKernel,
+                             7,
+                             sizeof(cl_uint2),
+                             (void*)&size); // outSize
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 7, ret);
+            return false;
+        }
+
+        size.x = data->ratio.numerator;
+        size.y = data->ratio.denominator;
+        ret = clSetKernelArg(vid->scaleImageKernel,
+                             8,
+                             sizeof(cl_uint2),
+                             (void*)&size); // scale
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 8, ret);
+            return false;
+        }
+    }
+
+    for (int i = 0; i < 3; ++i) {
+        ret = clSetKernelArg(vid->scaleImageKernel,
+                             i,
+                             sizeof(cl_mem),
+                             (void*)&vid->rgba2YuvArgs[i + 1]); // in Y,U,V
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", i, ret);
+            return false;
+        }
+        ret = clSetKernelArg(vid->scaleImageKernel,
+                             i + 4,
+                             sizeof(cl_mem),
+                             (void*)&vid->scaleImageArgs[i]); // out Y,U,V
+        if (ret != CL_SUCCESS) {
+            fprintf(
+              stderr, "Failed to set OpenCL argument %d: %d\n", i + 4, ret);
+            return false;
+        }
     }
 
     return true;
@@ -906,6 +1031,11 @@ OpenCLVideoFree(pOpenCLVideo vid)
     clReleaseKernel(vid->rgba2YuvKernel);
     for (int i = 0; i < 4; ++i) {
         clReleaseMemObject(vid->rgba2YuvArgs[i]);
+    }
+
+    clReleaseKernel(vid->scaleImageKernel);
+    for (int i = 0; i < 3; ++i) {
+        clReleaseMemObject(vid->scaleImageArgs[i]);
     }
 
     clReleaseProgram(vid->program);
