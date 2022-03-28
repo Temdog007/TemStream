@@ -171,18 +171,26 @@ rgbaToYuv(const uint8_t* data,
           pOpenCLVideo vid)
 {
     bool success = false;
+    cl_int ret;
     cl_event events[3] = { 0 };
+    for (int i = 0; i < 3; ++i) {
+        events[i] = clCreateUserEvent(vid->context, &ret);
+        if (ret != CL_SUCCESS) {
+            fprintf(stderr, "Failed to create OpenCL event: %d\n", ret);
+            goto end;
+        }
+    }
 
     const size_t size = windowData->width * windowData->height;
-    cl_int ret = clEnqueueWriteBuffer(vid->command_queue,
-                                      vid->rgba2YuvArgs[0],
-                                      CL_TRUE,
-                                      0,
-                                      size * 4,
-                                      data,
-                                      0,
-                                      NULL,
-                                      NULL);
+    ret = clEnqueueWriteBuffer(vid->command_queue,
+                               vid->rgba2YuvArgs[0],
+                               CL_TRUE,
+                               0,
+                               size * 4,
+                               data,
+                               0,
+                               NULL,
+                               NULL);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to write OpenCL argument buffer: %d\n", ret);
         goto end;
