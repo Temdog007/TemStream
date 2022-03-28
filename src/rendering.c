@@ -166,14 +166,14 @@ renderFont(SDL_Renderer* renderer,
 #if USE_OPENCL
 bool
 rgbaToYuv(const uint8_t* data,
-          int width,
-          int height,
+          const uint32_t width,
+          const uint32_t height,
           void* ptrs[3],
           pOpenCLVideo vid)
 {
     const size_t size = width * height;
     cl_int ret = clEnqueueWriteBuffer(vid->command_queue,
-                                      vid->args[0],
+                                      vid->rgba2YuvArgs[0],
                                       CL_TRUE,
                                       0,
                                       size * 4,
@@ -186,8 +186,15 @@ rgbaToYuv(const uint8_t* data,
         return false;
     }
 
-    ret = clEnqueueNDRangeKernel(
-      vid->command_queue, vid->kernel, 1, NULL, &size, NULL, 0, NULL, NULL);
+    ret = clEnqueueNDRangeKernel(vid->command_queue,
+                                 vid->rgba2YuvKernel,
+                                 1,
+                                 NULL,
+                                 &size,
+                                 NULL,
+                                 0,
+                                 NULL,
+                                 NULL);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to run OpenCL command: %d\n", ret);
         return false;
@@ -197,7 +204,7 @@ rgbaToYuv(const uint8_t* data,
     bool success = true;
     for (int i = 0; i < 3; ++i) {
         ret = clEnqueueReadBuffer(vid->command_queue,
-                                  vid->args[i + 1],
+                                  vid->rgba2YuvArgs[i + 1],
                                   CL_FALSE,
                                   0,
                                   width * height / (i == 0 ? 1 : 4),
@@ -226,8 +233,8 @@ rgbaToYuv(const uint8_t* data,
 #else
 bool
 rgbaToYuv(const uint8_t* rgba,
-          const int width,
-          const int height,
+          const uint32_t width,
+          const uint32_t height,
           uint32_t* argb,
           uint8_t* yuv)
 {

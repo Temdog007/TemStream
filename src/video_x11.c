@@ -84,12 +84,22 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     const uint32_t bitrate = (uint32_t)floor(bitrate_double);
     printf("Bitrate set to: %u Mbps\n", bitrate);
 
+    askQuestion("Enter resolution scale (1%% - 100%%)");
+    uint32_t p = 0;
+    if (getIndexFromUser(inputfd, bytes, 100, &p, true) !=
+        UserInputResult_Input) {
+        puts("Canceling window record");
+        goto end;
+    }
+
     pWindowData win = currentAllocator->allocate(sizeof(WindowData));
     WindowDataCopy(win, &list.buffer[selected], currentAllocator);
     win->id = *id;
     win->fps = fps;
     win->keyFrameInterval = keyInterval;
     win->bitrate = bitrate;
+    win->ratio.numerator = p;
+    win->ratio.denominator = 100;
 
     SDL_Thread* thread =
       SDL_CreateThread((SDL_ThreadFunction)screenRecordThread, "video", win);

@@ -130,11 +130,12 @@
 
 ### Mar 26, 2022
 - [x] Record webcam
-- [ ] Use XComposite for screen recording
-- [ ] Allow video streams have multiple resolutions
-- [ ] Allow quality to be selectable
+
+### Mar 27, 2022
+- [ ] Allow video streams have scale attribute
 
 ### Later
+- [ ] Use XComposite for screen recording
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

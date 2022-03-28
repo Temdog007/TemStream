@@ -220,10 +220,16 @@ struct SinkInput {
     i32 processId
 }
 
+struct Ratio {
+    u32 numerator
+    u32 denominator
+}
+
 struct WindowData {
     string name
     Guid id
     null connection
+    Ratio ratio
     u32 windowId
     u32 bitrate
     u16 width
@@ -234,4 +240,4 @@ struct WindowData {
 
 inlineC "MAKE_DEFAULT_LIST(WindowData);"
 
-inlineText rgbaToClKernel "kernel/rgba_to_yuv.cl"
+inlineText imageConversionsKernel "kernel/image_conversions.cl"

@@ -795,7 +795,7 @@ diff_timespec(const struct timespec* time1, const struct timespec* time0)
 
 #if USE_OPENCL
 bool
-OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
+OpenCLVideoInit(pOpenCLVideo vid, const uint32_t width, const uint32_t height)
 {
     cl_platform_id platform_id = NULL;
 
@@ -828,9 +828,8 @@ OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
         return false;
     }
 
-    const size_t size = sizeof(rgbaToClKernel) - 1;
-    const char* c = rgbaToClKernel;
-    vid->program = clCreateProgramWithSource(vid->context, 1, &c, &size, &ret);
+    const char* c = imageConversionsKernel;
+    vid->program = clCreateProgramWithSource(vid->context, 1, &c, NULL, &ret);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to create OpenCL program: %d\n", ret);
         return false;
@@ -850,7 +849,7 @@ OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
         return false;
     }
 
-    vid->kernel = clCreateKernel(vid->program, "rgba2Yuv", &ret);
+    vid->rgba2YuvKernel = clCreateKernel(vid->program, "rgba2Yuv", &ret);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to create OpenCL kernel: %d\n", ret);
         return false;
@@ -859,37 +858,37 @@ OpenCLVideoInit(pOpenCLVideo vid, const int width, const int height)
     for (int i = 0; i < 4; ++i) {
         switch (i) {
             case 0:
-                vid->args[i] = clCreateBuffer(vid->context,
-                                              CL_MEM_READ_ONLY,
-                                              width * height * 4,
-                                              NULL,
-                                              &ret);
+                vid->rgba2YuvArgs[i] = clCreateBuffer(vid->context,
+                                                      CL_MEM_READ_ONLY,
+                                                      width * height * 4,
+                                                      NULL,
+                                                      &ret);
                 break;
             case 1:
-                vid->args[i] = clCreateBuffer(
+                vid->rgba2YuvArgs[i] = clCreateBuffer(
                   vid->context, CL_MEM_WRITE_ONLY, width * height, NULL, &ret);
                 break;
             default:
-                vid->args[i] = clCreateBuffer(vid->context,
-                                              CL_MEM_WRITE_ONLY,
-                                              width * height / 4,
-                                              NULL,
-                                              &ret);
+                vid->rgba2YuvArgs[i] = clCreateBuffer(vid->context,
+                                                      CL_MEM_WRITE_ONLY,
+                                                      width * height / 4,
+                                                      NULL,
+                                                      &ret);
                 break;
         }
         if (ret != CL_SUCCESS) {
             fprintf(stderr, "Failed to create OpenCL buffer %d: %d\n", i, ret);
             return false;
         }
-        ret =
-          clSetKernelArg(vid->kernel, i, sizeof(cl_mem), (void*)&vid->args[i]);
+        ret = clSetKernelArg(
+          vid->rgba2YuvKernel, i, sizeof(cl_mem), (void*)&vid->rgba2YuvArgs[i]);
         if (ret != CL_SUCCESS) {
             fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", i, ret);
             return false;
         }
     }
 
-    ret = clSetKernelArg(vid->kernel, 4, sizeof(cl_int), (void*)&width);
+    ret = clSetKernelArg(vid->rgba2YuvKernel, 4, sizeof(cl_int), (void*)&width);
     if (ret != CL_SUCCESS) {
         fprintf(stderr, "Failed to set OpenCL argument %d: %d\n", 4, ret);
         return false;
@@ -903,11 +902,13 @@ OpenCLVideoFree(pOpenCLVideo vid)
 {
     clFlush(vid->command_queue);
     clFinish(vid->command_queue);
-    clReleaseKernel(vid->kernel);
-    clReleaseProgram(vid->program);
+
+    clReleaseKernel(vid->rgba2YuvKernel);
     for (int i = 0; i < 4; ++i) {
-        clReleaseMemObject(vid->args[i]);
+        clReleaseMemObject(vid->rgba2YuvArgs[i]);
     }
+
+    clReleaseProgram(vid->program);
     clReleaseCommandQueue(vid->command_queue);
     clReleaseContext(vid->context);
 }
