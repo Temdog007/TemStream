@@ -9,7 +9,7 @@
                  targetDisplay,                                                \
                  (float)w - MIN_WIDTH,                                         \
                  (float)h - MIN_HEIGHT,                                        \
-                 mouseInWindow)
+                 mouseState == (MouseState_Visible | MouseState_InWindow))
 
 #define RENDER_NOW_CALC                                                        \
     {                                                                          \
@@ -3012,7 +3012,7 @@ drawTextures(SDL_Renderer* renderer,
              const size_t target,
              const float maxX,
              const float maxY,
-             const bool mouseInWindow)
+             const bool canShowLabel)
 {
     if (renderer == NULL) {
         return;
@@ -3024,7 +3024,7 @@ drawTextures(SDL_Renderer* renderer,
     SDL_RenderClear(renderer);
 
     const StreamDisplay* display = NULL;
-    if (target < clientData.displays.used && mouseInWindow) {
+    if (target < clientData.displays.used && canShowLabel) {
         display = &clientData.displays.buffer[target];
         if (display->texture != NULL && display->visible) {
             SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
@@ -3065,7 +3065,7 @@ drawTextures(SDL_Renderer* renderer,
 
     const ClientConfiguration* config =
       (const ClientConfiguration*)clientData.configuration;
-    if (config->showLabel && mouseInWindow && display != NULL) {
+    if (config->showLabel && canShowLabel && display != NULL) {
         const SDL_Color fg = { .a = 128u, .r = 255u, .g = 255u, .b = 255u };
         const SDL_Color bg = { .a = 128u, .r = 0u, .g = 0u, .b = 0u };
         SDL_Surface* text =
@@ -3615,7 +3615,7 @@ handleUserEvent(const SDL_UserEvent* e,
                 const size_t targetDisplay,
                 ENetPeer* peer,
                 pBytes bytes,
-                const bool mouseInWindow)
+                const MouseState mouseState)
 {
     int w;
     int h;
@@ -3941,7 +3941,8 @@ runServerProcedure:
         SDL_DetachThread(thread);
     }
 
-    bool mouseInWindow = true;
+    uint32_t lastMouseMove = 0;
+    MouseState mouseState = MouseState_Visible | MouseState_InWindow;
     while (!appDone) {
         if (!checkForMessagesFromLobby(host, &event, &client)) {
             appDone = true;
@@ -3956,10 +3957,10 @@ runServerProcedure:
                 case SDL_WINDOWEVENT:
                     switch (e.window.event) {
                         case SDL_WINDOWEVENT_ENTER:
-                            mouseInWindow = true;
+                            mouseState |= MouseState_InWindow;
                             break;
                         case SDL_WINDOWEVENT_LEAVE:
-                            mouseInWindow = false;
+                            mouseState &= ~MouseState_InWindow;
                             break;
                         default:
                             break;
@@ -4033,6 +4034,7 @@ runServerProcedure:
                     RENDER_NOW_CALC;
                     break;
                 case SDL_MOUSEMOTION:
+                    lastMouseMove = e.motion.timestamp;
                     if (hasTarget) {
                         if (targetDisplay >= clientData.displays.used) {
                             break;
@@ -4125,7 +4127,7 @@ runServerProcedure:
                                     targetDisplay,
                                     peer,
                                     &bytes,
-                                    mouseInWindow);
+                                    mouseState);
                     break;
                 case SDL_DROPFILE: {
                     // Look for image stream
@@ -4209,6 +4211,13 @@ runServerProcedure:
                     break;
             }
             SDL_UnlockMutex(clientData.mutex);
+        }
+        if (SDL_GetTicks() - lastMouseMove > 1000U) {
+            SDL_ShowCursor(SDL_DISABLE);
+            mouseState &= ~MouseState_Visible;
+        } else {
+            SDL_ShowCursor(SDL_ENABLE);
+            mouseState |= MouseState_Visible;
         }
         SDL_Delay(0);
     }

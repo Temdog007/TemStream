@@ -241,3 +241,8 @@ struct WindowData {
 inlineC "MAKE_DEFAULT_LIST(WindowData);"
 
 inlineText imageConversionsKernel "kernel/image_conversions.cl"
+
+flag MouseState {
+    InWindow
+    Visible
+}
