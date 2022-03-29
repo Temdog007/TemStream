@@ -133,12 +133,13 @@
 
 ### Mar 27, 2022
 - [x] Allow video streams have scale attribute
-- [ ] Use linear interpolation for scaling
+- [x] Use linear interpolation for scaling
 - [ ] Use XComposite for screen recording
 - [ ] Update webcam streaming to allow for scaling
 - [ ] Test lower qualities for laptop
 
 ### Later
+- [ ] Make mouse not visible if not moved for period of time
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

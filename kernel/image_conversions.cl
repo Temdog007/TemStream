@@ -31,10 +31,19 @@ rgba2Yuv(__global const uchar* rgba,
     }
 }
 
+uchar
+getPixel(const uchar* img, const int2 size, int x, int y)
+{
+    x = clamp(x, 0, size.x - 1);
+    y = clamp(y, 0, size.y - 1);
+
+    return img[x + y * size.x];
+}
+
 void
-scalePlane(__global const uchar* orig,
+scalePlane(const uchar* orig,
            const uint2 origSize,
-           __global uchar* img,
+           uchar* img,
            const uint2 size,
            size_t i)
 {
@@ -47,7 +56,15 @@ scalePlane(__global const uchar* orig,
     size_t ox = clamp((uint)(xpercent * origSize.x), 0u, origSize.x - 1u);
     size_t oy = clamp((uint)(ypercent * origSize.y), 0u, origSize.y - 1u);
 
-    img[i] = orig[ox + oy * origSize.x];
+    uint result = 0;
+    int2 castSize = { origSize.x, origSize.y };
+    for (int cx = -1; cx <= 1; ++cx) {
+        for (int cy = -1; cy <= 1; ++cy) {
+            result += getPixel(orig, castSize, ox + cx, oy + cy);
+        }
+    }
+
+    img[i] = clamp(result / 9u, 0u, 255u);
 }
 
 __kernel void
