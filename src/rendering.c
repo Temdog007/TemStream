@@ -218,14 +218,14 @@ rgbaToYuv(const uint8_t* data,
         goto end;
     }
 
+    const size_t scaledSize =
+      size * windowData->ratio.numerator / windowData->ratio.denominator;
     cl_mem* target = NULL;
     if (windowData->ratio.numerator == windowData->ratio.denominator) {
         target = &vid->rgba2YuvArgs[1];
     } else {
         target = vid->scaleImageArgs;
 
-        const size_t scaledSize =
-          size * windowData->ratio.numerator / windowData->ratio.denominator;
         ret = clEnqueueNDRangeKernel(vid->command_queue,
                                      vid->scaleImageKernel,
                                      1,
@@ -254,10 +254,7 @@ rgbaToYuv(const uint8_t* data,
                                   target[i],
                                   CL_FALSE,
                                   0,
-                                  (windowData->width * windowData->height *
-                                   windowData->ratio.numerator /
-                                   windowData->ratio.denominator) /
-                                    (i == 0 ? 1 : 4),
+                                  scaledSize / (i == 0 ? 1 : 4),
                                   ptrs[i],
                                   0,
                                   NULL,

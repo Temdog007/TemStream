@@ -320,8 +320,11 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
 
     vpx_codec_enc_cfg_t cfg = { 0 };
 
-    if (vpx_img_alloc(img, VPX_IMG_FMT_I420, data->width, data->height, 1) ==
-        NULL) {
+    const size_t width =
+      data->width * data->ratio.numerator / data->ratio.denominator;
+    const size_t height =
+      data->height * data->ratio.numerator / data->ratio.denominator;
+    if (vpx_img_alloc(img, VPX_IMG_FMT_I420, width, height, 1) == NULL) {
         fprintf(stderr, "Failed to allocate image\n");
         return false;
     }
@@ -339,8 +342,8 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
         return false;
     }
 
-    cfg.g_w = data->width;
-    cfg.g_h = data->height;
+    cfg.g_w = width;
+    cfg.g_h = height;
     cfg.g_timebase.num = 1;
     cfg.g_timebase.den = data->fps;
     cfg.rc_target_bitrate = data->bitrate * 1024;
@@ -356,12 +359,16 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
 }
 
 bool
-sendWindowSize(const uint16_t width, const uint16_t height, const Guid* id)
+sendWindowSize(const WindowData* data)
 {
     bool displayMissing = false;
     uint8_t buffer[KB(1)];
     Bytes bytes = { .buffer = buffer, .size = sizeof(buffer), .used = 0 };
-    VideoMessage message = { .size = { width, height },
+    const Guid* id = &data->id;
+    VideoMessage message = { .size = { data->width * data->ratio.numerator /
+                                         data->ratio.denominator,
+                                       data->height * data->ratio.numerator /
+                                         data->ratio.denominator },
                              .tag = VideoMessageTag_size };
     MESSAGE_SERIALIZE(VideoMessage, message, bytes);
     ENetPacket* packet =
@@ -379,7 +386,7 @@ int
 screenRecordThread(pWindowData data)
 {
     const Guid* id = &data->id;
-    bool displayMissing = sendWindowSize(data->width, data->height, id);
+    bool displayMissing = sendWindowSize(data);
 
     Bytes bytes = { .allocator = currentAllocator };
     VideoMessage message = { .tag = VideoMessageTag_video };
@@ -449,8 +456,7 @@ screenRecordThread(pWindowData data)
                     data->height = realHeight;
                     displayMissing = !initEncoder(&codec, &img, data);
                     if (!displayMissing) {
-                        displayMissing =
-                          sendWindowSize(data->width, data->height, id);
+                        displayMissing = sendWindowSize(data);
 #if USE_OPENCL
                         OpenCLVideoFree(&vid);
                         displayMissing = !OpenCLVideoInit(&vid, data);

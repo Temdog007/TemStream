@@ -59,10 +59,9 @@ scaleYUV(__global const uchar* inY,
          __global uchar* outY,
          __global uchar* outU,
          __global uchar* outV,
-         const uint2 outSize,
-         const uint2 scale)
+         const uint2 outSize)
 {
-    scalePlane(inY, inSize, outY, outSize * scale.x / scale.y);
-    scalePlane(inU, inSize, outU, (outSize / 4) * scale.x / scale.y);
-    scalePlane(inV, inSize, outV, (outSize / 4) * scale.x / scale.y);
+    scalePlane(inY, inSize, outY, outSize);
+    scalePlane(inU, inSize / 2, outU, outSize / 2);
+    scalePlane(inV, inSize / 2, outV, outSize / 2);
 }
