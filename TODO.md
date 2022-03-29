@@ -134,9 +134,9 @@
 ### Mar 27, 2022
 - [x] Allow video streams have scale attribute
 - [x] Use linear interpolation for scaling
-- [ ] Use XComposite for screen recording
+- [x] Use shared memory for screen recording
 - [ ] Update webcam streaming to allow for scaling
-- [ ] Test lower qualities for laptop
+- [x] Test lower qualities for laptop
 
 ### Later
 - [ ] Make mouse not visible if not moved for period of time

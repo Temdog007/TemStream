@@ -382,6 +382,68 @@ sendWindowSize(const WindowData* data)
     return displayMissing;
 }
 
+bool
+canUseShmExt(xcb_connection_t* con)
+{
+    bool found = false;
+    xcb_generic_error_t* err = NULL;
+    xcb_shm_query_version_cookie_t cookie = xcb_shm_query_version(con);
+    xcb_shm_query_version_reply_t* reply =
+      xcb_shm_query_version_reply(con, cookie, &err);
+    if (err) {
+        printf("Error: %d\n", err->error_code);
+        free(err);
+        goto end;
+    }
+    if (!reply) {
+        goto end;
+    }
+
+    found = true;
+    free(reply);
+
+end:
+    return found;
+}
+
+bool
+createShmExtStuff(const WindowData* data,
+                  xcb_image_t** img,
+                  xcb_shm_segment_info_t* shmInfo)
+{
+    if (*img != NULL) {
+        xcb_image_destroy(*img);
+    }
+    shmdt(shmInfo->shmaddr);
+    xcb_shm_detach(data->connection, shmInfo->shmseg);
+
+    *img = xcb_image_create_native(data->connection,
+                                   data->width,
+                                   data->height,
+                                   XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                   32,
+                                   NULL,
+                                   0,
+                                   NULL);
+    if (*img == NULL) {
+        fprintf(stderr, "Failed to create XCB image\n");
+        return false;
+    }
+    int id =
+      shmget(IPC_PRIVATE, data->width * data->height * 4, IPC_CREAT | 0600);
+    if (id == -1) {
+        fprintf(stderr, "No shared memory\n");
+        return false;
+    }
+    shmInfo->shmid = id;
+
+    shmInfo->shmaddr = (*img)->data = shmat(shmInfo->shmid, 0, 0);
+
+    shmInfo->shmseg = xcb_generate_id(data->connection);
+    xcb_shm_attach(data->connection, shmInfo->shmseg, shmInfo->shmid, false);
+    return true;
+}
+
 int
 screenRecordThread(pWindowData data)
 {
@@ -396,6 +458,9 @@ screenRecordThread(pWindowData data)
     vpx_codec_ctx_t codec = { 0 };
     vpx_image_t img = { 0 };
 
+    xcb_image_t* xcbImg = NULL;
+    xcb_shm_segment_info_t shmInfo = { 0 };
+
 #if USE_OPENCL
     OpenCLVideo vid = { 0 };
     if (!OpenCLVideoInit(&vid, data)) {
@@ -407,6 +472,13 @@ screenRecordThread(pWindowData data)
 #endif
     if (!initEncoder(&codec, &img, data)) {
         goto end;
+    }
+
+    if (canUseShmExt(data->connection)) {
+        puts("Using SHM extension");
+        if (!createShmExtStuff(data, &xcbImg, &shmInfo)) {
+            goto end;
+        }
     }
 
     const uint64_t delay = 1000 / data->fps;
@@ -454,7 +526,11 @@ screenRecordThread(pWindowData data)
                            realHeight);
                     data->width = realWidth;
                     data->height = realHeight;
-                    displayMissing = !initEncoder(&codec, &img, data);
+                    displayMissing =
+                      !initEncoder(&codec, &img, data) ||
+                      (canUseShmExt(data->connection)
+                         ? !createShmExtStuff(data, &xcbImg, &shmInfo)
+                         : false);
                     if (!displayMissing) {
                         displayMissing = sendWindowSize(data);
 #if USE_OPENCL
@@ -476,64 +552,87 @@ screenRecordThread(pWindowData data)
             }
         }
 
-#if TIME_VIDEO_STREAMING
-        xcb_get_image_cookie_t cookie = { 0 };
-        xcb_get_image_reply_t* reply = NULL;
-        TIME("Get window image", {
-            cookie = xcb_get_image(data->connection,
-                                   XCB_IMAGE_FORMAT_Z_PIXMAP,
-                                   data->windowId,
-                                   0,
-                                   0,
-                                   data->width,
-                                   data->height,
-                                   ~0U);
-            reply = xcb_get_image_reply(data->connection, cookie, &error);
-        });
-#else
-        xcb_get_image_cookie_t cookie = xcb_get_image(data->connection,
-                                                      XCB_IMAGE_FORMAT_Z_PIXMAP,
-                                                      data->windowId,
-                                                      0,
-                                                      0,
-                                                      data->width,
-                                                      data->height,
-                                                      ~0U);
-        xcb_get_image_reply_t* reply =
-          xcb_get_image_reply(data->connection, cookie, &error);
-#endif
-        if (xcb_connection_has_error(data->connection)) {
-            fprintf(stderr,
-                    "X11 connection has an error. Recording will stop\n");
-            displayMissing = true;
-        } else if (error) {
-            if (!windowHidden) {
-                printf("XCB Error %d (window may not be visible. This "
-                       "error will only show once until the window is "
-                       "visible again)\n",
-                       error->error_code);
-                windowHidden = true;
-            }
-            free(error);
-            if (reply) {
-                free(reply);
-            }
-            // Window may be minimized. Don't end the thread for this
-            // error
-            continue;
-        } else if (!reply) {
+        void* reply = NULL;
+        void* imageData = NULL;
+        if (xcbImg) {
+            TIME("Get shared memory screenshot", {
+                xcb_shm_get_image_cookie_t cookie =
+                  xcb_shm_get_image(data->connection,
+                                    data->windowId,
+                                    0,
+                                    0,
+                                    data->width,
+                                    data->height,
+                                    ~0U,
+                                    XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                    shmInfo.shmseg,
+                                    0);
+                reply =
+                  xcb_shm_get_image_reply(data->connection, cookie, &error);
+                if (error) {
+                    if (!windowHidden) {
+                        printf("XCB Error %d (window may not be visible. This "
+                               "error will only show once until the window is "
+                               "visible again)\n",
+                               error->error_code);
+                        windowHidden = true;
+                    }
+                    free(error);
+                    if (reply) {
+                        free(reply);
+                    }
+                    // Window may be minimized. Don't end the thread for this
+                    // error
+                    continue;
+                } else if (!reply) {
+                    continue;
+                }
+
+                windowHidden = false;
+                imageData = xcbImg->data;
+            });
+        } else {
+            TIME("Get raw screenshot", {
+                xcb_get_image_cookie_t cookie =
+                  xcb_get_image(data->connection,
+                                XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                data->windowId,
+                                0,
+                                0,
+                                data->width,
+                                data->height,
+                                ~0U);
+                reply = xcb_get_image_reply(data->connection, cookie, &error);
+                if (error) {
+                    if (!windowHidden) {
+                        printf("XCB Error %d (window may not be visible. This "
+                               "error will only show once until the window is "
+                               "visible again)\n",
+                               error->error_code);
+                        windowHidden = true;
+                    }
+                    free(error);
+                    if (reply) {
+                        free(reply);
+                    }
+                    // Window may be minimized. Don't end the thread for this
+                    // error
+                    continue;
+                } else if (!reply) {
+                    continue;
+                }
+
+                windowHidden = false;
+                imageData = xcb_get_image_data(reply);
+            });
+        }
+
+        if (imageData == NULL) {
             continue;
         }
 
-        windowHidden = false;
-        void* imageData = xcb_get_image_data(reply);
-
         bool success;
-#if TIME_VIDEO_STREAMING
         TIME("Convert pixels to YV12", { RGBA_TO_YUV; });
-#else
-        RGBA_TO_YUV;
-#endif
 
         if (success) {
 #if !USE_OPENCL
@@ -559,15 +658,10 @@ screenRecordThread(pWindowData data)
             }
 
             vpx_codec_err_t res = { 0 };
-#if TIME_VIDEO_STREAMING
             TIME("VPX encoding", {
                 res = vpx_codec_encode(
                   &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
             });
-#else
-            res = vpx_codec_encode(
-              &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
-#endif
             if (res == VPX_CODEC_OK) {
                 vpx_codec_iter_t iter = NULL;
                 const vpx_codec_cx_pkt_t* pkt = NULL;
@@ -611,6 +705,12 @@ screenRecordThread(pWindowData data)
     }
 
 end:
+
+    if (xcbImg != NULL) {
+        xcb_image_destroy(xcbImg);
+    }
+    shmdt(&shmInfo.shmaddr);
+    xcb_shm_detach(data->connection, shmInfo.shmseg);
 
     uint8_tListFree(&bytes);
     VideoMessageFree(&message);

@@ -10,7 +10,13 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <time.h>
+
+// X11
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <xcb/shm.h>
 #include <xcb/xcb.h>
+#include <xcb/xcb_image.h>
 
 #include <libv4l2.h>
 #include <linux/videodev2.h>
@@ -34,7 +40,6 @@
 #include <vorbis/codec.h>
 
 #define USE_OPENCL true
-#define TIME_VIDEO_STREAMING false
 #define USE_SDL_CONVERSION false
 
 #if USE_OPENCL
@@ -452,6 +457,9 @@ ServerConfigurationTagEquals(const ServerConfiguration*,
 extern double
 diff_timespec(const struct timespec*, const struct timespec*);
 
+#define TIME_VIDEO_STREAMING false
+
+#if TIME_VIDEO_STREAMING
 #define TIME(str, f)                                                           \
     {                                                                          \
         struct timespec start = { 0 };                                         \
@@ -465,6 +473,9 @@ diff_timespec(const struct timespec*, const struct timespec*);
                diff,                                                           \
                diff * 1000.0);                                                 \
     }
+#else
+#define TIME(str, f) f
+#endif
 
 extern Bytes
 rgbaToJpeg(const uint8_t*, uint16_t width, uint16_t height);
