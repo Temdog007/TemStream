@@ -132,10 +132,13 @@
 - [x] Record webcam
 
 ### Mar 27, 2022
-- [ ] Allow video streams have scale attribute
+- [x] Allow video streams have scale attribute
+- [ ] Use linear interpolation for scaling
+- [ ] Use XComposite for screen recording
+- [ ] Update webcam streaming to allow for scaling
+- [ ] Test lower qualities for laptop
 
 ### Later
-- [ ] Use XComposite for screen recording
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message

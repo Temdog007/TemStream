@@ -84,7 +84,7 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     const uint32_t bitrate = (uint32_t)floor(bitrate_double);
     printf("Bitrate set to: %u Mbps\n", bitrate);
 
-    askQuestion("Enter resolution scale (1%% - 100%%)");
+    askQuestion("Enter resolution scale (1% - 100%)");
     uint32_t p = 0;
     if (getIndexFromUser(inputfd, bytes, 100, &p, true) !=
         UserInputResult_Input) {
@@ -333,7 +333,7 @@ initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
            vpx_codec_iface_name(codec_encoder_interface()),
            SDL_GetCPUCount());
 
-    vpx_codec_err_t res =
+    const vpx_codec_err_t res =
       vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
     if (res) {
         fprintf(stderr,

@@ -377,6 +377,43 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
         goto continueServer;                                                   \
     }
 
+void
+checkClientTime(uint64_t* lastCheck, const ServerConfiguration* config)
+{
+    const uint64_t now = SDL_GetTicks64();
+    uint64_t connectedPeers = 0;
+    for (size_t i = 0; i < serverData.host->peerCount; ++i) {
+        ENetPeer* peer = &serverData.host->peers[i];
+        pClient client = peer->data;
+        if (client == NULL) {
+            continue;
+        }
+        ++connectedPeers;
+        if (now - client->joinTime > 10000LL &&
+            GuidEquals(&client->id, &ZeroGuid)) {
+            char buffer[KB(1)] = { 0 };
+            enet_address_get_host_ip(&peer->address, buffer, sizeof(buffer));
+            printf("Removing client '%s:%u' because it failed to send "
+                   "authentication\n",
+                   buffer,
+                   peer->address.port);
+            enet_peer_disconnect(peer, 0);
+        }
+    }
+    if (connectedPeers == 0) {
+        if (config->timeout > 0 && (now - *lastCheck) > config->timeout) {
+            printf("Ending server '%s(%s)' due to no connected clients in "
+                   "%" PRIu64 " second(s)\n",
+                   config->name.buffer,
+                   ServerConfigurationDataTagToCharString(config->data.tag),
+                   config->timeout / 1000U);
+            appDone = true;
+        }
+    } else {
+        *lastCheck = now;
+    }
+}
+
 int
 runServer(pConfiguration configuration, ServerFunctions funcs)
 {
@@ -384,7 +421,6 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
 
     int result = EXIT_FAILURE;
 
-    ServerData serverData = { 0 };
     serverData.config = &configuration->server;
     serverData.bytes = (Bytes){ .allocator = currentAllocator };
     if (SDL_Init(0) != 0) {
@@ -547,41 +583,9 @@ continueServer:
                 default:
                     break;
             }
+            checkClientTime(&lastCheck, config);
         }
-        const uint64_t now = SDL_GetTicks64();
-        uint64_t connectedPeers = 0;
-        for (size_t i = 0; i < serverData.host->peerCount; ++i) {
-            ENetPeer* peer = &serverData.host->peers[i];
-            pClient client = peer->data;
-            if (client == NULL) {
-                continue;
-            }
-            ++connectedPeers;
-            if (now - client->joinTime > 10000LL &&
-                GuidEquals(&client->id, &ZeroGuid)) {
-                char buffer[KB(1)] = { 0 };
-                enet_address_get_host_ip(
-                  &peer->address, buffer, sizeof(buffer));
-                printf("Removing client '%s:%u' because it failed to send "
-                       "authentication\n",
-                       buffer,
-                       peer->address.port);
-                enet_peer_disconnect(peer, 0);
-            }
-        }
-        if (connectedPeers == 0) {
-            if (config->timeout > 0 && now - lastCheck > config->timeout) {
-                printf("Ending server '%s(%s)' due to no connected clients in "
-                       "%" PRIu64 " second(s)\n",
-                       config->name.buffer,
-                       ServerConfigurationDataTagToCharString(config->data.tag),
-                       config->timeout / 1000U);
-                appDone = true;
-                continue;
-            }
-        } else {
-            lastCheck = now;
-        }
+        checkClientTime(&lastCheck, config);
         funcs.onDownTime(&serverData);
     }
 

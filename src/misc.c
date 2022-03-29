@@ -805,7 +805,7 @@ OpenCLVideoInit(pOpenCLVideo vid, const WindowData* data)
         return false;
     }
 
-    cl_uint deviceNum;
+    cl_uint deviceNum = 0;
     cl_device_id device_id = NULL;
 
     ret = clGetDeviceIDs(
@@ -863,7 +863,8 @@ OpenCLVideoInit(pOpenCLVideo vid, const WindowData* data)
 
     const size_t size = data->width * data->height;
     const size_t scaledSize =
-      size * data->ratio.numerator / data->ratio.denominator;
+      (data->width * data->ratio.numerator / data->ratio.denominator) *
+      (data->height * data->ratio.numerator / data->ratio.denominator);
 
     for (int i = 0; i < 4; ++i) {
         switch (i) {

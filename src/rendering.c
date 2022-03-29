@@ -176,7 +176,7 @@ rgbaToYuv(const uint8_t* data,
     for (int i = 0; i < 3; ++i) {
         events[i] = clCreateUserEvent(vid->context, &ret);
         if (ret != CL_SUCCESS) {
-            fprintf(stderr, "Failed to create OpenCL event: %d\n", ret);
+            fprintf(stderr, "Failed to create OpenCL event %d: %d\n", i, ret);
             goto end;
         }
     }
@@ -219,7 +219,10 @@ rgbaToYuv(const uint8_t* data,
     }
 
     const size_t scaledSize =
-      size * windowData->ratio.numerator / windowData->ratio.denominator;
+      (windowData->width * windowData->ratio.numerator /
+       windowData->ratio.denominator) *
+      (windowData->height * windowData->ratio.numerator /
+       windowData->ratio.denominator);
     cl_mem* target = NULL;
     if (windowData->ratio.numerator == windowData->ratio.denominator) {
         target = &vid->rgba2YuvArgs[1];
@@ -260,7 +263,7 @@ rgbaToYuv(const uint8_t* data,
                                   NULL,
                                   &events[i]);
         if (ret != CL_SUCCESS) {
-            fprintf(stderr, "Failed to read OpenCL buffer: %d\n", ret);
+            fprintf(stderr, "Failed to read OpenCL buffer %d: %d\n", i, ret);
             goto end;
         }
     }

@@ -35,10 +35,9 @@ void
 scalePlane(__global const uchar* orig,
            const uint2 origSize,
            __global uchar* img,
-           const uint2 size)
+           const uint2 size,
+           size_t i)
 {
-    size_t i = get_global_id(0);
-
     size_t x = i % size.x;
     size_t y = i / size.x;
 
@@ -61,7 +60,10 @@ scaleYUV(__global const uchar* inY,
          __global uchar* outV,
          const uint2 outSize)
 {
-    scalePlane(inY, inSize, outY, outSize);
-    scalePlane(inU, inSize / 2, outU, outSize / 2);
-    scalePlane(inV, inSize / 2, outV, outSize / 2);
+    size_t i = get_global_id(0);
+    scalePlane(inY, inSize, outY, outSize, i);
+    if (i < get_global_size(0) / 4u) {
+        scalePlane(inU, inSize / 2u, outU, outSize / 2u, i);
+        scalePlane(inV, inSize / 2u, outV, outSize / 2u, i);
+    }
 }
