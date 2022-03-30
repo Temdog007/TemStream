@@ -378,7 +378,7 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
             config->port.tag = PortTag_port;                                   \
             config->port.port = address.port;                                  \
         }                                                                      \
-        globalServerData.host->maximumPacketSize = MAX_PACKET_SIZE;            \
+        globalServerData.host->maximumPacketSize = MB(1);                      \
         goto continueServer;                                                   \
     }
 
