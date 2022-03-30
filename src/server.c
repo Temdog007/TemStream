@@ -1,6 +1,6 @@
 #include <include/main.h>
 
-ServerData serverData = { 0 };
+ServerData globalServerData = { 0 };
 
 // Assigns client a name and id also
 bool
@@ -260,18 +260,20 @@ handleClientAuthentication(pClient client,
 void
 cleanupServer(ENetHost* server)
 {
+    if (server == NULL) {
+        return;
+    }
     for (size_t i = 0; i < server->peerCount; ++i) {
-        pClient client = server->peers[i].data;
+        ENetPeer* peer = &server->peers[i];
+        pClient client = peer->data;
         if (client == NULL) {
             continue;
         }
         ClientFree(client);
         currentAllocator->free(client);
-        server->peers[i].data = NULL;
+        peer->data = NULL;
     }
-    if (server != NULL) {
-        enet_host_destroy(server);
-    }
+    enet_host_destroy(server);
 }
 
 const char*
@@ -356,7 +358,8 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
             if (client == NULL) {
                 break;
             }
-            return clientHasWriteAccess(client, serverData.config) ? 0 : 1;
+            return clientHasWriteAccess(client, globalServerData.config) ? 0
+                                                                         : 1;
         } break;
         default:
             break;
@@ -365,8 +368,9 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
 }
 
 #define CHECK_SERVER                                                           \
-    serverData.host = enet_host_create(&address, config->maxClients, 2, 0, 0); \
-    if (serverData.host != NULL) {                                             \
+    globalServerData.host =                                                    \
+      enet_host_create(&address, config->maxClients, 2, 0, 0);                 \
+    if (globalServerData.host != NULL) {                                       \
         char buffer[1024] = { 0 };                                             \
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));            \
         printf("Opened server at %s:%u\n", buffer, address.port);              \
@@ -374,6 +378,7 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
             config->port.tag = PortTag_port;                                   \
             config->port.port = address.port;                                  \
         }                                                                      \
+        globalServerData.host->maximumPacketSize = MAX_PACKET_SIZE;            \
         goto continueServer;                                                   \
     }
 
@@ -382,8 +387,8 @@ checkClientTime(uint64_t* lastCheck, const ServerConfiguration* config)
 {
     const uint64_t now = SDL_GetTicks64();
     uint64_t connectedPeers = 0;
-    for (size_t i = 0; i < serverData.host->peerCount; ++i) {
-        ENetPeer* peer = &serverData.host->peers[i];
+    for (size_t i = 0; i < globalServerData.host->peerCount; ++i) {
+        ENetPeer* peer = &globalServerData.host->peers[i];
         pClient client = peer->data;
         if (client == NULL) {
             continue;
@@ -421,8 +426,8 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
 
     int result = EXIT_FAILURE;
 
-    serverData.config = &configuration->server;
-    serverData.bytes = (Bytes){ .allocator = currentAllocator };
+    globalServerData.config = &configuration->server;
+    globalServerData.bytes = (Bytes){ .allocator = currentAllocator };
     if (SDL_Init(0) != 0) {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
         goto end;
@@ -463,24 +468,25 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
     }
     PRINT_MEMORY;
 
-    serverData.host->intercept = VerifyClientPacket;
+    globalServerData.host->intercept = VerifyClientPacket;
 
 continueServer:
     PRINT_MEMORY;
-    serverData.ctx = redisConnect(config->redisIp.buffer, config->redisPort);
-    if (serverData.ctx == NULL || serverData.ctx->err) {
-        if (serverData.ctx == NULL) {
+    globalServerData.ctx =
+      redisConnect(config->redisIp.buffer, config->redisPort);
+    if (globalServerData.ctx == NULL || globalServerData.ctx->err) {
+        if (globalServerData.ctx == NULL) {
             fprintf(stderr, "Can't make redis context\n");
         } else {
-            fprintf(stderr, "Redis error: %s\n", serverData.ctx->errstr);
+            fprintf(stderr, "Redis error: %s\n", globalServerData.ctx->errstr);
         }
         goto end;
     }
 
     PRINT_MEMORY;
     if (config->data.tag == ServerConfigurationDataTag_lobby) {
-        cleanupConfigurationsInRedis(serverData.ctx);
-    } else if (!writeConfigurationToRedis(serverData.ctx, config)) {
+        cleanupConfigurationsInRedis(globalServerData.ctx);
+    } else if (!writeConfigurationToRedis(globalServerData.ctx, config)) {
         fprintf(stderr, "Failed to write to redis\n");
         goto end;
     }
@@ -491,7 +497,7 @@ continueServer:
     uint64_t lastCheck = SDL_GetTicks64();
     while (!appDone) {
         while (!appDone &&
-               enet_host_service(serverData.host, &event, 100U) > 0) {
+               enet_host_service(globalServerData.host, &event, 100U) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT: {
                     if (event.data != (enet_uint32)config->data.tag) {
@@ -554,17 +560,18 @@ continueServer:
                                               &client->name,
                                               currentAllocator);
                             funcs.sendGeneral(
-                              &gm, &serverData.bytes, event.peer);
+                              &gm, &globalServerData.bytes, event.peer);
                             GeneralMessageFree(&gm);
 
-                            if (!funcs.onConnect(event.peer, &serverData)) {
+                            if (!funcs.onConnect(event.peer,
+                                                 &globalServerData)) {
                                 enet_peer_disconnect(event.peer, 0);
                                 break;
                             }
                         } break;
                         case AuthenticateResult_NotNeeded:
                             if (!funcs.handleMessage(
-                                  message, event.peer, &serverData)) {
+                                  message, event.peer, &globalServerData)) {
                                 printf("Disconnecting %s\n",
                                        client->name.buffer);
                                 enet_peer_disconnect(event.peer, 0);
@@ -586,7 +593,7 @@ continueServer:
             checkClientTime(&lastCheck, config);
         }
         checkClientTime(&lastCheck, config);
-        funcs.onDownTime(&serverData);
+        funcs.onDownTime(&globalServerData);
     }
 
     result = EXIT_SUCCESS;
@@ -597,7 +604,7 @@ end:
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
     }
-    ServerDataFree(&serverData);
+    ServerDataFree(&globalServerData);
     SDL_Quit();
     return result;
 }
@@ -605,13 +612,16 @@ end:
 void
 ServerDataFree(pServerData server)
 {
-    PRINT_MEMORY;
-    removeConfigurationFromRedis(server->ctx, server->config);
-    PRINT_MEMORY;
-    redisFree(server->ctx);
+    cleanupServer(server->host);
     PRINT_MEMORY;
     uint8_tListFree(&server->bytes);
     PRINT_MEMORY;
-    cleanupServer(server->host);
-    PRINT_MEMORY;
+    if (server->ctx != NULL) {
+        PRINT_MEMORY;
+        removeConfigurationFromRedis(server->ctx, server->config);
+        PRINT_MEMORY;
+        redisFree(server->ctx);
+        PRINT_MEMORY;
+    }
+    memset(server, 0, sizeof(ServerData));
 }

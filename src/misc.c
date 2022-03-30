@@ -580,6 +580,9 @@ serverIsDirty(redisContext* ctx)
 {
     redisReply* reply =
       redisCommand(ctx, "GET %s", TEM_STREAM_SERVER_DIRTY_KEY);
+    if (reply == NULL) {
+        return false;
+    }
 
     bool result = false;
     switch (reply->type) {
@@ -605,10 +608,12 @@ setServerIsDirty(redisContext* ctx, const bool state)
 {
     redisReply* reply =
       redisCommand(ctx, "SET %s %d", TEM_STREAM_SERVER_DIRTY_KEY, state);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "Redis error: %s\n", reply->str);
+    if (reply != NULL) {
+        if (reply->type == REDIS_REPLY_ERROR) {
+            fprintf(stderr, "Redis error: %s\n", reply->str);
+        }
+        freeReplyObject(reply);
     }
-    freeReplyObject(reply);
 }
 
 bool
@@ -638,20 +643,24 @@ writeConfigurationToRedis(redisContext* ctx, const ServerConfiguration* c)
 bool
 removeConfigurationFromRedis(redisContext* ctx, const ServerConfiguration* c)
 {
+    if (ctx == NULL) {
+        return true;
+    }
     Bytes bytes = { .allocator = currentAllocator };
     MESSAGE_SERIALIZE(ServerConfiguration, (*c), bytes);
 
     TemLangString str = b64_encode(&bytes);
 
+    bool result = false;
     redisReply* reply =
       redisCommand(ctx, "LREM %s 0 %s", TEM_STREAM_SERVER_KEY, str.buffer);
-
-    const bool result = reply->type == REDIS_REPLY_INTEGER;
-    if (!result && reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "Redis error: %s\n", reply->str);
+    if (reply != NULL) {
+        result = reply->type == REDIS_REPLY_INTEGER;
+        if (!result && reply->type == REDIS_REPLY_ERROR) {
+            fprintf(stderr, "Redis error: %s\n", reply->str);
+        }
+        freeReplyObject(reply);
     }
-
-    freeReplyObject(reply);
     TemLangStringFree(&str);
     uint8_tListFree(&bytes);
 

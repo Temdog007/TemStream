@@ -171,6 +171,8 @@ defaultConfiguration();
 
 #define MAX_PACKETS 5
 
+#define ENET_USE_CUSTOM_ALLOCATOR true
+
 extern ENetPeer*
 FindPeerFromData(ENetPeer*, size_t, const void*);
 
@@ -509,9 +511,6 @@ extern bool
 filenameToExtension(const char*, pFileExtension);
 
 extern bool CanSendFileToStream(FileExtensionTag, ServerConfigurationDataTag);
-
-extern void
-cleanupServer(ENetHost*);
 
 // Input
 

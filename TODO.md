@@ -131,15 +131,18 @@
 ### Mar 26, 2022
 - [x] Record webcam
 
-### Mar 27, 2022
+### Mar 27, 2022 - Mar 28, 2022
 - [x] Allow video streams have scale attribute
 - [x] Use linear interpolation for scaling
 - [x] Use shared memory for screen recording
 - [x] Test lower qualities for laptop
 - [x] Make mouse not visible if not moved for period of time
 
-### Later
+### Mar 30, 2022
 - [ ] Implement stream recording and playback (need to timestamp messages)
+- [ ] Implement replay stream (allow client to send time frame to request possible messages)
+
+### Later
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams
@@ -150,7 +153,7 @@
 - [ ] Make separate android version
 
 ### Maybe
-- [ ] Make plug in library for OBS to send video frames to server
+- [ ] Make plug in library for OBS to send video and audio to server
 - [ ] Add logging library (or make one)
 - [ ] Make replay buffer for current ongoing streams
 - [ ] Fix loading tga files

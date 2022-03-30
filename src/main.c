@@ -90,6 +90,7 @@ main(const int argc, const char** argv)
         }
     }
 
+#if ENET_USE_CUSTOM_ALLOCATOR
     const ENetCallbacks callbacks = { .free = tsFree,
                                       .malloc = tsAllocate,
                                       .no_memory = NULL };
@@ -97,6 +98,12 @@ main(const int argc, const char** argv)
         fprintf(stderr, "Failed to initialize ENet\n");
         goto end;
     }
+#else
+    if (enet_initialize() != 0) {
+        fprintf(stderr, "Failed to initialize ENet\n");
+        goto end;
+    }
+#endif
 
     result = runApp(argc, argv, &configuration);
     enet_deinitialize();
