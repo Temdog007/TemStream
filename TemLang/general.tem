@@ -160,11 +160,16 @@ variant Configuration {
     ServerConfiguration server
 }
 
-variant ServerMessage {
+variant ServerMessageData {
     null Lobby
     TextMessage Text
     ChatMessage Chat
     ImageMessage Image
     AudioMessage Audio
     VideoMessage Video
+}
+
+struct ServerMessage{
+    i64 time
+    ServerMessageData data
 }

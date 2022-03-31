@@ -318,6 +318,9 @@ getServerFileName(const ServerConfiguration* config, char buffer[512]);
 extern const char*
 getServerReplayFileName(const ServerConfiguration* config, char buffer[512]);
 
+extern void
+storeClientMessage(pServerData data, const ServerMessage*);
+
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
 extern bool
@@ -394,9 +397,10 @@ SERVER_FUNCTIONS(Video);
                                                                                \
     ServerMessage getServerMessageFrom##T(const void* ptr)                     \
     {                                                                          \
-        ServerMessage m = { .tag = ServerMessageTag_##T };                     \
+        ServerMessage m = { .time = (int64_t)time(NULL),                       \
+                            .data = { .tag = ServerMessageDataTag_##T } };     \
         CAST_MESSAGE(T##Message, ptr);                                         \
-        T##MessageCopy((T##Message*)&m.Lobby, message, currentAllocator);      \
+        T##MessageCopy((T##Message*)&m.data.Lobby, message, currentAllocator); \
         return m;                                                              \
     }                                                                          \
     void sendGeneralMessageFor##T(                                             \

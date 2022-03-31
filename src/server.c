@@ -346,6 +346,23 @@ writeServerFileBytes(const ServerConfiguration* config,
     fclose(file);
 }
 
+void
+storeClientMessage(pServerData data, const ServerMessage* m)
+{
+    char buffer[512];
+    FILE* file = fopen(getServerReplayFileName(data->config, buffer), "ab");
+    if (file == NULL) {
+        perror("Failed to open file");
+        return;
+    }
+    MESSAGE_SERIALIZE(ServerMessage, (*m), data->bytes);
+    TemLangString str = b64_encode(&data->bytes);
+    TemLangStringAppendChar(&str, '\n');
+    fwrite(str.buffer, sizeof(char), str.used, file);
+    TemLangStringFree(&str);
+    fclose(file);
+}
+
 bool
 lowMemory()
 {
@@ -594,7 +611,8 @@ continueServer:
                             if (config->record) {
                                 ServerMessage srvMssage =
                                   funcs.getServerMessage(message);
-
+                                storeClientMessage(&globalServerData,
+                                                   &srvMssage);
                                 ServerMessageFree(&srvMssage);
                             }
                             break;

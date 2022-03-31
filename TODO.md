@@ -138,7 +138,7 @@
 - [x] Test lower qualities for laptop
 - [x] Make mouse not visible if not moved for period of time
 
-### Mar 30, 2022
+### Mar 30, 2022 - Mar 31, 2022
 - [ ] Implement stream recording and playback (need to timestamp messages)
 - [ ] Implement replay stream (allow client to send time frame to request possible messages)
 
