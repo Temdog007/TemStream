@@ -143,6 +143,7 @@
 - [ ] Implement replay stream (allow client to send time frame to request possible messages)
 
 ### Later
+- [ ] Make configuration files that set what streams to create/connect to
 - [ ] Create web page for GUI for native version
 - [ ] Make layout message
 - [ ] Make save configuration file based on current connected streams

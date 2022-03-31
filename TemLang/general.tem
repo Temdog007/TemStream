@@ -159,3 +159,12 @@ variant Configuration {
     ClientConfiguration client
     ServerConfiguration server
 }
+
+variant ServerMessage {
+    null Lobby
+    TextMessage Text
+    ChatMessage Chat
+    ImageMessage Image
+    AudioMessage Audio
+    VideoMessage Video
+}

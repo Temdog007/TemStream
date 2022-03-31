@@ -291,6 +291,7 @@ typedef struct ServerFunctions
     void (*serializeMessage)(const void*, pBytes);
     void* (*deserializeMessage)(const Bytes*);
     const GeneralMessage* (*getGeneralMessage)(const void*);
+    ServerMessage (*getServerMessage)(const void*);
     void (*sendGeneral)(const GeneralMessage*, pBytes, ENetPeer*);
     bool (*onConnect)(ENetPeer*, pServerData);
     bool (*handleMessage)(const void*, ENetPeer*, pServerData);
@@ -314,6 +315,9 @@ writeServerFileBytes(const ServerConfiguration* config,
 extern const char*
 getServerFileName(const ServerConfiguration* config, char buffer[512]);
 
+extern const char*
+getServerReplayFileName(const ServerConfiguration* config, char buffer[512]);
+
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
 extern bool
@@ -330,6 +334,7 @@ handleGeneralMessage(const GeneralMessage*, pServerData, pGeneralMessage);
     extern bool onConnectFor##T(ENetPeer* peer, pServerData);                  \
     extern bool handle##T##Message(const void*, ENetPeer*, pServerData);       \
     extern const GeneralMessage* getGeneralMessageFrom##T(const void*);        \
+    extern ServerMessage getServerMessageFrom##T(const void*);                 \
     extern void free##T##Message(void*);                                       \
     extern T##Configuration default##T##Configuration();                       \
     extern int print##T##Configuration(const T##Configuration*);               \
@@ -351,6 +356,7 @@ SERVER_FUNCTIONS(Video);
           (ServerFunctions){ .serializeMessage = serialize##T##Message,        \
                              .deserializeMessage = deserialize##T##Message,    \
                              .getGeneralMessage = getGeneralMessageFrom##T,    \
+                             .getServerMessage = getServerMessageFrom##T,      \
                              .sendGeneral = sendGeneralMessageFor##T,          \
                              .onConnect = onConnectFor##T,                     \
                              .handleMessage = handle##T##Message,              \
@@ -386,6 +392,13 @@ SERVER_FUNCTIONS(Video);
                                                      : NULL;                   \
     }                                                                          \
                                                                                \
+    ServerMessage getServerMessageFrom##T(const void* ptr)                     \
+    {                                                                          \
+        ServerMessage m = { .tag = ServerMessageTag_##T };                     \
+        CAST_MESSAGE(T##Message, ptr);                                         \
+        T##MessageCopy((T##Message*)&m.Lobby, message, currentAllocator);      \
+        return m;                                                              \
+    }                                                                          \
     void sendGeneralMessageFor##T(                                             \
       const GeneralMessage* m, pBytes bytes, ENetPeer* peer)                   \
     {                                                                          \
