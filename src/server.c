@@ -45,7 +45,8 @@ defaultServerConfiguration()
         .writers = { .anyone = NULL, .tag = AccessTag_anyone },
         .readers = { .anyone = NULL, .tag = AccessTag_anyone },
         .authenticationFunction = NULL,
-        .data = { .none = NULL, .tag = ServerConfigurationDataTag_none }
+        .data = { .none = NULL, .tag = ServerConfigurationDataTag_none },
+        .record = true
     };
 }
 
@@ -73,6 +74,8 @@ parseServerConfiguration(const char* key,
     STR_EQUALS(key, "--timeout", keyLen, { goto parseTimeout; });
     STR_EQUALS(key, "-D", keyLen, { goto parseDirectory; });
     STR_EQUALS(key, "--directory", keyLen, { goto parseDirectory; });
+    STR_EQUALS(key, "-R", keyLen, { goto parseRecord; });
+    STR_EQUALS(key, "--replay", keyLen, { goto parseRecord; });
     // TODO: parse authentication
     return false;
 
@@ -124,6 +127,10 @@ parseTimeout : {
     config->timeout = SDL_max(i, 0);
     return true;
 }
+parseRecord : {
+    config->record = atoi(value);
+    return true;
+}
 }
 
 int
@@ -163,14 +170,16 @@ printServerConfiguration(const ServerConfiguration* configuration)
 {
     int offset =
       printf("Save Directory: %s\nHostname: %s\nRedis: %s:%u\nMax clients: "
-             "%u\nTimeout: %" PRIu64 "\nHas Authentication function: %s\n",
+             "%u\nTimeout: %" PRIu64
+             "\nHas Authentication function: %s\nRecording: %s\n",
              configuration->saveDirectory.buffer,
              configuration->hostname.buffer,
              configuration->redisIp.buffer,
              configuration->redisPort,
              configuration->maxClients,
              configuration->timeout,
-             configuration->authenticationFunction == NULL ? "No" : "Yes") +
+             configuration->authenticationFunction == NULL ? "No" : "Yes",
+             configuration->record ? "Yes" : " No") +
       printPort(&configuration->port) + printf("Read Access: ") +
       printAccess(&configuration->readers) + printf("Write Access: ") +
       printAccess(&configuration->writers);
@@ -350,15 +359,15 @@ void
 storeClientMessage(pServerData data, const ServerMessage* m)
 {
     char buffer[512];
-    FILE* file = fopen(getServerReplayFileName(data->config, buffer), "ab");
+    FILE* file = fopen(getServerReplayFileName(data->config, buffer), "a");
     if (file == NULL) {
         perror("Failed to open file");
         return;
     }
     MESSAGE_SERIALIZE(ServerMessage, (*m), data->bytes);
     TemLangString str = b64_encode(&data->bytes);
-    TemLangStringAppendChar(&str, '\n');
-    fwrite(str.buffer, sizeof(char), str.used, file);
+    const time_t t = time(NULL);
+    fprintf(file, "%" PRId64 ":%s\n", t, str.buffer);
     TemLangStringFree(&str);
     fclose(file);
 }
@@ -448,6 +457,18 @@ checkClientTime(uint64_t* lastCheck, const ServerConfiguration* config)
         }
     } else {
         *lastCheck = now;
+    }
+}
+
+bool
+serverCanRecord(const ServerConfiguration* config)
+{
+    switch (config->data.tag) {
+        case ServerConfigurationDataTag_lobby:
+        case ServerConfigurationDataTag_replay:
+            return false;
+        default:
+            return true;
     }
 }
 
@@ -608,7 +629,7 @@ continueServer:
                                        client->name.buffer);
                                 enet_peer_disconnect(event.peer, 0);
                             }
-                            if (config->record) {
+                            if (config->record && serverCanRecord(config)) {
                                 ServerMessage srvMssage =
                                   funcs.getServerMessage(message);
                                 storeClientMessage(&globalServerData,

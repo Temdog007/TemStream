@@ -35,6 +35,10 @@ struct VideoConfiguration {
     null none
 }
 
+struct ReplayConfigration{
+    [ 0 string ] replayFiles
+}
+
 variant ServerConfigurationData {
     null none
     LobbyConfiguration lobby
@@ -43,6 +47,7 @@ variant ServerConfigurationData {
     AudioConfiguration audio
     ImageConfiguration image
     VideoConfiguration video
+    ReplayConfigration replay
 }
 
 struct PortRange {
@@ -160,8 +165,8 @@ variant Configuration {
     ServerConfiguration server
 }
 
-variant ServerMessageData {
-    null Lobby
+variant ServerMessage {
+    LobbyMessage Lobby
     TextMessage Text
     ChatMessage Chat
     ImageMessage Image
@@ -169,7 +174,10 @@ variant ServerMessageData {
     VideoMessage Video
 }
 
-struct ServerMessage{
-    i64 time
-    ServerMessageData data
+inlineC "MAKE_DEFAULT_LIST(ServerMessage);"
+
+variant ReplayMessage {
+    GeneralMessage general
+    [ 2 i64 ] request
+    [ 0 ServerMessage ] response
 }

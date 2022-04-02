@@ -397,10 +397,9 @@ SERVER_FUNCTIONS(Video);
                                                                                \
     ServerMessage getServerMessageFrom##T(const void* ptr)                     \
     {                                                                          \
-        ServerMessage m = { .time = (int64_t)time(NULL),                       \
-                            .data = { .tag = ServerMessageDataTag_##T } };     \
+        ServerMessage m = { .tag = ServerMessageTag_##T };                     \
         CAST_MESSAGE(T##Message, ptr);                                         \
-        T##MessageCopy((T##Message*)&m.data.Lobby, message, currentAllocator); \
+        T##MessageCopy((T##Message*)&m.Chat, message, currentAllocator);       \
         return m;                                                              \
     }                                                                          \
     void sendGeneralMessageFor##T(                                             \

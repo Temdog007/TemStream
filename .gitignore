@@ -98,6 +98,7 @@ yarn-error.log*
 *.png
 *.txt
 *.temstream
+*.temstream_replay
 
 streams/
 junk/
