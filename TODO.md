@@ -138,7 +138,7 @@
 - [x] Test lower qualities for laptop
 - [x] Make mouse not visible if not moved for period of time
 
-### Mar 30, 2022 - Apr 01, 2022
+### Mar 30, 2022 - Apr 02, 2022
 - [x] Implement stream recording and playback (need to timestamp messages)
 - [x] Implement replay stream
 - [ ] Make replay stream send time range 

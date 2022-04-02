@@ -193,6 +193,18 @@ printServerConfiguration(const ServerConfiguration* configuration)
         case ServerConfigurationDataTag_lobby:
             offset += printLobbyConfiguration(&configuration->data.lobby);
             break;
+        case ServerConfigurationDataTag_video:
+            offset += printVideoConfiguration(&configuration->data.video);
+            break;
+        case ServerConfigurationDataTag_audio:
+            offset += printAudioConfiguration(&configuration->data.audio);
+            break;
+        case ServerConfigurationDataTag_image:
+            offset += printImageConfiguration(&configuration->data.image);
+            break;
+        case ServerConfigurationDataTag_replay:
+            offset += printReplayConfiguration(&configuration->data.replay);
+            break;
         default:
             break;
     }
@@ -286,13 +298,13 @@ cleanupServer(ENetHost* server)
 }
 
 const char*
-getServerFileName(const ServerConfiguration* config, char buffer[512])
+getServerFileName(const ServerConfiguration* config, char buffer[KB(1)])
 {
     if (TemLangStringIsEmpty(&config->saveDirectory)) {
-        snprintf(buffer, 512, "%s.temstream", config->name.buffer);
+        snprintf(buffer, KB(1), "%s.temstream", config->name.buffer);
     } else {
         snprintf(buffer,
-                 512,
+                 KB(1),
                  "%s/%s.temstream",
                  config->saveDirectory.buffer,
                  config->name.buffer);
@@ -303,7 +315,7 @@ getServerFileName(const ServerConfiguration* config, char buffer[512])
 bool
 getServerFileBytes(const ServerConfiguration* config, pBytes bytes)
 {
-    char buffer[512];
+    char buffer[KB(1)];
     int fd = -1;
     char* ptr = NULL;
     size_t size = 0;
@@ -351,7 +363,7 @@ int
 VerifyClientPacket(ENetHost* host, ENetEvent* e)
 {
     (void)e;
-    if (host->receivedDataLength > MAX_PACKET_SIZE || lowMemory()) {
+    if (lowMemory()) {
 #if _DEBUG
         puts("Dropping packet");
 #endif

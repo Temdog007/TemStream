@@ -2,6 +2,9 @@
 
 DEFINE_RUN_SERVER(Replay);
 
+bool
+updateTimeRange(pServerData serverData);
+
 ReplayConfiguration
 defaultReplayConfiguration()
 {
@@ -18,7 +21,7 @@ printReplayConfiguration(const ReplayConfiguration* configuration)
 void
 onReplayDownTime(pServerData data)
 {
-    (void)data;
+    updateTimeRange(data);
 }
 
 bool
@@ -50,12 +53,45 @@ parseReplayConfiguration(const int argc,
     return true;
 }
 
+ReplayMessage timeRangeMessage = { .tag = ReplayMessageTag_timeRange,
+                                   .timeRange = { 0, 0 } };
+
+bool
+updateTimeRange(pServerData serverData)
+{
+    bool result = false;
+
+    char* buffer = currentAllocator->allocate(MB(1));
+    FILE* file = fopen(
+      getServerReplayFileNameFromReplayConfig(serverData->config, buffer), "r");
+    if (file == NULL) {
+        perror("Failed to open file");
+        goto end;
+    }
+    if (fgets(buffer, MB(1), file)) {
+        timeRangeMessage.timeRange[0] = (int64_t)strtoull(buffer, NULL, 10);
+    }
+    while (fgets(buffer, MB(1), file))
+        ;
+    timeRangeMessage.timeRange[1] = (int64_t)strtoull(buffer, NULL, 10);
+end:
+    if (file != NULL) {
+        fclose(file);
+    }
+    currentAllocator->free(buffer);
+    return result;
+}
+
 bool
 onConnectForReplay(ENetPeer* peer, pServerData serverData)
 {
-    (void)peer;
-    (void)serverData;
-    return true;
+    if (updateTimeRange(serverData)) {
+        MESSAGE_SERIALIZE(ReplayMessage, timeRangeMessage, serverData->bytes);
+        sendBytes(
+          peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
+        return true;
+    }
+    return false;
 }
 
 bool
@@ -81,10 +117,18 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             }
             ReplayMessageFree(&replayMessage);
         } break;
+        case ReplayMessageTag_getTimeRange: {
+            MESSAGE_SERIALIZE(
+              ReplayMessage, timeRangeMessage, serverData->bytes);
+            sendBytes(
+              peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
+            result = true;
+        } break;
         case ReplayMessageTag_request: {
             char* buffer = currentAllocator->allocate(MB(1));
-            FILE* file =
-              fopen(getServerReplayFileName(serverData->config, buffer), "r");
+            FILE* file = fopen(getServerReplayFileNameFromReplayConfig(
+                                 serverData->config, buffer),
+                               "r");
             if (file == NULL) {
                 perror("Failed to open file");
                 goto requestEnd;
@@ -92,7 +136,7 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             result = true;
             while (fgets(buffer, MB(1), file)) {
                 char* end = NULL;
-                const int64_t t = strtoull(buffer, &end, 10);
+                const int64_t t = (int64_t)strtoull(buffer, &end, 10);
                 if (t < message->request) {
                     continue;
                 }
@@ -144,7 +188,8 @@ void
 storeClientMessage(pServerData data, const ServerMessage* m)
 {
     char buffer[512];
-    FILE* file = fopen(getServerReplayFileName(data->config, buffer), "a");
+    FILE* file =
+      fopen(getServerReplayFileNameFromConfig(data->config, buffer), "a");
     if (file == NULL) {
         perror("Failed to open file");
         return;
@@ -158,16 +203,33 @@ storeClientMessage(pServerData data, const ServerMessage* m)
 }
 
 const char*
-getServerReplayFileName(const ServerConfiguration* config, char buffer[512])
+getServerReplayFileNameFromConfig(const ServerConfiguration* config,
+                                  char buffer[KB(1)])
 {
     if (TemLangStringIsEmpty(&config->saveDirectory)) {
-        snprintf(buffer, 512, "%s.temstream_replay", config->name.buffer);
+        snprintf(buffer, KB(1), "%s.temstream_replay", config->name.buffer);
     } else {
         snprintf(buffer,
-                 512,
+                 KB(1),
                  "%s/%s.temstream_replay",
                  config->saveDirectory.buffer,
                  config->name.buffer);
+    }
+    return buffer;
+}
+
+const char*
+getServerReplayFileNameFromReplayConfig(const ServerConfiguration* config,
+                                        char buffer[KB(1)])
+{
+    if (TemLangStringIsEmpty(&config->saveDirectory)) {
+        snprintf(buffer, KB(1), "%s", config->data.replay.filename.buffer);
+    } else {
+        snprintf(buffer,
+                 KB(1),
+                 "%s/%s",
+                 config->saveDirectory.buffer,
+                 config->data.replay.filename.buffer);
     }
     return buffer;
 }

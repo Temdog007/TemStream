@@ -457,47 +457,52 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
 }
 
 bool
-clientHandleTextMessage(const Bytes* bytes, pStreamDisplay display)
+clientHandleTextMessage(const TextMessage* message, pStreamDisplay display)
 {
-    TextMessage message = { 0 };
-    MESSAGE_DESERIALIZE(TextMessage, message, (*bytes));
     bool success = false;
-    switch (message.tag) {
+    switch (message->tag) {
         case TextMessageTag_text: {
             StreamDisplayDataFree(&display->data);
             display->data.tag = StreamDisplayDataTag_text;
             success = TemLangStringCopy(
-              &display->data.text, &message.text, currentAllocator);
-            printf("Got text message: '%s'\n", message.text.buffer);
+              &display->data.text, &message->text, currentAllocator);
+            printf("Got text message: '%s'\n", message->text.buffer);
             updateStreamDisplay(&display->id);
         } break;
         case TextMessageTag_general:
             success =
-              clientHandleGeneralMessage(&message.general, &display->client);
+              clientHandleGeneralMessage(&message->general, &display->client);
             break;
         default:
             printf("Unexpected text message: %s\n",
-                   TextMessageTagToCharString(message.tag));
+                   TextMessageTagToCharString(message->tag));
             break;
     }
-    TextMessageFree(&message);
     return success;
 }
 
 bool
-clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
+clientHandleTextMessageFromBytes(const Bytes* bytes, pStreamDisplay display)
 {
-    ChatMessage message = { 0 };
-    MESSAGE_DESERIALIZE(ChatMessage, message, (*bytes));
+    TextMessage message = { 0 };
+    MESSAGE_DESERIALIZE(TextMessage, message, (*bytes));
+    const bool result = clientHandleTextMessage(&message, display);
+    TextMessageFree(&message);
+    return result;
+}
+
+bool
+clientHandleChatMessage(const ChatMessage* message, pStreamDisplay display)
+{
     bool success = false;
-    switch (message.tag) {
+    switch (message->tag) {
         case ChatMessageTag_logs: {
             StreamDisplayDataFree(&display->data);
             display->data.tag = StreamDisplayDataTag_chat;
             pStreamDisplayChat chat = &display->data.chat;
             chat->count = DEFAULT_CHAT_COUNT;
             success =
-              ChatListCopy(&chat->logs, &message.logs, currentAllocator);
+              ChatListCopy(&chat->logs, &message->logs, currentAllocator);
             chat->offset = chat->logs.used;
             updateStreamDisplay(&display->id);
         } break;
@@ -510,7 +515,7 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
                 chat->count = DEFAULT_CHAT_COUNT;
                 chat->offset = chat->logs.used;
             }
-            success = ChatListAppend(&chat->logs, &message.newChat);
+            success = ChatListAppend(&chat->logs, &message->newChat);
             if (chat->offset >= chat->logs.used - chat->count) {
                 chat->offset = chat->logs.used;
             }
@@ -518,40 +523,46 @@ clientHandleChatMessage(const Bytes* bytes, pStreamDisplay display)
         } break;
         case ChatMessageTag_general:
             success =
-              clientHandleGeneralMessage(&message.general, &display->client);
+              clientHandleGeneralMessage(&message->general, &display->client);
             break;
         default:
             printf("Unexpected chat message: %s\n",
-                   ChatMessageTagToCharString(message.tag));
+                   ChatMessageTagToCharString(message->tag));
             break;
     }
-    ChatMessageFree(&message);
     return success;
 }
 
 bool
-clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
+clientHandleChatMessageFromBytes(const Bytes* bytes, pStreamDisplay display)
 {
-    ImageMessage message = { 0 };
-    MESSAGE_DESERIALIZE(ImageMessage, message, (*bytes));
+    ChatMessage message = { 0 };
+    MESSAGE_DESERIALIZE(ChatMessage, message, (*bytes));
+    const bool result = clientHandleChatMessage(&message, display);
+    ChatMessageFree(&message);
+    return result;
+}
+
+bool
+clientHandleImageMessage(const ImageMessage* message, pStreamDisplay display)
+{
     bool success = false;
-    switch (message.tag) {
+    switch (message->tag) {
         case ImageMessageTag_imageStart:
-            success = true;
             StreamDisplayDataFree(&display->data);
             display->data.tag = StreamDisplayDataTag_image;
             display->data.image.allocator = currentAllocator;
+            success = true;
             break;
         case ImageMessageTag_imageChunk:
-            success = true;
             if (display->data.tag != StreamDisplayDataTag_image) {
                 StreamDisplayDataFree(&display->data);
                 display->data.tag = StreamDisplayDataTag_image;
                 display->data.image.allocator = currentAllocator;
             }
-            uint8_tListQuickAppend(&display->data.image,
-                                   message.imageChunk.buffer,
-                                   message.imageChunk.used);
+            success = uint8_tListQuickAppend(&display->data.image,
+                                             message->imageChunk.buffer,
+                                             message->imageChunk.used);
             break;
         case ImageMessageTag_imageEnd:
             success = true;
@@ -559,36 +570,43 @@ clientHandleImageMessage(const Bytes* bytes, pStreamDisplay display)
             break;
         case ImageMessageTag_general:
             success =
-              clientHandleGeneralMessage(&message.general, &display->client);
+              clientHandleGeneralMessage(&message->general, &display->client);
             break;
         default:
             printf("Unexpected image message: %s\n",
-                   ImageMessageTagToCharString(message.tag));
+                   ImageMessageTagToCharString(message->tag));
             break;
     }
-    ImageMessageFree(&message);
     return success;
 }
 
 bool
-clientHandleAudioMessage(const Bytes* packetBytes,
+clientHandleImageMessageFromBytes(const Bytes* bytes, pStreamDisplay display)
+{
+    ImageMessage message = { 0 };
+    MESSAGE_DESERIALIZE(ImageMessage, message, (*bytes));
+    const bool result = clientHandleImageMessage(&message, display);
+    ImageMessageFree(&message);
+    return result;
+}
+
+bool
+clientHandleAudioMessage(const AudioMessage* message,
                          pStreamDisplay display,
                          pAudioState playback,
                          const bool isRecording)
 {
-    AudioMessage message = { 0 };
-    MESSAGE_DESERIALIZE(AudioMessage, message, (*packetBytes));
     bool success = false;
-    switch (message.tag) {
+    switch (message->tag) {
         case AudioMessageTag_general: {
             UserInput input = { 0 };
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryAudio;
             display->choosingPlayback = true;
-            success = clientHandleGeneralMessage(&message.general,
+            success = clientHandleGeneralMessage(&message->general,
                                                  &input.data.queryAudio.client);
             if (success &&
-                message.general.tag == GeneralMessageTag_authenticateAck) {
+                message->general.tag == GeneralMessageTag_authenticateAck) {
                 input.data.queryAudio.writeAccess = clientHasWriteAccess(
                   &input.data.queryAudio.client, &display->config);
                 input.data.queryAudio.readAccess = clientHasReadAccess(
@@ -611,7 +629,7 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             }
             void* data = NULL;
             int byteSize = 0;
-            if (decodeOpus(playback, &message.audio, &data, &byteSize)) {
+            if (decodeOpus(playback, &message->audio, &data, &byteSize)) {
 #if USE_AUDIO_CALLBACKS
                 SDL_LockAudioDevice(playback->deviceId);
                 CQueueEnqueue(&playback->storedAudio, data, byteSize);
@@ -629,32 +647,43 @@ clientHandleAudioMessage(const Bytes* packetBytes,
             break;
         default:
             printf("Unexpected audio message: %s\n",
-                   AudioMessageTagToCharString(message.tag));
+                   AudioMessageTagToCharString(message->tag));
             break;
     }
-    AudioMessageFree(&message);
     return success;
 }
 
 bool
-clientHandleVideoMessage(const Bytes* packetBytes,
+clientHandleAudioMessageFromBytes(const Bytes* packetBytes,
+                                  pStreamDisplay display,
+                                  pAudioState playback,
+                                  const bool isRecording)
+{
+    AudioMessage message = { 0 };
+    MESSAGE_DESERIALIZE(AudioMessage, message, (*packetBytes));
+    const bool result =
+      clientHandleAudioMessage(&message, display, playback, isRecording);
+    AudioMessageFree(&message);
+    return result;
+}
+
+bool
+clientHandleVideoMessage(const VideoMessage* message,
                          pStreamDisplay display,
                          vpx_codec_ctx_t* codec,
                          uint64_t* lastError)
 {
     bool success = true;
-    VideoMessage message = { 0 };
-    MESSAGE_DESERIALIZE(VideoMessage, message, (*packetBytes));
-    switch (message.tag) {
+    switch (message->tag) {
         case VideoMessageTag_general: {
             UserInput input = { 0 };
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryVideo;
             display->choosingPlayback = true;
-            success = clientHandleGeneralMessage(&message.general,
+            success = clientHandleGeneralMessage(&message->general,
                                                  &input.data.queryVideo.client);
             if (success &&
-                message.general.tag == GeneralMessageTag_authenticateAck) {
+                message->general.tag == GeneralMessageTag_authenticateAck) {
                 input.data.queryVideo.writeAccess = clientHasWriteAccess(
                   &input.data.queryVideo.client, &display->config);
                 input.data.queryVideo.readAccess = clientHasReadAccess(
@@ -666,8 +695,8 @@ clientHandleVideoMessage(const Bytes* packetBytes,
         case VideoMessageTag_size: {
             pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
             m->id = display->id;
-            m->width = message.size[0];
-            m->height = message.size[1];
+            m->width = message->size[0];
+            m->height = message->size[1];
             m->video.allocator = currentAllocator;
             printf("Video size set to %dx%d\n", m->width, m->height);
             SDL_Event e = { 0 };
@@ -686,8 +715,8 @@ clientHandleVideoMessage(const Bytes* packetBytes,
                 break;
             }
             vpx_codec_err_t res = vpx_codec_decode(codec,
-                                                   message.video.buffer,
-                                                   message.video.used,
+                                                   message->video.buffer,
+                                                   message->video.used,
                                                    NULL,
                                                    VPX_DL_REALTIME);
             if (res != VPX_CODEC_OK) {
@@ -748,19 +777,115 @@ clientHandleVideoMessage(const Bytes* packetBytes,
         } break;
         default:
             printf("Unexpected video message: %s\n",
-                   VideoMessageTagToCharString(message.tag));
+                   VideoMessageTagToCharString(message->tag));
             success = false;
             break;
     }
-    VideoMessageFree(&message);
     return success;
+}
+
+bool
+clientHandleVideoMessageFromBytes(const Bytes* packetBytes,
+                                  pStreamDisplay display,
+                                  vpx_codec_ctx_t* codec,
+                                  uint64_t* lastError)
+{
+    VideoMessage message = { 0 };
+    MESSAGE_DESERIALIZE(VideoMessage, message, (*packetBytes));
+    const bool result =
+      clientHandleVideoMessage(&message, display, codec, lastError);
+    VideoMessageFree(&message);
+    return result;
+}
+
+bool
+clientHandleServerMessage(const ServerMessage* m,
+                          pStreamDisplay display,
+                          pAudioState playback,
+                          const bool isRecording,
+                          vpx_codec_ctx_t* codec,
+                          uint64_t* lastError)
+{
+    switch (m->tag) {
+        case ServerMessageTag_Text:
+            return clientHandleTextMessage(&m->Text, display);
+        case ServerMessageTag_Chat:
+            return clientHandleChatMessage(&m->Chat, display);
+        case ServerMessageTag_Image:
+            return clientHandleImageMessage(&m->Image, display);
+        case ServerMessageTag_Audio:
+            return clientHandleAudioMessage(
+              &m->Audio, display, playback, isRecording);
+        case ServerMessageTag_Video:
+            return clientHandleVideoMessage(
+              &m->Video, display, codec, lastError);
+        default:
+            break;
+    }
+    return false;
+}
+
+bool
+clientHandleReplayMessage(const ReplayMessage* replay,
+                          pStreamDisplay display,
+                          pAudioState playback,
+                          const bool isRecording,
+                          vpx_codec_ctx_t* codec,
+                          uint64_t* lastError)
+{
+
+    bool success = false;
+    switch (replay->tag) {
+        case ReplayMessageTag_general:
+            success =
+              clientHandleGeneralMessage(&replay->general, &display->client);
+            break;
+        case ReplayMessageTag_timeRange:
+            display->data.tag = StreamDisplayDataTag_timeRange;
+            memcpy(&display->data.timeRange,
+                   replay->timeRange,
+                   sizeof(replay->timeRange));
+            success = true;
+            break;
+        case ReplayMessageTag_response:
+            success = clientHandleServerMessage(&replay->response,
+                                                display,
+                                                playback,
+                                                isRecording,
+                                                codec,
+                                                lastError);
+            break;
+        default:
+            fprintf(stderr,
+                    "Unexpected replay message: %s\n",
+                    ReplayMessageTagToCharString(replay->tag));
+            break;
+    }
+    return success;
+}
+
+bool
+clientHandleReplayMessageFromBytes(const Bytes* bytes,
+                                   pStreamDisplay display,
+                                   pAudioState playback,
+                                   const bool isRecording,
+                                   vpx_codec_ctx_t* codec,
+                                   uint64_t* lastError)
+{
+    ReplayMessage replay = { 0 };
+    MESSAGE_DESERIALIZE(ReplayMessage, replay, (*bytes));
+    const bool result = clientHandleReplayMessage(
+      &replay, display, playback, isRecording, codec, lastError);
+    ReplayMessageFree(&replay);
+    return result;
 }
 
 int
 VerifyMemory(ENetHost* host, ENetEvent* e)
 {
     (void)e;
-    if (host->receivedDataLength > MAX_PACKET_SIZE || lowMemory()) {
+    (void)host;
+    if (lowMemory()) {
 #if _DEBUG
         puts("Dropping packet");
 #endif
@@ -770,12 +895,48 @@ VerifyMemory(ENetHost* host, ENetEvent* e)
 }
 
 int
+replayRequestConnectionThread(void* ptr)
+{
+    const Guid* id = (const Guid*)ptr;
+
+    uint8_t buffer[KB(4)];
+    Bytes bytes = {
+        .buffer = buffer, .size = sizeof(buffer), .used = 0, .allocator = NULL
+    };
+    ReplayMessage message = { .tag = ReplayMessageTag_request, .request = 0 };
+    bool displayMissing = false;
+    while (!appDone && !displayMissing) {
+        SDL_Delay(1000U);
+        USE_DISPLAY(clientData.mutex, fend, displayMissing, {
+            if (display->data.tag != StreamDisplayDataTag_timeRange) {
+                goto fend;
+            }
+            const int64_t newValue = SDL_clamp(message.request,
+                                               display->data.timeRange[0],
+                                               display->data.timeRange[1]);
+            if (message.request == newValue) {
+                ++message.request;
+            } else {
+                message.request = newValue;
+            }
+            MESSAGE_SERIALIZE(ReplayMessage, message, bytes);
+            pReplayMessage ptr =
+              currentAllocator->allocate(sizeof(ReplayMessage));
+            ReplayMessageCopy(ptr, &message, currentAllocator);
+            NullValueListAppend(&display->outgoing, (NullValue)&ptr);
+        });
+    }
+    return EXIT_SUCCESS;
+}
+
+int
 streamConnectionThread(void* ptr)
 {
     const Guid* id = (const Guid*)ptr;
 
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
+    SDL_Thread* replayThread = NULL;
     NullValueList incomingPackets = { .allocator = currentAllocator };
     NullValueList outgoingPackets = { .allocator = currentAllocator };
     Bytes bytes = { .allocator = currentAllocator,
@@ -874,6 +1035,13 @@ streamConnectionThread(void* ptr)
                 currentAllocator->free(playback);
                 fprintf(stderr, "Failed to start audio for replay stream\n");
             }
+            replayThread = SDL_CreateThread(
+              (SDL_ThreadFunction)replayRequestConnectionThread, "replay", ptr);
+            if (replayThread == NULL) {
+                fprintf(stderr, "Failed to start thread: %s\n", SDL_GetError());
+                goto end;
+            }
+            puts("Started replay request thread");
         } break;
         default:
             break;
@@ -1020,27 +1188,36 @@ streamConnectionThread(void* ptr)
                 bool success = false;
                 switch (config->data.tag) {
                     case ServerConfigurationDataTag_text:
-                        success =
-                          clientHandleTextMessage(&packetBytes, display);
+                        success = clientHandleTextMessageFromBytes(&packetBytes,
+                                                                   display);
                         break;
                     case ServerConfigurationDataTag_chat:
-                        success =
-                          clientHandleChatMessage(&packetBytes, display);
+                        success = clientHandleChatMessageFromBytes(&packetBytes,
+                                                                   display);
                         break;
                     case ServerConfigurationDataTag_image:
-                        success =
-                          clientHandleImageMessage(&packetBytes, display);
+                        success = clientHandleImageMessageFromBytes(
+                          &packetBytes, display);
                         break;
                     case ServerConfigurationDataTag_audio:
-                        success = clientHandleAudioMessage(
+                        success = clientHandleAudioMessageFromBytes(
                           &packetBytes,
                           display,
                           playback,
                           display->recordings != 0 || record != NULL);
                         break;
                     case ServerConfigurationDataTag_video:
-                        success = clientHandleVideoMessage(
+                        success = clientHandleVideoMessageFromBytes(
                           &packetBytes, display, &codec, &lastVideoError);
+                        break;
+                    case ServerConfigurationDataTag_replay:
+                        success = clientHandleReplayMessageFromBytes(
+                          &packetBytes,
+                          display,
+                          playback,
+                          display->recordings != 0 || record != NULL,
+                          &codec,
+                          &lastVideoError);
                         break;
                     default:
                         fprintf(stderr,
@@ -1084,6 +1261,7 @@ end:
             AudioStatePtrListSwapRemove(&audioStates, i);
         }
     });
+    SDL_WaitThread(replayThread, NULL);
     for (size_t i = 0; i < incomingPackets.used; ++i) {
         enet_packet_destroy(incomingPackets.buffer[i]);
     }

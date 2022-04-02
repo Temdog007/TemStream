@@ -119,6 +119,7 @@ variant StreamDisplayData {
     StreamDisplayChat chat
     string text
     [2 i32] videoDimensions
+    [2 i64] timeRange
 }
 
 struct CurrentAudio {

@@ -179,6 +179,8 @@ inlineC "MAKE_DEFAULT_LIST(ServerMessage);"
 
 variant ReplayMessage {
     GeneralMessage general
+    [ i64 2 ] timeRange
+    null getTimeRange
     i64 request
     ServerMessage response
 }

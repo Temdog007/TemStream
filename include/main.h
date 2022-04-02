@@ -313,10 +313,15 @@ writeServerFileBytes(const ServerConfiguration* config,
                      const bool overwrite);
 
 extern const char*
-getServerFileName(const ServerConfiguration* config, char buffer[512]);
+getServerFileName(const ServerConfiguration* config, char buffer[KB(1)]);
 
 extern const char*
-getServerReplayFileName(const ServerConfiguration* config, char buffer[512]);
+getServerReplayFileNameFromReplayConfig(const ServerConfiguration*,
+                                        char buffer[KB(1)]);
+
+extern const char*
+getServerReplayFileNameFromConfig(const ServerConfiguration*,
+                                  char buffer[KB(1)]);
 
 extern void
 storeClientMessage(pServerData data, const ServerMessage*);
