@@ -33,6 +33,9 @@ encodeAudioData(OpusEncoder* encoder,
                 pNullValueList);
 
 bool
+startPlaybackFromName(const char*, pAudioState);
+
+bool
 selectAudioStreamSource(struct pollfd inputfd,
                         pBytes bytes,
                         pAudioState state,
@@ -834,18 +837,46 @@ streamConnectionThread(void* ptr)
     // For video connections
     vpx_codec_ctx_t codec = { 0 };
     uint64_t lastVideoError = 0;
-    if (tag == ServerConfigurationDataTag_video) {
-        struct vpx_codec_dec_cfg cfg = {
-            .threads = SDL_GetCPUCount(),
-        };
-        if (vpx_codec_dec_init(&codec, codec_decoder_interface(), &cfg, 0) !=
-            0) {
-            fprintf(stderr, "Failed to create video decoder\n");
-            goto end;
-        }
-        printf("Using decoder: %s with %d threads\n",
-               vpx_codec_iface_name(codec_decoder_interface()),
-               SDL_GetCPUCount());
+    switch (tag) {
+        case ServerConfigurationDataTag_video:
+        case ServerConfigurationDataTag_replay: {
+            struct vpx_codec_dec_cfg cfg = {
+                .threads = SDL_GetCPUCount(),
+            };
+            if (vpx_codec_dec_init(
+                  &codec, codec_decoder_interface(), &cfg, 0) != 0) {
+                fprintf(stderr, "Failed to create video decoder\n");
+                goto end;
+            }
+            printf("Using decoder: %s with %d threads\n",
+                   vpx_codec_iface_name(codec_decoder_interface()),
+                   SDL_GetCPUCount());
+        } break;
+        default:
+            break;
+    }
+
+    // Start audio for replay connections
+    switch (tag) {
+        case ServerConfigurationDataTag_replay: {
+            pAudioState playback =
+              currentAllocator->allocate(sizeof(AudioState));
+            playback->storedAudio = CQueueCreate(CQUEUE_SIZE);
+            playback->volume = 1.f;
+            playback->id = *id;
+            if (startPlaybackFromName(NULL, playback)) {
+                SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
+                IN_MUTEX(clientData.mutex, endPlayback, {
+                    AudioStatePtrListAppend(&audioStates, &playback);
+                });
+            } else {
+                AudioStateFree(playback);
+                currentAllocator->free(playback);
+                fprintf(stderr, "Failed to start audio for replay stream\n");
+            }
+        } break;
+        default:
+            break;
     }
 
     host->intercept = VerifyMemory;
@@ -1577,14 +1608,22 @@ startPlayback(struct pollfd inputfd,
         return false;
     }
 
+    return startPlaybackFromName(SDL_GetAudioDeviceName(selected, SDL_FALSE),
+                                 state);
+}
+
+bool
+startPlaybackFromName(const char* name, pAudioState state)
+{
     const SDL_AudioSpec desiredRecordingSpec =
 #if USE_AUDIO_CALLBACKS
       makeAudioSpec((SDL_AudioCallback)playbackCallback, state);
 #else
       makeAudioSpec(NULL, NULL);
 #endif
-    const char* name = SDL_GetAudioDeviceName(selected, SDL_FALSE);
-    state->name = TemLangStringCreate(name, currentAllocator);
+    if (name != NULL) {
+        state->name = TemLangStringCreate(name, currentAllocator);
+    }
     state->deviceId = SDL_OpenAudioDevice(
       name, SDL_FALSE, &desiredRecordingSpec, &state->spec, 0);
     if (state->deviceId == 0) {

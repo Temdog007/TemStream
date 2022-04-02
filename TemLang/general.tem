@@ -35,8 +35,8 @@ struct VideoConfiguration {
     null none
 }
 
-struct ReplayConfigration{
-    [ 0 string ] replayFiles
+struct ReplayConfiguration{
+    string filename
 }
 
 variant ServerConfigurationData {
@@ -47,7 +47,7 @@ variant ServerConfigurationData {
     AudioConfiguration audio
     ImageConfiguration image
     VideoConfiguration video
-    ReplayConfigration replay
+    ReplayConfiguration replay
 }
 
 struct PortRange {
@@ -166,6 +166,7 @@ variant Configuration {
 }
 
 variant ServerMessage {
+    null Replay
     LobbyMessage Lobby
     TextMessage Text
     ChatMessage Chat
@@ -178,6 +179,6 @@ inlineC "MAKE_DEFAULT_LIST(ServerMessage);"
 
 variant ReplayMessage {
     GeneralMessage general
-    [ 2 i64 ] request
-    [ 0 ServerMessage ] response
+    i64 request
+    ServerMessage response
 }

@@ -350,6 +350,7 @@ SERVER_FUNCTIONS(Chat);
 SERVER_FUNCTIONS(Image);
 SERVER_FUNCTIONS(Audio);
 SERVER_FUNCTIONS(Video);
+SERVER_FUNCTIONS(Replay);
 
 #define DEFINE_RUN_SERVER(T)                                                   \
     int run##T##Server(pConfiguration configuration)                           \
@@ -402,6 +403,7 @@ SERVER_FUNCTIONS(Video);
         T##MessageCopy((T##Message*)&m.Chat, message, currentAllocator);       \
         return m;                                                              \
     }                                                                          \
+                                                                               \
     void sendGeneralMessageFor##T(                                             \
       const GeneralMessage* m, pBytes bytes, ENetPeer* peer)                   \
     {                                                                          \

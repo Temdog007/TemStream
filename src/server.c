@@ -300,21 +300,6 @@ getServerFileName(const ServerConfiguration* config, char buffer[512])
     return buffer;
 }
 
-const char*
-getServerReplayFileName(const ServerConfiguration* config, char buffer[512])
-{
-    if (TemLangStringIsEmpty(&config->saveDirectory)) {
-        snprintf(buffer, 512, "%s.temstream_replay", config->name.buffer);
-    } else {
-        snprintf(buffer,
-                 512,
-                 "%s/%s.temstream_replay",
-                 config->saveDirectory.buffer,
-                 config->name.buffer);
-    }
-    return buffer;
-}
-
 bool
 getServerFileBytes(const ServerConfiguration* config, pBytes bytes)
 {
@@ -352,23 +337,6 @@ writeServerFileBytes(const ServerConfiguration* config,
     if (bytes != NULL) {
         fwrite(bytes->buffer, sizeof(uint8_t), bytes->used, file);
     }
-    fclose(file);
-}
-
-void
-storeClientMessage(pServerData data, const ServerMessage* m)
-{
-    char buffer[512];
-    FILE* file = fopen(getServerReplayFileName(data->config, buffer), "a");
-    if (file == NULL) {
-        perror("Failed to open file");
-        return;
-    }
-    MESSAGE_SERIALIZE(ServerMessage, (*m), data->bytes);
-    TemLangString str = b64_encode(&data->bytes);
-    const time_t t = time(NULL);
-    fprintf(file, "%" PRId64 ":%s\n", t, str.buffer);
-    TemLangStringFree(&str);
     fclose(file);
 }
 
@@ -607,6 +575,7 @@ continueServer:
                                 enet_peer_disconnect(event.peer, 0);
                                 break;
                             }
+
                             GeneralMessage gm = { 0 };
                             gm.tag = GeneralMessageTag_authenticateAck;
                             TemLangStringCopy(&gm.authenticateAck,
@@ -629,7 +598,10 @@ continueServer:
                                        client->name.buffer);
                                 enet_peer_disconnect(event.peer, 0);
                             }
-                            if (config->record && serverCanRecord(config)) {
+                            const GeneralMessage* m =
+                              funcs.getGeneralMessage(message);
+                            if (m == NULL && config->record &&
+                                serverCanRecord(config)) {
                                 ServerMessage srvMssage =
                                   funcs.getServerMessage(message);
                                 storeClientMessage(&globalServerData,

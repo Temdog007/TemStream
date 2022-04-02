@@ -140,7 +140,9 @@
 
 ### Mar 30, 2022 - Apr 01, 2022
 - [x] Implement stream recording and playback (need to timestamp messages)
-- [ ] Implement replay stream (allow client to send time frame to request possible messages)
+- [x] Implement replay stream
+- [ ] Make replay stream send time range 
+- [ ] Make replay handler to request data from replay stream peridically
 
 ### Later
 - [ ] Make configuration files that set what streams to create/connect to

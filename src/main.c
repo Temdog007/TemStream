@@ -11,6 +11,7 @@
 #include "lobby.c"
 #include "misc.c"
 #include "rendering.c"
+#include "replay.c"
 #include "server.c"
 #include "text.c"
 #include "video.c"
@@ -156,6 +157,8 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
         STR_EQUALS(streamType, "audio", len, { goto runAudio; });
         STR_EQUALS(streamType, "V", len, { goto runVideo; });
         STR_EQUALS(streamType, "video", len, { goto runVideo; });
+        STR_EQUALS(streamType, "R", len, { goto runReplay; });
+        STR_EQUALS(streamType, "replay", len, { goto runReplay; });
     }
     switch (configuration->tag) {
         case ConfigurationTag_none:
@@ -187,7 +190,14 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
                 case ServerConfigurationDataTag_video:
                     result = runVideoServer(configuration);
                     goto end;
+                case ServerConfigurationDataTag_replay:
+                    result = runReplayServer(configuration);
+                    goto end;
                 default:
+                    fprintf(stderr,
+                            "Unknown configuration: %s\n",
+                            ServerConfigurationDataTagToCharString(
+                              configuration->server.data.tag));
                     break;
             }
             break;
@@ -241,6 +251,14 @@ runVideo : {
     configuration->server = defaultServerConfiguration();
     if (parseVideoConfiguration(argc, argv, configuration)) {
         result = runVideoServer(configuration);
+    }
+    goto end;
+}
+runReplay : {
+    configuration->tag = ConfigurationTag_server;
+    configuration->server = defaultServerConfiguration();
+    if (parseReplayConfiguration(argc, argv, configuration)) {
+        result = runReplayServer(configuration);
     }
     goto end;
 }
