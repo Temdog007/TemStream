@@ -83,13 +83,11 @@ handleAudioMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
               serverData->host, packet, &serverData->config->readers);
         } break;
         default:
-            break;
-    }
-    if (!result) {
 #if _DEBUG
-        printf("Unexpected message '%s' from client\n",
-               AudioMessageTagToCharString(message->tag));
+            printf("Unexpected audio message '%s' from client\n",
+                   AudioMessageTagToCharString(message->tag));
 #endif
+            break;
     }
     return result;
 }

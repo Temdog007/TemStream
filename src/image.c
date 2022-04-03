@@ -147,14 +147,11 @@ handleImageMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             imageSendOffset = 0U;
             break;
         default:
-            break;
-    }
-
-    if (!result) {
 #if _DEBUG
-        printf("Unexpected message '%s' from client\n",
-               ImageMessageTagToCharString(message->tag));
+            printf("Unexpected image message '%s' from client\n",
+                   ImageMessageTagToCharString(message->tag));
 #endif
+            break;
     }
     return result;
 }

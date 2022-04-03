@@ -444,12 +444,22 @@ sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
         } break;
         case ServerConfigurationDataTag_video: {
             VideoMessage message = { 0 };
-            message.tag = ImageMessageTag_general;
+            message.tag = VideoMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
             message.general.authenticate = authentication;
             MESSAGE_SERIALIZE(VideoMessage, message, bytes);
         } break;
+        case ServerConfigurationDataTag_replay: {
+            ReplayMessage message = { 0 };
+            message.tag = ReplayMessageTag_general;
+            message.general.tag = GeneralMessageTag_authenticate;
+            message.general.authenticate = authentication;
+            MESSAGE_SERIALIZE(ReplayMessage, message, bytes);
+        } break;
         default:
+            fprintf(stderr,
+                    "Failed to send authentication to server: %s\n",
+                    ServerConfigurationDataTagToCharString(type));
             break;
     }
 
@@ -833,7 +843,6 @@ clientHandleReplayMessage(const ReplayMessage* replay,
                           vpx_codec_ctx_t* codec,
                           uint64_t* lastError)
 {
-
     bool success = false;
     switch (replay->tag) {
         case ReplayMessageTag_general:
@@ -857,8 +866,9 @@ clientHandleReplayMessage(const ReplayMessage* replay,
             break;
         default:
             fprintf(stderr,
-                    "Unexpected replay message: %s\n",
-                    ReplayMessageTagToCharString(replay->tag));
+                    "Unexpected replay message: %s(%d)\n",
+                    ReplayMessageTagToCharString(replay->tag),
+                    replay->tag);
             break;
     }
     return success;
@@ -920,12 +930,14 @@ replayRequestConnectionThread(void* ptr)
                 message.request = newValue;
             }
             MESSAGE_SERIALIZE(ReplayMessage, message, bytes);
-            pReplayMessage ptr =
-              currentAllocator->allocate(sizeof(ReplayMessage));
-            ReplayMessageCopy(ptr, &message, currentAllocator);
-            NullValueListAppend(&display->outgoing, (NullValue)&ptr);
+            ENetPacket* packet =
+              BytesToPacket(bytes.buffer, bytes.used, SendFlags_Normal);
+            if (!NullValueListAppend(&display->outgoing, (NullValue)&packet)) {
+                enet_packet_destroy(packet);
+            }
         });
     }
+    ReplayMessageFree(&message);
     return EXIT_SUCCESS;
 }
 
@@ -1076,17 +1088,16 @@ streamConnectionThread(void* ptr)
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     USE_DISPLAY(clientData.mutex, fend3, displayMissing, {
-                        printf("Unexpected connect message from "
-                               "'%s(%s)' stream\n",
-                               config->name.buffer,
-                               ServerConfigurationDataTagToCharString(
-                                 config->data.tag));
+                        printf(
+                          "Unexpected connect message from '%s(%s)' stream\n",
+                          config->name.buffer,
+                          ServerConfigurationDataTagToCharString(
+                            config->data.tag));
                     });
                     goto end;
                 case ENET_EVENT_TYPE_DISCONNECT:
                     USE_DISPLAY(clientData.mutex, fend4, displayMissing, {
-                        printf("Disconnected from '%s(%s)' "
-                               "stream\n",
+                        printf("Disconnected from '%s(%s)' stream\n",
                                config->name.buffer,
                                ServerConfigurationDataTagToCharString(
                                  config->data.tag));

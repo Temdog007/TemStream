@@ -141,19 +141,16 @@
 ### Mar 30, 2022 - Apr 02, 2022
 - [x] Implement stream recording and playback (need to timestamp messages)
 - [x] Implement replay stream
-- [ ] Make replay stream send time range 
-- [ ] Make replay handler to request data from replay stream peridically
+- [x] Make replay stream send time range 
+- [x] Make replay handler to request data from replay stream peridically
 
 ### Later
-- [ ] Make configuration files that set what streams to create/connect to
-- [ ] Create web page for GUI for native version
+- [ ] Make web socket connection for GUIs to send commands/show status
+- [ ] Create web page that utilizes web socket
 - [ ] Make layout message
-- [ ] Make save configuration file based on current connected streams
-- [ ] Make configuration files that also connects to streams on startup and sets display rects
-- [ ] Add websocket connection (use proxy)
+- [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls, use proxy)
 - [ ] Make separate browser version
-- [ ] Make separate android version
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

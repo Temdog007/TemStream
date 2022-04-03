@@ -9,7 +9,7 @@ authenticateClient(pClient client,
                    const Authentication* auth,
                    pRandomState rs)
 {
-    char buffer[KB(1)];
+    char buffer[KB(4)];
     memcpy(buffer, auth->value.buffer, auth->value.used);
     if (func) {
         return func(auth->type, buffer);
@@ -22,7 +22,8 @@ authenticateClient(pClient client,
                 return true;
             default:
 #if _DEBUG
-                puts("Unknown authentication type from client");
+                printf("Unknown authentication type (%d) from client",
+                       auth->type);
 #endif
                 return false;
         }
@@ -242,8 +243,8 @@ handleGeneralMessage(const GeneralMessage* message,
         } break;
         default:
 #if _DEBUG
-            printf("Unexpected message '%s' from client\n",
-                   LobbyMessageTagToCharString(message->tag));
+            printf("Unexpected general message '%s' from client\n",
+                   GeneralMessageTagToCharString(message->tag));
 #endif
             return false;
     }

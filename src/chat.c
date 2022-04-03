@@ -138,13 +138,11 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ChatFree(&newChat);
             break;
         default:
-            break;
-    }
-    if (!result) {
 #if _DEBUG
-        printf("Unexpected message '%s' from client\n",
-               ChatMessageTagToCharString(message->tag));
+            printf("Unexpected chat message '%s' from client\n",
+                   ChatMessageTagToCharString(message->tag));
 #endif
+            break;
     }
     ChatMessageFree(&chatMessage);
     return result;

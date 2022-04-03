@@ -94,13 +94,11 @@ handleVideoMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
               serverData->host, packet, &serverData->config->readers);
         } break;
         default:
-            break;
-    }
-    if (!result) {
 #if _DEBUG
-        printf("Unexpected message '%s' from client\n",
-               VideoMessageTagToCharString(message->tag));
+            printf("Unexpected video message '%s' from client\n",
+                   VideoMessageTagToCharString(message->tag));
 #endif
+            break;
     }
     return result;
 }

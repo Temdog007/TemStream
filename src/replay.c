@@ -74,6 +74,7 @@ updateTimeRange(pServerData serverData)
     while (fgets(buffer, MB(1), file))
         ;
     timeRangeMessage.timeRange[1] = (int64_t)strtoull(buffer, NULL, 10);
+    result = true;
 end:
     if (file != NULL) {
         fclose(file);
@@ -134,6 +135,7 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                 goto requestEnd;
             }
             result = true;
+            ReplayMessage response = { .tag = ReplayMessageTag_response };
             while (fgets(buffer, MB(1), file)) {
                 char* end = NULL;
                 const int64_t t = (int64_t)strtoull(buffer, &end, 10);
@@ -157,6 +159,9 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                 if (!b64_decode(end, &serverData->bytes)) {
                     continue;
                 }
+                MESSAGE_DESERIALIZE(
+                  ServerMessage, response.response, serverData->bytes);
+                MESSAGE_SERIALIZE(ReplayMessage, response, serverData->bytes);
                 sendBytes(peer,
                           1,
                           SERVER_CHANNEL,
@@ -166,6 +171,7 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                     enet_host_flush(serverData->host);
                 }
             }
+            ReplayMessageFree(&response);
         requestEnd:
             if (file != NULL) {
                 fclose(file);
@@ -173,13 +179,11 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             currentAllocator->free(buffer);
         } break;
         default:
-            break;
-    }
-    if (!result) {
 #if _DEBUG
-        printf("Unexpected message '%s' from client\n",
-               ReplayMessageTagToCharString(message->tag));
+            printf("Unexpected replay message '%s' from client\n",
+                   ReplayMessageTagToCharString(message->tag));
 #endif
+            break;
     }
     return result;
 }
