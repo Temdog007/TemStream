@@ -775,26 +775,6 @@ cleanupConfigurationsInRedis(redisContext* ctx)
     PRINT_MEMORY;
 }
 
-int
-vpx_img_plane_width(const vpx_image_t* img, const int plane)
-{
-    if (plane > 0 && img->x_chroma_shift > 0) {
-        return (img->d_w + 1) >> img->x_chroma_shift;
-    } else {
-        return img->d_w;
-    }
-}
-
-int
-vpx_img_plane_height(const vpx_image_t* img, const int plane)
-{
-    if (plane > 0 && img->y_chroma_shift > 0) {
-        return (img->d_h + 1) >> img->y_chroma_shift;
-    } else {
-        return img->d_h;
-    }
-}
-
 double
 diff_timespec(const struct timespec* time1, const struct timespec* time0)
 {

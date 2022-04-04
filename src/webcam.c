@@ -123,6 +123,7 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     webcam->data.bitrate = bitrate;
     webcam->data.keyFrameInterval = keyInterval;
     webcam->data.id = *id;
+    webcam->data.ratio = (Ratio){ .numerator = 1u, .denominator = 1u };
     webcam->fd = fd;
 
     SDL_Thread* thread = SDL_CreateThread(
@@ -161,9 +162,7 @@ recordWebcamThread(pWebCamData ptr)
     };
     struct Buffer buffer = { 0 };
 
-    int frame_count = 0;
-    vpx_codec_ctx_t codec = { 0 };
-    vpx_image_t img = { 0 };
+    VideoCodec codec = { 0 };
 
     VideoMessage message = { .tag = VideoMessageTag_video,
                              .video = { .allocator = currentAllocator,
@@ -206,7 +205,7 @@ recordWebcamThread(pWebCamData ptr)
         }
     }
 
-    if (!initEncoder(&codec, &img, data)) {
+    if (!VideoCodecInit(&codec, data)) {
         goto end;
     }
 
@@ -256,11 +255,11 @@ recordWebcamThread(pWebCamData ptr)
 
         uint8_t* ptr = buffer.start;
         for (int plane = 0; plane < 3; ++plane) {
-            unsigned char* buf = img.planes[plane];
-            const int stride = img.stride[plane];
-            const int w = vpx_img_plane_width(&img, plane) *
-                          ((img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
-            const int h = vpx_img_plane_height(&img, plane);
+            unsigned char* buf = codec.img.planes[plane];
+            const int stride = codec.img.stride[plane];
+            const int w = vpx_img_plane_width(&codec.img, plane) *
+                          ((codec.img.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+            const int h = vpx_img_plane_height(&codec.img, plane);
 
             for (int y = 0; y < h; ++y) {
                 memcpy(buf, ptr, w);
@@ -269,44 +268,7 @@ recordWebcamThread(pWebCamData ptr)
             }
         }
 
-        int flags = 0;
-        if (data->keyFrameInterval > 0 &&
-            frame_count % data->keyFrameInterval == 0) {
-            flags |= VPX_EFLAG_FORCE_KF;
-        }
-
-        vpx_codec_err_t res = vpx_codec_encode(
-          &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
-
-        if (res == VPX_CODEC_OK) {
-            vpx_codec_iter_t iter = NULL;
-            const vpx_codec_cx_pkt_t* pkt = NULL;
-            while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) != NULL) {
-                if (pkt->kind != VPX_CODEC_CX_FRAME_PKT) {
-                    continue;
-                }
-                message.video.used = 0;
-                uint8_tListQuickAppend(
-                  &message.video, pkt->data.frame.buf, pkt->data.frame.sz);
-                // printf("Encoded %u -> %zu kilobytes\n",
-                //        (data->width * data->height * 4) / 1024,
-                //        pkt->data.frame.sz / 1024);
-                MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-                ENetPacket* packet =
-                  BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
-                USE_DISPLAY(clientData.mutex, end2, displayMissing, {
-                    NullValueListAppend(&display->outgoing, (NullValue)&packet);
-                });
-                if (displayMissing) {
-                    enet_packet_destroy(packet);
-                }
-            }
-        } else {
-            fprintf(stderr,
-                    "Failed to encode frame: %s\n",
-                    vpx_codec_err_to_string(res));
-        }
-
+        displayMissing = VideoCodecEncode(&codec, &message, &bytes, id, data);
         v4l2_ioctl(fd, VIDIOC_QBUF, &buf);
     }
 
@@ -317,8 +279,7 @@ end:
         enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         v4l2_ioctl(fd, VIDIOC_STREAMOFF, &type);
     }
-    vpx_img_free(&img);
-    vpx_codec_destroy(&codec);
+    VideoCodecFree(&codec);
     v4l2_munmap(buffer.start, buffer.length);
     v4l2_close(fd);
     WindowDataFree(data);

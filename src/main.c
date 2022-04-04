@@ -18,6 +18,10 @@
 #include "video_x11.c"
 #include "webcam.c"
 
+#if USE_VPX
+#include "vpx.c"
+#endif
+
 const Allocator* currentAllocator = NULL;
 bool appDone = true;
 

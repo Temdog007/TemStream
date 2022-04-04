@@ -292,71 +292,13 @@ getDesktopWindows(xcb_connection_t* con,
     }
 }
 
-vpx_codec_iface_t*
-codec_encoder_interface()
-{
-    return vpx_codec_vp8_cx();
-}
-
-vpx_codec_iface_t*
-codec_decoder_interface()
-{
-    return vpx_codec_vp8_dx();
-}
-
 #if USE_OPENCL
 #define RGBA_TO_YUV                                                            \
-    success = rgbaToYuv(imageData, data, (void**)&img.planes, &vid)
+    success = rgbaToYuv(imageData, data, (void**)&codec.img.planes, &vid)
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
 #endif
-
-bool
-initEncoder(vpx_codec_ctx_t* codec, vpx_image_t* img, const WindowData* data)
-{
-    vpx_img_free(img);
-    vpx_codec_destroy(codec);
-
-    vpx_codec_enc_cfg_t cfg = { 0 };
-
-    const size_t width =
-      data->width * data->ratio.numerator / data->ratio.denominator;
-    const size_t height =
-      data->height * data->ratio.numerator / data->ratio.denominator;
-    if (vpx_img_alloc(img, VPX_IMG_FMT_I420, width, height, 1) == NULL) {
-        fprintf(stderr, "Failed to allocate image\n");
-        return false;
-    }
-
-    printf("Using encoder: %s with %d threads\n",
-           vpx_codec_iface_name(codec_encoder_interface()),
-           SDL_GetCPUCount());
-
-    const vpx_codec_err_t res =
-      vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
-    if (res) {
-        fprintf(stderr,
-                "Failed to get default video encoder configuration: %s\n",
-                vpx_codec_err_to_string(res));
-        return false;
-    }
-
-    cfg.g_w = width;
-    cfg.g_h = height;
-    cfg.g_timebase.num = 1;
-    cfg.g_timebase.den = data->fps;
-    cfg.rc_target_bitrate = data->bitrate * 1024;
-    cfg.g_threads = SDL_GetCPUCount();
-    cfg.g_error_resilient =
-      VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
-
-    if (vpx_codec_enc_init(codec, codec_encoder_interface(), &cfg, 0) != 0) {
-        fprintf(stderr, "Failed to initialize encoder\n");
-        return false;
-    }
-    return true;
-}
 
 bool
 sendWindowSize(const WindowData* data)
@@ -454,9 +396,7 @@ screenRecordThread(pWindowData data)
     VideoMessage message = { .tag = VideoMessageTag_video };
     message.video = INIT_ALLOCATOR(MB(1));
 
-    int frame_count = 0;
-    vpx_codec_ctx_t codec = { 0 };
-    vpx_image_t img = { 0 };
+    VideoCodec codec = { 0 };
 
     xcb_image_t* xcbImg = NULL;
     xcb_shm_segment_info_t shmInfo = { 0 };
@@ -470,7 +410,7 @@ screenRecordThread(pWindowData data)
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
 #endif
-    if (!initEncoder(&codec, &img, data)) {
+    if (!VideoCodecInit(&codec, data)) {
         goto end;
     }
 
@@ -527,7 +467,7 @@ screenRecordThread(pWindowData data)
                     data->width = realWidth;
                     data->height = realHeight;
                     displayMissing =
-                      !initEncoder(&codec, &img, data) ||
+                      !VideoCodecInit(&codec, data) ||
                       (canUseShmExt(data->connection)
                          ? !createShmExtStuff(data, &xcbImg, &shmInfo)
                          : false);
@@ -651,46 +591,8 @@ screenRecordThread(pWindowData data)
                 }
             }
 #endif
-            int flags = 0;
-            if (data->keyFrameInterval > 0 &&
-                frame_count % data->keyFrameInterval == 0) {
-                flags |= VPX_EFLAG_FORCE_KF;
-            }
-
-            vpx_codec_err_t res = { 0 };
-            TIME("VPX encoding", {
-                res = vpx_codec_encode(
-                  &codec, &img, frame_count++, 1, flags, VPX_DL_REALTIME);
-            });
-            if (res == VPX_CODEC_OK) {
-                vpx_codec_iter_t iter = NULL;
-                const vpx_codec_cx_pkt_t* pkt = NULL;
-                while ((pkt = vpx_codec_get_cx_data(&codec, &iter)) != NULL) {
-                    if (pkt->kind != VPX_CODEC_CX_FRAME_PKT) {
-                        continue;
-                    }
-                    message.video.used = 0;
-                    uint8_tListQuickAppend(
-                      &message.video, pkt->data.frame.buf, pkt->data.frame.sz);
-                    // printf("Encoded %u -> %zu kilobytes\n",
-                    //        (data->width * data->height * 4) / 1024,
-                    //        pkt->data.frame.sz / 1024);
-                    MESSAGE_SERIALIZE(VideoMessage, message, bytes);
-                    ENetPacket* packet =
-                      BytesToPacket(bytes.buffer, bytes.used, SendFlags_Video);
-                    USE_DISPLAY(clientData.mutex, end2, displayMissing, {
-                        NullValueListAppend(&display->outgoing,
-                                            (NullValue)&packet);
-                    });
-                    if (displayMissing) {
-                        enet_packet_destroy(packet);
-                    }
-                }
-            } else {
-                fprintf(stderr,
-                        "Failed to encode frame: %s\n",
-                        vpx_codec_err_to_string(res));
-            }
+            displayMissing =
+              VideoCodecEncode(&codec, &message, &bytes, id, data);
             errors = 0;
         } else {
             ++errors;
@@ -721,8 +623,7 @@ end:
     currentAllocator->free(YUV);
     currentAllocator->free(ARGB);
 #endif
-    vpx_img_free(&img);
-    vpx_codec_destroy(&codec);
+    VideoCodecFree(&codec);
 
     xcb_disconnect(data->connection);
     WindowDataFree(data);

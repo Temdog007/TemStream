@@ -71,6 +71,11 @@ rgbaToYuv(const uint8_t* rgba,
           uint8_t* yuv);
 #endif
 
+#define USE_VPX true
+
+typedef struct VideoCodec VideoCodec, *pVideoCodec;
+
+#if USE_VPX
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 #include <vpx/vpx_decoder.h>
@@ -87,6 +92,36 @@ codec_encoder_interface();
 
 extern vpx_codec_iface_t*
 codec_decoder_interface();
+
+typedef vpx_codec_ctx_t VideoCodecContext;
+typedef vpx_codec_ctx_t* pVideoCodecContext;
+
+typedef struct VideoCodec
+{
+    VideoCodecContext ctx;
+    vpx_image_t img;
+    int frameCount;
+} VideoCodec, *pVideoCodec;
+
+#else
+typedef size_t VideoCodecContext;
+typedef void* pVideoCodecContext;
+#endif
+
+extern bool
+VideoCodecInit(pVideoCodec, const WindowData*);
+
+extern void VideoCodecFree(pVideoCodec);
+
+extern bool
+VideoCodecEncode(pVideoCodec,
+                 pVideoMessage,
+                 pBytes,
+                 const Guid*,
+                 const WindowData*);
+
+extern void
+handleVideoFrame(const Bytes*, const Guid*, pVideoCodecContext, uint64_t*);
 
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO

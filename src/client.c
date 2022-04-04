@@ -680,7 +680,7 @@ clientHandleAudioMessageFromBytes(const Bytes* packetBytes,
 bool
 clientHandleVideoMessage(const VideoMessage* message,
                          pStreamDisplay display,
-                         vpx_codec_ctx_t* codec,
+                         pVideoCodecContext codec,
                          uint64_t* lastError)
 {
     bool success = true;
@@ -724,66 +724,7 @@ clientHandleVideoMessage(const VideoMessage* message,
                 *lastError = now;
                 break;
             }
-            vpx_codec_err_t res = vpx_codec_decode(codec,
-                                                   message->video.buffer,
-                                                   message->video.used,
-                                                   NULL,
-                                                   VPX_DL_REALTIME);
-            if (res != VPX_CODEC_OK) {
-                const uint64_t now = SDL_GetTicks64();
-                if (now - *lastError > 1000) {
-                    fprintf(stderr,
-                            "Failed to decode video frame: %s\n",
-                            vpx_codec_err_to_string(res));
-                }
-                *lastError = now;
-                break;
-            }
-            vpx_codec_iter_t iter = NULL;
-            vpx_image_t* img = NULL;
-            while ((img = vpx_codec_get_frame(codec, &iter)) != NULL) {
-                if (lowMemory()) {
-                    continue;
-                }
-                const int width = vpx_img_plane_width(img, 0);
-                const int height = vpx_img_plane_height(img, 0);
-
-                const size_t size = width * height * 2;
-
-                if (size + currentAllocator->used() >
-                    currentAllocator->totalSize()) {
-                    continue;
-                }
-
-                pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
-                m->id = display->id;
-                m->width = width;
-                m->height = height;
-                m->video.allocator = currentAllocator;
-                m->video.buffer = currentAllocator->allocate(size);
-                m->video.size = size;
-
-                for (int plane = 0; plane < 3; ++plane) {
-                    const unsigned char* buf = img->planes[plane];
-                    const int stride = img->stride[plane];
-                    const int w =
-                      vpx_img_plane_width(img, plane) *
-                      ((img->fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
-                    const int h = vpx_img_plane_height(img, plane);
-                    for (int y = 0; y < h; ++y) {
-                        uint8_tListQuickAppend(&m->video, buf, w);
-                        buf += stride;
-                    }
-                }
-                // printf("Decoded %u -> %u kilobytes\n",
-                //        message.video.used / 1024,
-                //        m->video.used / 1024);
-                SDL_Event e = { 0 };
-                e.type = SDL_USEREVENT;
-                e.user.code = CustomEvent_UpdateVideoDisplay;
-                e.user.data1 = m;
-                SDL_PushEvent(&e);
-            }
+            handleVideoFrame(&message->video, &display->id, codec, lastError);
         } break;
         default:
             printf("Unexpected video message: %s\n",
@@ -797,7 +738,7 @@ clientHandleVideoMessage(const VideoMessage* message,
 bool
 clientHandleVideoMessageFromBytes(const Bytes* packetBytes,
                                   pStreamDisplay display,
-                                  vpx_codec_ctx_t* codec,
+                                  pVideoCodecContext codec,
                                   uint64_t* lastError)
 {
     VideoMessage message = { 0 };
@@ -813,7 +754,7 @@ clientHandleServerMessage(const ServerMessage* m,
                           pStreamDisplay display,
                           pAudioState playback,
                           const bool isRecording,
-                          vpx_codec_ctx_t* codec,
+                          pVideoCodecContext codec,
                           uint64_t* lastError)
 {
     switch (m->tag) {
@@ -840,7 +781,7 @@ clientHandleReplayMessage(const ReplayMessage* replay,
                           pStreamDisplay display,
                           pAudioState playback,
                           const bool isRecording,
-                          vpx_codec_ctx_t* codec,
+                          pVideoCodecContext codec,
                           uint64_t* lastError)
 {
     bool success = false;
@@ -879,7 +820,7 @@ clientHandleReplayMessageFromBytes(const Bytes* bytes,
                                    pStreamDisplay display,
                                    pAudioState playback,
                                    const bool isRecording,
-                                   vpx_codec_ctx_t* codec,
+                                   pVideoCodecContext codec,
                                    uint64_t* lastError)
 {
     ReplayMessage replay = { 0 };
@@ -1008,8 +949,10 @@ streamConnectionThread(void* ptr)
     }
 
     // For video connections
-    vpx_codec_ctx_t codec = { 0 };
     uint64_t lastVideoError = 0;
+#if USE_VPX
+    vpx_codec_ctx_t codec = { 0 };
+
     switch (tag) {
         case ServerConfigurationDataTag_video:
         case ServerConfigurationDataTag_replay: {
@@ -1028,6 +971,9 @@ streamConnectionThread(void* ptr)
         default:
             break;
     }
+#else
+    pVideoCodecContext codec = NULL;
+#endif
 
     // Start audio for replay connections
     switch (tag) {

@@ -144,17 +144,22 @@
 - [x] Make replay stream send time range 
 - [x] Make replay handler to request data from replay stream peridically
 
+### Apr 03, 2022
+- [ ] Use OpenH264
+
+### Apr 04, 2022 - Apr ??, 2022
+- [ ] Include Qt for UI
+
 ### Later
-- [ ] Make web socket connection for GUIs to send commands/show status
-- [ ] Create web page that utilizes web socket
+- [ ] Make web socket connection proxy
+- [ ] Port to Emscripten
+- [ ] Port to android
 - [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls, use proxy)
-- [ ] Make separate browser version
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
 - [ ] Add logging library (or make one)
-- [ ] Make replay buffer for current ongoing streams
 - [ ] Fix loading tga files
 - [ ] Update webcam streaming to allow for scaling (is this necessary?)
