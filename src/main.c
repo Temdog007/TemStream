@@ -20,6 +20,8 @@
 
 #if USE_VPX
 #include "vpx.c"
+#else
+#include "openh264.c"
 #endif
 
 const Allocator* currentAllocator = NULL;

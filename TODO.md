@@ -145,7 +145,7 @@
 - [x] Make replay handler to request data from replay stream peridically
 
 ### Apr 03, 2022
-- [ ] Use OpenH264
+- [x] Add OpenH264
 
 ### Apr 04, 2022 - Apr ??, 2022
 - [ ] Include Qt for UI

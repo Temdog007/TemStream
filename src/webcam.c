@@ -120,7 +120,7 @@ recordWebcam(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     webcam->data.width = fmt.fmt.pix.width;
     webcam->data.height = fmt.fmt.pix.height;
     webcam->data.fps = fps;
-    webcam->data.bitrate = bitrate;
+    webcam->data.bitrateInMbps = bitrate;
     webcam->data.keyFrameInterval = keyInterval;
     webcam->data.id = *id;
     webcam->data.ratio = (Ratio){ .numerator = 1u, .denominator = 1u };
@@ -162,7 +162,7 @@ recordWebcamThread(pWebCamData ptr)
     };
     struct Buffer buffer = { 0 };
 
-    VideoCodec codec = { 0 };
+    VideoEncoder codec = { 0 };
 
     VideoMessage message = { .tag = VideoMessageTag_video,
                              .video = { .allocator = currentAllocator,
@@ -205,7 +205,7 @@ recordWebcamThread(pWebCamData ptr)
         }
     }
 
-    if (!VideoCodecInit(&codec, data)) {
+    if (!VideoEncoderInit(&codec, data, true)) {
         goto end;
     }
 
@@ -270,7 +270,7 @@ recordWebcamThread(pWebCamData ptr)
         }
 #endif
 
-        displayMissing = VideoCodecEncode(&codec, &message, &bytes, id, data);
+        displayMissing = VideoEncoderEncode(&codec, &message, &bytes, id, data);
         v4l2_ioctl(fd, VIDIOC_QBUF, &buf);
     }
 
@@ -281,7 +281,7 @@ end:
         enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         v4l2_ioctl(fd, VIDIOC_STREAMOFF, &type);
     }
-    VideoCodecFree(&codec);
+    VideoEncoderFree(&codec);
     v4l2_munmap(buffer.start, buffer.length);
     v4l2_close(fd);
     WindowDataFree(data);

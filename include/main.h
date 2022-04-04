@@ -71,9 +71,10 @@ rgbaToYuv(const uint8_t* rgba,
           uint8_t* yuv);
 #endif
 
-#define USE_VPX true
+typedef struct VideoEncoder VideoEncoder, *pVideoEncoder;
+typedef struct VideoDecoder VideoDecoder, *pVideoDecoder;
 
-typedef struct VideoCodec VideoCodec, *pVideoCodec;
+#define USE_VPX true
 
 #if USE_VPX
 #include <vpx/vp8cx.h>
@@ -93,42 +94,52 @@ codec_encoder_interface();
 extern vpx_codec_iface_t*
 codec_decoder_interface();
 
-typedef vpx_codec_ctx_t VideoCodecContext;
-typedef vpx_codec_ctx_t* pVideoCodecContext;
-
-typedef struct VideoCodec
+typedef struct VideoEncoder
 {
-    VideoCodecContext ctx;
+    vpx_codec_ctx_t ctx;
     vpx_image_t img;
     int frameCount;
-} VideoCodec, *pVideoCodec;
+} VideoEncoder, *pVideoEncoder;
+
+typedef struct VideoDecoder
+{
+    vpx_codec_ctx_t ctx;
+} VideoDecoder, *pVideoDecoder;
 
 #else
-typedef size_t VideoCodecContext;
-typedef void* pVideoCodecContext;
-typedef struct VideoCodec
+typedef struct VideoEncoder
 {
-    VideoCodecContext ctx;
+    void* ctx;
+    void* planes[3];
     int frameCount;
-} VideoCodec, *pVideoCodec;
+} VideoEncoder, *pVideoEncoder;
+
+typedef struct VideoDecoder
+{
+    void* ctx;
+} VideoDecoder, *pVideoDecoder;
 #endif
 
 extern bool
-VideoCodecInit(pVideoCodec, const WindowData*);
+VideoEncoderInit(pVideoEncoder, const WindowData*, const bool forCamera);
 
-extern void** VideoCodecPlanes(pVideoCodec);
+extern void** VideoEncoderPlanes(pVideoEncoder);
 
-extern void VideoCodecFree(pVideoCodec);
+extern void VideoEncoderFree(pVideoEncoder);
 
 extern bool
-VideoCodecEncode(pVideoCodec,
-                 pVideoMessage,
-                 pBytes,
-                 const Guid*,
-                 const WindowData*);
+VideoEncoderEncode(pVideoEncoder,
+                   pVideoMessage,
+                   pBytes,
+                   const Guid*,
+                   const WindowData*);
+
+extern bool VideoDecoderInit(pVideoDecoder);
 
 extern void
-handleVideoFrame(const Bytes*, const Guid*, pVideoCodecContext, uint64_t*);
+VideoDecoderDecode(pVideoDecoder, const Bytes*, const Guid*, uint64_t*);
+
+extern void VideoDecoderFree(pVideoDecoder);
 
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_NO_STDIO

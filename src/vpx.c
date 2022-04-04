@@ -1,68 +1,5 @@
 #include <include/main.h>
 
-void
-handleVideoFrame(const Bytes* bytes,
-                 const Guid* id,
-                 pVideoCodecContext codec,
-                 uint64_t* lastError)
-{
-    vpx_codec_err_t res = vpx_codec_decode(
-      codec, bytes->buffer, bytes->used, NULL, VPX_DL_REALTIME);
-    if (res != VPX_CODEC_OK) {
-        const uint64_t now = SDL_GetTicks64();
-        if (now - *lastError > 1000) {
-            fprintf(stderr,
-                    "Failed to decode video frame: %s\n",
-                    vpx_codec_err_to_string(res));
-        }
-        *lastError = now;
-        return;
-    }
-    vpx_codec_iter_t iter = NULL;
-    vpx_image_t* img = NULL;
-    while ((img = vpx_codec_get_frame(codec, &iter)) != NULL) {
-        if (lowMemory()) {
-            continue;
-        }
-        const int width = vpx_img_plane_width(img, 0);
-        const int height = vpx_img_plane_height(img, 0);
-
-        const size_t size = width * height * 2;
-
-        if (size + currentAllocator->used() > currentAllocator->totalSize()) {
-            continue;
-        }
-
-        pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
-        m->id = *id;
-        m->width = width;
-        m->height = height;
-        m->video.allocator = currentAllocator;
-        m->video.buffer = currentAllocator->allocate(size);
-        m->video.size = size;
-
-        for (int plane = 0; plane < 3; ++plane) {
-            const unsigned char* buf = img->planes[plane];
-            const int stride = img->stride[plane];
-            const int w = vpx_img_plane_width(img, plane) *
-                          ((img->fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
-            const int h = vpx_img_plane_height(img, plane);
-            for (int y = 0; y < h; ++y) {
-                uint8_tListQuickAppend(&m->video, buf, w);
-                buf += stride;
-            }
-        }
-        // printf("Decoded %u -> %u kilobytes\n",
-        //        message.video.used / 1024,
-        //        m->video.used / 1024);
-        SDL_Event e = { 0 };
-        e.type = SDL_USEREVENT;
-        e.user.code = CustomEvent_UpdateVideoDisplay;
-        e.user.data1 = m;
-        SDL_PushEvent(&e);
-    }
-}
-
 int
 vpx_img_plane_width(const vpx_image_t* img, const int plane)
 {
@@ -96,9 +33,11 @@ codec_decoder_interface()
 }
 
 bool
-VideoCodecInit(pVideoCodec codec, const WindowData* data)
+VideoEncoderInit(pVideoEncoder codec, const WindowData* data, const bool b)
 {
-    VideoCodecFree(codec);
+    (void)b;
+
+    VideoEncoderFree(codec);
 
     vpx_codec_enc_cfg_t cfg = { 0 };
 
@@ -129,7 +68,7 @@ VideoCodecInit(pVideoCodec codec, const WindowData* data)
     cfg.g_h = height;
     cfg.g_timebase.num = 1;
     cfg.g_timebase.den = data->fps;
-    cfg.rc_target_bitrate = data->bitrate * 1024;
+    cfg.rc_target_bitrate = data->bitrateInMbps * 1024;
     cfg.g_threads = SDL_GetCPUCount();
     cfg.g_error_resilient =
       VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
@@ -143,11 +82,11 @@ VideoCodecInit(pVideoCodec codec, const WindowData* data)
 }
 
 bool
-VideoCodecEncode(pVideoCodec codec,
-                 pVideoMessage message,
-                 pBytes bytes,
-                 const Guid* id,
-                 const WindowData* data)
+VideoEncoderEncode(pVideoEncoder codec,
+                   pVideoMessage message,
+                   pBytes bytes,
+                   const Guid* id,
+                   const WindowData* data)
 {
     int flags = 0;
     if (data->keyFrameInterval > 0 &&
@@ -197,15 +136,102 @@ VideoCodecEncode(pVideoCodec codec,
 }
 
 void
-VideoCodecFree(pVideoCodec codec)
+VideoEncoderFree(pVideoEncoder codec)
 {
     vpx_img_free(&codec->img);
     vpx_codec_destroy(&codec->ctx);
-    memset(codec, 0, sizeof(VideoCodec));
+    memset(codec, 0, sizeof(VideoEncoder));
 }
 
 void**
-VideoCodecPlanes(pVideoCodec codec)
+VideoEncoderPlanes(pVideoEncoder codec)
 {
     return (void**)&codec->img.planes;
+}
+
+bool
+VideoDecoderInit(pVideoDecoder decoder)
+{
+    struct vpx_codec_dec_cfg cfg = {
+        .threads = SDL_GetCPUCount(),
+    };
+    if (vpx_codec_dec_init(&decoder->ctx, codec_decoder_interface(), &cfg, 0) !=
+        0) {
+        fprintf(stderr, "Failed to create video decoder\n");
+        return false;
+    }
+    printf("Using decoder: %s with %d threads\n",
+           vpx_codec_iface_name(codec_decoder_interface()),
+           SDL_GetCPUCount());
+    return true;
+}
+
+void
+VideoDecoderFree(pVideoDecoder decoder)
+{
+    vpx_codec_destroy(&decoder->ctx);
+    memset(decoder, 0, sizeof(VideoDecoder));
+}
+
+void
+VideoDecoderDecode(pVideoDecoder decoder,
+                   const Bytes* bytes,
+                   const Guid* id,
+                   uint64_t* lastError)
+{
+    vpx_codec_err_t res = vpx_codec_decode(
+      &decoder->ctx, bytes->buffer, bytes->used, NULL, VPX_DL_REALTIME);
+    if (res != VPX_CODEC_OK) {
+        const uint64_t now = SDL_GetTicks64();
+        if (now - *lastError > 1000) {
+            fprintf(stderr,
+                    "Failed to decode video frame: %s\n",
+                    vpx_codec_err_to_string(res));
+        }
+        *lastError = now;
+        return;
+    }
+    vpx_codec_iter_t iter = NULL;
+    vpx_image_t* img = NULL;
+    while ((img = vpx_codec_get_frame(&decoder->ctx, &iter)) != NULL) {
+        if (lowMemory()) {
+            continue;
+        }
+        const int width = vpx_img_plane_width(img, 0);
+        const int height = vpx_img_plane_height(img, 0);
+
+        const size_t size = width * height * 2;
+
+        if (size + currentAllocator->used() > currentAllocator->totalSize()) {
+            continue;
+        }
+
+        pVideoFrame m = currentAllocator->allocate(sizeof(VideoFrame));
+        m->id = *id;
+        m->width = width;
+        m->height = height;
+        m->video.allocator = currentAllocator;
+        m->video.buffer = currentAllocator->allocate(size);
+        m->video.size = size;
+
+        for (int plane = 0; plane < 3; ++plane) {
+            const unsigned char* buf = img->planes[plane];
+            const int stride = img->stride[plane];
+            const int w = vpx_img_plane_width(img, plane) *
+                          ((img->fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+            const int h = vpx_img_plane_height(img, plane);
+            for (int y = 0; y < h; ++y) {
+                uint8_tListQuickAppend(&m->video, buf, w);
+                buf += stride;
+            }
+        }
+        // printf("Decoded %u -> %u kilobytes\n",
+        //        message.video.used / 1024,
+        //        m->video.used / 1024);
+        SDL_Event e = { 0 };
+        e.type = SDL_USEREVENT;
+        e.user.code = CustomEvent_UpdateVideoDisplay;
+        e.user.data1 = m;
+        SDL_PushEvent(&e);
+    }
 }

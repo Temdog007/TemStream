@@ -680,7 +680,7 @@ clientHandleAudioMessageFromBytes(const Bytes* packetBytes,
 bool
 clientHandleVideoMessage(const VideoMessage* message,
                          pStreamDisplay display,
-                         pVideoCodecContext codec,
+                         pVideoDecoder codec,
                          uint64_t* lastError)
 {
     bool success = true;
@@ -724,7 +724,7 @@ clientHandleVideoMessage(const VideoMessage* message,
                 *lastError = now;
                 break;
             }
-            handleVideoFrame(&message->video, &display->id, codec, lastError);
+            VideoDecoderDecode(codec, &message->video, &display->id, lastError);
         } break;
         default:
             printf("Unexpected video message: %s\n",
@@ -738,7 +738,7 @@ clientHandleVideoMessage(const VideoMessage* message,
 bool
 clientHandleVideoMessageFromBytes(const Bytes* packetBytes,
                                   pStreamDisplay display,
-                                  pVideoCodecContext codec,
+                                  pVideoDecoder codec,
                                   uint64_t* lastError)
 {
     VideoMessage message = { 0 };
@@ -754,7 +754,7 @@ clientHandleServerMessage(const ServerMessage* m,
                           pStreamDisplay display,
                           pAudioState playback,
                           const bool isRecording,
-                          pVideoCodecContext codec,
+                          pVideoDecoder codec,
                           uint64_t* lastError)
 {
     switch (m->tag) {
@@ -781,7 +781,7 @@ clientHandleReplayMessage(const ReplayMessage* replay,
                           pStreamDisplay display,
                           pAudioState playback,
                           const bool isRecording,
-                          pVideoCodecContext codec,
+                          pVideoDecoder codec,
                           uint64_t* lastError)
 {
     bool success = false;
@@ -820,7 +820,7 @@ clientHandleReplayMessageFromBytes(const Bytes* bytes,
                                    pStreamDisplay display,
                                    pAudioState playback,
                                    const bool isRecording,
-                                   pVideoCodecContext codec,
+                                   pVideoDecoder codec,
                                    uint64_t* lastError)
 {
     ReplayMessage replay = { 0 };
@@ -950,30 +950,17 @@ streamConnectionThread(void* ptr)
 
     // For video connections
     uint64_t lastVideoError = 0;
-#if USE_VPX
-    vpx_codec_ctx_t codec = { 0 };
-
+    VideoDecoder decoder = { 0 };
     switch (tag) {
         case ServerConfigurationDataTag_video:
-        case ServerConfigurationDataTag_replay: {
-            struct vpx_codec_dec_cfg cfg = {
-                .threads = SDL_GetCPUCount(),
-            };
-            if (vpx_codec_dec_init(
-                  &codec, codec_decoder_interface(), &cfg, 0) != 0) {
-                fprintf(stderr, "Failed to create video decoder\n");
+        case ServerConfigurationDataTag_replay:
+            if (!VideoDecoderInit(&decoder)) {
                 goto end;
             }
-            printf("Using decoder: %s with %d threads\n",
-                   vpx_codec_iface_name(codec_decoder_interface()),
-                   SDL_GetCPUCount());
-        } break;
+            break;
         default:
             break;
     }
-#else
-    pVideoCodecContext codec = NULL;
-#endif
 
     // Start audio for replay connections
     switch (tag) {
@@ -1165,7 +1152,7 @@ streamConnectionThread(void* ptr)
                         break;
                     case ServerConfigurationDataTag_video:
                         success = clientHandleVideoMessageFromBytes(
-                          &packetBytes, display, &codec, &lastVideoError);
+                          &packetBytes, display, &decoder, &lastVideoError);
                         break;
                     case ServerConfigurationDataTag_replay:
                         success = clientHandleReplayMessageFromBytes(
@@ -1173,7 +1160,7 @@ streamConnectionThread(void* ptr)
                           display,
                           playback,
                           display->recordings != 0 || record != NULL,
-                          &codec,
+                          &decoder,
                           &lastVideoError);
                         break;
                     default:
@@ -1226,10 +1213,7 @@ end:
     for (size_t i = 0; i < outgoingPackets.used; ++i) {
         enet_packet_destroy(outgoingPackets.buffer[i]);
     }
-#if USE_VPX
-    vpx_codec_destroy(&codec);
-#else
-#endif
+    VideoDecoderFree(&decoder);
     NullValueListFree(&outgoingPackets);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);

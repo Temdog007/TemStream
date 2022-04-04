@@ -97,7 +97,7 @@ startWindowRecording(const Guid* id, const struct pollfd inputfd, pBytes bytes)
     win->id = *id;
     win->fps = fps;
     win->keyFrameInterval = keyInterval;
-    win->bitrate = bitrate;
+    win->bitrateInMbps = bitrate;
     win->ratio.numerator = p + 1;
     win->ratio.denominator = 100;
 
@@ -294,7 +294,7 @@ getDesktopWindows(xcb_connection_t* con,
 
 #if USE_OPENCL
 #define RGBA_TO_YUV                                                            \
-    success = rgbaToYuv(imageData, data, VideoCodecPlanes(&codec), &vid)
+    success = rgbaToYuv(imageData, data, VideoEncoderPlanes(&codec), &vid)
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)
@@ -396,7 +396,7 @@ screenRecordThread(pWindowData data)
     VideoMessage message = { .tag = VideoMessageTag_video };
     message.video = INIT_ALLOCATOR(MB(1));
 
-    VideoCodec codec = { 0 };
+    VideoEncoder codec = { 0 };
 
     xcb_image_t* xcbImg = NULL;
     xcb_shm_segment_info_t shmInfo = { 0 };
@@ -410,7 +410,7 @@ screenRecordThread(pWindowData data)
     uint8_t* YUV = currentAllocator->allocate(data->width * data->height * 3);
     uint32_t* ARGB = currentAllocator->allocate(data->width * data->height * 4);
 #endif
-    if (!VideoCodecInit(&codec, data)) {
+    if (!VideoEncoderInit(&codec, data, false)) {
         goto end;
     }
 
@@ -467,7 +467,7 @@ screenRecordThread(pWindowData data)
                     data->width = realWidth;
                     data->height = realHeight;
                     displayMissing =
-                      !VideoCodecInit(&codec, data) ||
+                      !VideoEncoderInit(&codec, data, false) ||
                       (canUseShmExt(data->connection)
                          ? !createShmExtStuff(data, &xcbImg, &shmInfo)
                          : false);
@@ -592,7 +592,7 @@ screenRecordThread(pWindowData data)
             }
 #endif
             displayMissing =
-              VideoCodecEncode(&codec, &message, &bytes, id, data);
+              VideoEncoderEncode(&codec, &message, &bytes, id, data);
             errors = 0;
         } else {
             ++errors;
@@ -623,7 +623,7 @@ end:
     currentAllocator->free(YUV);
     currentAllocator->free(ARGB);
 #endif
-    VideoCodecFree(&codec);
+    VideoEncoderFree(&codec);
 
     xcb_disconnect(data->connection);
     WindowDataFree(data);
