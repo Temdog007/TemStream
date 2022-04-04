@@ -253,6 +253,7 @@ recordWebcamThread(pWebCamData ptr)
             }
         }
 
+#if USE_VPX
         uint8_t* ptr = buffer.start;
         for (int plane = 0; plane < 3; ++plane) {
             unsigned char* buf = codec.img.planes[plane];
@@ -267,6 +268,7 @@ recordWebcamThread(pWebCamData ptr)
                 buf += stride;
             }
         }
+#endif
 
         displayMissing = VideoCodecEncode(&codec, &message, &bytes, id, data);
         v4l2_ioctl(fd, VIDIOC_QBUF, &buf);

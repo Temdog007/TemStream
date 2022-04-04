@@ -106,10 +106,17 @@ typedef struct VideoCodec
 #else
 typedef size_t VideoCodecContext;
 typedef void* pVideoCodecContext;
+typedef struct VideoCodec
+{
+    VideoCodecContext ctx;
+    int frameCount;
+} VideoCodec, *pVideoCodec;
 #endif
 
 extern bool
 VideoCodecInit(pVideoCodec, const WindowData*);
+
+extern void** VideoCodecPlanes(pVideoCodec);
 
 extern void VideoCodecFree(pVideoCodec);
 

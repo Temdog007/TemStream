@@ -294,7 +294,7 @@ getDesktopWindows(xcb_connection_t* con,
 
 #if USE_OPENCL
 #define RGBA_TO_YUV                                                            \
-    success = rgbaToYuv(imageData, data, (void**)&codec.img.planes, &vid)
+    success = rgbaToYuv(imageData, data, VideoCodecPlanes(&codec), &vid)
 #else
 #define RGBA_TO_YUV                                                            \
     success = rgbaToYuv(imageData, data->width, data->height, ARGB, YUV)

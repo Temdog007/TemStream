@@ -1226,7 +1226,10 @@ end:
     for (size_t i = 0; i < outgoingPackets.used; ++i) {
         enet_packet_destroy(outgoingPackets.buffer[i]);
     }
+#if USE_VPX
     vpx_codec_destroy(&codec);
+#else
+#endif
     NullValueListFree(&outgoingPackets);
     uint8_tListFree(&bytes);
     currentAllocator->free(ptr);

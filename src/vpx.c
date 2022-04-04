@@ -203,3 +203,9 @@ VideoCodecFree(pVideoCodec codec)
     vpx_codec_destroy(&codec->ctx);
     memset(codec, 0, sizeof(VideoCodec));
 }
+
+void**
+VideoCodecPlanes(pVideoCodec codec)
+{
+    return (void**)&codec->img.planes;
+}
