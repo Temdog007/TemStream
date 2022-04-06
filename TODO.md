@@ -147,12 +147,12 @@
 ### Apr 03, 2022
 - [x] Add OpenH264
 
-### Apr 06, 2022
+### Apr 06, 2022 - Apr 07, 2022
 - [ ] Write own Ui code
 
 ### Later
-- [ ] Port to Emscripten
-- [ ] Port to android
+- [ ] Write websocket code for browser version
+- [ ] Test android
 - [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls, use proxy)

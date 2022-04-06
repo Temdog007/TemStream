@@ -97,6 +97,11 @@ updateEditText(const SDL_Event* e,
                uint32_t* focusId)
 {
     switch (e->type) {
+        case SDL_MOUSEBUTTONDOWN:
+            uiUpdate(*focusId == actor->id ? CustomEvent_UiClicked
+                                           : CustomEvent_UiChanged,
+                     *focusId);
+            break;
         case SDL_MOUSEBUTTONUP: {
             SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
             checkActorFocus(&point, actor, w, h, focusId);
@@ -181,7 +186,7 @@ updateSlider(const SDL_Event* e,
              uint32_t* focusId)
 {
     switch (e->type) {
-        case SDL_MOUSEBUTTONUP: {
+        case SDL_MOUSEBUTTONDOWN: {
             const SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
             return updateSliderFromPoint(actor, w, h, &point, focusId);
         } break;
@@ -203,6 +208,11 @@ updateLabel(const SDL_Event* e,
             uint32_t* focusId)
 {
     switch (e->type) {
+        case SDL_MOUSEBUTTONDOWN:
+            uiUpdate(*focusId == actor->id ? CustomEvent_UiClicked
+                                           : CustomEvent_UiChanged,
+                     *focusId);
+            break;
         case SDL_MOUSEBUTTONUP: {
             SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
             checkActorFocus(&point, actor, w, h, focusId);
