@@ -147,11 +147,10 @@
 ### Apr 03, 2022
 - [x] Add OpenH264
 
-### Apr 04, 2022 - Apr ??, 2022
-- [ ] Include Qt for UI
+### Apr 06, 2022
+- [ ] Write own Ui code
 
 ### Later
-- [ ] Make web socket connection proxy
 - [ ] Port to Emscripten
 - [ ] Port to android
 - [ ] Make layout message

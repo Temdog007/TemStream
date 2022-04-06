@@ -1,0 +1,52 @@
+struct Rect {
+    i32 x
+    i32 y
+    i32 w
+    i32 h
+}
+
+variant OptionalRect {
+    null none
+    Rect rect
+}
+
+struct FRect {
+    f32 x
+    f32 y
+    f32 w
+    f32 h
+}
+
+struct NumberRange {
+    i32 min
+    i32 max
+    i32 value
+}
+
+variant UiData {
+    string label
+    string editText
+    NumberRange numberRange
+}
+
+enum HorizontalAlignment {
+    Left
+    Center
+    Right
+}
+
+enum VerticalAlignment {
+    Top
+    Center
+    Bottom
+}
+
+struct UiActor {
+    FRect rect
+    UiData data
+    HorizontalAlignment horizontal
+    VerticalAlignment vertical
+    bool hasFocus
+}
+
+inlineC "MAKE_DEFAULT_LIST(UiActor);"

@@ -1,3 +1,5 @@
+inlineFile "TemLang/ui.tem"
+
 enum ClientCommand {
     ShowStatus
     ConnectToStream
@@ -68,37 +70,16 @@ variant TalkMode {
 
 struct ClientConfiguration {
     string ttfFile
-    string hostname
     Authentication authentication
     TalkMode talkMode
     f32 silenceThreshold
     i32 fontSize
     i32 windowWidth
     i32 windowHeight
-    u16 port
     bool noGui
     bool noAudio
     bool showLabel
     bool fullscreen
-}
-
-struct Rect {
-    i32 x
-    i32 y
-    i32 w
-    i32 h
-}
-
-variant OptionalRect {
-    null none
-    Rect rect
-}
-
-struct FRect {
-    f32 x
-    f32 y
-    f32 w
-    f32 h
 }
 
 enum MoveMode {

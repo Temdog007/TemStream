@@ -113,8 +113,6 @@ defaultClientConfiguration()
         .noGui = false,
         .showLabel = true,
         .noAudio = false,
-        .hostname = TemLangStringCreate("localhost", currentAllocator),
-        .port = 10000,
         .authentication = { .type = 0,
                             .value =
                               TemLangStringCreate("", currentAllocator) },
@@ -155,10 +153,6 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
-        STR_EQUALS(key, "-HN", keyLen, { goto parseHostname; });
-        STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
-        STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
-        STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
         STR_EQUALS(key, "-ST", keyLen, { goto parseSilence; });
         STR_EQUALS(key, "--silence-threshold", keyLen, { goto parseSilence; });
         STR_EQUALS(key, "-SL", keyLen, { goto parseLabel; });
@@ -222,16 +216,6 @@ parseClientConfiguration(const int argc,
         client->noAudio = atoi(value);
         continue;
     }
-    parseHostname : {
-        TemLangStringFree(&client->hostname);
-        client->hostname = TemLangStringCreate(value, currentAllocator);
-        continue;
-    }
-    parsePort : {
-        const int i = atoi(value);
-        client->port = SDL_clamp(i, 1000, 60000);
-        continue;
-    }
     parseLabel : {
         client->showLabel = atoi(value);
         continue;
@@ -267,8 +251,7 @@ printClientConfiguration(const ClientConfiguration* configuration)
 {
     return printf(
              "Width: %d\nHeight: %d\nFullscreen: %d\nTTF file: %s\nFont Size: "
-             "%d\nNo Gui: %d\nShow label: %d\nHostname: %s\nPort: %u\nSilence "
-             "Threshold: %f\n",
+             "%d\nNo Gui: %d\nShow label: %d\nSilence Threshold: %f\n",
              configuration->windowWidth,
              configuration->windowHeight,
              configuration->fullscreen,
@@ -276,8 +259,6 @@ printClientConfiguration(const ClientConfiguration* configuration)
              configuration->fontSize,
              configuration->noGui,
              configuration->showLabel,
-             configuration->hostname.buffer,
-             configuration->port,
              configuration->silenceThreshold) +
            printTalkMode(&configuration->talkMode) +
            printAuthentication(&configuration->authentication);
@@ -3889,20 +3870,20 @@ handleUserEvent(const SDL_UserEvent* e,
 }
 
 int
-runClient(const Configuration* configuration)
+doRunClient(const Configuration* configuration,
+            SDL_Window* window,
+            SDL_Renderer* renderer,
+            TTF_Font* ttfFont,
+            const char* hostname,
+            const uint16_t port)
 {
     clientData.configuration = (NullValue)&configuration->client;
 
     int result = EXIT_FAILURE;
-    puts("Running client");
-    printConfiguration(configuration);
+    puts("Running client...");
 
     const ClientConfiguration* config = &configuration->client;
 
-    SDL_Window* window = NULL;
-    SDL_Renderer* renderer = NULL;
-    // Font font = { 0 };
-    TTF_Font* ttfFont = NULL;
     Bytes bytes = { .allocator = currentAllocator,
                     .buffer = currentAllocator->allocate(MAX_PACKET_SIZE),
                     .size = MAX_PACKET_SIZE,
@@ -3914,95 +3895,12 @@ runClient(const Configuration* configuration)
 
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
-    const bool showWindow = !config->noGui;
-    {
-        uint32_t flags = 0;
-        if (showWindow) {
-            flags |= SDL_INIT_VIDEO;
-        }
-        if (!config->noAudio) {
-            flags |= SDL_INIT_AUDIO;
-        }
-        if (SDL_Init(flags) != 0) {
-            fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
-            displayError(window, "Failed to start", showWindow);
-            goto end;
-        }
-    }
 
     clientData.mutex = SDL_CreateMutex();
     if (clientData.mutex == NULL) {
         fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
         goto end;
     }
-
-    if (showWindow) {
-        const uint32_t flags = IMG_INIT_PNG | IMG_INIT_WEBP | IMG_INIT_TIF;
-        if (IMG_Init(flags) != flags) {
-            fprintf(stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
-            displayError(window, "Failed to start", showWindow);
-            goto end;
-        }
-        if (TTF_Init() == -1) {
-            fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
-            displayError(window, "Failed to start", showWindow);
-            goto end;
-        }
-    }
-
-    if (showWindow) {
-        window = SDL_CreateWindow(
-          "TemStream Client",
-          SDL_WINDOWPOS_UNDEFINED,
-          SDL_WINDOWPOS_UNDEFINED,
-          config->windowWidth,
-          config->windowHeight,
-          SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN |
-            (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
-        if (window == NULL) {
-            fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
-            displayError(window, "Failed to start", showWindow);
-            goto end;
-        }
-
-        {
-            SDL_RendererInfo info = { 0 };
-#if PRINT_RENDER_INFO
-            int drivers = SDL_GetNumRenderDrivers();
-            for (int i = 0; i < drivers; ++i) {
-                SDL_GetRenderDriverInfo(i, &info);
-                printRenderInfo(&info);
-            }
-#endif
-
-            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-            if (renderer == NULL) {
-                fprintf(
-                  stderr, "Failed to create renderer: %s\n", SDL_GetError());
-                displayError(window, "Failed to start", showWindow);
-                goto end;
-            }
-
-            SDL_GetRendererInfo(renderer, &info);
-            printf("Current renderer: %s\n", info.name);
-        }
-
-        // if (!loadFont(config->ttfFile.buffer,
-        // config->fontSize, renderer, &font))
-        // {
-        //     fprintf(stderr, "Failed to load font\n");
-        //     goto end;
-        // }
-
-        ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
-        if (ttfFont == NULL) {
-            fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
-            displayError(window, "Failed to start", showWindow);
-            goto end;
-        }
-    }
-
-    appDone = false;
 
     SDL_AtomicSet(&runningThreads, 0);
 
@@ -4023,8 +3921,8 @@ runClient(const Configuration* configuration)
     }
     {
         ENetAddress address = { 0 };
-        enet_address_set_host(&address, configuration->client.hostname.buffer);
-        address.port = configuration->client.port;
+        enet_address_set_host(&address, hostname);
+        address.port = port;
         peer = enet_host_connect(
           host, &address, 2, ServerConfigurationDataTag_lobby);
         char buffer[512] = { 0 };
@@ -4380,7 +4278,7 @@ runServerProcedure:
             SDL_ShowCursor(SDL_ENABLE);
             mouseState |= MouseState_Visible;
         }
-        SDL_Delay(0);
+        SDL_Delay(1u);
     }
 
     result = EXIT_SUCCESS;
@@ -4403,11 +4301,6 @@ end:
     UserInputListFree(&userInputs);
 
     ClientDataFree(&clientData);
-    TTF_CloseFont(ttfFont);
-    TTF_Quit();
-    IMG_Quit();
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
     // Ensure that SDL user events don't still have memory
     while (SDL_WaitEventTimeout(&e, 100) == 1) {
         if (e.type != SDL_USEREVENT) {
@@ -4436,6 +4329,211 @@ end:
                 break;
         }
     }
+    return result;
+}
+
+int
+getHostnameFromTUI(const Configuration* configuration)
+{
+    uint8_t hostname[KB(1)];
+    uint8_t portStr[KB(1)];
+    const struct pollfd inputfd = { .fd = STDIN_FILENO,
+                                    .events = POLLIN,
+                                    .revents = 0 };
+    askQuestion("Enter hostname");
+    {
+        Bytes bytes = { .allocator = NULL,
+                        .buffer = hostname,
+                        .size = sizeof(hostname),
+                        .used = 0 };
+        switch (getStringFromUser(inputfd, &bytes, true)) {
+            case UserInputResult_Input:
+                break;
+            default:
+                return EXIT_FAILURE;
+        }
+    }
+    askQuestion("Enter port");
+    {
+        Bytes bytes = { .allocator = NULL,
+                        .buffer = portStr,
+                        .size = sizeof(portStr),
+                        .used = 0 };
+        switch (getStringFromUser(inputfd, &bytes, true)) {
+            case UserInputResult_Input:
+                break;
+            default:
+                return EXIT_FAILURE;
+        }
+    }
+    const uint16_t port = strtoul((char*)portStr, NULL, 10);
+    return doRunClient(configuration, NULL, NULL, NULL, (char*)hostname, port);
+}
+
+int
+getHostnameFromGUI(const Configuration* configuration)
+{
+    const ClientConfiguration* config = &configuration->client;
+
+    int result = EXIT_FAILURE;
+
+    SDL_Window* window = NULL;
+    SDL_Renderer* renderer = NULL;
+    TTF_Font* ttfFont = NULL;
+    UiActor actors[4] = { 0 };
+
+    window = SDL_CreateWindow(
+      "TemStream Client",
+      SDL_WINDOWPOS_UNDEFINED,
+      SDL_WINDOWPOS_UNDEFINED,
+      config->windowWidth,
+      config->windowHeight,
+      SDL_WINDOW_RESIZABLE |
+        (config->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
+    if (window == NULL) {
+        fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
+        displayError(window, "Failed to start", true);
+        goto end;
+    }
+
+    {
+        SDL_RendererInfo info = { 0 };
+#if PRINT_RENDER_INFO
+        int drivers = SDL_GetNumRenderDrivers();
+        for (int i = 0; i < drivers; ++i) {
+            SDL_GetRenderDriverInfo(i, &info);
+            printRenderInfo(&info);
+        }
+#endif
+
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        if (renderer == NULL) {
+            fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
+            displayError(window, "Failed to start", true);
+            goto end;
+        }
+
+        SDL_GetRendererInfo(renderer, &info);
+        printf("Current renderer: %s\n", info.name);
+    }
+
+    ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
+    if (ttfFont == NULL) {
+        fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
+        displayError(window, "Failed to start", true);
+        goto end;
+    }
+
+    pUiActor hostname = &actors[0];
+    hostname->horizontal = HorizontalAlignment_Center;
+    hostname->vertical = VerticalAlignment_Center;
+    hostname->rect = (FRect){ .x = 0.1f, .y = 0.1f, .w = 0.75f, .h = 0.1f };
+    hostname->data.tag = UiDataTag_label;
+    hostname->data.label =
+      TemLangStringCreate("Enter hostname", currentAllocator);
+
+    pUiActor hostnameInput = &actors[1];
+    hostnameInput->horizontal = HorizontalAlignment_Center;
+    hostnameInput->vertical = VerticalAlignment_Center;
+    hostnameInput->rect =
+      (FRect){ .x = 0.5f, .y = 0.35f, .w = 0.75f, .h = 0.1f };
+    hostnameInput->data.tag = UiDataTag_editText;
+    hostnameInput->data.editText =
+      TemLangStringCreate("localhost", currentAllocator);
+
+    pUiActor portStr = &actors[2];
+    portStr->horizontal = HorizontalAlignment_Center;
+    portStr->vertical = VerticalAlignment_Center;
+    portStr->rect = (FRect){ .x = 0.5f, .y = 0.5f, .w = 0.75f, .h = 0.1f };
+    portStr->data.tag = UiDataTag_label;
+    portStr->data.label = TemLangStringCreate("Enter port", currentAllocator);
+
+    pUiActor portInput = &actors[3];
+    portInput->horizontal = HorizontalAlignment_Center;
+    portInput->vertical = VerticalAlignment_Center;
+    portInput->rect = (FRect){ .x = 0.5f, .y = 0.65f, .w = 0.75f, .h = 0.1f };
+    portInput->data.tag = UiDataTag_editText;
+    portInput->data.editText = TemLangStringCreate("10000", currentAllocator);
+
+    SDL_Event e = { 0 };
+    while (true) {
+        while (SDL_PollEvent(&e) != 0) {
+            switch (e.type) {
+                case SDL_QUIT:
+                    goto end;
+                default:
+                    break;
+            }
+            if (updateUiActors(
+                  &e, window, actors, sizeof(actors) / sizeof(UiActor)) > 0) {
+                SDL_RenderClear(renderer);
+                renderUiActors(window,
+                               renderer,
+                               ttfFont,
+                               actors,
+                               sizeof(actors) / sizeof(UiActor));
+            }
+        }
+
+        SDL_Delay(1u);
+    }
+end:
+    for (size_t i = 0; i < sizeof(actors) / sizeof(UiActor); ++i) {
+        UiActorFree(&actors[i]);
+    }
+    TTF_CloseFont(ttfFont);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    return result;
+}
+
+int
+runClient(const Configuration* configuration)
+{
+    int result = EXIT_FAILURE;
+    printConfiguration(configuration);
+
+    {
+        const bool showWindow = !configuration->client.noGui;
+        uint32_t flags = 0;
+        if (showWindow) {
+            flags |= SDL_INIT_VIDEO;
+        }
+        if (!configuration->client.noAudio) {
+            flags |= SDL_INIT_AUDIO;
+        }
+        if (SDL_Init(flags) != 0) {
+            fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
+            displayError(NULL, "Failed to start", showWindow);
+            goto end;
+        }
+        if (showWindow) {
+            const uint32_t flags = IMG_INIT_PNG | IMG_INIT_WEBP | IMG_INIT_TIF;
+            if (IMG_Init(flags) != flags) {
+                fprintf(
+                  stderr, "Failed to init SDL_image: %s\n", IMG_GetError());
+                displayError(NULL, "Failed to start", showWindow);
+                goto end;
+            }
+            if (TTF_Init() == -1) {
+                fprintf(stderr, "Failed to init TTF: %s\n", TTF_GetError());
+                displayError(NULL, "Failed to start", showWindow);
+                goto end;
+            }
+        }
+    }
+
+    appDone = false;
+    while (!appDone) {
+        if (configuration->client.noGui) {
+            result = getHostnameFromTUI(configuration);
+        } else {
+            result = getHostnameFromGUI(configuration);
+        }
+    }
+end:
+    TTF_Quit();
+    IMG_Quit();
     SDL_Quit();
     return result;
 }

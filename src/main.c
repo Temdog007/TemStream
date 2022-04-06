@@ -14,6 +14,7 @@
 #include "replay.c"
 #include "server.c"
 #include "text.c"
+#include "ui.c"
 #include "video.c"
 #include "video_x11.c"
 #include "webcam.c"
