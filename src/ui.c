@@ -30,21 +30,18 @@ getUiActorRect(const UiActor* actor, const float w, const float h)
     return rect;
 }
 
-size_t
+void
 updateUiActors(const SDL_Event* e,
                SDL_Window* window,
                UiActor* actor,
-               const size_t s)
+               const size_t s,
+               uint32_t* focusId)
 {
     int w, h;
     SDL_GetWindowSize(window, &w, &h);
-    size_t r = 0;
     for (size_t i = 0; i < s; ++i) {
-        if (updateUiActor(e, &actor[i], w, h)) {
-            ++r;
-        }
+        updateUiActor(e, &actor[i], w, h, focusId);
     }
-    return r;
 }
 
 bool
@@ -59,95 +56,138 @@ actorNeedsText(const UiActor* actor)
 }
 
 bool
-checkActorFocus(SDL_FPoint point, pUiActor actor, const float w, const float h)
+checkActorFocus(const SDL_FPoint* point,
+                pUiActor actor,
+                const float w,
+                const float h,
+                uint32_t* focusId)
 {
     const SDL_FRect rect = getUiActorRect(actor, w, h);
-    const SDL_bool inRect = SDL_PointInFRect(&point, &rect);
-    const bool changed = actor->hasFocus != inRect;
-    actor->hasFocus = inRect;
-    if (changed && actorNeedsText(actor)) {
-        if (actor->hasFocus) {
+    const SDL_bool inRect = SDL_PointInFRect(point, &rect);
+    bool changed = false;
+    if (inRect == SDL_TRUE) {
+        changed = *focusId != actor->id;
+        *focusId = actor->id;
+        if (actorNeedsText(actor)) {
             SDL_StartTextInput();
-        } else {
+        }
+    } else if (*focusId == actor->id) {
+        *focusId = UINT_MAX;
+        if (actorNeedsText(actor)) {
             SDL_StopTextInput();
         }
     }
     return changed;
 }
 
-bool
-updateEditText(const SDL_Event* e, pUiActor actor, const float w, const float h)
+void
+uiUpdate(const int32_t code, const uint32_t focusId)
+{
+    SDL_Event ev = { .user = { .type = SDL_USEREVENT,
+                               .code = code,
+                               .data1 = (void*)(size_t)focusId } };
+    SDL_PushEvent(&ev);
+}
+
+void
+updateEditText(const SDL_Event* e,
+               pUiActor actor,
+               const float w,
+               const float h,
+               uint32_t* focusId)
 {
     switch (e->type) {
-        case SDL_MOUSEBUTTONDOWN: {
+        case SDL_MOUSEBUTTONUP: {
             SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
-            return checkActorFocus(point, actor, w, h);
+            checkActorFocus(&point, actor, w, h, focusId);
+            uiUpdate(*focusId == actor->id ? CustomEvent_UiClicked
+                                           : CustomEvent_UiChanged,
+                     *focusId);
         } break;
         case SDL_MOUSEMOTION: {
             SDL_FPoint point = { .x = e->motion.x, .y = e->motion.y };
-            return checkActorFocus(point, actor, w, h);
+            if (checkActorFocus(&point, actor, w, h, focusId)) {
+                uiUpdate(CustomEvent_UiChanged, *focusId);
+            }
         } break;
         case SDL_KEYDOWN:
             switch (e->key.keysym.sym) {
                 case SDLK_BACKSPACE:
                 case SDLK_DELETE:
-                    if (e->key.keysym.mod & KMOD_CTRL) {
-                        actor->data.editText.used = 0;
-                    } else {
-                        TemLangStringPop(&actor->data.editText);
+                    if (actor->id != *focusId) {
+                        break;
                     }
-                    return true;
+                    if (e->key.keysym.mod & KMOD_CTRL) {
+                        actor->data.editText.text.used = 0;
+                        actor->data.editText.text.buffer[0] = '\0';
+                    } else {
+                        TemLangStringPop(&actor->data.editText.text);
+                    }
+                    uiUpdate(CustomEvent_UiChanged, *focusId);
+                    break;
+                case SDLK_RETURN:
+                case SDLK_RETURN2:
+                case SDLK_KP_ENTER:
+                    if (SDL_GetTicks64() < 1000u) {
+                        break;
+                    }
+                    if (actor->id != *focusId || e->key.repeat) {
+                        break;
+                    }
+                    uiUpdate(CustomEvent_UiClicked, *focusId);
+                    break;
                 default:
                     break;
             }
             break;
         case SDL_TEXTINPUT:
-            if (!actor->hasFocus) {
+            if (actor->id != *focusId) {
                 break;
             }
-            return TemLangStringAppendChars(&actor->data.editText,
-                                            e->text.text);
+            TemLangStringAppendChars(&actor->data.editText.text, e->text.text);
+            uiUpdate(CustomEvent_UiChanged, *focusId);
+            break;
         default:
             break;
     }
-    return false;
 }
 
 bool
-updateNumberRangeFromPoint(pUiActor actor,
-                           const float w,
-                           const float h,
-                           const SDL_FPoint point)
+updateSliderFromPoint(pUiActor actor,
+                      const float w,
+                      const float h,
+                      const SDL_FPoint* point,
+                      uint32_t* focusId)
 {
-    const bool changed = checkActorFocus(point, actor, w, h);
-    const uint32_t state = SDL_GetMouseState(NULL, NULL);
-    if (changed && actor->hasFocus && state != 0) {
+    const bool changed = checkActorFocus(point, actor, w, h, focusId);
+    if (changed && actor->id == *focusId &&
+        (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK) != 0) {
         const SDL_FRect rect = getUiActorRect(actor, w, h);
         const bool horizontal = actor->rect.w > actor->rect.h;
         const float t = horizontal
-                          ? glm_percentc(rect.x, rect.x + rect.w, point.x)
-                          : glm_percentc(rect.y, rect.y + rect.h, point.y);
-        actor->data.numberRange.value = (int32_t)glm_lerpc(
-          actor->data.numberRange.min, actor->data.numberRange.max, t);
+                          ? glm_percentc(rect.x, rect.x + rect.w, point->x)
+                          : glm_percentc(rect.y, rect.y + rect.h, point->y);
+        actor->data.slider.value =
+          (int32_t)glm_lerpc(actor->data.slider.min, actor->data.slider.max, t);
     }
     return changed;
 }
 
 bool
-updateNumberRange(const SDL_Event* e,
-                  pUiActor actor,
-                  const float w,
-                  const float h)
+updateSlider(const SDL_Event* e,
+             pUiActor actor,
+             const float w,
+             const float h,
+             uint32_t* focusId)
 {
     switch (e->type) {
-        case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP: {
             const SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
-            return updateNumberRangeFromPoint(actor, w, h, point);
+            return updateSliderFromPoint(actor, w, h, &point, focusId);
         } break;
         case SDL_MOUSEMOTION: {
             const SDL_FPoint point = { .x = e->motion.x, .y = e->motion.y };
-            return updateNumberRangeFromPoint(actor, w, h, point);
+            return updateSliderFromPoint(actor, w, h, &point, focusId);
         } break;
         default:
             break;
@@ -155,16 +195,51 @@ updateNumberRange(const SDL_Event* e,
     return false;
 }
 
-bool
-updateUiActor(const SDL_Event* e, pUiActor actor, const float w, const float h)
+void
+updateLabel(const SDL_Event* e,
+            pUiActor actor,
+            const float w,
+            const float h,
+            uint32_t* focusId)
+{
+    switch (e->type) {
+        case SDL_MOUSEBUTTONUP: {
+            SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
+            checkActorFocus(&point, actor, w, h, focusId);
+            uiUpdate(*focusId == actor->id ? CustomEvent_UiClicked
+                                           : CustomEvent_UiChanged,
+                     *focusId);
+        } break;
+        case SDL_MOUSEMOTION: {
+            SDL_FPoint point = { .x = e->motion.x, .y = e->motion.y };
+            if (checkActorFocus(&point, actor, w, h, focusId)) {
+                uiUpdate(CustomEvent_UiChanged, *focusId);
+            }
+        } break;
+        default:
+            break;
+    }
+}
+
+void
+updateUiActor(const SDL_Event* e,
+              pUiActor actor,
+              const float w,
+              const float h,
+              uint32_t* focusId)
 {
     switch (actor->data.tag) {
         case UiDataTag_editText:
-            return updateEditText(e, actor, w, h);
-        case UiDataTag_numberRange:
-            return updateNumberRange(e, actor, w, h);
+            updateEditText(e, actor, w, h, focusId);
+            break;
+        case UiDataTag_slider:
+            updateSlider(e, actor, w, h, focusId);
+            break;
+        case UiDataTag_label:
+            updateLabel(e, actor, w, h, focusId);
+            break;
         default:
-            return false;
+            break;
     }
 }
 
@@ -173,13 +248,14 @@ renderUiActors(SDL_Window* window,
                SDL_Renderer* renderer,
                TTF_Font* ttfFont,
                UiActor* actor,
-               const size_t s)
+               const size_t s,
+               const uint32_t focusId)
 {
     int w, h;
     SDL_GetWindowSize(window, &w, &h);
     for (size_t i = 0; i < s; ++i) {
         const SDL_FRect rect = getUiActorRect(&actor[i], w, h);
-        renderUiActor(renderer, ttfFont, &actor[i], rect);
+        renderUiActor(renderer, ttfFont, &actor[i], rect, focusId);
     }
 }
 
@@ -187,13 +263,26 @@ void
 renderUiActor(SDL_Renderer* renderer,
               TTF_Font* font,
               UiActor* actor,
-              SDL_FRect rect)
+              SDL_FRect rect,
+              const uint32_t focusId)
 {
-    const SDL_Color fg = { 255u, 255u, 255u, 255u };
-    const SDL_Color highlight = { 255u, 255u, 0u, 255u };
-    const SDL_Color bg = { 0u, 0u, 0u, 255u };
     SDL_Surface* surface = NULL;
     SDL_Texture* texture = NULL;
+
+    SDL_Color fg;
+    SDL_Color bg;
+    if (actor->id == focusId) {
+        if ((SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK) != 0) {
+            fg = (SDL_Color){ 255u, 0u, 0u, 255u };
+            bg = (SDL_Color){ 255u, 255u, 0u, 255u };
+        } else {
+            fg = (SDL_Color){ 255u, 255u, 0u, 255u };
+            bg = (SDL_Color){ 0u, 0u, 0u, 255u };
+        }
+    } else {
+        fg = (SDL_Color){ 255u, 255u, 255u, 255u };
+        bg = (SDL_Color){ 0u, 0u, 0u, 255u };
+    }
 
     switch (actor->data.tag) {
         case UiDataTag_label:
@@ -202,17 +291,18 @@ renderUiActor(SDL_Renderer* renderer,
             texture = SDL_CreateTextureFromSurface(renderer, surface);
             SDL_RenderCopyF(renderer, texture, NULL, &rect);
             break;
-        case UiDataTag_editText:
-            surface =
-              TTF_RenderUTF8_Shaded_Wrapped(font,
-                                            actor->data.editText.buffer,
-                                            actor->hasFocus ? highlight : fg,
-                                            bg,
-                                            0);
+        case UiDataTag_editText: {
+            char buffer[KB(4)];
+            snprintf(buffer,
+                     sizeof(buffer),
+                     "%s: %s",
+                     actor->data.editText.label.buffer,
+                     actor->data.editText.text.buffer);
+            surface = TTF_RenderUTF8_Shaded_Wrapped(font, buffer, fg, bg, 0);
             texture = SDL_CreateTextureFromSurface(renderer, surface);
             SDL_RenderCopyF(renderer, texture, NULL, &rect);
-            break;
-        case UiDataTag_numberRange: {
+        } break;
+        case UiDataTag_slider: {
             const bool horizontal = rect.w > rect.h;
             SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
             SDL_RenderDrawRectF(renderer, &rect);
@@ -221,17 +311,15 @@ renderUiActor(SDL_Renderer* renderer,
             rect.h *= 0.5f;
             rect.w = SDL_min(rect.w, rect.h);
             rect.h = rect.w;
-            const float t = glm_percentc(actor->data.numberRange.min,
-                                         actor->data.numberRange.max - rect.w,
-                                         actor->data.numberRange.value);
+            const float t = glm_percentc(actor->data.slider.min,
+                                         actor->data.slider.max - rect.w,
+                                         actor->data.slider.value);
             if (horizontal) {
-                rect.x = glm_lerpc(actor->data.numberRange.min,
-                                   actor->data.numberRange.max - rect.w,
-                                   t);
+                rect.x = glm_lerpc(
+                  actor->data.slider.min, actor->data.slider.max - rect.w, t);
             } else {
-                rect.y = glm_lerpc(actor->data.numberRange.min,
-                                   actor->data.numberRange.max - rect.w,
-                                   t);
+                rect.y = glm_lerpc(
+                  actor->data.slider.min, actor->data.slider.max - rect.w, t);
             }
             SDL_RenderDrawRectF(renderer, &rect);
         } break;

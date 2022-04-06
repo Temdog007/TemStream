@@ -24,6 +24,8 @@ enum CustomEvent {
     UpdateAudioDisplay
     UpdateVideoDisplay
     RecordingAudio
+    UiClicked
+    UiChanged
 }
 
 struct VideoFrame {

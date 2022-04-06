@@ -17,16 +17,21 @@ struct FRect {
     f32 h
 }
 
-struct NumberRange {
+struct Slider {
     i32 min
     i32 max
     i32 value
 }
 
+struct EditText {
+    string label
+    string text
+}
+
 variant UiData {
     string label
-    string editText
-    NumberRange numberRange
+    EditText editText
+    Slider slider
 }
 
 enum HorizontalAlignment {
@@ -46,7 +51,7 @@ struct UiActor {
     UiData data
     HorizontalAlignment horizontal
     VerticalAlignment vertical
-    bool hasFocus
+    u32 id
 }
 
 inlineC "MAKE_DEFAULT_LIST(UiActor);"

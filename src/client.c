@@ -26,6 +26,9 @@ UserInputList userInputs = { 0 };
 AudioStatePtrList audioStates = { 0 };
 SDL_atomic_t continueSelection = { 0 };
 
+int
+displayError(SDL_Window* window, const char* e, const bool force);
+
 size_t
 encodeAudioData(OpusEncoder* encoder,
                 const Bytes* audio,
@@ -904,6 +907,7 @@ streamConnectionThread(void* ptr)
         }
         if (peer == NULL) {
             fprintf(stderr, "Failed to connect to server\n");
+            displayError(NULL, "Failed to connect to server", false);
             goto fend;
         }
     });
@@ -3205,6 +3209,7 @@ drawTextures(SDL_Renderer* renderer,
         }
     }
 
+    // draw label
     const ClientConfiguration* config =
       (const ClientConfiguration*)clientData.configuration;
     if (config->showLabel && canShowLabel && display != NULL) {
@@ -3931,6 +3936,7 @@ doRunClient(const Configuration* configuration,
     }
     if (peer == NULL) {
         fprintf(stderr, "Failed to connect to server\n");
+        displayError(window, "Failed to connect to server", false);
         appDone = true;
         goto end;
     }
@@ -3951,13 +3957,13 @@ doRunClient(const Configuration* configuration,
     }
 
     fprintf(stderr, "Failed to connect to server\n");
+    displayError(window, "Failed to connect to server", false);
     enet_peer_reset(peer);
     peer = NULL;
     appDone = true;
     goto end;
 
 runServerProcedure:
-    SDL_ShowWindow(window);
     if (enet_host_service(host, &event, 5000U) > 0 &&
         event.type == ENET_EVENT_TYPE_RECEIVE) {
         const Bytes packetBytes = { .allocator = currentAllocator,
@@ -4370,6 +4376,20 @@ getHostnameFromTUI(const Configuration* configuration)
     return doRunClient(configuration, NULL, NULL, NULL, (char*)hostname, port);
 }
 
+void
+renderUi(SDL_Window* window,
+         SDL_Renderer* renderer,
+         TTF_Font* ttfFont,
+         UiActor* actors,
+         const size_t size,
+         const uint32_t focusId)
+{
+    SDL_SetRenderDrawColor(renderer, 0x33u, 0x33u, 0x33u, 0xffu);
+    SDL_RenderClear(renderer);
+    renderUiActors(window, renderer, ttfFont, actors, size, focusId);
+    SDL_RenderPresent(renderer);
+}
+
 int
 getHostnameFromGUI(const Configuration* configuration)
 {
@@ -4381,6 +4401,7 @@ getHostnameFromGUI(const Configuration* configuration)
     SDL_Renderer* renderer = NULL;
     TTF_Font* ttfFont = NULL;
     UiActor actors[4] = { 0 };
+    const size_t actorCount = sizeof(actors) / sizeof(UiActor);
 
     window = SDL_CreateWindow(
       "TemStream Client",
@@ -4424,61 +4445,122 @@ getHostnameFromGUI(const Configuration* configuration)
         goto end;
     }
 
-    pUiActor hostname = &actors[0];
-    hostname->horizontal = HorizontalAlignment_Center;
-    hostname->vertical = VerticalAlignment_Center;
-    hostname->rect = (FRect){ .x = 0.1f, .y = 0.1f, .w = 0.75f, .h = 0.1f };
-    hostname->data.tag = UiDataTag_label;
-    hostname->data.label =
-      TemLangStringCreate("Enter hostname", currentAllocator);
+    for (size_t i = 0; i < actorCount; ++i) {
+        actors[i].id = i;
+    }
 
-    pUiActor hostnameInput = &actors[1];
-    hostnameInput->horizontal = HorizontalAlignment_Center;
-    hostnameInput->vertical = VerticalAlignment_Center;
-    hostnameInput->rect =
-      (FRect){ .x = 0.5f, .y = 0.35f, .w = 0.75f, .h = 0.1f };
-    hostnameInput->data.tag = UiDataTag_editText;
-    hostnameInput->data.editText =
-      TemLangStringCreate("localhost", currentAllocator);
+    actors[0].horizontal = HorizontalAlignment_Center;
+    actors[0].vertical = VerticalAlignment_Center;
+    actors[0].rect = (FRect){ .x = 0.5f, .y = 0.1f, .w = 0.5f, .h = 0.1f };
+    actors[0].data.tag = UiDataTag_label;
+    actors[0].data.label =
+      TemLangStringCreate("Enter stream connection", currentAllocator);
 
-    pUiActor portStr = &actors[2];
-    portStr->horizontal = HorizontalAlignment_Center;
-    portStr->vertical = VerticalAlignment_Center;
-    portStr->rect = (FRect){ .x = 0.5f, .y = 0.5f, .w = 0.75f, .h = 0.1f };
-    portStr->data.tag = UiDataTag_label;
-    portStr->data.label = TemLangStringCreate("Enter port", currentAllocator);
+    actors[1].horizontal = HorizontalAlignment_Center;
+    actors[1].vertical = VerticalAlignment_Center;
+    actors[1].rect = (FRect){ .x = 0.5f, .y = 0.35f, .w = 0.75f, .h = 0.1f };
+    actors[1].data.tag = UiDataTag_editText;
+    actors[1].data.editText =
+      (EditText){ .label = TemLangStringCreate("Hostname", currentAllocator),
+                  .text = TemLangStringCreate("localhost", currentAllocator) };
 
-    pUiActor portInput = &actors[3];
-    portInput->horizontal = HorizontalAlignment_Center;
-    portInput->vertical = VerticalAlignment_Center;
-    portInput->rect = (FRect){ .x = 0.5f, .y = 0.65f, .w = 0.75f, .h = 0.1f };
-    portInput->data.tag = UiDataTag_editText;
-    portInput->data.editText = TemLangStringCreate("10000", currentAllocator);
+    actors[2].horizontal = HorizontalAlignment_Center;
+    actors[2].vertical = VerticalAlignment_Center;
+    actors[2].rect = (FRect){ .x = 0.5f, .y = 0.5f, .w = 0.75f, .h = 0.1f };
+    actors[2].data.tag = UiDataTag_editText;
+    actors[2].data.editText =
+      (EditText){ .label = TemLangStringCreate("Port", currentAllocator),
+                  .text = TemLangStringCreate("10000", currentAllocator) };
+
+    actors[3].horizontal = HorizontalAlignment_Center;
+    actors[3].vertical = VerticalAlignment_Center;
+    actors[3].rect = (FRect){ .x = 0.5f, .y = 0.65f, .w = 0.75f, .h = 0.1f };
+    actors[3].data.tag = UiDataTag_label;
+    actors[3].data.label = TemLangStringCreate("Connect", currentAllocator);
+
+    uint32_t focusId = 1;
+    renderUi(window, renderer, ttfFont, actors, actorCount, focusId);
 
     SDL_Event e = { 0 };
-    while (true) {
+
+    while (!appDone) {
         while (SDL_PollEvent(&e) != 0) {
             switch (e.type) {
                 case SDL_QUIT:
+                    appDone = true;
                     goto end;
+                case SDL_WINDOWEVENT:
+                    renderUi(
+                      window, renderer, ttfFont, actors, actorCount, focusId);
+                    break;
+                case SDL_KEYDOWN:
+                    switch (e.key.keysym.sym) {
+                        case SDLK_UP:
+                            focusId = SDL_clamp(focusId - 1, 0, actorCount);
+                            renderUi(window,
+                                     renderer,
+                                     ttfFont,
+                                     actors,
+                                     actorCount,
+                                     focusId);
+                            break;
+                        case SDLK_TAB:
+                        case SDLK_KP_TAB:
+                        case SDLK_DOWN:
+                            focusId = SDL_clamp(focusId + 1, 0, actorCount);
+                            renderUi(window,
+                                     renderer,
+                                     ttfFont,
+                                     actors,
+                                     actorCount,
+                                     focusId);
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                case SDL_USEREVENT:
+                    switch (e.user.code) {
+                        case CustomEvent_UiChanged:
+                            renderUi(window,
+                                     renderer,
+                                     ttfFont,
+                                     actors,
+                                     actorCount,
+                                     focusId);
+                            break;
+                        case CustomEvent_UiClicked: {
+                            const size_t target = (size_t)e.user.data1;
+                            switch (target) {
+                                case 3:
+                                    result = doRunClient(
+                                      configuration,
+                                      window,
+                                      renderer,
+                                      ttfFont,
+                                      actors[1].data.editText.text.buffer,
+                                      strtoul(
+                                        actors[2].data.editText.text.buffer,
+                                        NULL,
+                                        10));
+                                    goto end;
+                                default:
+                                    break;
+                            }
+                        }
+                        default:
+                            break;
+                    }
+                    break;
                 default:
                     break;
             }
-            if (updateUiActors(
-                  &e, window, actors, sizeof(actors) / sizeof(UiActor)) > 0) {
-                SDL_RenderClear(renderer);
-                renderUiActors(window,
-                               renderer,
-                               ttfFont,
-                               actors,
-                               sizeof(actors) / sizeof(UiActor));
-            }
+            updateUiActors(&e, window, actors, actorCount, &focusId);
         }
-
         SDL_Delay(1u);
     }
 end:
-    for (size_t i = 0; i < sizeof(actors) / sizeof(UiActor); ++i) {
+    for (size_t i = 0; i < actorCount; ++i) {
         UiActorFree(&actors[i]);
     }
     TTF_CloseFont(ttfFont);

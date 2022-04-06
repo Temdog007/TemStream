@@ -735,17 +735,22 @@ renderFont(SDL_Renderer* renderer,
 MAKE_COPY_AND_FREE(SDL_FPoint);
 MAKE_DEFAULT_LIST(SDL_FPoint);
 
-extern size_t
-updateUiActors(const SDL_Event*, SDL_Window*, pUiActor, size_t);
-
-extern bool
-updateUiActor(const SDL_Event*, pUiActor, const float, const float);
+extern void
+updateUiActors(const SDL_Event*, SDL_Window*, pUiActor, size_t, uint32_t*);
 
 extern void
-renderUiActor(SDL_Renderer*, TTF_Font*, pUiActor, SDL_FRect);
+updateUiActor(const SDL_Event*, pUiActor, const float, const float, uint32_t*);
 
 extern void
-renderUiActors(SDL_Window*, SDL_Renderer*, TTF_Font*, pUiActor, size_t);
+renderUiActor(SDL_Renderer*, TTF_Font*, pUiActor, SDL_FRect, uint32_t);
+
+extern void
+renderUiActors(SDL_Window*,
+               SDL_Renderer*,
+               TTF_Font*,
+               pUiActor,
+               size_t,
+               uint32_t);
 
 SDL_FORCE_INLINE SDL_bool
 SDL_PointInFRect(const SDL_FPoint* p, const SDL_FRect* r)
