@@ -152,6 +152,8 @@
 
 ### Later
 - [ ] Write websocket code for browser version
+- [ ] Make video replay streams work properly
+- [ ] Remove the ability to create streams from client version
 - [ ] Test android
 - [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects

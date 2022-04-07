@@ -59,7 +59,7 @@ inlineC "MAKE_DEFAULT_LIST(UiActor);"
 
 enum Menu {
     Main
-    CreateStream
+    ConnectToStream
     EnterText
     EnterImage
 }

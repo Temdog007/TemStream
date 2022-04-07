@@ -3,23 +3,23 @@
 #define MIN_WIDTH 32
 #define MIN_HEIGHT 32
 
-#define RENDER_NOW(w, h, actors)                                               \
-    drawTextures(renderer,                                                     \
-                 ttfFont,                                                      \
+#define RENDER_NOW(w, h, info)                                                 \
+    drawTextures(info.renderer,                                                \
+                 info.font,                                                    \
                  targetDisplay,                                                \
                  (float)w - MIN_WIDTH,                                         \
                  (float)h - MIN_HEIGHT,                                        \
                  mouseState == (MouseState_Visible | MouseState_InWindow));    \
-    if (showUi) {                                                              \
-        renderUiActors(                                                        \
-          window, renderer, ttfFont, actors.buffer, actors.used, focusId);     \
-    }
+    if (info.showUi) {                                                         \
+        renderUiActors(&info);                                                 \
+    }                                                                          \
+    SDL_RenderPresent(info.renderer);
 
-#define RENDER_NOW_CALC(actors)                                                \
+#define RENDER_NOW_CALC(info)                                                  \
     {                                                                          \
         int w, h;                                                              \
         SDL_GetWindowSize(window, &w, &h);                                     \
-        RENDER_NOW(w, h, actors);                                              \
+        RENDER_NOW(w, h, info);                                                \
     }
 
 #define DEFAULT_CHAT_COUNT 5
@@ -2597,6 +2597,8 @@ end:
 int
 userInputThread(void* ptr)
 {
+    displayUserOptions();
+
     pClient client = (pClient)ptr;
     Bytes bytes = { .allocator = currentAllocator,
                     .buffer = currentAllocator->allocate(KB(1)),
@@ -3235,7 +3237,6 @@ drawTextures(SDL_Renderer* renderer,
     // uint8_t background[4] = { 0xff, 0xffu, 0x0u, 0xffu };
     // renderFont(renderer, font, "Hello World", 0, 0, 5.f,
     // NULL, background);
-    SDL_RenderPresent(renderer);
 }
 
 void
@@ -3313,6 +3314,15 @@ clientHandleGeneralMessage(const GeneralMessage* message, pClient client)
 }
 
 bool
+sendUpdateUiEvent()
+{
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_UpdateUi;
+    return SDL_PushEvent(&e) == 0;
+}
+
+bool
 clientHandleLobbyMessage(const LobbyMessage* message, pClient client)
 {
     bool result = false;
@@ -3320,6 +3330,7 @@ clientHandleLobbyMessage(const LobbyMessage* message, pClient client)
         case LobbyMessageTag_allStreams:
             result = ServerConfigurationListCopy(
               &clientData.allStreams, &message->allStreams, currentAllocator);
+            sendUpdateUiEvent();
             goto end;
         case LobbyMessageTag_startStreamingAck:
             result = true;
@@ -3760,23 +3771,20 @@ handleMicrophoneMute(void* userdata, SDL_Event* e)
 
 void
 handleUserEvent(const SDL_UserEvent* e,
-                SDL_Window* window,
-                SDL_Renderer* renderer,
-                TTF_Font* ttfFont,
+                pRenderInfo info,
                 const size_t targetDisplay,
                 ENetPeer* peer,
                 pBytes bytes,
                 const MouseState mouseState,
-                const bool showUi,
-                const UiActorList* uiActors,
-                const int32_t focusId)
+                const int w,
+                const int h)
 {
-    int w, h;
-    SDL_GetWindowSize(window, &w, &h);
     switch (e->code) {
         case CustomEvent_ShowSimpleMessage:
-            SDL_ShowSimpleMessageBox(
-              SDL_MESSAGEBOX_ERROR, (char*)e->data1, (char*)e->data2, window);
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                     (char*)e->data1,
+                                     (char*)e->data2,
+                                     info->window);
             break;
         case CustomEvent_UpdateStreamDisplay: {
             const Guid id = *(const Guid*)e->data1;
@@ -3793,18 +3801,19 @@ handleUserEvent(const SDL_UserEvent* e,
             pStreamDisplay display = &clientData.displays.buffer[index];
             switch (display->data.tag) {
                 case StreamDisplayDataTag_text:
-                    updateTextDisplay(renderer, ttfFont, display);
+                    updateTextDisplay(info->renderer, info->font, display);
                     break;
                 case StreamDisplayDataTag_chat:
-                    updateChatDisplay(renderer, ttfFont, w, h, display);
+                    updateChatDisplay(
+                      info->renderer, info->font, w, h, display);
                     break;
                 case StreamDisplayDataTag_image:
-                    updateImageDisplay(renderer, display);
+                    updateImageDisplay(info->renderer, display);
                     break;
                 default:
                     break;
             }
-            RENDER_NOW(w, h, (*uiActors));
+            RENDER_NOW(w, h, (*info));
         } break;
         case CustomEvent_SaveScreenshot: {
             const Guid id = *(const Guid*)e->data1;
@@ -3818,7 +3827,7 @@ handleUserEvent(const SDL_UserEvent* e,
                         "from list\n");
                 break;
             }
-            saveScreenshot(renderer, display);
+            saveScreenshot(info->renderer, display);
         } break;
         case CustomEvent_SendLobbyMessage: {
             MESSAGE_SERIALIZE(
@@ -3833,11 +3842,11 @@ handleUserEvent(const SDL_UserEvent* e,
             size_t i = 0;
             if (GetStreamDisplayFromGuid(&clientData.displays, &id, NULL, &i)) {
                 updateAudioDisplay(
-                  renderer, &clientData.displays.buffer[i], &ptr->audio);
+                  info->renderer, &clientData.displays.buffer[i], &ptr->audio);
             }
             CurrentAudioFree(ptr);
             currentAllocator->free(ptr);
-            RENDER_NOW(w, h, (*uiActors));
+            RENDER_NOW(w, h, (*info));
         } break;
         case CustomEvent_RecordingAudio: {
             const SDL_AudioDeviceID deviceId =
@@ -3862,7 +3871,7 @@ handleUserEvent(const SDL_UserEvent* e,
             size_t i = 0;
             if (GetStreamDisplayFromGuid(
                   &clientData.displays, &ptr->id, NULL, &i)) {
-                updateVideoDisplay(renderer,
+                updateVideoDisplay(info->renderer,
                                    &clientData.displays.buffer[i],
                                    ptr->width,
                                    ptr->height,
@@ -3873,7 +3882,12 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             VideoFrameFree(ptr);
             currentAllocator->free(ptr);
-            RENDER_NOW(w, h, (*uiActors));
+            RENDER_NOW(w, h, (*info));
+        } break;
+        case CustomEvent_UpdateUi: {
+            UiActorListFree(&info->uiActors);
+            info->uiActors = setUiMenu(info->menu);
+            RENDER_NOW(w, h, (*info));
         } break;
         default:
             break;
@@ -3922,9 +3936,13 @@ doRunClient(const Configuration* configuration,
     ENetPeer* peer = NULL;
     Client client = { 0 };
 
-    bool showUi = window != NULL;
-    UiActorList uiActors = { 0 };
-    int32_t focusId = INT_MAX;
+    RenderInfo info = { .window = window,
+                        .renderer = renderer,
+                        .font = ttfFont,
+                        .showUi = window != NULL,
+                        .menu = Menu_Main,
+                        .focusId = INT_MAX,
+                        .uiActors = { .allocator = currentAllocator } };
 
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
@@ -3978,7 +3996,6 @@ doRunClient(const Configuration* configuration,
               &event.peer->address, buffer, sizeof(buffer));
             printf(
               "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-            displayUserOptions();
             sendAuthentication(peer, ServerConfigurationDataTag_lobby);
             goto runServerProcedure;
         }
@@ -4023,7 +4040,7 @@ runServerProcedure:
         goto end;
     }
 
-    {
+    if (window == NULL) {
         SDL_Thread* thread = SDL_CreateThread(
           (SDL_ThreadFunction)userInputThread, "user_input", &client);
         if (thread == NULL) {
@@ -4036,9 +4053,8 @@ runServerProcedure:
 
     uint32_t lastMouseMove = 0;
     MouseState mouseState = MouseState_Visible | MouseState_InWindow;
-
     if (window != NULL) {
-        uiActors = setUiMenu(Menu_Main);
+        info.uiActors = setUiMenu(info.menu);
     }
 
     while (!appDone) {
@@ -4047,6 +4063,8 @@ runServerProcedure:
             break;
         }
         while (!appDone && SDL_PollEvent(&e)) {
+            int w, h;
+            SDL_GetWindowSize(window, &w, &h);
             SDL_LockMutex(clientData.mutex);
             switch (e.type) {
                 case SDL_QUIT:
@@ -4063,20 +4081,22 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW_CALC(uiActors);
+                    RENDER_NOW_CALC(info);
                     break;
                 case SDL_KEYDOWN:
                     switch (e.key.keysym.sym) {
                         case SDLK_ESCAPE:
                             SDL_AtomicSet(&continueSelection, 0);
-                            displayUserOptions();
+                            if (window == NULL) {
+                                displayUserOptions();
+                            }
                             break;
                         case SDLK_F1:
                             if (window == NULL) {
                                 displayUserOptions();
                             } else {
-                                showUi = !showUi;
-                                RENDER_NOW_CALC(uiActors);
+                                info.showUi = !info.showUi;
+                                RENDER_NOW_CALC(info);
                             }
                             break;
                         case SDLK_F2:
@@ -4127,14 +4147,14 @@ runServerProcedure:
                     if (findDisplayFromPoint(&point, &targetDisplay)) {
                         hasTarget = true;
                         SDL_SetWindowGrab(window, true);
-                        RENDER_NOW_CALC(uiActors);
+                        RENDER_NOW_CALC(info);
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
                     SDL_SetWindowGrab(window, false);
-                    RENDER_NOW_CALC(uiActors);
+                    RENDER_NOW_CALC(info);
                     break;
                 case SDL_MOUSEMOTION:
                     lastMouseMove = e.motion.timestamp;
@@ -4147,9 +4167,6 @@ runServerProcedure:
                         if (display->texture == NULL) {
                             break;
                         }
-                        int w;
-                        int h;
-                        SDL_GetWindowSize(window, &w, &h);
                         switch (moveMode) {
                             case MoveMode_Position:
                                 display->dstRect.x =
@@ -4174,26 +4191,22 @@ runServerProcedure:
                           display->dstRect.x, 0.f, w - display->dstRect.w);
                         display->dstRect.y = SDL_clamp(
                           display->dstRect.y, 0.f, h - display->dstRect.h);
-                        RENDER_NOW(w, h, uiActors);
+                        RENDER_NOW(w, h, info);
                     } else {
                         SDL_FPoint point = { 0 };
-                        int x;
-                        int y;
+                        int x, y;
                         SDL_GetMouseState(&x, &y);
                         point.x = (float)x;
                         point.y = (float)y;
                         targetDisplay = UINT_MAX;
                         findDisplayFromPoint(&point, &targetDisplay);
-                        RENDER_NOW_CALC(uiActors);
+                        RENDER_NOW_CALC(info);
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
                     if (targetDisplay >= clientData.displays.used) {
                         break;
                     }
-                    int w;
-                    int h;
-                    SDL_GetWindowSize(window, &w, &h);
                     pStreamDisplay display =
                       &clientData.displays.buffer[targetDisplay];
                     switch (display->data.tag) {
@@ -4220,20 +4233,17 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW(w, h, uiActors);
+                    RENDER_NOW(w, h, info);
                 } break;
                 case SDL_USEREVENT:
                     handleUserEvent(&e.user,
-                                    window,
-                                    renderer,
-                                    ttfFont,
+                                    &info,
                                     targetDisplay,
                                     peer,
                                     &bytes,
                                     mouseState,
-                                    showUi,
-                                    &uiActors,
-                                    focusId);
+                                    w,
+                                    h);
                     break;
                 case SDL_DROPFILE: {
                     // Look for image stream
@@ -4247,8 +4257,6 @@ runServerProcedure:
                         puts("Loading new font...");
                         if (loadNewFont(
                               e.drop.file, config->fontSize, &ttfFont)) {
-                            int w, h;
-                            SDL_GetWindowSize(window, &w, &h);
                             updateAllDisplays(renderer, ttfFont, w, h);
                             puts("Loaded new font");
                         }
@@ -4324,6 +4332,9 @@ runServerProcedure:
                     break;
             }
             SDL_UnlockMutex(clientData.mutex);
+            if (info.window != NULL) {
+                updateUiActors(&e, &info);
+            }
         }
         if (SDL_GetTicks() - lastMouseMove > 1000U) {
             SDL_ShowCursor(SDL_DISABLE);
@@ -4339,7 +4350,7 @@ runServerProcedure:
 
 end:
     appDone = true;
-    UiActorListFree(&uiActors);
+    UiActorListFree(&info.uiActors);
     // FontFree(&font);
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
@@ -4426,17 +4437,12 @@ getHostnameFromTUI(const Configuration* configuration)
 }
 
 void
-renderUi(SDL_Window* window,
-         SDL_Renderer* renderer,
-         TTF_Font* ttfFont,
-         UiActor* actors,
-         const size_t size,
-         const int32_t focusId)
+renderUi(pRenderInfo info)
 {
-    SDL_SetRenderDrawColor(renderer, 0x33u, 0x33u, 0x33u, 0xffu);
-    SDL_RenderClear(renderer);
-    renderUiActors(window, renderer, ttfFont, actors, size, focusId);
-    SDL_RenderPresent(renderer);
+    SDL_SetRenderDrawColor(info->renderer, 0x33u, 0x33u, 0x33u, 0xffu);
+    SDL_RenderClear(info->renderer);
+    renderUiActors(info);
+    SDL_RenderPresent(info->renderer);
 }
 
 int
@@ -4527,8 +4533,15 @@ getHostnameFromGUI(const Configuration* configuration)
     actors[3].data.tag = UiDataTag_label;
     actors[3].data.label = TemLangStringCreate("Connect", currentAllocator);
 
-    int32_t focusId = 1;
-    renderUi(window, renderer, ttfFont, actors, actorCount, focusId);
+    RenderInfo info = {
+        .focusId = 1,
+        .font = ttfFont,
+        .renderer = renderer,
+        .window = window,
+        .showUi = true,
+        .uiActors = { .buffer = actors, .used = actorCount, .size = actorCount }
+    };
+    renderUi(&info);
 
     SDL_Event e = { 0 };
 
@@ -4539,30 +4552,21 @@ getHostnameFromGUI(const Configuration* configuration)
                     appDone = true;
                     goto end;
                 case SDL_WINDOWEVENT:
-                    renderUi(
-                      window, renderer, ttfFont, actors, actorCount, focusId);
+                    renderUi(&info);
                     break;
                 case SDL_KEYDOWN:
                     switch (e.key.keysym.sym) {
                         case SDLK_UP:
-                            focusId = SDL_clamp(focusId - 1, 0, actorCount);
-                            renderUi(window,
-                                     renderer,
-                                     ttfFont,
-                                     actors,
-                                     actorCount,
-                                     focusId);
+                            info.focusId =
+                              SDL_clamp(info.focusId - 1, 0, actorCount);
+                            renderUi(&info);
                             break;
                         case SDLK_TAB:
                         case SDLK_KP_TAB:
                         case SDLK_DOWN:
-                            focusId = SDL_clamp(focusId + 1, 0, actorCount);
-                            renderUi(window,
-                                     renderer,
-                                     ttfFont,
-                                     actors,
-                                     actorCount,
-                                     focusId);
+                            info.focusId =
+                              SDL_clamp(info.focusId + 1, 0, actorCount);
+                            renderUi(&info);
                             break;
                         default:
                             break;
@@ -4571,12 +4575,7 @@ getHostnameFromGUI(const Configuration* configuration)
                 case SDL_USEREVENT:
                     switch (e.user.code) {
                         case CustomEvent_UiChanged:
-                            renderUi(window,
-                                     renderer,
-                                     ttfFont,
-                                     actors,
-                                     actorCount,
-                                     focusId);
+                            renderUi(&info);
                             break;
                         case CustomEvent_UiClicked:
                             if (e.user.data1 != &actors[3]) {
@@ -4602,7 +4601,7 @@ getHostnameFromGUI(const Configuration* configuration)
                 default:
                     break;
             }
-            updateUiActors(&e, window, actors, actorCount, &focusId);
+            updateUiActors(&e, &info);
         }
         SDL_Delay(1u);
     }

@@ -735,22 +735,17 @@ renderFont(SDL_Renderer* renderer,
 MAKE_COPY_AND_FREE(SDL_FPoint);
 MAKE_DEFAULT_LIST(SDL_FPoint);
 
+typedef struct RenderInfo RenderInfo, *pRenderInfo;
+
 extern void
-updateUiActors(const SDL_Event*, SDL_Window*, pUiActor, size_t, int32_t*);
+updateUiActors(const SDL_Event*, pRenderInfo);
 
 extern void
 updateUiActor(const SDL_Event*, pUiActor, const float, const float, int32_t*);
 
-extern void
-renderUiActor(SDL_Renderer*, TTF_Font*, pUiActor, SDL_FRect, int32_t);
+extern void renderUiActor(pRenderInfo, pUiActor, SDL_FRect);
 
-extern void
-renderUiActors(SDL_Window*,
-               SDL_Renderer*,
-               TTF_Font*,
-               pUiActor,
-               size_t,
-               int32_t);
+extern void renderUiActors(pRenderInfo);
 
 SDL_FORCE_INLINE SDL_bool
 SDL_PointInFRect(const SDL_FPoint* p, const SDL_FRect* r)
@@ -861,3 +856,14 @@ processOutputToStrings(const char*, pTemLangStringList);
 // UI
 
 extern UiActorList setUiMenu(Menu);
+
+typedef struct RenderInfo
+{
+    UiActorList uiActors;
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    TTF_Font* font;
+    int32_t focusId;
+    Menu menu;
+    bool showUi;
+} RenderInfo, *pRenderInfo;

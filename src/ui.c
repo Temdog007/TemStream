@@ -31,16 +31,12 @@ getUiActorRect(const UiActor* actor, const float w, const float h)
 }
 
 void
-updateUiActors(const SDL_Event* e,
-               SDL_Window* window,
-               UiActor* actor,
-               const size_t s,
-               int32_t* focusId)
+updateUiActors(const SDL_Event* e, pRenderInfo info)
 {
     int w, h;
-    SDL_GetWindowSize(window, &w, &h);
-    for (size_t i = 0; i < s; ++i) {
-        updateUiActor(e, &actor[i], w, h, focusId);
+    SDL_GetWindowSize(info->window, &w, &h);
+    for (size_t i = 0; i < info->uiActors.used; ++i) {
+        updateUiActor(e, &info->uiActors.buffer[i], w, h, &info->focusId);
     }
 }
 
@@ -251,34 +247,25 @@ updateUiActor(const SDL_Event* e,
 }
 
 void
-renderUiActors(SDL_Window* window,
-               SDL_Renderer* renderer,
-               TTF_Font* ttfFont,
-               UiActor* actor,
-               const size_t s,
-               const int32_t focusId)
+renderUiActors(pRenderInfo info)
 {
     int w, h;
-    SDL_GetWindowSize(window, &w, &h);
-    for (size_t i = 0; i < s; ++i) {
-        const SDL_FRect rect = getUiActorRect(&actor[i], w, h);
-        renderUiActor(renderer, ttfFont, &actor[i], rect, focusId);
+    SDL_GetWindowSize(info->window, &w, &h);
+    for (size_t i = 0; i < info->uiActors.used; ++i) {
+        const SDL_FRect rect = getUiActorRect(&info->uiActors.buffer[i], w, h);
+        renderUiActor(info, &info->uiActors.buffer[i], rect);
     }
 }
 
 void
-renderUiActor(SDL_Renderer* renderer,
-              TTF_Font* font,
-              UiActor* actor,
-              SDL_FRect rect,
-              const int32_t focusId)
+renderUiActor(pRenderInfo info, pUiActor actor, SDL_FRect rect)
 {
     SDL_Surface* surface = NULL;
     SDL_Texture* texture = NULL;
 
     SDL_Color fg;
     SDL_Color bg;
-    if (actor->id == focusId) {
+    if (actor->id == info->focusId) {
         if ((SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK) != 0) {
             fg = (SDL_Color){ 255u, 0u, 0u, 255u };
             bg = (SDL_Color){ 255u, 255u, 0u, 255u };
@@ -294,9 +281,9 @@ renderUiActor(SDL_Renderer* renderer,
     switch (actor->data.tag) {
         case UiDataTag_label:
             surface = TTF_RenderUTF8_Shaded_Wrapped(
-              font, actor->data.label.buffer, fg, bg, 0);
-            texture = SDL_CreateTextureFromSurface(renderer, surface);
-            SDL_RenderCopyF(renderer, texture, NULL, &rect);
+              info->font, actor->data.label.buffer, fg, bg, 0);
+            texture = SDL_CreateTextureFromSurface(info->renderer, surface);
+            SDL_RenderCopyF(info->renderer, texture, NULL, &rect);
             break;
         case UiDataTag_editText: {
             char buffer[KB(4)];
@@ -305,15 +292,16 @@ renderUiActor(SDL_Renderer* renderer,
                      "%s: %s",
                      actor->data.editText.label.buffer,
                      actor->data.editText.text.buffer);
-            surface = TTF_RenderUTF8_Shaded_Wrapped(font, buffer, fg, bg, 0);
-            texture = SDL_CreateTextureFromSurface(renderer, surface);
-            SDL_RenderCopyF(renderer, texture, NULL, &rect);
+            surface =
+              TTF_RenderUTF8_Shaded_Wrapped(info->font, buffer, fg, bg, 0);
+            texture = SDL_CreateTextureFromSurface(info->renderer, surface);
+            SDL_RenderCopyF(info->renderer, texture, NULL, &rect);
         } break;
         case UiDataTag_slider: {
             const bool horizontal = rect.w > rect.h;
-            SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
-            SDL_RenderDrawRectF(renderer, &rect);
-            SDL_SetRenderDrawColor(renderer, fg.r, fg.g, fg.b, fg.a);
+            SDL_SetRenderDrawColor(info->renderer, bg.r, bg.g, bg.b, bg.a);
+            SDL_RenderDrawRectF(info->renderer, &rect);
+            SDL_SetRenderDrawColor(info->renderer, fg.r, fg.g, fg.b, fg.a);
             rect.w *= 0.5f;
             rect.h *= 0.5f;
             rect.w = SDL_min(rect.w, rect.h);
@@ -328,7 +316,7 @@ renderUiActor(SDL_Renderer* renderer,
                 rect.y = glm_lerpc(
                   actor->data.slider.min, actor->data.slider.max - rect.w, t);
             }
-            SDL_RenderDrawRectF(renderer, &rect);
+            SDL_RenderDrawRectF(info->renderer, &rect);
         } break;
         default:
             break;
@@ -397,8 +385,8 @@ setUiMenu(const Menu m)
                       ServerConfigurationDataTagToCharString(config->data.tag));
                     pUiActor streamName = addUiLabel(&list, buffer);
                     streamName->rect.x = 0.1f;
-                    streamName->rect.y = size;
-                    streamName->rect.w = 0.25f;
+                    streamName->rect.y = 0.25f + (i * size);
+                    streamName->rect.w = 0.225f;
                     streamName->rect.h = size * 0.9f;
                     streamName->horizontal = HorizontalAlignment_Left;
                     streamName->vertical = VerticalAlignment_Top;
@@ -408,8 +396,8 @@ setUiMenu(const Menu m)
                     pUiActor isConnected =
                       addUiLabel(&list, connected ? "Disconnect" : "Connect");
                     isConnected->rect.x = 0.1f + 0.25f;
-                    isConnected->rect.y = size;
-                    isConnected->rect.w = 0.25f;
+                    isConnected->rect.y = 0.25f + (i * size);
+                    isConnected->rect.w = 0.225f;
                     isConnected->rect.h = size * 0.9f;
                     isConnected->horizontal = HorizontalAlignment_Left;
                     isConnected->vertical = VerticalAlignment_Top;
@@ -425,8 +413,8 @@ setUiMenu(const Menu m)
                         case ServerConfigurationDataTag_text: {
                             pUiActor t = addUiLabel(&list, "Send text");
                             t->rect.x = 0.1f + 0.5f;
-                            t->rect.y = size;
-                            t->rect.w = 0.25f;
+                            t->rect.y = 0.25f + (i * size);
+                            t->rect.w = 0.225f;
                             t->rect.h = size * 0.9f;
                             t->horizontal = HorizontalAlignment_Left;
                             t->vertical = VerticalAlignment_Top;

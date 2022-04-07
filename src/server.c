@@ -77,9 +77,16 @@ parseServerConfiguration(const char* key,
     STR_EQUALS(key, "--directory", keyLen, { goto parseDirectory; });
     STR_EQUALS(key, "-R", keyLen, { goto parseRecord; });
     STR_EQUALS(key, "--replay", keyLen, { goto parseRecord; });
+    STR_EQUALS(key, "-N", keyLen, { goto parseName; });
+    STR_EQUALS(key, "--name", keyLen, { goto parseName; });
     // TODO: parse authentication
     return false;
 
+parseName : {
+    TemLangStringFree(&config->name);
+    config->name = TemLangStringCreate(value, currentAllocator);
+    return true;
+}
 parseHostname : {
     TemLangStringFree(&config->hostname);
     config->hostname = TemLangStringCreate(value, currentAllocator);
