@@ -3887,6 +3887,24 @@ doRunClient(const Configuration* configuration,
     int result = EXIT_FAILURE;
     puts("Running client...");
 
+    SDL_RenderClear(renderer);
+    {
+        int w, h;
+        SDL_GetWindowSize(window, &w, &h);
+        const SDL_Rect rect = {
+            .x = w / 10, .y = h * 4 / 10, .w = w * 8 / 10, .h = h * 2 / 10
+        };
+        const SDL_Color fg = { 255u, 255u, 255u, 255u };
+        const SDL_Color bg = { 0u, 0u, 0u, 255u };
+        SDL_Surface* surface =
+          TTF_RenderUTF8_Shaded_Wrapped(ttfFont, "Connecting...", fg, bg, 0);
+        SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+        SDL_RenderCopy(renderer, texture, NULL, &rect);
+        SDL_DestroyTexture(texture);
+        SDL_FreeSurface(surface);
+        SDL_RenderPresent(renderer);
+    }
+
     const ClientConfiguration* config = &configuration->client;
 
     Bytes bytes = { .allocator = currentAllocator,
@@ -4458,7 +4476,7 @@ getHostnameFromGUI(const Configuration* configuration)
 
     actors[1].horizontal = HorizontalAlignment_Center;
     actors[1].vertical = VerticalAlignment_Center;
-    actors[1].rect = (FRect){ .x = 0.5f, .y = 0.35f, .w = 0.75f, .h = 0.1f };
+    actors[1].rect = (FRect){ .x = 0.5f, .y = 0.35f, .w = 0.5f, .h = 0.1f };
     actors[1].data.tag = UiDataTag_editText;
     actors[1].data.editText =
       (EditText){ .label = TemLangStringCreate("Hostname", currentAllocator),
@@ -4466,7 +4484,7 @@ getHostnameFromGUI(const Configuration* configuration)
 
     actors[2].horizontal = HorizontalAlignment_Center;
     actors[2].vertical = VerticalAlignment_Center;
-    actors[2].rect = (FRect){ .x = 0.5f, .y = 0.5f, .w = 0.75f, .h = 0.1f };
+    actors[2].rect = (FRect){ .x = 0.5f, .y = 0.5f, .w = 0.5f, .h = 0.1f };
     actors[2].data.tag = UiDataTag_editText;
     actors[2].data.editText =
       (EditText){ .label = TemLangStringCreate("Port", currentAllocator),
@@ -4474,7 +4492,7 @@ getHostnameFromGUI(const Configuration* configuration)
 
     actors[3].horizontal = HorizontalAlignment_Center;
     actors[3].vertical = VerticalAlignment_Center;
-    actors[3].rect = (FRect){ .x = 0.5f, .y = 0.65f, .w = 0.75f, .h = 0.1f };
+    actors[3].rect = (FRect){ .x = 0.5f, .y = 0.65f, .w = 0.5f, .h = 0.1f };
     actors[3].data.tag = UiDataTag_label;
     actors[3].data.label = TemLangStringCreate("Connect", currentAllocator);
 
@@ -4543,6 +4561,10 @@ getHostnameFromGUI(const Configuration* configuration)
                                         actors[2].data.editText.text.buffer,
                                         NULL,
                                         10));
+                                    if (result != EXIT_SUCCESS) {
+                                        appDone = false;
+                                        break;
+                                    }
                                     goto end;
                                 default:
                                     break;

@@ -209,9 +209,7 @@ updateLabel(const SDL_Event* e,
 {
     switch (e->type) {
         case SDL_MOUSEBUTTONDOWN:
-            uiUpdate(*focusId == actor->id ? CustomEvent_UiClicked
-                                           : CustomEvent_UiChanged,
-                     *focusId);
+            uiUpdate(CustomEvent_UiChanged, *focusId);
             break;
         case SDL_MOUSEBUTTONUP: {
             SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
