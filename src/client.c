@@ -3,19 +3,23 @@
 #define MIN_WIDTH 32
 #define MIN_HEIGHT 32
 
-#define RENDER_NOW(w, h)                                                       \
+#define RENDER_NOW(w, h, actors)                                               \
     drawTextures(renderer,                                                     \
                  ttfFont,                                                      \
                  targetDisplay,                                                \
                  (float)w - MIN_WIDTH,                                         \
                  (float)h - MIN_HEIGHT,                                        \
-                 mouseState == (MouseState_Visible | MouseState_InWindow))
+                 mouseState == (MouseState_Visible | MouseState_InWindow));    \
+    if (showUi) {                                                              \
+        renderUiActors(                                                        \
+          window, renderer, ttfFont, actors.buffer, actors.used, focusId);     \
+    }
 
-#define RENDER_NOW_CALC                                                        \
+#define RENDER_NOW_CALC(actors)                                                \
     {                                                                          \
         int w, h;                                                              \
         SDL_GetWindowSize(window, &w, &h);                                     \
-        RENDER_NOW(w, h);                                                      \
+        RENDER_NOW(w, h, actors);                                              \
     }
 
 #define DEFAULT_CHAT_COUNT 5
@@ -3762,10 +3766,12 @@ handleUserEvent(const SDL_UserEvent* e,
                 const size_t targetDisplay,
                 ENetPeer* peer,
                 pBytes bytes,
-                const MouseState mouseState)
+                const MouseState mouseState,
+                const bool showUi,
+                const UiActorList* uiActors,
+                const int32_t focusId)
 {
-    int w;
-    int h;
+    int w, h;
     SDL_GetWindowSize(window, &w, &h);
     switch (e->code) {
         case CustomEvent_ShowSimpleMessage:
@@ -3798,7 +3804,7 @@ handleUserEvent(const SDL_UserEvent* e,
                 default:
                     break;
             }
-            RENDER_NOW(w, h);
+            RENDER_NOW(w, h, (*uiActors));
         } break;
         case CustomEvent_SaveScreenshot: {
             const Guid id = *(const Guid*)e->data1;
@@ -3831,7 +3837,7 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             CurrentAudioFree(ptr);
             currentAllocator->free(ptr);
-            RENDER_NOW(w, h);
+            RENDER_NOW(w, h, (*uiActors));
         } break;
         case CustomEvent_RecordingAudio: {
             const SDL_AudioDeviceID deviceId =
@@ -3867,7 +3873,7 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             VideoFrameFree(ptr);
             currentAllocator->free(ptr);
-            RENDER_NOW(w, h);
+            RENDER_NOW(w, h, (*uiActors));
         } break;
         default:
             break;
@@ -3915,6 +3921,10 @@ doRunClient(const Configuration* configuration,
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
     Client client = { 0 };
+
+    bool showUi = window != NULL;
+    UiActorList uiActors = { 0 };
+    int32_t focusId = INT_MAX;
 
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
@@ -4026,6 +4036,11 @@ runServerProcedure:
 
     uint32_t lastMouseMove = 0;
     MouseState mouseState = MouseState_Visible | MouseState_InWindow;
+
+    if (window != NULL) {
+        uiActors = setUiMenu(Menu_Main);
+    }
+
     while (!appDone) {
         if (!checkForMessagesFromLobby(host, &event, &client)) {
             appDone = true;
@@ -4048,7 +4063,7 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW_CALC;
+                    RENDER_NOW_CALC(uiActors);
                     break;
                 case SDL_KEYDOWN:
                     switch (e.key.keysym.sym) {
@@ -4057,7 +4072,12 @@ runServerProcedure:
                             displayUserOptions();
                             break;
                         case SDLK_F1:
-                            displayUserOptions();
+                            if (window == NULL) {
+                                displayUserOptions();
+                            } else {
+                                showUi = !showUi;
+                                RENDER_NOW_CALC(uiActors);
+                            }
                             break;
                         case SDLK_F2:
                             printf("Memory: %zu (%zu MB) / %zu "
@@ -4107,14 +4127,14 @@ runServerProcedure:
                     if (findDisplayFromPoint(&point, &targetDisplay)) {
                         hasTarget = true;
                         SDL_SetWindowGrab(window, true);
-                        RENDER_NOW_CALC;
+                        RENDER_NOW_CALC(uiActors);
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
                     SDL_SetWindowGrab(window, false);
-                    RENDER_NOW_CALC;
+                    RENDER_NOW_CALC(uiActors);
                     break;
                 case SDL_MOUSEMOTION:
                     lastMouseMove = e.motion.timestamp;
@@ -4154,7 +4174,7 @@ runServerProcedure:
                           display->dstRect.x, 0.f, w - display->dstRect.w);
                         display->dstRect.y = SDL_clamp(
                           display->dstRect.y, 0.f, h - display->dstRect.h);
-                        RENDER_NOW(w, h);
+                        RENDER_NOW(w, h, uiActors);
                     } else {
                         SDL_FPoint point = { 0 };
                         int x;
@@ -4164,7 +4184,7 @@ runServerProcedure:
                         point.y = (float)y;
                         targetDisplay = UINT_MAX;
                         findDisplayFromPoint(&point, &targetDisplay);
-                        RENDER_NOW_CALC;
+                        RENDER_NOW_CALC(uiActors);
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
@@ -4200,7 +4220,7 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW(w, h);
+                    RENDER_NOW(w, h, uiActors);
                 } break;
                 case SDL_USEREVENT:
                     handleUserEvent(&e.user,
@@ -4210,7 +4230,10 @@ runServerProcedure:
                                     targetDisplay,
                                     peer,
                                     &bytes,
-                                    mouseState);
+                                    mouseState,
+                                    showUi,
+                                    &uiActors,
+                                    focusId);
                     break;
                 case SDL_DROPFILE: {
                     // Look for image stream
@@ -4247,6 +4270,13 @@ runServerProcedure:
                     }
                     if (display == NULL) {
                         puts("No stream to send file too...");
+                        goto endDropFile;
+                    }
+                    if (!clientHasWriteAccess(&display->client,
+                                              &display->config)) {
+                        printf("Cannot send file to stream '%s' because client "
+                               "doesn't have write access",
+                               display->config.name.buffer);
                         goto endDropFile;
                     }
                     UserInput userInput = { 0 };
@@ -4309,6 +4339,7 @@ runServerProcedure:
 
 end:
     appDone = true;
+    UiActorListFree(&uiActors);
     // FontFree(&font);
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
@@ -4400,7 +4431,7 @@ renderUi(SDL_Window* window,
          TTF_Font* ttfFont,
          UiActor* actors,
          const size_t size,
-         const uint32_t focusId)
+         const int32_t focusId)
 {
     SDL_SetRenderDrawColor(renderer, 0x33u, 0x33u, 0x33u, 0xffu);
     SDL_RenderClear(renderer);
@@ -4419,7 +4450,7 @@ getHostnameFromGUI(const Configuration* configuration)
     SDL_Renderer* renderer = NULL;
     TTF_Font* ttfFont = NULL;
     UiActor actors[4] = { 0 };
-    const size_t actorCount = sizeof(actors) / sizeof(UiActor);
+    const int64_t actorCount = sizeof(actors) / sizeof(UiActor);
 
     window = SDL_CreateWindow(
       "TemStream Client",
@@ -4496,7 +4527,7 @@ getHostnameFromGUI(const Configuration* configuration)
     actors[3].data.tag = UiDataTag_label;
     actors[3].data.label = TemLangStringCreate("Connect", currentAllocator);
 
-    uint32_t focusId = 1;
+    int32_t focusId = 1;
     renderUi(window, renderer, ttfFont, actors, actorCount, focusId);
 
     SDL_Event e = { 0 };
@@ -4547,29 +4578,23 @@ getHostnameFromGUI(const Configuration* configuration)
                                      actorCount,
                                      focusId);
                             break;
-                        case CustomEvent_UiClicked: {
-                            const size_t target = (size_t)e.user.data1;
-                            switch (target) {
-                                case 3:
-                                    result = doRunClient(
-                                      configuration,
-                                      window,
-                                      renderer,
-                                      ttfFont,
-                                      actors[1].data.editText.text.buffer,
-                                      strtoul(
-                                        actors[2].data.editText.text.buffer,
-                                        NULL,
-                                        10));
-                                    if (result != EXIT_SUCCESS) {
-                                        appDone = false;
-                                        break;
-                                    }
-                                    goto end;
-                                default:
-                                    break;
+                        case CustomEvent_UiClicked:
+                            if (e.user.data1 != &actors[3]) {
+                                break;
                             }
-                        }
+                            result = doRunClient(
+                              configuration,
+                              window,
+                              renderer,
+                              ttfFont,
+                              actors[1].data.editText.text.buffer,
+                              strtoul(
+                                actors[2].data.editText.text.buffer, NULL, 10));
+                            if (result != EXIT_SUCCESS) {
+                                appDone = false;
+                                break;
+                            }
+                            goto end;
                         default:
                             break;
                     }

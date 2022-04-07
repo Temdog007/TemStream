@@ -736,13 +736,13 @@ MAKE_COPY_AND_FREE(SDL_FPoint);
 MAKE_DEFAULT_LIST(SDL_FPoint);
 
 extern void
-updateUiActors(const SDL_Event*, SDL_Window*, pUiActor, size_t, uint32_t*);
+updateUiActors(const SDL_Event*, SDL_Window*, pUiActor, size_t, int32_t*);
 
 extern void
-updateUiActor(const SDL_Event*, pUiActor, const float, const float, uint32_t*);
+updateUiActor(const SDL_Event*, pUiActor, const float, const float, int32_t*);
 
 extern void
-renderUiActor(SDL_Renderer*, TTF_Font*, pUiActor, SDL_FRect, uint32_t);
+renderUiActor(SDL_Renderer*, TTF_Font*, pUiActor, SDL_FRect, int32_t);
 
 extern void
 renderUiActors(SDL_Window*,
@@ -750,7 +750,7 @@ renderUiActors(SDL_Window*,
                TTF_Font*,
                pUiActor,
                size_t,
-               uint32_t);
+               int32_t);
 
 SDL_FORCE_INLINE SDL_bool
 SDL_PointInFRect(const SDL_FPoint* p, const SDL_FRect* r)
@@ -857,3 +857,7 @@ processOutputToString(const char*, pTemLangString);
 
 extern int
 processOutputToStrings(const char*, pTemLangStringList);
+
+// UI
+
+extern UiActorList setUiMenu(Menu);

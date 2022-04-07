@@ -49,9 +49,17 @@ enum VerticalAlignment {
 struct UiActor {
     FRect rect
     UiData data
+    null userData
     HorizontalAlignment horizontal
     VerticalAlignment vertical
-    u32 id
+    i32 id
 }
 
 inlineC "MAKE_DEFAULT_LIST(UiActor);"
+
+enum Menu {
+    Main
+    CreateStream
+    EnterText
+    EnterImage
+}
