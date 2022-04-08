@@ -147,6 +147,36 @@ updateEditText(const SDL_Event* e,
                     }
                     uiUpdate(actor, CustomEvent_UiClicked);
                     break;
+                case SDLK_c:
+                    if ((e->key.keysym.mod & KMOD_CTRL) == 0) {
+                        break;
+                    }
+                    if (SDL_SetClipboardText(
+                          actor->data.editText.text.buffer) == 0) {
+                        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
+                                                 "Message",
+                                                 "Copied text",
+                                                 NULL);
+                    } else {
+                        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                                 "Failed to copy text",
+                                                 SDL_GetError(),
+                                                 NULL);
+                    }
+                    break;
+                case SDLK_v:
+                    if ((e->key.keysym.mod & KMOD_CTRL) == 0) {
+                        break;
+                    }
+                    char* text = SDL_GetClipboardText();
+                    if (text == NULL) {
+                        break;
+                    }
+                    actor->data.editText.text.used = 0;
+                    TemLangStringAppendChars(&actor->data.editText.text, text);
+                    SDL_free(text);
+                    uiUpdate(actor, CustomEvent_UiChanged);
+                    break;
                 default:
                     break;
             }
@@ -433,6 +463,16 @@ getUiMenuActors(const Menu* menu)
                     isConnected->vertical = VerticalAlignment_Top;
                     isConnected->id = MainButton_Connect;
                     isConnected->userData = config;
+
+                    pUiActor hide = addUiLabel(&list, "Hide");
+                    hide->rect.x = 1000;
+                    hide->rect.y = 1000;
+                    hide->rect.w = 125;
+                    hide->rect.h = 125;
+                    hide->horizontal = HorizontalAlignment_Right;
+                    hide->vertical = VerticalAlignment_Bottom;
+                    hide->id = MainButton_Hide;
+                    hide->userData = config;
 
                     if (!connected ||
                         !clientHasWriteAccess(&display->client, config)) {

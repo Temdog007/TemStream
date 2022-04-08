@@ -148,7 +148,10 @@
 - [x] Add OpenH264
 
 ### Apr 06, 2022 - Apr 07, 2022
-- [ ] Write own Ui code
+- [x] Write own Ui code
+- [ ] Display audio states
+- [ ] Handle sending audio through GUI
+- [ ] Handle sending video through GUI
 
 ### Later
 - [ ] Write websocket code for browser version

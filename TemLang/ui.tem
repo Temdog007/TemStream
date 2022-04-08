@@ -73,6 +73,7 @@ enum MainButton {
     Label
     Connect
     Data
+    Hide
 }
 
 enum EnterTextButton {

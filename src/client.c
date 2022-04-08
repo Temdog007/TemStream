@@ -22,13 +22,6 @@
     }                                                                          \
     SDL_RenderPresent(info.renderer);
 
-#define RENDER_NOW_CALC(info)                                                  \
-    {                                                                          \
-        int w, h;                                                              \
-        SDL_GetWindowSize(window, &w, &h);                                     \
-        RENDER_NOW(w, h, info);                                                \
-    }
-
 #define DEFAULT_CHAT_COUNT 5
 
 SDL_mutex* clientMutex = NULL;
@@ -3938,8 +3931,13 @@ handleUserEvent(const SDL_UserEvent* e,
             if (actor->id != info->focusId || actor->userData == NULL) {
                 break;
             }
+            bool changed = true;
             switch (info->menu.tag) {
                 case MenuTag_Main: {
+                    if (actor->id == MainButton_Hide) {
+                        info->showUi = false;
+                        break;
+                    }
                     const ServerConfiguration* config =
                       (const ServerConfiguration*)actor->userData;
                     size_t index = 0;
@@ -3966,6 +3964,7 @@ handleUserEvent(const SDL_UserEvent* e,
                                 }
                                 break;
                             default:
+                                changed = false;
                                 break;
                         }
                     } else if (actor->id == MainButton_Connect) {
@@ -3974,6 +3973,8 @@ handleUserEvent(const SDL_UserEvent* e,
                                          "Failed to connect to stream",
                                          false);
                         }
+                    } else {
+                        changed = false;
                     }
                 } break;
                 case MenuTag_EnterText: {
@@ -4007,18 +4008,30 @@ handleUserEvent(const SDL_UserEvent* e,
                             setUiMenu(MenuTag_Main);
                             break;
                         default:
+                            changed = false;
                             break;
                     }
                 } break;
                 default:
+                    changed = false;
                     break;
             }
-            sendUpdateUiEvent();
+            if (changed) {
+                sendUpdateUiEvent();
+            }
         } break;
         default:
             break;
     }
 }
+
+#define HANDLE_MENU_BUTTON                                                     \
+    if (window == NULL) {                                                      \
+        displayUserOptions();                                                  \
+    } else {                                                                   \
+        info.showUi = !info.showUi;                                            \
+        RENDER_NOW(w, h, info);                                                \
+    }
 
 int
 doRunClient(const Configuration* configuration,
@@ -4207,23 +4220,20 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW_CALC(info);
+                    RENDER_NOW(w, h, info);
                     break;
                 case SDL_KEYDOWN:
+                    if (e.key.keysym.scancode == SDL_SCANCODE_AC_BACK) {
+                        HANDLE_MENU_BUTTON;
+                        break;
+                    }
                     switch (e.key.keysym.sym) {
                         case SDLK_ESCAPE:
                             SDL_AtomicSet(&continueSelection, 0);
-                            if (window == NULL) {
-                                displayUserOptions();
-                            }
+                            HANDLE_MENU_BUTTON;
                             break;
                         case SDLK_F1:
-                            if (window == NULL) {
-                                displayUserOptions();
-                            } else {
-                                info.showUi = !info.showUi;
-                                RENDER_NOW_CALC(info);
-                            }
+                            HANDLE_MENU_BUTTON;
                             break;
                         case SDLK_F2:
                             printf("Memory: %zu (%zu MB) / %zu "
@@ -4233,6 +4243,7 @@ runServerProcedure:
                                    currentAllocator->totalSize(),
                                    currentAllocator->totalSize() / (MB(1)));
                             break;
+#if _DEBUG
                         case SDLK_F3:
                             if (hasTarget) {
                                 printf("Target display: %zu\n", targetDisplay);
@@ -4240,8 +4251,10 @@ runServerProcedure:
                                 puts("No target display");
                             }
                             break;
+#endif
                         case SDLK_v:
-                            if ((e.key.keysym.mod & KMOD_CTRL) == 0) {
+                            if ((e.key.keysym.mod & KMOD_CTRL) == 0 ||
+                                info.showUi) {
                                 break;
                             }
                             e.type = SDL_DROPTEXT;
@@ -4249,6 +4262,14 @@ runServerProcedure:
                             e.drop.timestamp = SDL_GetTicks64();
                             e.drop.windowID = SDL_GetWindowID(window);
                             SDL_PushEvent(&e);
+                            break;
+                        case SDLK_RETURN:
+                        case SDLK_RETURN2:
+                        case SDLK_KP_ENTER:
+                            if (info.showUi) {
+                                break;
+                            }
+                            HANDLE_MENU_BUTTON;
                             break;
                         default:
                             break;
@@ -4276,7 +4297,7 @@ runServerProcedure:
                     if (findDisplayFromPoint(&point, &targetDisplay)) {
                         hasTarget = true;
                         SDL_SetWindowGrab(window, true);
-                        RENDER_NOW_CALC(info);
+                        RENDER_NOW(w, h, info);
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
@@ -4286,7 +4307,7 @@ runServerProcedure:
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
                     SDL_SetWindowGrab(window, false);
-                    RENDER_NOW_CALC(info);
+                    RENDER_NOW(w, h, info);
                     break;
                 case SDL_MOUSEMOTION:
                     lastMouseMove = e.motion.timestamp;
@@ -4335,7 +4356,7 @@ runServerProcedure:
                         point.y = (float)y;
                         targetDisplay = UINT_MAX;
                         findDisplayFromPoint(&point, &targetDisplay);
-                        RENDER_NOW_CALC(info);
+                        RENDER_NOW(w, h, info);
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
