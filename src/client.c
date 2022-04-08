@@ -1211,6 +1211,42 @@ end:
     return result;
 }
 
+bool
+connectToStream(const ServerConfiguration* config, pRandomState rs)
+{
+    StreamDisplay display = { 0 };
+    display.visible = true;
+    display.outgoing.allocator = currentAllocator;
+    if (rs == NULL) {
+        RandomState frs = makeRandomState();
+        display.id = randomGuid(&frs);
+    } else {
+        display.id = randomGuid(rs);
+    }
+    pGuid id = currentAllocator->allocate(sizeof(Guid));
+    *id = display.id;
+    ServerConfigurationCopy(&display.config, config, currentAllocator);
+    IN_MUTEX(clientData.mutex, end3, {
+        StreamDisplayListAppend(&clientData.displays, &display);
+    });
+    StreamDisplayFree(&display);
+
+    SDL_Thread* thread = SDL_CreateThread(
+      (SDL_ThreadFunction)streamConnectionThread, "stream", id);
+    if (thread == NULL) {
+        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
+        currentAllocator->free(id);
+        IN_MUTEX(clientData.mutex, end4, {
+            StreamDisplayListPop(&clientData.displays);
+        });
+        return false;
+    } else {
+        SDL_AtomicIncRef(&runningThreads);
+        SDL_DetachThread(thread);
+        return true;
+    }
+}
+
 void
 selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
 {
@@ -1253,30 +1289,7 @@ selectAStreamToConnectTo(struct pollfd inputfd, pBytes bytes, pRandomState rs)
         goto end;
     }
 
-    StreamDisplay display = { 0 };
-    display.visible = true;
-    display.outgoing.allocator = currentAllocator;
-    display.id = randomGuid(rs);
-    pGuid id = currentAllocator->allocate(sizeof(Guid));
-    *id = display.id;
-    ServerConfigurationCopy(&display.config, &list.buffer[i], currentAllocator);
-    IN_MUTEX(clientData.mutex, end3, {
-        StreamDisplayListAppend(&clientData.displays, &display);
-    });
-    StreamDisplayFree(&display);
-
-    SDL_Thread* thread = SDL_CreateThread(
-      (SDL_ThreadFunction)streamConnectionThread, "stream", id);
-    if (thread == NULL) {
-        fprintf(stderr, "Failed to create thread: %s\n", SDL_GetError());
-        currentAllocator->free(id);
-        IN_MUTEX(clientData.mutex, end4, {
-            StreamDisplayListPop(&clientData.displays);
-        });
-    } else {
-        SDL_AtomicIncRef(&runningThreads);
-        SDL_DetachThread(thread);
-    }
+    connectToStream(&list.buffer[i], rs);
 
 end:
     ServerConfigurationListFree(&list);
@@ -3822,9 +3835,9 @@ handleUserEvent(const SDL_UserEvent* e,
             if (!GetStreamDisplayFromGuid(
                   &clientData.displays, &id, &display, NULL)) {
                 fprintf(stderr,
-                        "Cannot screenshot stream display "
-                        "because it was removed "
-                        "from list\n");
+                        "Cannot screenshot stream display '%s' because it was "
+                        "removed from list\n",
+                        display->config.name.buffer);
                 break;
             }
             saveScreenshot(info->renderer, display);
@@ -3888,6 +3901,40 @@ handleUserEvent(const SDL_UserEvent* e,
             UiActorListFree(&info->uiActors);
             info->uiActors = setUiMenu(info->menu);
             RENDER_NOW(w, h, (*info));
+        } break;
+        case CustomEvent_UiChanged:
+            RENDER_NOW(w, h, (*info));
+            break;
+        case CustomEvent_UiClicked: {
+            pUiActor actor = e->data1;
+            if (actor->id != info->focusId) {
+                break;
+            }
+            switch (info->menu) {
+                case Menu_Main: {
+                    const ServerConfiguration* config =
+                      (const ServerConfiguration*)actor->userData;
+                    // Click = connect or disconnect
+                    size_t index = 0;
+                    if (GetStreamDisplayFromName(
+                          &clientData.displays, &config->name, NULL, &index)) {
+                        StreamDisplayListSwapRemove(&clientData.displays,
+                                                    index);
+                    } else {
+                        if (!connectToStream(config, NULL)) {
+                            displayError(info->window,
+                                         "Failed to connect to stream",
+                                         false);
+                        }
+                    }
+                } break;
+                default:
+                    break;
+            }
+            SDL_Event e = { 0 };
+            e.type = SDL_USEREVENT;
+            e.user.code = CustomEvent_UpdateUi;
+            SDL_PushEvent(&e);
         } break;
         default:
             break;
