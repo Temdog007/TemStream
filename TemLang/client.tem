@@ -24,6 +24,7 @@ enum CustomEvent {
     UpdateAudioDisplay
     UpdateVideoDisplay
     RecordingAudio
+    SetUiMenu
     UpdateUi
     UiClicked
     UiChanged

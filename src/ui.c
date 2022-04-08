@@ -1,15 +1,26 @@
 #include <include/main.h>
 
-SDL_FRect
-getUiActorRect(const UiActor* actor, const float w, const float h)
+const UiActor*
+findUiActor(const UiActorList* list, const int32_t id)
 {
-    SDL_FRect rect = { .x = actor->rect.x * w,
-                       .y = actor->rect.y * h,
-                       .w = actor->rect.w * w,
-                       .h = actor->rect.h * h };
+    for (size_t i = 0; i < list->used; ++i) {
+        if (list->buffer[i].id == id) {
+            return &list->buffer[i];
+        }
+    }
+    return NULL;
+}
+
+SDL_Rect
+getUiActorRect(const UiActor* actor, const int w, const int h)
+{
+    SDL_Rect rect = { .x = actor->rect.x * w / 1000,
+                      .y = actor->rect.y * h / 1000,
+                      .w = actor->rect.w * w / 1000,
+                      .h = actor->rect.h * h / 1000 };
     switch (actor->horizontal) {
         case HorizontalAlignment_Center:
-            rect.x -= rect.w * 0.5f;
+            rect.x -= rect.w / 2;
             break;
         case HorizontalAlignment_Right:
             rect.x -= rect.w;
@@ -19,7 +30,7 @@ getUiActorRect(const UiActor* actor, const float w, const float h)
     }
     switch (actor->vertical) {
         case VerticalAlignment_Center:
-            rect.y -= rect.h * 0.5f;
+            rect.y -= rect.h / 2;
             break;
         case VerticalAlignment_Bottom:
             rect.y -= rect.h;
@@ -52,14 +63,14 @@ actorNeedsText(const UiActor* actor)
 }
 
 bool
-checkActorFocus(const SDL_FPoint* point,
+checkActorFocus(const SDL_Point* point,
                 pUiActor actor,
-                const float w,
-                const float h,
+                const int w,
+                const int h,
                 int32_t* focusId)
 {
-    const SDL_FRect rect = getUiActorRect(actor, w, h);
-    const SDL_bool inRect = SDL_PointInFRect(point, &rect);
+    const SDL_Rect rect = getUiActorRect(actor, w, h);
+    const SDL_bool inRect = SDL_PointInRect(point, &rect);
     bool changed = false;
     if (inRect == SDL_TRUE) {
         changed = *focusId != actor->id;
@@ -98,14 +109,14 @@ updateEditText(const SDL_Event* e,
                                            : CustomEvent_UiChanged);
             break;
         case SDL_MOUSEBUTTONUP: {
-            SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
+            SDL_Point point = { .x = e->button.x, .y = e->button.y };
             checkActorFocus(&point, actor, w, h, focusId);
             uiUpdate(actor,
                      *focusId == actor->id ? CustomEvent_UiClicked
                                            : CustomEvent_UiChanged);
         } break;
         case SDL_MOUSEMOTION: {
-            SDL_FPoint point = { .x = e->motion.x, .y = e->motion.y };
+            SDL_Point point = { .x = e->motion.x, .y = e->motion.y };
             if (checkActorFocus(&point, actor, w, h, focusId)) {
                 uiUpdate(actor, CustomEvent_UiChanged);
             }
@@ -154,19 +165,19 @@ updateEditText(const SDL_Event* e,
 
 bool
 updateSliderFromPoint(pUiActor actor,
-                      const float w,
-                      const float h,
-                      const SDL_FPoint* point,
+                      const int w,
+                      const int h,
+                      const SDL_Point* point,
                       int32_t* focusId)
 {
     const bool changed = checkActorFocus(point, actor, w, h, focusId);
     if (changed && actor->id == *focusId &&
         (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK) != 0) {
-        const SDL_FRect rect = getUiActorRect(actor, w, h);
+        const SDL_Rect rect = getUiActorRect(actor, w, h);
         const bool horizontal = actor->rect.w > actor->rect.h;
-        const float t = horizontal
-                          ? glm_percentc(rect.x, rect.x + rect.w, point->x)
-                          : glm_percentc(rect.y, rect.y + rect.h, point->y);
+        const float t =
+          horizontal ? glm_percentc(rect.x, rect.x + rect.w, point->x * 1e-3f)
+                     : glm_percentc(rect.y, rect.y + rect.h, point->y * 1e-3f);
         actor->data.slider.value =
           (int32_t)glm_lerpc(actor->data.slider.min, actor->data.slider.max, t);
     }
@@ -182,11 +193,11 @@ updateSlider(const SDL_Event* e,
 {
     switch (e->type) {
         case SDL_MOUSEBUTTONDOWN: {
-            const SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
+            const SDL_Point point = { .x = e->button.x, .y = e->button.y };
             return updateSliderFromPoint(actor, w, h, &point, focusId);
         } break;
         case SDL_MOUSEMOTION: {
-            const SDL_FPoint point = { .x = e->motion.x, .y = e->motion.y };
+            const SDL_Point point = { .x = e->motion.x, .y = e->motion.y };
             return updateSliderFromPoint(actor, w, h, &point, focusId);
         } break;
         default:
@@ -207,14 +218,14 @@ updateLabel(const SDL_Event* e,
             uiUpdate(actor, CustomEvent_UiChanged);
             break;
         case SDL_MOUSEBUTTONUP: {
-            SDL_FPoint point = { .x = e->button.x, .y = e->button.y };
+            SDL_Point point = { .x = e->button.x, .y = e->button.y };
             checkActorFocus(&point, actor, w, h, focusId);
             uiUpdate(actor,
                      *focusId == actor->id ? CustomEvent_UiClicked
                                            : CustomEvent_UiChanged);
         } break;
         case SDL_MOUSEMOTION: {
-            SDL_FPoint point = { .x = e->motion.x, .y = e->motion.y };
+            SDL_Point point = { .x = e->motion.x, .y = e->motion.y };
             if (checkActorFocus(&point, actor, w, h, focusId)) {
                 uiUpdate(actor, CustomEvent_UiChanged);
             }
@@ -252,14 +263,19 @@ renderUiActors(pRenderInfo info)
     int w, h;
     SDL_GetWindowSize(info->window, &w, &h);
     for (size_t i = 0; i < info->uiActors.used; ++i) {
-        const SDL_FRect rect = getUiActorRect(&info->uiActors.buffer[i], w, h);
-        renderUiActor(info, &info->uiActors.buffer[i], rect);
+        const SDL_Rect rect = getUiActorRect(&info->uiActors.buffer[i], w, h);
+        renderUiActor(info, &info->uiActors.buffer[i], rect, w, h);
     }
 }
 
 void
-renderUiActor(pRenderInfo info, pUiActor actor, SDL_FRect rect)
+renderUiActor(pRenderInfo info,
+              pUiActor actor,
+              SDL_Rect rect,
+              const int w,
+              const int h)
 {
+    (void)h;
     SDL_Surface* surface = NULL;
     SDL_Texture* texture = NULL;
 
@@ -281,9 +297,9 @@ renderUiActor(pRenderInfo info, pUiActor actor, SDL_FRect rect)
     switch (actor->data.tag) {
         case UiDataTag_label:
             surface = TTF_RenderUTF8_Shaded_Wrapped(
-              info->font, actor->data.label.buffer, fg, bg, 0);
+              info->font, actor->data.label.buffer, fg, bg, rect.w * w / 1000);
             texture = SDL_CreateTextureFromSurface(info->renderer, surface);
-            SDL_RenderCopyF(info->renderer, texture, NULL, &rect);
+            SDL_RenderCopy(info->renderer, texture, NULL, &rect);
             break;
         case UiDataTag_editText: {
             char buffer[KB(4)];
@@ -292,15 +308,15 @@ renderUiActor(pRenderInfo info, pUiActor actor, SDL_FRect rect)
                      "%s: %s",
                      actor->data.editText.label.buffer,
                      actor->data.editText.text.buffer);
-            surface =
-              TTF_RenderUTF8_Shaded_Wrapped(info->font, buffer, fg, bg, 0);
+            surface = TTF_RenderUTF8_Shaded_Wrapped(
+              info->font, buffer, fg, bg, rect.w * w / 1000);
             texture = SDL_CreateTextureFromSurface(info->renderer, surface);
-            SDL_RenderCopyF(info->renderer, texture, NULL, &rect);
+            SDL_RenderCopy(info->renderer, texture, NULL, &rect);
         } break;
         case UiDataTag_slider: {
             const bool horizontal = rect.w > rect.h;
             SDL_SetRenderDrawColor(info->renderer, bg.r, bg.g, bg.b, bg.a);
-            SDL_RenderDrawRectF(info->renderer, &rect);
+            SDL_RenderDrawRect(info->renderer, &rect);
             SDL_SetRenderDrawColor(info->renderer, fg.r, fg.g, fg.b, fg.a);
             rect.w *= 0.5f;
             rect.h *= 0.5f;
@@ -316,7 +332,7 @@ renderUiActor(pRenderInfo info, pUiActor actor, SDL_FRect rect)
                 rect.y = glm_lerpc(
                   actor->data.slider.min, actor->data.slider.max - rect.w, t);
             }
-            SDL_RenderDrawRectF(info->renderer, &rect);
+            SDL_RenderDrawRect(info->renderer, &rect);
         } break;
         default:
             break;
@@ -339,19 +355,34 @@ addUiLabel(pUiActorList list, const char* message)
     return rval;
 }
 
+pUiActor
+addTextBox(pUiActorList list, const char* message)
+{
+    UiActor actor = { 0 };
+    actor.data.tag = UiDataTag_editText;
+    actor.data.editText.label = TemLangStringCreate(message, currentAllocator);
+    actor.data.editText.text = TemLangStringCreate("", currentAllocator);
+    pUiActor rval = NULL;
+    if (UiActorListAppend(list, &actor)) {
+        rval = &list->buffer[list->used - 1UL];
+    }
+    UiActorFree(&actor);
+    return rval;
+}
+
 UiActorList
-setUiMenu(const Menu m)
+getUiMenuActors(const Menu* menu)
 {
     UiActorList list = { .allocator = currentAllocator };
-    switch (m) {
-        case Menu_Main: {
+    switch (menu->tag) {
+        case MenuTag_Main: {
             IN_MUTEX(clientData.mutex, end, {
                 if (ServerConfigurationListIsEmpty(&clientData.allStreams)) {
                     pUiActor label = addUiLabel(&list, "No streams available");
-                    label->rect.x = 0.5f;
-                    label->rect.y = 0.1f;
-                    label->rect.w = 0.5f;
-                    label->rect.h = 0.1f;
+                    label->rect.x = 500;
+                    label->rect.y = 100;
+                    label->rect.w = 500;
+                    label->rect.h = 100;
                     label->horizontal = HorizontalAlignment_Center;
                     label->vertical = VerticalAlignment_Top;
                     label->id = INT_MAX;
@@ -359,17 +390,16 @@ setUiMenu(const Menu m)
                 }
                 {
                     pUiActor label = addUiLabel(&list, "Current streams");
-                    label->rect.x = 0.5f;
-                    label->rect.y = 0.1f;
-                    label->rect.w = 0.5f;
-                    label->rect.h = 0.1f;
+                    label->rect.x = 500;
+                    label->rect.y = 100;
+                    label->rect.w = 500;
+                    label->rect.h = 100;
                     label->horizontal = HorizontalAlignment_Center;
                     label->vertical = VerticalAlignment_Top;
                     label->id = INT_MAX;
                 }
                 char buffer[KB(1)];
-                const float size =
-                  SDL_min(0.1f, 0.75f / clientData.allStreams.used);
+                const int size = SDL_min(100, 750 / clientData.allStreams.used);
                 for (uint32_t i = 0; i < clientData.allStreams.used; ++i) {
                     const StreamDisplay* display = NULL;
                     pServerConfiguration config =
@@ -384,27 +414,28 @@ setUiMenu(const Menu m)
                       config->name.buffer,
                       ServerConfigurationDataTagToCharString(config->data.tag));
                     pUiActor streamName = addUiLabel(&list, buffer);
-                    streamName->rect.x = 0.1f;
-                    streamName->rect.y = 0.25f + (i * size);
-                    streamName->rect.w = 0.225f;
-                    streamName->rect.h = size * 0.9f;
+                    streamName->rect.x = 100;
+                    streamName->rect.y = 250 + (i * size);
+                    streamName->rect.w = 225;
+                    streamName->rect.h = size * 9 / 10;
                     streamName->horizontal = HorizontalAlignment_Left;
                     streamName->vertical = VerticalAlignment_Top;
-                    streamName->id = i;
+                    streamName->id = MainButton_Label;
                     streamName->userData = config;
 
                     pUiActor isConnected =
                       addUiLabel(&list, connected ? "Disconnect" : "Connect");
-                    isConnected->rect.x = 0.1f + 0.25f;
-                    isConnected->rect.y = 0.25f + (i * size);
-                    isConnected->rect.w = 0.225f;
-                    isConnected->rect.h = size * 0.9f;
+                    isConnected->rect.x = 350;
+                    isConnected->rect.y = 250 + (i * size);
+                    isConnected->rect.w = 225;
+                    isConnected->rect.h = size * 9 / 10;
                     isConnected->horizontal = HorizontalAlignment_Left;
                     isConnected->vertical = VerticalAlignment_Top;
-                    isConnected->id = i + 1000;
+                    isConnected->id = MainButton_Connect;
                     isConnected->userData = config;
 
-                    if (!clientHasWriteAccess(&display->client, config)) {
+                    if (!connected ||
+                        !clientHasWriteAccess(&display->client, config)) {
                         break;
                     }
 
@@ -412,13 +443,13 @@ setUiMenu(const Menu m)
                         case ServerConfigurationDataTag_chat:
                         case ServerConfigurationDataTag_text: {
                             pUiActor t = addUiLabel(&list, "Send text");
-                            t->rect.x = 0.1f + 0.5f;
-                            t->rect.y = 0.25f + (i * size);
-                            t->rect.w = 0.225f;
-                            t->rect.h = size * 0.9f;
+                            t->rect.x = 600;
+                            t->rect.y = 250 + (i * size);
+                            t->rect.w = 225;
+                            t->rect.h = size * 9 / 10;
                             t->horizontal = HorizontalAlignment_Left;
                             t->vertical = VerticalAlignment_Top;
-                            t->id = i + 2000;
+                            t->id = MainButton_Data;
                             t->userData = config;
                         } break;
                         default:
@@ -426,6 +457,54 @@ setUiMenu(const Menu m)
                     }
                 }
             });
+        } break;
+        case MenuTag_EnterText: {
+            const Guid* id = &menu->id;
+            bool displayMissing = false;
+            USE_DISPLAY(clientData.mutex, end2, displayMissing, {
+                pUiActor label = addUiLabel(&list, "Enter text to send");
+                label->rect.x = 500;
+                label->rect.y = 100;
+                label->rect.w = 500;
+                label->rect.h = 100;
+                label->horizontal = HorizontalAlignment_Center;
+                label->vertical = VerticalAlignment_Top;
+                label->id = EnterTextButton_Label;
+                label->userData = &display->config;
+
+                pUiActor textbox = addTextBox(&list, ">");
+                textbox->rect.x = 500;
+                textbox->rect.y = 350;
+                textbox->rect.w = 750;
+                textbox->rect.h = 250;
+                textbox->horizontal = HorizontalAlignment_Center;
+                textbox->vertical = VerticalAlignment_Top;
+                textbox->id = EnterTextButton_TextBox;
+                textbox->userData = &display->config;
+
+                pUiActor sendButton = addUiLabel(&list, "Send");
+                sendButton->rect.x = 250;
+                sendButton->rect.y = 1000;
+                sendButton->rect.w = 250;
+                sendButton->rect.h = 250;
+                sendButton->horizontal = HorizontalAlignment_Center;
+                sendButton->vertical = VerticalAlignment_Bottom;
+                sendButton->id = EnterTextButton_Send;
+                sendButton->userData = &display->config;
+
+                pUiActor backButton = addUiLabel(&list, "Back");
+                backButton->rect.x = 750;
+                backButton->rect.y = 1000;
+                backButton->rect.w = 250;
+                backButton->rect.h = 250;
+                backButton->horizontal = HorizontalAlignment_Center;
+                backButton->vertical = VerticalAlignment_Bottom;
+                backButton->id = EnterTextButton_Back;
+                backButton->userData = &display->config;
+            });
+            if (displayMissing) {
+                setUiMenu(MenuTag_Main);
+            }
         } break;
         default:
             break;

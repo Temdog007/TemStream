@@ -11,6 +11,13 @@
                  (float)h - MIN_HEIGHT,                                        \
                  mouseState == (MouseState_Visible | MouseState_InWindow));    \
     if (info.showUi) {                                                         \
+        const SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };              \
+        if (SDL_SetRenderDrawBlendMode(info.renderer, SDL_BLENDMODE_BLEND) !=  \
+              0 ||                                                             \
+            SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 255u) != 0 ||    \
+            SDL_RenderDrawRect(info.renderer, &rect) != 0) {                   \
+            fprintf(stderr, "Failed to render: %s\n", SDL_GetError());         \
+        }                                                                      \
         renderUiActors(&info);                                                 \
     }                                                                          \
     SDL_RenderPresent(info.renderer);
@@ -2996,7 +3003,7 @@ renderText(SDL_Renderer* renderer,
     SDL_Rect rect = { 0 };
     SDL_Surface* surface = NULL;
     SDL_Texture* texture = NULL;
-    if (renderer == NULL) {
+    if (renderer == NULL || *text == '\0') {
         goto end;
     }
 
@@ -3336,6 +3343,16 @@ sendUpdateUiEvent()
 }
 
 bool
+setUiMenu(const MenuTag m)
+{
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_SetUiMenu;
+    e.user.data1 = (void*)(size_t)m;
+    return SDL_PushEvent(&e) == 0;
+}
+
+bool
 clientHandleLobbyMessage(const LobbyMessage* message, pClient client)
 {
     bool result = false;
@@ -3419,6 +3436,60 @@ displayError(SDL_Window* window, const char* e, const bool force)
     }
 }
 
+bool
+sendTextToServer(const char* text,
+                 const ServerConfigurationDataTag serverType,
+                 const Guid* id,
+                 pBytes bytes)
+{
+    switch (serverType) {
+        case ServerConfigurationDataTag_text: {
+            TextMessage message = { 0 };
+            message.tag = TextMessageTag_text;
+            message.text = TemLangStringCreate(text, currentAllocator);
+            MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
+            ENetPacket* packet =
+              BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+            IN_MUTEX(clientData.mutex, textEnd, {
+                size_t i = 0;
+                if (GetStreamDisplayFromGuid(
+                      &clientData.displays, id, NULL, &i)) {
+                    NullValueListAppend(&clientData.displays.buffer[i].outgoing,
+                                        (NullValue)&packet);
+                } else {
+                    enet_packet_destroy(packet);
+                }
+            });
+            TextMessageFree(&message);
+        } break;
+        case ServerConfigurationDataTag_chat: {
+            ChatMessage message = { 0 };
+            message.tag = ChatMessageTag_message;
+            message.message = TemLangStringCreate(text, currentAllocator);
+            MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
+            ENetPacket* packet =
+              BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+            IN_MUTEX(clientData.mutex, chatEnd, {
+                size_t i = 0;
+                if (GetStreamDisplayFromGuid(
+                      &clientData.displays, id, NULL, &i)) {
+                    NullValueListAppend(&clientData.displays.buffer[i].outgoing,
+                                        (NullValue)&packet);
+                } else {
+                    enet_packet_destroy(packet);
+                }
+            });
+            ChatMessageFree(&message);
+        } break;
+        default:
+            fprintf(stderr,
+                    "Cannot send text to '%s' server\n",
+                    ServerConfigurationDataTagToCharString(serverType));
+            return false;
+    }
+    return true;
+}
+
 void
 handleUserInput(const struct pollfd inputfd,
                 const UserInput* userInput,
@@ -3499,55 +3570,8 @@ handleUserInput(const struct pollfd inputfd,
             });
         } break;
         case UserInputDataTag_text:
-            switch (serverType) {
-                case ServerConfigurationDataTag_text: {
-                    TextMessage message = { 0 };
-                    message.tag = TextMessageTag_text;
-                    message.text = TemLangStringClone(&userInput->data.text,
-                                                      currentAllocator);
-                    MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
-                    ENetPacket* packet = BytesToPacket(
-                      bytes->buffer, bytes->used, SendFlags_Normal);
-                    IN_MUTEX(clientData.mutex, textEnd, {
-                        size_t i = 0;
-                        if (GetStreamDisplayFromGuid(
-                              &clientData.displays, &userInput->id, NULL, &i)) {
-                            NullValueListAppend(
-                              &clientData.displays.buffer[i].outgoing,
-                              (NullValue)&packet);
-                        } else {
-                            enet_packet_destroy(packet);
-                        }
-                    });
-                    TextMessageFree(&message);
-                } break;
-                case ServerConfigurationDataTag_chat: {
-                    ChatMessage message = { 0 };
-                    message.tag = ChatMessageTag_message;
-                    message.message = TemLangStringClone(&userInput->data.text,
-                                                         currentAllocator);
-                    MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
-                    ENetPacket* packet = BytesToPacket(
-                      bytes->buffer, bytes->used, SendFlags_Normal);
-                    IN_MUTEX(clientData.mutex, chatEnd, {
-                        size_t i = 0;
-                        if (GetStreamDisplayFromGuid(
-                              &clientData.displays, &userInput->id, NULL, &i)) {
-                            NullValueListAppend(
-                              &clientData.displays.buffer[i].outgoing,
-                              (NullValue)&packet);
-                        } else {
-                            enet_packet_destroy(packet);
-                        }
-                    });
-                    ChatMessageFree(&message);
-                } break;
-                default:
-                    fprintf(stderr,
-                            "Cannot send text to '%s' server\n",
-                            ServerConfigurationDataTagToCharString(serverType));
-                    break;
-            }
+            sendTextToServer(
+              userInput->data.text.buffer, serverType, &userInput->id, bytes);
             break;
         case UserInputDataTag_file: {
             int fd = -1;
@@ -3897,9 +3921,13 @@ handleUserEvent(const SDL_UserEvent* e,
             currentAllocator->free(ptr);
             RENDER_NOW(w, h, (*info));
         } break;
+        case CustomEvent_SetUiMenu:
+            info->menu.tag = MenuTag_Main;
+            sendUpdateUiEvent();
+            break;
         case CustomEvent_UpdateUi: {
             UiActorListFree(&info->uiActors);
-            info->uiActors = setUiMenu(info->menu);
+            info->uiActors = getUiMenuActors(&info->menu);
             RENDER_NOW(w, h, (*info));
         } break;
         case CustomEvent_UiChanged:
@@ -3907,20 +3935,40 @@ handleUserEvent(const SDL_UserEvent* e,
             break;
         case CustomEvent_UiClicked: {
             pUiActor actor = e->data1;
-            if (actor->id != info->focusId) {
+            if (actor->id != info->focusId || actor->userData == NULL) {
                 break;
             }
-            switch (info->menu) {
-                case Menu_Main: {
+            switch (info->menu.tag) {
+                case MenuTag_Main: {
                     const ServerConfiguration* config =
                       (const ServerConfiguration*)actor->userData;
-                    // Click = connect or disconnect
                     size_t index = 0;
-                    if (GetStreamDisplayFromName(
-                          &clientData.displays, &config->name, NULL, &index)) {
-                        StreamDisplayListSwapRemove(&clientData.displays,
-                                                    index);
-                    } else {
+                    const StreamDisplay* display = NULL;
+                    if (GetStreamDisplayFromName(&clientData.displays,
+                                                 &config->name,
+                                                 &display,
+                                                 &index)) {
+                        switch (actor->id) {
+                            case MainButton_Connect:
+                                StreamDisplayListSwapRemove(
+                                  &clientData.displays, index);
+                                break;
+                            case MainButton_Data:
+                                switch (config->data.tag) {
+                                    case ServerConfigurationDataTag_chat:
+                                    case ServerConfigurationDataTag_text:
+                                        info->menu.tag = MenuTag_EnterText;
+                                        info->menu.id = display->id;
+                                        sendUpdateUiEvent();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                    } else if (actor->id == MainButton_Connect) {
                         if (!connectToStream(config, NULL)) {
                             displayError(info->window,
                                          "Failed to connect to stream",
@@ -3928,13 +3976,44 @@ handleUserEvent(const SDL_UserEvent* e,
                         }
                     }
                 } break;
+                case MenuTag_EnterText: {
+                    switch (actor->id) {
+                        case EnterTextButton_Send: {
+                            const ServerConfiguration* config =
+                              (const ServerConfiguration*)actor->userData;
+                            size_t index = 0;
+                            const StreamDisplay* display = NULL;
+                            if (GetStreamDisplayFromName(&clientData.displays,
+                                                         &config->name,
+                                                         &display,
+                                                         &index)) {
+                                Bytes bytes = { .allocator = currentAllocator };
+                                const UiActor* a = findUiActor(
+                                  &info->uiActors, EnterTextButton_TextBox);
+                                if (a != NULL && !sendTextToServer(
+                                                   a->data.editText.text.buffer,
+                                                   display->data.tag,
+                                                   &display->id,
+                                                   &bytes)) {
+                                    displayError(info->window,
+                                                 "Failed to send text",
+                                                 false);
+                                }
+                                uint8_tListFree(&bytes);
+                            }
+                            setUiMenu(MenuTag_Main);
+                        } break;
+                        case EnterTextButton_Back:
+                            setUiMenu(MenuTag_Main);
+                            break;
+                        default:
+                            break;
+                    }
+                } break;
                 default:
                     break;
             }
-            SDL_Event e = { 0 };
-            e.type = SDL_USEREVENT;
-            e.user.code = CustomEvent_UpdateUi;
-            SDL_PushEvent(&e);
+            sendUpdateUiEvent();
         } break;
         default:
             break;
@@ -3987,7 +4066,7 @@ doRunClient(const Configuration* configuration,
                         .renderer = renderer,
                         .font = ttfFont,
                         .showUi = window != NULL,
-                        .menu = Menu_Main,
+                        .menu = { .tag = MenuTag_Main },
                         .focusId = INT_MAX,
                         .uiActors = { .allocator = currentAllocator } };
 
@@ -4101,7 +4180,7 @@ runServerProcedure:
     uint32_t lastMouseMove = 0;
     MouseState mouseState = MouseState_Visible | MouseState_InWindow;
     if (window != NULL) {
-        info.uiActors = setUiMenu(info.menu);
+        info.uiActors = getUiMenuActors(&info.menu);
     }
 
     while (!appDone) {
@@ -4176,6 +4255,9 @@ runServerProcedure:
                     }
                     break;
                 case SDL_MOUSEBUTTONDOWN: {
+                    if (info.showUi) {
+                        break;
+                    }
                     switch (e.button.button) {
                         case SDL_BUTTON_LEFT:
                             moveMode = MoveMode_Position;
@@ -4198,6 +4280,9 @@ runServerProcedure:
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
+                    if (info.showUi) {
+                        break;
+                    }
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
                     SDL_SetWindowGrab(window, false);
@@ -4205,6 +4290,9 @@ runServerProcedure:
                     break;
                 case SDL_MOUSEMOTION:
                     lastMouseMove = e.motion.timestamp;
+                    if (info.showUi) {
+                        break;
+                    }
                     if (hasTarget) {
                         if (targetDisplay >= clientData.displays.used) {
                             break;
@@ -4251,6 +4339,9 @@ runServerProcedure:
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
+                    if (info.showUi) {
+                        break;
+                    }
                     if (targetDisplay >= clientData.displays.used) {
                         break;
                     }
@@ -4293,6 +4384,9 @@ runServerProcedure:
                                     h);
                     break;
                 case SDL_DROPFILE: {
+                    if (info.showUi) {
+                        goto endDropFile;
+                    }
                     // Look for image stream
                     printf("Got dropped file: %s\n", e.drop.file);
                     FileExtension ext = { 0 };
@@ -4345,6 +4439,9 @@ runServerProcedure:
                     SDL_free(e.drop.file);
                 } break;
                 case SDL_DROPTEXT: {
+                    if (info.showUi) {
+                        goto endDropText;
+                    }
                     // Look for a text or chat stream
                     puts("Got dropped text");
                     pStreamDisplay display = NULL;
@@ -4379,7 +4476,7 @@ runServerProcedure:
                     break;
             }
             SDL_UnlockMutex(clientData.mutex);
-            if (info.window != NULL) {
+            if (info.showUi) {
                 updateUiActors(&e, &info);
             }
         }
@@ -4553,14 +4650,14 @@ getHostnameFromGUI(const Configuration* configuration)
 
     actors[0].horizontal = HorizontalAlignment_Center;
     actors[0].vertical = VerticalAlignment_Center;
-    actors[0].rect = (FRect){ .x = 0.5f, .y = 0.1f, .w = 0.5f, .h = 0.1f };
+    actors[0].rect = (Rect){ .x = 500, .y = 100, .w = 500, .h = 100 };
     actors[0].data.tag = UiDataTag_label;
     actors[0].data.label =
       TemLangStringCreate("Enter stream connection", currentAllocator);
 
     actors[1].horizontal = HorizontalAlignment_Center;
     actors[1].vertical = VerticalAlignment_Center;
-    actors[1].rect = (FRect){ .x = 0.5f, .y = 0.35f, .w = 0.5f, .h = 0.1f };
+    actors[1].rect = (Rect){ .x = 500, .y = 350, .w = 500, .h = 100 };
     actors[1].data.tag = UiDataTag_editText;
     actors[1].data.editText =
       (EditText){ .label = TemLangStringCreate("Hostname", currentAllocator),
@@ -4568,7 +4665,7 @@ getHostnameFromGUI(const Configuration* configuration)
 
     actors[2].horizontal = HorizontalAlignment_Center;
     actors[2].vertical = VerticalAlignment_Center;
-    actors[2].rect = (FRect){ .x = 0.5f, .y = 0.5f, .w = 0.5f, .h = 0.1f };
+    actors[2].rect = (Rect){ .x = 500, .y = 500, .w = 500, .h = 100 };
     actors[2].data.tag = UiDataTag_editText;
     actors[2].data.editText =
       (EditText){ .label = TemLangStringCreate("Port", currentAllocator),
@@ -4576,7 +4673,7 @@ getHostnameFromGUI(const Configuration* configuration)
 
     actors[3].horizontal = HorizontalAlignment_Center;
     actors[3].vertical = VerticalAlignment_Center;
-    actors[3].rect = (FRect){ .x = 0.5f, .y = 0.65f, .w = 0.5f, .h = 0.1f };
+    actors[3].rect = (Rect){ .x = 500, .y = 650, .w = 500, .h = 100 };
     actors[3].data.tag = UiDataTag_label;
     actors[3].data.label = TemLangStringCreate("Connect", currentAllocator);
 

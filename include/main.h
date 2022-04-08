@@ -743,7 +743,8 @@ updateUiActors(const SDL_Event*, pRenderInfo);
 extern void
 updateUiActor(const SDL_Event*, pUiActor, const float, const float, int32_t*);
 
-extern void renderUiActor(pRenderInfo, pUiActor, SDL_FRect);
+extern void
+renderUiActor(pRenderInfo, pUiActor, SDL_Rect, int, int);
 
 extern void renderUiActors(pRenderInfo);
 
@@ -855,15 +856,30 @@ processOutputToStrings(const char*, pTemLangStringList);
 
 // UI
 
-extern UiActorList setUiMenu(Menu);
+extern UiActorList
+getUiMenuActors(const Menu*);
 
 typedef struct RenderInfo
 {
     UiActorList uiActors;
+    Menu menu;
     SDL_Window* window;
     SDL_Renderer* renderer;
     TTF_Font* font;
     int32_t focusId;
-    Menu menu;
     bool showUi;
 } RenderInfo, *pRenderInfo;
+
+extern bool
+sendUpdateUiEvent();
+
+extern bool setUiMenu(MenuTag);
+
+extern bool
+sendTextToServer(const char*,
+                 const ServerConfigurationDataTag,
+                 const Guid*,
+                 pBytes);
+
+extern const UiActor*
+findUiActor(const UiActorList*, int32_t id);

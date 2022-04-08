@@ -47,7 +47,7 @@ enum VerticalAlignment {
 }
 
 struct UiActor {
-    FRect rect
+    Rect rect
     UiData data
     null userData
     HorizontalAlignment horizontal
@@ -57,9 +57,27 @@ struct UiActor {
 
 inlineC "MAKE_DEFAULT_LIST(UiActor);"
 
-enum Menu {
+enum MenuTag {
     Main
     ConnectToStream
     EnterText
     EnterImage
+}
+
+struct Menu {
+    Guid id
+    MenuTag tag
+}
+
+enum MainButton {
+    Label
+    Connect
+    Data
+}
+
+enum EnterTextButton {
+    Label
+    TextBox
+    Send
+    Back
 }
