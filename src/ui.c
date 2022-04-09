@@ -201,13 +201,13 @@ updateSliderFromPoint(pUiActor actor,
                       int32_t* focusId)
 {
     const bool changed = checkActorFocus(point, actor, w, h, focusId);
-    if (changed && actor->id == *focusId &&
+    if (actor->id == *focusId &&
         (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK) != 0) {
         const SDL_Rect rect = getUiActorRect(actor, w, h);
         const bool horizontal = actor->rect.w > actor->rect.h;
-        const float t =
-          horizontal ? glm_percentc(rect.x, rect.x + rect.w, point->x * 1e-3f)
-                     : glm_percentc(rect.y, rect.y + rect.h, point->y * 1e-3f);
+        const float t = horizontal
+                          ? glm_percentc(rect.x, rect.x + rect.w, point->x)
+                          : glm_percentc(rect.y, rect.y + rect.h, point->y);
         actor->data.slider.value =
           (int32_t)glm_lerpc(actor->data.slider.min, actor->data.slider.max, t);
     }
@@ -222,7 +222,8 @@ updateSlider(const SDL_Event* e,
              int32_t* focusId)
 {
     switch (e->type) {
-        case SDL_MOUSEBUTTONDOWN: {
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP: {
             const SDL_Point point = { .x = e->button.x, .y = e->button.y };
             return updateSliderFromPoint(actor, w, h, &point, focusId);
         } break;
@@ -277,7 +278,9 @@ updateUiActor(const SDL_Event* e,
             updateEditText(e, actor, w, h, focusId);
             break;
         case UiDataTag_slider:
-            updateSlider(e, actor, w, h, focusId);
+            if (updateSlider(e, actor, w, h, focusId)) {
+                uiUpdate(actor, CustomEvent_UiChanged);
+            }
             break;
         case UiDataTag_label:
             updateLabel(e, actor, w, h, focusId);
@@ -344,25 +347,29 @@ renderUiActor(pRenderInfo info,
             SDL_RenderCopy(info->renderer, texture, NULL, &rect);
         } break;
         case UiDataTag_slider: {
-            const bool horizontal = rect.w > rect.h;
+            const int w = rect.w;
+            const int h = rect.h;
+            const bool horizontal = w > h;
+
             SDL_SetRenderDrawColor(info->renderer, bg.r, bg.g, bg.b, bg.a);
-            SDL_RenderDrawRect(info->renderer, &rect);
+            SDL_RenderFillRect(info->renderer, &rect);
+
             SDL_SetRenderDrawColor(info->renderer, fg.r, fg.g, fg.b, fg.a);
-            rect.w *= 0.5f;
-            rect.h *= 0.5f;
+            rect.w /= 2;
+            rect.h /= 2;
             rect.w = SDL_min(rect.w, rect.h);
             rect.h = rect.w;
             const float t = glm_percentc(actor->data.slider.min,
-                                         actor->data.slider.max - rect.w,
+                                         actor->data.slider.max,
                                          actor->data.slider.value);
             if (horizontal) {
-                rect.x = glm_lerpc(
-                  actor->data.slider.min, actor->data.slider.max - rect.w, t);
+                rect.x = glm_lerpc(rect.x, rect.x + w - rect.w, t);
+                rect.y += rect.h / 2;
             } else {
-                rect.y = glm_lerpc(
-                  actor->data.slider.min, actor->data.slider.max - rect.w, t);
+                rect.x += rect.w / 2;
+                rect.y = glm_lerpc(rect.y, rect.y + h - rect.h, t);
             }
-            SDL_RenderDrawRect(info->renderer, &rect);
+            SDL_RenderFillRect(info->renderer, &rect);
         } break;
         default:
             break;
@@ -400,6 +407,35 @@ addTextBox(pUiActorList list, const char* message)
     return rval;
 }
 
+pUiActor
+addSlider(pUiActorList list, const int32_t min, const int32_t max)
+{
+    UiActor actor = { 0 };
+    actor.data.tag = UiDataTag_slider;
+    actor.data.slider.min = min;
+    actor.data.slider.max = max;
+    actor.data.slider.value = 100;
+    pUiActor rval = NULL;
+    if (UiActorListAppend(list, &actor)) {
+        rval = &list->buffer[list->used - 1UL];
+    }
+    UiActorFree(&actor);
+    return rval;
+}
+
+size_t
+playbackCount(const AudioStatePtrList* list)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < list->used; ++i) {
+        AudioStatePtr ptr = list->buffer[i];
+        if (!ptr->isRecording) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 UiActorList
 getUiMenuActors(const Menu* menu)
 {
@@ -430,6 +466,7 @@ getUiMenuActors(const Menu* menu)
                 }
                 char buffer[KB(1)];
                 const int size = SDL_min(100, 750 / clientData.allStreams.used);
+                uint32_t nextId = 0;
                 for (uint32_t i = 0; i < clientData.allStreams.used; ++i) {
                     const StreamDisplay* display = NULL;
                     pServerConfiguration config =
@@ -450,7 +487,8 @@ getUiMenuActors(const Menu* menu)
                     streamName->rect.h = size * 9 / 10;
                     streamName->horizontal = HorizontalAlignment_Left;
                     streamName->vertical = VerticalAlignment_Top;
-                    streamName->id = MainButton_Label;
+                    streamName->id = nextId++;
+                    streamName->type = MainButton_Label;
                     streamName->userData = config;
 
                     pUiActor isConnected =
@@ -461,7 +499,8 @@ getUiMenuActors(const Menu* menu)
                     isConnected->rect.h = size * 9 / 10;
                     isConnected->horizontal = HorizontalAlignment_Left;
                     isConnected->vertical = VerticalAlignment_Top;
-                    isConnected->id = MainButton_Connect;
+                    isConnected->id = nextId++;
+                    isConnected->type = MainButton_Connect;
                     isConnected->userData = config;
 
                     pUiActor hide = addUiLabel(&list, "Hide");
@@ -471,7 +510,8 @@ getUiMenuActors(const Menu* menu)
                     hide->rect.h = 125;
                     hide->horizontal = HorizontalAlignment_Right;
                     hide->vertical = VerticalAlignment_Bottom;
-                    hide->id = MainButton_Hide;
+                    hide->id = nextId++;
+                    hide->type = MainButton_Hide;
                     hide->userData = config;
 
                     if (!connected ||
@@ -489,12 +529,53 @@ getUiMenuActors(const Menu* menu)
                             t->rect.h = size * 9 / 10;
                             t->horizontal = HorizontalAlignment_Left;
                             t->vertical = VerticalAlignment_Top;
-                            t->id = MainButton_Data;
+                            t->id = nextId++;
+                            t->type = MainButton_Data;
                             t->userData = config;
                         } break;
                         default:
                             break;
                     }
+                }
+                for (size_t i = 0; i < audioStates.used; ++i) {
+                    AudioStatePtr ptr = audioStates.buffer[i];
+                    if (ptr->isRecording) {
+                        continue;
+                    }
+                    const StreamDisplay* display = NULL;
+                    if (!GetStreamDisplayFromGuid(
+                          &clientData.displays, &ptr->id, &display, NULL)) {
+                        continue;
+                    }
+
+                    const int y =
+                      250 + ((clientData.allStreams.used - i) * size);
+                    snprintf(buffer,
+                             sizeof(buffer),
+                             "%s playback\n(%d%%)",
+                             display->config.name.buffer,
+                             (int)floorf(ptr->volume * 100.f));
+                    pUiActor label = addUiLabel(&list, buffer);
+                    label->rect.x = 100;
+                    label->rect.y = y;
+                    label->rect.w = 225;
+                    label->rect.h = size * 9 / 10;
+                    label->horizontal = HorizontalAlignment_Left;
+                    label->vertical = VerticalAlignment_Top;
+                    label->id = nextId++;
+                    label->type = MainButton_Label;
+                    label->userData = ptr;
+
+                    pUiActor slider = addSlider(&list, 0, 100);
+                    slider->rect.x = 350;
+                    slider->rect.y = y;
+                    slider->rect.w = 450;
+                    slider->rect.h = size * 9 / 10;
+                    slider->horizontal = HorizontalAlignment_Left;
+                    slider->vertical = VerticalAlignment_Top;
+                    slider->id = nextId++;
+                    slider->type = MainButton_Slider;
+                    slider->userData = ptr;
                 }
             });
         } break;
@@ -502,7 +583,7 @@ getUiMenuActors(const Menu* menu)
             const Guid* id = &menu->id;
             bool displayMissing = false;
             USE_DISPLAY(clientData.mutex, end2, displayMissing, {
-                pUiActor label = addUiLabel(&list, "Enter text to send");
+                pUiActor label = addUiLabel(&list, "Sending text...");
                 label->rect.x = 500;
                 label->rect.y = 100;
                 label->rect.w = 500;
@@ -512,7 +593,7 @@ getUiMenuActors(const Menu* menu)
                 label->id = EnterTextButton_Label;
                 label->userData = &display->config;
 
-                pUiActor textbox = addTextBox(&list, ">");
+                pUiActor textbox = addTextBox(&list, "Enter text here");
                 textbox->rect.x = 500;
                 textbox->rect.y = 350;
                 textbox->rect.w = 750;

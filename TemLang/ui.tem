@@ -53,6 +53,7 @@ struct UiActor {
     HorizontalAlignment horizontal
     VerticalAlignment vertical
     i32 id
+    i32 type
 }
 
 inlineC "MAKE_DEFAULT_LIST(UiActor);"
@@ -74,6 +75,7 @@ enum MainButton {
     Connect
     Data
     Hide
+    Slider
 }
 
 enum EnterTextButton {

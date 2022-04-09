@@ -14,8 +14,8 @@
         const SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };              \
         if (SDL_SetRenderDrawBlendMode(info.renderer, SDL_BLENDMODE_BLEND) !=  \
               0 ||                                                             \
-            SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 255u) != 0 ||    \
-            SDL_RenderDrawRect(info.renderer, &rect) != 0) {                   \
+            SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 64u) != 0 ||     \
+            SDL_RenderFillRect(info.renderer, &rect) != 0) {                   \
             fprintf(stderr, "Failed to render: %s\n", SDL_GetError());         \
         }                                                                      \
         renderUiActors(&info);                                                 \
@@ -592,11 +592,42 @@ bool
 clientHandleAudioMessage(const AudioMessage* message,
                          pStreamDisplay display,
                          pAudioState playback,
+                         const Guid* id,
                          const bool isRecording)
 {
     bool success = false;
     switch (message->tag) {
         case AudioMessageTag_general: {
+            if (clientData.window != NULL) {
+                Client client = { 0 };
+                success =
+                  clientHandleGeneralMessage(&message->general, &client);
+                ClientFree(&client);
+                if (!success) {
+                    break;
+                }
+                if (message->general.tag == GeneralMessageTag_authenticateAck &&
+                    playback == NULL && !isRecording) {
+                    playback = currentAllocator->allocate(sizeof(AudioState));
+                    playback->storedAudio = CQueueCreate(CQUEUE_SIZE);
+                    playback->volume = 1.f;
+                    playback->id = *id;
+                    success = startPlaybackFromName(NULL, playback);
+                    if (success) {
+                        SDL_PauseAudioDevice(playback->deviceId, SDL_FALSE);
+                        IN_MUTEX(clientData.mutex, endPlayback, {
+                            AudioStatePtrListAppend(&audioStates, &playback);
+                        });
+                        sendUpdateUiEvent();
+                    } else {
+                        AudioStateFree(playback);
+                        currentAllocator->free(playback);
+                    }
+                } else {
+                    success = true;
+                }
+                break;
+            }
             UserInput input = { 0 };
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryAudio;
@@ -655,12 +686,13 @@ bool
 clientHandleAudioMessageFromBytes(const Bytes* packetBytes,
                                   pStreamDisplay display,
                                   pAudioState playback,
+                                  const Guid* id,
                                   const bool isRecording)
 {
     AudioMessage message = { 0 };
     MESSAGE_DESERIALIZE(AudioMessage, message, (*packetBytes));
     const bool result =
-      clientHandleAudioMessage(&message, display, playback, isRecording);
+      clientHandleAudioMessage(&message, display, playback, id, isRecording);
     AudioMessageFree(&message);
     return result;
 }
@@ -754,7 +786,7 @@ clientHandleServerMessage(const ServerMessage* m,
             return clientHandleImageMessage(&m->Image, display);
         case ServerMessageTag_Audio:
             return clientHandleAudioMessage(
-              &m->Audio, display, playback, isRecording);
+              &m->Audio, display, playback, &display->id, isRecording);
         case ServerMessageTag_Video:
             return clientHandleVideoMessage(
               &m->Video, display, codec, lastError);
@@ -937,6 +969,7 @@ streamConnectionThread(void* ptr)
         goto end;
     }
 
+    // If not UI, use default audio playback device for audio streams
     // For video connections
     uint64_t lastVideoError = 0;
     VideoDecoder decoder = { 0 };
@@ -1137,6 +1170,7 @@ streamConnectionThread(void* ptr)
                           &packetBytes,
                           display,
                           playback,
+                          id,
                           display->recordings != 0 || record != NULL);
                         break;
                     case ServerConfigurationDataTag_video:
@@ -3924,6 +3958,25 @@ handleUserEvent(const SDL_UserEvent* e,
             RENDER_NOW(w, h, (*info));
         } break;
         case CustomEvent_UiChanged:
+            switch (info->menu.tag) {
+                case MenuTag_Main: {
+                    pUiActor actor = e->data1;
+                    if (actor->id != info->focusId || actor->userData == NULL) {
+                        break;
+                    }
+                    switch (actor->type) {
+                        case MainButton_Slider: {
+                            AudioStatePtr ptr = actor->userData;
+                            ptr->volume = actor->data.slider.value / 100.f;
+                            sendUpdateUiEvent();
+                        } break;
+                        default:
+                            break;
+                    }
+                } break;
+                default:
+                    break;
+            }
             RENDER_NOW(w, h, (*info));
             break;
         case CustomEvent_UiClicked: {
@@ -3934,9 +3987,12 @@ handleUserEvent(const SDL_UserEvent* e,
             bool changed = true;
             switch (info->menu.tag) {
                 case MenuTag_Main: {
-                    if (actor->id == MainButton_Hide) {
-                        info->showUi = false;
-                        break;
+                    switch (actor->type) {
+                        case MainButton_Hide:
+                            info->showUi = false;
+                            goto endUiClicked;
+                        default:
+                            break;
                     }
                     const ServerConfiguration* config =
                       (const ServerConfiguration*)actor->userData;
@@ -3946,7 +4002,7 @@ handleUserEvent(const SDL_UserEvent* e,
                                                  &config->name,
                                                  &display,
                                                  &index)) {
-                        switch (actor->id) {
+                        switch (actor->type) {
                             case MainButton_Connect:
                                 StreamDisplayListSwapRemove(
                                   &clientData.displays, index);
@@ -3967,7 +4023,7 @@ handleUserEvent(const SDL_UserEvent* e,
                                 changed = false;
                                 break;
                         }
-                    } else if (actor->id == MainButton_Connect) {
+                    } else if (actor->type == MainButton_Connect) {
                         if (!connectToStream(config, NULL)) {
                             displayError(info->window,
                                          "Failed to connect to stream",
@@ -3978,7 +4034,7 @@ handleUserEvent(const SDL_UserEvent* e,
                     }
                 } break;
                 case MenuTag_EnterText: {
-                    switch (actor->id) {
+                    switch (actor->type) {
                         case EnterTextButton_Send: {
                             const ServerConfiguration* config =
                               (const ServerConfiguration*)actor->userData;
@@ -4016,6 +4072,7 @@ handleUserEvent(const SDL_UserEvent* e,
                     changed = false;
                     break;
             }
+        endUiClicked:
             if (changed) {
                 sendUpdateUiEvent();
             }
@@ -4042,6 +4099,7 @@ doRunClient(const Configuration* configuration,
             const uint16_t port)
 {
     clientData.configuration = (NullValue)&configuration->client;
+    clientData.window = window;
 
     int result = EXIT_FAILURE;
     puts("Running client...");

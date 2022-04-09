@@ -142,6 +142,7 @@ inlineC "
 resource ClientData {
     [0 ServerConfiguration] allStreams
     [0 StreamDisplay] displays
+    null window
     null configuration
     null mutex
 } c {

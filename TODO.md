@@ -147,16 +147,15 @@
 ### Apr 03, 2022
 - [x] Add OpenH264
 
-### Apr 06, 2022 - Apr 07, 2022
+### Apr 06, 2022 - Apr 09, 2022
 - [x] Write own Ui code
 - [ ] Display audio states
-- [ ] Handle sending audio through GUI
-- [ ] Handle sending video through GUI
+- [x] Fix background not showing when ui is displayed
+- [ ] Separate client and server code
 
 ### Later
 - [ ] Write websocket code for browser version
 - [ ] Make video replay streams work properly
-- [ ] Remove the ability to create streams from client version
 - [ ] Test android
 - [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects

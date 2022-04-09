@@ -654,6 +654,8 @@ typedef AudioState* AudioStatePtr;
 MAKE_COPY_AND_FREE(AudioStatePtr);
 MAKE_DEFAULT_LIST(AudioStatePtr);
 
+extern AudioStatePtrList audioStates;
+
 extern void
 AudioStateRemoveFromList(pAudioStatePtrList, const Guid*);
 
