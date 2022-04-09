@@ -149,7 +149,7 @@
 
 ### Apr 06, 2022 - Apr 09, 2022
 - [x] Write own Ui code
-- [ ] Display audio states
+- [x] Display audio states
 - [x] Fix background not showing when ui is displayed
 - [ ] Separate client and server code
 

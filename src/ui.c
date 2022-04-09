@@ -197,19 +197,20 @@ bool
 updateSliderFromPoint(pUiActor actor,
                       const int w,
                       const int h,
-                      const SDL_Point* point,
                       int32_t* focusId)
 {
-    const bool changed = checkActorFocus(point, actor, w, h, focusId);
-    if (actor->id == *focusId &&
-        (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK) != 0) {
+    SDL_Point point;
+    const int state = SDL_GetMouseState(&point.x, &point.y);
+    bool changed = checkActorFocus(&point, actor, w, h, focusId);
+    if (actor->id == *focusId && (state & SDL_BUTTON_LMASK) != 0) {
         const SDL_Rect rect = getUiActorRect(actor, w, h);
-        const bool horizontal = actor->rect.w > actor->rect.h;
+        const bool horizontal = rect.w > rect.h;
         const float t = horizontal
-                          ? glm_percentc(rect.x, rect.x + rect.w, point->x)
-                          : glm_percentc(rect.y, rect.y + rect.h, point->y);
-        actor->data.slider.value =
-          (int32_t)glm_lerpc(actor->data.slider.min, actor->data.slider.max, t);
+                          ? glm_percentc(rect.x, rect.x + rect.w, point.x)
+                          : glm_percentc(rect.y, rect.y + rect.h, point.y);
+        actor->data.slider.value = (int32_t)floorf(
+          glm_lerpc(actor->data.slider.min, actor->data.slider.max, t));
+        changed = true;
     }
     return changed;
 }
@@ -223,14 +224,10 @@ updateSlider(const SDL_Event* e,
 {
     switch (e->type) {
         case SDL_MOUSEBUTTONDOWN:
-        case SDL_MOUSEBUTTONUP: {
-            const SDL_Point point = { .x = e->button.x, .y = e->button.y };
-            return updateSliderFromPoint(actor, w, h, &point, focusId);
-        } break;
-        case SDL_MOUSEMOTION: {
-            const SDL_Point point = { .x = e->motion.x, .y = e->motion.y };
-            return updateSliderFromPoint(actor, w, h, &point, focusId);
-        } break;
+        case SDL_MOUSEBUTTONUP:
+            return updateSliderFromPoint(actor, w, h, focusId);
+        case SDL_MOUSEMOTION:
+            return updateSliderFromPoint(actor, w, h, focusId);
         default:
             break;
     }
@@ -363,11 +360,11 @@ renderUiActor(pRenderInfo info,
                                          actor->data.slider.max,
                                          actor->data.slider.value);
             if (horizontal) {
-                rect.x = glm_lerpc(rect.x, rect.x + w - rect.w, t);
+                rect.x = (int)floorf(glm_lerpc(rect.x, rect.x + w - rect.w, t));
                 rect.y += rect.h / 2;
             } else {
                 rect.x += rect.w / 2;
-                rect.y = glm_lerpc(rect.y, rect.y + h - rect.h, t);
+                rect.y = (int)floorf(glm_lerpc(rect.y, rect.y + h - rect.h, t));
             }
             SDL_RenderFillRect(info->renderer, &rect);
         } break;
@@ -414,7 +411,7 @@ addSlider(pUiActorList list, const int32_t min, const int32_t max)
     actor.data.tag = UiDataTag_slider;
     actor.data.slider.min = min;
     actor.data.slider.max = max;
-    actor.data.slider.value = 100;
+    actor.data.slider.value = max;
     pUiActor rval = NULL;
     if (UiActorListAppend(list, &actor)) {
         rval = &list->buffer[list->used - 1UL];
@@ -575,6 +572,7 @@ getUiMenuActors(const Menu* menu)
                     slider->vertical = VerticalAlignment_Top;
                     slider->id = nextId++;
                     slider->type = MainButton_Slider;
+                    slider->data.slider.value = floorf(ptr->volume * 100.f);
                     slider->userData = ptr;
                 }
             });
