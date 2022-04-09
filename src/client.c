@@ -14,7 +14,7 @@
         const SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };              \
         if (SDL_SetRenderDrawBlendMode(info.renderer, SDL_BLENDMODE_BLEND) !=  \
               0 ||                                                             \
-            SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 64u) != 0 ||     \
+            SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 96u) != 0 ||     \
             SDL_RenderFillRect(info.renderer, &rect) != 0) {                   \
             fprintf(stderr, "Failed to render: %s\n", SDL_GetError());         \
         }                                                                      \
@@ -2189,57 +2189,9 @@ end:
 }
 
 void
-selectStreamToScreenshot(struct pollfd inputfd, pBytes bytes)
-{
-    ServerConfigurationList list = { .allocator = currentAllocator };
-    IN_MUTEX(clientData.mutex, end2, {
-        for (size_t i = 0; i < clientData.displays.used; ++i) {
-            ServerConfigurationListAppend(
-              &list, &clientData.displays.buffer[i].config);
-        }
-    });
-
-    if (ServerConfigurationListIsEmpty(&list)) {
-        puts("No streams to take screenshot from");
-        goto end;
-    }
-    askQuestion("Select stream to take screenshot from");
-    for (size_t i = 0; i < list.used; ++i) {
-        printf("%zu) ", i + 1U);
-        printServerConfigurationForClient(&list.buffer[i]);
-    }
-    puts("");
-
-    uint32_t i = 0;
-    if (list.used == 1) {
-        puts("Taking screenshot from only available stream");
-    } else if (getIndexFromUser(inputfd, bytes, list.used, &i, true) !=
-               UserInputResult_Input) {
-        puts("Canceling screenshot");
-        goto end;
-    }
-
-    SDL_Event e = { 0 };
-    e.type = SDL_USEREVENT;
-    e.user.code = CustomEvent_SaveScreenshot;
-    pGuid guid = currentAllocator->allocate(sizeof(Guid));
-    // If stream display is gone, guid will stay at all zeroes
-    IN_MUTEX(clientData.mutex, end3, {
-        const StreamDisplay* display = NULL;
-        if (GetStreamDisplayFromName(
-              &clientData.displays, &list.buffer[i].name, &display, NULL)) {
-            *guid = display->id;
-        }
-    });
-    e.user.data1 = guid;
-    SDL_PushEvent(&e);
-
-end:
-    ServerConfigurationListFree(&list);
-}
-
-void
-saveScreenshot(SDL_Renderer* renderer, const StreamDisplay* display)
+saveScreenshot(SDL_Window* window,
+               SDL_Renderer* renderer,
+               const StreamDisplay* display)
 {
     if (renderer == NULL) {
         return;
@@ -2302,7 +2254,10 @@ saveScreenshot(SDL_Renderer* renderer, const StreamDisplay* display)
         goto end;
     }
 
-    printf("Saved screenshot to '%s'\n", buffer);
+    char buffer2[KB(2)];
+    snprintf(buffer, sizeof(buffer), "Saved screenshot to '%s'\n", buffer);
+    SDL_ShowSimpleMessageBox(
+      SDL_MESSAGEBOX_INFORMATION, "Screenshot", buffer2, window);
 
 end:
     SDL_DestroyTexture(temp);
@@ -2320,82 +2275,6 @@ displayUserOptions()
         TemLangStringFree(&s);
     }
     puts("");
-}
-
-void
-toggleStreamDisplays(struct pollfd inputfd, pBytes bytes)
-{
-    ServerConfigurationList list = { .allocator = currentAllocator };
-    IN_MUTEX(clientData.mutex, end2, {
-        for (size_t i = 0; i < clientData.displays.used; ++i) {
-            ServerConfigurationListAppend(
-              &list, &clientData.displays.buffer[i].config);
-        }
-    });
-
-    if (ServerConfigurationListIsEmpty(&list)) {
-        puts("No streams to display...");
-        goto end;
-    }
-
-    if (list.used == 1) {
-        IN_MUTEX(clientData.mutex, end35, {
-            size_t sIndex = 0;
-            if (GetStreamDisplayFromName(
-                  &clientData.displays, &list.buffer[0].name, NULL, &sIndex)) {
-                pStreamDisplay display = &clientData.displays.buffer[sIndex];
-                display->visible = !display->visible;
-                updateStreamDisplay(&display->id);
-            }
-        });
-        goto end;
-    }
-
-    while (true) {
-        askQuestion("Toggle Displays");
-        size_t available = 0;
-        for (size_t i = 0; i < list.used; ++i) {
-            IN_MUTEX(clientData.mutex, endf, {
-                const StreamDisplay* display = NULL;
-                if (GetStreamDisplayFromName(&clientData.displays,
-                                             &list.buffer[i].name,
-                                             &display,
-                                             NULL)) {
-                    printf("%zu) %s: %s\n",
-                           i + 1,
-                           list.buffer[i].name.buffer,
-                           display->visible ? "Visible" : "Not Visible");
-                    ++available;
-                }
-            });
-        }
-
-        if (available == 0) {
-            goto end;
-        }
-        uint32_t listIndex = 0;
-        switch (getIndexFromUser(inputfd, bytes, list.used, &listIndex, true)) {
-            case UserInputResult_Input: {
-                IN_MUTEX(clientData.mutex, end3, {
-                    size_t sIndex = 0;
-                    if (GetStreamDisplayFromName(&clientData.displays,
-                                                 &list.buffer[listIndex].name,
-                                                 NULL,
-                                                 &sIndex)) {
-                        pStreamDisplay display =
-                          &clientData.displays.buffer[sIndex];
-                        display->visible = !display->visible;
-                        updateStreamDisplay(&display->id);
-                    }
-                });
-            } break;
-            default:
-                goto end;
-        }
-    }
-
-end:
-    ServerConfigurationListFree(&list);
 }
 
 void
@@ -2694,12 +2573,6 @@ userInputThread(void* ptr)
                 break;
             case ClientCommand_DisconnectFromStream:
                 selectAStreamToDisconnectFrom(inputfd, &bytes);
-                break;
-            case ClientCommand_SaveScreenshot:
-                selectStreamToScreenshot(inputfd, &bytes);
-                break;
-            case ClientCommand_ToggleDisplay:
-                toggleStreamDisplays(inputfd, &bytes);
                 break;
             case ClientCommand_ChangeAudioVolume:
                 selectStreamToChangeVolume(inputfd, &bytes);
@@ -3467,8 +3340,13 @@ bool
 sendTextToServer(const char* text,
                  const ServerConfigurationDataTag serverType,
                  const Guid* id,
-                 pBytes bytes)
+                 pBytes bytes,
+                 SDL_Window* window)
 {
+    if (text == NULL) {
+        displayError(window, "Cannot send empty text", false);
+        return true;
+    }
     switch (serverType) {
         case ServerConfigurationDataTag_text: {
             TextMessage message = { 0 };
@@ -3515,6 +3393,185 @@ sendTextToServer(const char* text,
             return false;
     }
     return true;
+}
+
+bool
+sendFileToServer(const char* buffer,
+                 const ServerConfigurationDataTag serverType,
+                 const Guid* id,
+                 pBytes bytes,
+                 SDL_Window* window)
+{
+    if (buffer == false) {
+        displayError(window, "Invalid file name", false);
+        return true;
+    }
+    bool result = false;
+    int fd = -1;
+    char* ptr = NULL;
+    size_t size = 0;
+
+    FileExtension ext = { 0 };
+    if (!filenameToExtension(buffer, &ext)) {
+        puts("Failed to find file extension");
+        goto endDropFile;
+    }
+
+    if (!CanSendFileToStream(ext.tag, serverType)) {
+        fprintf(stderr,
+                "Cannot send '%s' file to '%s' server\n",
+                FileExtensionTagToCharString(ext.tag),
+                ServerConfigurationDataTagToCharString(serverType));
+        goto endDropFile;
+    }
+
+    if (!mapFile(buffer, &fd, &ptr, &size, MapFileType_Read)) {
+        fprintf(
+          stderr, "Error opening file '%s': %s\n", buffer, strerror(errno));
+        goto endDropFile;
+    }
+
+    result = true;
+    switch (serverType) {
+        case ServerConfigurationDataTag_text: {
+            TextMessage message = { 0 };
+            message.tag = TextMessageTag_text;
+            message.text =
+              TemLangStringCreateFromSize(ptr, size, currentAllocator);
+            MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
+            ENetPacket* packet =
+              BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+            IN_MUTEX(clientData.mutex, fileTextEnd, {
+                size_t i = 0;
+                if (GetStreamDisplayFromGuid(
+                      &clientData.displays, id, NULL, &i)) {
+                    NullValueListAppend(&clientData.displays.buffer[i].outgoing,
+                                        (NullValue)&packet);
+                } else {
+                    enet_packet_destroy(packet);
+                }
+            });
+            TextMessageFree(&message);
+        } break;
+        case ServerConfigurationDataTag_chat: {
+            ChatMessage message = { 0 };
+            message.tag = ChatMessageTag_message;
+            message.message =
+              TemLangStringCreateFromSize(ptr, size, currentAllocator);
+            MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
+            ENetPacket* packet =
+              BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+            IN_MUTEX(clientData.mutex, fileChatEnd, {
+                size_t i = 0;
+                if (GetStreamDisplayFromGuid(
+                      &clientData.displays, id, NULL, &i)) {
+                    NullValueListAppend(&clientData.displays.buffer[i].outgoing,
+                                        (NullValue)&packet);
+                } else {
+                    enet_packet_destroy(packet);
+                }
+            });
+            ChatMessageFree(&message);
+        } break;
+        case ServerConfigurationDataTag_image: {
+            ImageMessage message = { 0 };
+
+            uint32_t mtu = 1024;
+            {
+                message.tag = ImageMessageTag_imageStart;
+                message.imageStart = NULL;
+                MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
+                ENetPacket* packet =
+                  BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+
+                IN_MUTEX(clientData.mutex, imageEnd1, {
+                    size_t i = 0;
+                    const StreamDisplay* display = NULL;
+                    if (GetStreamDisplayFromGuid(
+                          &clientData.displays, id, &display, &i)) {
+                        NullValueListAppend(
+                          &clientData.displays.buffer[i].outgoing,
+                          (NullValue)&packet);
+                        mtu = SDL_max(mtu, display->mtu);
+                    } else {
+                        enet_packet_destroy(packet);
+                    }
+                });
+            }
+
+            printf("Sending image: %zu bytes\n", size);
+
+            message.tag = ImageMessageTag_imageChunk;
+            for (size_t i = 0; i < size; i += mtu) {
+                message.imageChunk.buffer = (uint8_t*)ptr + i;
+                const size_t s = SDL_min(mtu, size - i);
+                message.imageChunk.used = s;
+                message.imageChunk.size = s;
+                MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
+                ENetPacket* packet =
+                  BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+                bool sent = false;
+                IN_MUTEX(clientData.mutex, imageEnd2, {
+                    size_t i = 0;
+                    if (GetStreamDisplayFromGuid(
+                          &clientData.displays, id, NULL, &i)) {
+                        NullValueListAppend(
+                          &clientData.displays.buffer[i].outgoing,
+                          (NullValue)&packet);
+                        sent = true;
+                    } else {
+                        enet_packet_destroy(packet);
+                    }
+                });
+                if (sent) {
+                    printf("Sent image chunk: %zu "
+                           "bytes (%zu left) \n",
+                           s,
+                           size - (i + s));
+                    if (lowMemory()) {
+                        SDL_Delay(0);
+                    }
+                    continue;
+                }
+                break;
+            }
+
+            message.tag = ImageMessageTag_imageEnd;
+            message.imageEnd = NULL;
+            MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
+            ENetPacket* packet =
+              BytesToPacket(bytes->buffer, bytes->used, SendFlags_Normal);
+            IN_MUTEX(clientData.mutex, imageEnd3, {
+                size_t i = 0;
+                if (GetStreamDisplayFromGuid(
+                      &clientData.displays, id, NULL, &i)) {
+                    NullValueListAppend(&clientData.displays.buffer[i].outgoing,
+                                        (NullValue)&packet);
+                } else {
+                    enet_packet_destroy(packet);
+                }
+            });
+        } break;
+        case ServerConfigurationDataTag_audio:
+            if (ext.tag != FileExtensionTag_audio) {
+                fprintf(stderr,
+                        "Must send audio file to "
+                        "audio stream\n");
+                break;
+            }
+            result = decodeAudioData(ext.audio, (uint8_t*)ptr, size, bytes, id);
+            break;
+        default:
+            fprintf(stderr,
+                    "Sending file to '%s' not valid\n",
+                    ServerConfigurationDataTagToCharString(serverType));
+            break;
+    }
+
+    // Don't free message since it wasn't allocated
+endDropFile:
+    unmapFile(fd, ptr, size);
+    return result;
 }
 
 void
@@ -3597,188 +3654,19 @@ handleUserInput(const struct pollfd inputfd,
             });
         } break;
         case UserInputDataTag_text:
-            sendTextToServer(
-              userInput->data.text.buffer, serverType, &userInput->id, bytes);
+            sendTextToServer(userInput->data.text.buffer,
+                             serverType,
+                             &userInput->id,
+                             bytes,
+                             NULL);
             break;
-        case UserInputDataTag_file: {
-            int fd = -1;
-            char* ptr = NULL;
-            size_t size = 0;
-
-            FileExtension ext = { 0 };
-            if (!filenameToExtension(userInput->data.file.buffer, &ext)) {
-                puts("Failed to find file extension");
-                goto endDropFile;
-            }
-
-            if (!CanSendFileToStream(ext.tag, serverType)) {
-                fprintf(stderr,
-                        "Cannot send '%s' file to '%s' server\n",
-                        FileExtensionTagToCharString(ext.tag),
-                        ServerConfigurationDataTagToCharString(serverType));
-                goto endDropFile;
-            }
-
-            if (!mapFile(userInput->data.file.buffer,
-                         &fd,
-                         &ptr,
-                         &size,
-                         MapFileType_Read)) {
-                fprintf(stderr,
-                        "Error opening file '%s': %s\n",
-                        userInput->data.file.buffer,
-                        strerror(errno));
-                goto endDropFile;
-            }
-
-            switch (serverType) {
-                case ServerConfigurationDataTag_text: {
-                    TextMessage message = { 0 };
-                    message.tag = TextMessageTag_text;
-                    message.text =
-                      TemLangStringCreateFromSize(ptr, size, currentAllocator);
-                    MESSAGE_SERIALIZE(TextMessage, message, (*bytes));
-                    ENetPacket* packet = BytesToPacket(
-                      bytes->buffer, bytes->used, SendFlags_Normal);
-                    IN_MUTEX(clientData.mutex, fileTextEnd, {
-                        size_t i = 0;
-                        if (GetStreamDisplayFromGuid(
-                              &clientData.displays, &userInput->id, NULL, &i)) {
-                            NullValueListAppend(
-                              &clientData.displays.buffer[i].outgoing,
-                              (NullValue)&packet);
-                        } else {
-                            enet_packet_destroy(packet);
-                        }
-                    });
-                    TextMessageFree(&message);
-                } break;
-                case ServerConfigurationDataTag_chat: {
-                    ChatMessage message = { 0 };
-                    message.tag = ChatMessageTag_message;
-                    message.message =
-                      TemLangStringCreateFromSize(ptr, size, currentAllocator);
-                    MESSAGE_SERIALIZE(ChatMessage, message, (*bytes));
-                    ENetPacket* packet = BytesToPacket(
-                      bytes->buffer, bytes->used, SendFlags_Normal);
-                    IN_MUTEX(clientData.mutex, fileChatEnd, {
-                        size_t i = 0;
-                        if (GetStreamDisplayFromGuid(
-                              &clientData.displays, &userInput->id, NULL, &i)) {
-                            NullValueListAppend(
-                              &clientData.displays.buffer[i].outgoing,
-                              (NullValue)&packet);
-                        } else {
-                            enet_packet_destroy(packet);
-                        }
-                    });
-                    ChatMessageFree(&message);
-                } break;
-                case ServerConfigurationDataTag_image: {
-                    ImageMessage message = { 0 };
-
-                    uint32_t mtu = 1024;
-                    {
-                        message.tag = ImageMessageTag_imageStart;
-                        message.imageStart = NULL;
-                        MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-                        ENetPacket* packet = BytesToPacket(
-                          bytes->buffer, bytes->used, SendFlags_Normal);
-
-                        IN_MUTEX(clientData.mutex, imageEnd1, {
-                            size_t i = 0;
-                            const StreamDisplay* display = NULL;
-                            if (GetStreamDisplayFromGuid(&clientData.displays,
-                                                         &userInput->id,
-                                                         &display,
-                                                         &i)) {
-                                NullValueListAppend(
-                                  &clientData.displays.buffer[i].outgoing,
-                                  (NullValue)&packet);
-                                mtu = SDL_max(mtu, display->mtu);
-                            } else {
-                                enet_packet_destroy(packet);
-                            }
-                        });
-                    }
-
-                    printf("Sending image: %zu bytes\n", size);
-
-                    message.tag = ImageMessageTag_imageChunk;
-                    for (size_t i = 0; i < size; i += mtu) {
-                        message.imageChunk.buffer = (uint8_t*)ptr + i;
-                        const size_t s = SDL_min(mtu, size - i);
-                        message.imageChunk.used = s;
-                        message.imageChunk.size = s;
-                        MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-                        ENetPacket* packet = BytesToPacket(
-                          bytes->buffer, bytes->used, SendFlags_Normal);
-                        bool sent = false;
-                        IN_MUTEX(clientData.mutex, imageEnd2, {
-                            size_t i = 0;
-                            if (GetStreamDisplayFromGuid(&clientData.displays,
-                                                         &userInput->id,
-                                                         NULL,
-                                                         &i)) {
-                                NullValueListAppend(
-                                  &clientData.displays.buffer[i].outgoing,
-                                  (NullValue)&packet);
-                                sent = true;
-                            } else {
-                                enet_packet_destroy(packet);
-                            }
-                        });
-                        if (sent) {
-                            printf("Sent image chunk: %zu "
-                                   "bytes (%zu left) \n",
-                                   s,
-                                   size - (i + s));
-                            if (lowMemory()) {
-                                SDL_Delay(0);
-                            }
-                            continue;
-                        }
-                        break;
-                    }
-
-                    message.tag = ImageMessageTag_imageEnd;
-                    message.imageEnd = NULL;
-                    MESSAGE_SERIALIZE(ImageMessage, message, (*bytes));
-                    ENetPacket* packet = BytesToPacket(
-                      bytes->buffer, bytes->used, SendFlags_Normal);
-                    IN_MUTEX(clientData.mutex, imageEnd3, {
-                        size_t i = 0;
-                        if (GetStreamDisplayFromGuid(
-                              &clientData.displays, &userInput->id, NULL, &i)) {
-                            NullValueListAppend(
-                              &clientData.displays.buffer[i].outgoing,
-                              (NullValue)&packet);
-                        } else {
-                            enet_packet_destroy(packet);
-                        }
-                    });
-                } break;
-                case ServerConfigurationDataTag_audio:
-                    if (ext.tag != FileExtensionTag_audio) {
-                        fprintf(stderr,
-                                "Must send audio file to "
-                                "audio stream\n");
-                        break;
-                    }
-                    decodeAudioData(
-                      ext.audio, (uint8_t*)ptr, size, bytes, &userInput->id);
-                    break;
-                default:
-                    fprintf(stderr,
-                            "Sending '%s' not implemented\n",
-                            ServerConfigurationDataTagToCharString(serverType));
-                    break;
-            }
-
-            // Don't free message since it wasn't allocated
-        endDropFile:
-            unmapFile(fd, ptr, size);
-        } break;
+        case UserInputDataTag_file:
+            sendFileToServer(userInput->data.text.buffer,
+                             serverType,
+                             &userInput->id,
+                             bytes,
+                             NULL);
+            break;
         default:
             break;
     }
@@ -3891,7 +3779,7 @@ handleUserEvent(const SDL_UserEvent* e,
                         display->config.name.buffer);
                 break;
             }
-            saveScreenshot(info->renderer, display);
+            saveScreenshot(info->window, info->renderer, display);
         } break;
         case CustomEvent_SendLobbyMessage: {
             MESSAGE_SERIALIZE(
@@ -3981,7 +3869,7 @@ handleUserEvent(const SDL_UserEvent* e,
             break;
         case CustomEvent_UiClicked: {
             pUiActor actor = e->data1;
-            if (actor->id != info->focusId || actor->userData == NULL) {
+            if (actor->id != info->focusId) {
                 break;
             }
             bool changed = true;
@@ -3993,6 +3881,9 @@ handleUserEvent(const SDL_UserEvent* e,
                             goto endUiClicked;
                         default:
                             break;
+                    }
+                    if (actor->userData == NULL) {
+                        break;
                     }
                     const ServerConfiguration* config =
                       (const ServerConfiguration*)actor->userData;
@@ -4007,11 +3898,24 @@ handleUserEvent(const SDL_UserEvent* e,
                                 StreamDisplayListSwapRemove(
                                   &clientData.displays, index);
                                 break;
+                            case MainButton_Screenshot:
+                                saveScreenshot(
+                                  info->window, info->renderer, display);
+                                break;
+                            case MainButton_Visible:
+                                clientData.displays.buffer[index].visible =
+                                  !display->visible;
+                                break;
                             case MainButton_Data:
                                 switch (config->data.tag) {
                                     case ServerConfigurationDataTag_chat:
                                     case ServerConfigurationDataTag_text:
                                         info->menu.tag = MenuTag_EnterText;
+                                        info->menu.id = display->id;
+                                        sendUpdateUiEvent();
+                                        break;
+                                    case ServerConfigurationDataTag_image:
+                                        info->menu.tag = MenuTag_EnterImage;
                                         info->menu.id = display->id;
                                         sendUpdateUiEvent();
                                         break;
@@ -4033,9 +3937,12 @@ handleUserEvent(const SDL_UserEvent* e,
                         changed = false;
                     }
                 } break;
-                case MenuTag_EnterText: {
+                case MenuTag_EnterText:
                     switch (actor->type) {
                         case EnterTextButton_Send: {
+                            if (actor->userData == NULL) {
+                                break;
+                            }
                             const ServerConfiguration* config =
                               (const ServerConfiguration*)actor->userData;
                             size_t index = 0;
@@ -4049,9 +3956,10 @@ handleUserEvent(const SDL_UserEvent* e,
                                   &info->uiActors, EnterTextButton_TextBox);
                                 if (a != NULL && !sendTextToServer(
                                                    a->data.editText.text.buffer,
-                                                   display->data.tag,
+                                                   display->config.data.tag,
                                                    &display->id,
-                                                   &bytes)) {
+                                                   &bytes,
+                                                   info->window)) {
                                     displayError(info->window,
                                                  "Failed to send text",
                                                  false);
@@ -4067,7 +3975,46 @@ handleUserEvent(const SDL_UserEvent* e,
                             changed = false;
                             break;
                     }
-                } break;
+                    break;
+                case MenuTag_EnterImage:
+                    switch (actor->type) {
+                        case EnterTextButton_Send: {
+                            if (actor->userData == NULL) {
+                                break;
+                            }
+                            const ServerConfiguration* config =
+                              (const ServerConfiguration*)actor->userData;
+                            size_t index = 0;
+                            const StreamDisplay* display = NULL;
+                            if (GetStreamDisplayFromName(&clientData.displays,
+                                                         &config->name,
+                                                         &display,
+                                                         &index)) {
+                                Bytes bytes = { .allocator = currentAllocator };
+                                const UiActor* a = findUiActor(
+                                  &info->uiActors, EnterTextButton_TextBox);
+                                if (a != NULL && !sendFileToServer(
+                                                   a->data.editText.text.buffer,
+                                                   display->config.data.tag,
+                                                   &display->id,
+                                                   &bytes,
+                                                   info->window)) {
+                                    displayError(info->window,
+                                                 "Failed to send image",
+                                                 false);
+                                }
+                                uint8_tListFree(&bytes);
+                            }
+                            setUiMenu(MenuTag_Main);
+                        } break;
+                        case EnterTextButton_Back:
+                            setUiMenu(MenuTag_Main);
+                            break;
+                        default:
+                            changed = false;
+                            break;
+                    }
+                    break;
                 default:
                     changed = false;
                     break;
@@ -4731,7 +4678,7 @@ getHostnameFromGUI(const Configuration* configuration)
     actors[0].vertical = VerticalAlignment_Center;
     actors[0].rect = (Rect){ .x = 500, .y = 100, .w = 500, .h = 100 };
     actors[0].data.tag = UiDataTag_label;
-    actors[0].data.label =
+    actors[0].data.label.label =
       TemLangStringCreate("Enter stream connection", currentAllocator);
 
     actors[1].horizontal = HorizontalAlignment_Center;
@@ -4754,7 +4701,8 @@ getHostnameFromGUI(const Configuration* configuration)
     actors[3].vertical = VerticalAlignment_Center;
     actors[3].rect = (Rect){ .x = 500, .y = 650, .w = 500, .h = 100 };
     actors[3].data.tag = UiDataTag_label;
-    actors[3].data.label = TemLangStringCreate("Connect", currentAllocator);
+    actors[3].data.label.label =
+      TemLangStringCreate("Connect", currentAllocator);
 
     RenderInfo info = {
         .focusId = 1,

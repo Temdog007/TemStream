@@ -23,13 +23,19 @@ struct Slider {
     i32 value
 }
 
+struct Label {
+    string label
+    u32 wrap
+}
+
 struct EditText {
     string label
     string text
+    u32 wrap
 }
 
 variant UiData {
-    string label
+    Label label
     EditText editText
     Slider slider
 }
@@ -60,7 +66,6 @@ inlineC "MAKE_DEFAULT_LIST(UiActor);"
 
 enum MenuTag {
     Main
-    ConnectToStream
     EnterText
     EnterImage
 }
@@ -76,6 +81,8 @@ enum MainButton {
     Data
     Hide
     Slider
+    Visible
+    Screenshot
 }
 
 enum EnterTextButton {

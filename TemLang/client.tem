@@ -7,8 +7,6 @@ enum ClientCommand {
     StartStreaming
     UploadText
     UploadFile
-    SaveScreenshot
-    ToggleDisplay
     ChangeAudioVolume
     ChangeAudioSource
     ChangePressToTalk

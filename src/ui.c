@@ -1,10 +1,10 @@
 #include <include/main.h>
 
 const UiActor*
-findUiActor(const UiActorList* list, const int32_t id)
+findUiActor(const UiActorList* list, const int32_t type)
 {
     for (size_t i = 0; i < list->used; ++i) {
-        if (list->buffer[i].id == id) {
+        if (list->buffer[i].type == type) {
             return &list->buffer[i];
         }
     }
@@ -326,8 +326,12 @@ renderUiActor(pRenderInfo info,
 
     switch (actor->data.tag) {
         case UiDataTag_label:
-            surface = TTF_RenderUTF8_Shaded_Wrapped(
-              info->font, actor->data.label.buffer, fg, bg, rect.w * w / 1000);
+            surface =
+              TTF_RenderUTF8_Shaded_Wrapped(info->font,
+                                            actor->data.label.label.buffer,
+                                            fg,
+                                            bg,
+                                            actor->data.label.wrap * w / 1000u);
             texture = SDL_CreateTextureFromSurface(info->renderer, surface);
             SDL_RenderCopy(info->renderer, texture, NULL, &rect);
             break;
@@ -338,8 +342,12 @@ renderUiActor(pRenderInfo info,
                      "%s: %s",
                      actor->data.editText.label.buffer,
                      actor->data.editText.text.buffer);
-            surface = TTF_RenderUTF8_Shaded_Wrapped(
-              info->font, buffer, fg, bg, rect.w * w / 1000);
+            surface = TTF_RenderUTF8_Shaded_Wrapped(info->font,
+                                                    buffer,
+                                                    fg,
+                                                    bg,
+                                                    actor->data.editText.wrap *
+                                                      w / 1000u);
             texture = SDL_CreateTextureFromSurface(info->renderer, surface);
             SDL_RenderCopy(info->renderer, texture, NULL, &rect);
         } break;
@@ -376,11 +384,12 @@ renderUiActor(pRenderInfo info,
 }
 
 pUiActor
-addUiLabel(pUiActorList list, const char* message)
+addUiLabel(pUiActorList list, const char* message, const uint32_t wrap)
 {
     UiActor actor = { 0 };
     actor.data.tag = UiDataTag_label;
-    actor.data.label = TemLangStringCreate(message, currentAllocator);
+    actor.data.label.label = TemLangStringCreate(message, currentAllocator);
+    actor.data.label.wrap = wrap;
     pUiActor rval = NULL;
     if (UiActorListAppend(list, &actor)) {
         rval = &list->buffer[list->used - 1UL];
@@ -390,12 +399,13 @@ addUiLabel(pUiActorList list, const char* message)
 }
 
 pUiActor
-addTextBox(pUiActorList list, const char* message)
+addTextBox(pUiActorList list, const char* message, const uint32_t wrap)
 {
     UiActor actor = { 0 };
     actor.data.tag = UiDataTag_editText;
     actor.data.editText.label = TemLangStringCreate(message, currentAllocator);
     actor.data.editText.text = TemLangStringCreate("", currentAllocator);
+    actor.data.editText.wrap = wrap;
     pUiActor rval = NULL;
     if (UiActorListAppend(list, &actor)) {
         rval = &list->buffer[list->used - 1UL];
@@ -440,67 +450,31 @@ getUiMenuActors(const Menu* menu)
     switch (menu->tag) {
         case MenuTag_Main: {
             IN_MUTEX(clientData.mutex, end, {
+                int32_t nextId = 0;
                 if (ServerConfigurationListIsEmpty(&clientData.allStreams)) {
-                    pUiActor label = addUiLabel(&list, "No streams available");
+                    pUiActor label =
+                      addUiLabel(&list, "No streams available", 0u);
                     label->rect.x = 500;
                     label->rect.y = 100;
                     label->rect.w = 500;
                     label->rect.h = 100;
                     label->horizontal = HorizontalAlignment_Center;
                     label->vertical = VerticalAlignment_Top;
-                    label->id = INT_MAX;
+                    label->id = nextId++;
                     goto end;
                 }
                 {
-                    pUiActor label = addUiLabel(&list, "Current streams");
+                    pUiActor label = addUiLabel(&list, "Current streams", 0u);
                     label->rect.x = 500;
                     label->rect.y = 100;
                     label->rect.w = 500;
                     label->rect.h = 100;
                     label->horizontal = HorizontalAlignment_Center;
                     label->vertical = VerticalAlignment_Top;
-                    label->id = INT_MAX;
-                }
-                char buffer[KB(1)];
-                const int size = SDL_min(100, 750 / clientData.allStreams.used);
-                uint32_t nextId = 0;
-                for (uint32_t i = 0; i < clientData.allStreams.used; ++i) {
-                    const StreamDisplay* display = NULL;
-                    pServerConfiguration config =
-                      &clientData.allStreams.buffer[i];
-                    const bool connected = GetStreamDisplayFromName(
-                      &clientData.displays, &config->name, &display, NULL);
+                    label->id = nextId++;
+                    label->type = MainButton_Label;
 
-                    snprintf(
-                      buffer,
-                      sizeof(buffer),
-                      "%s (%s)",
-                      config->name.buffer,
-                      ServerConfigurationDataTagToCharString(config->data.tag));
-                    pUiActor streamName = addUiLabel(&list, buffer);
-                    streamName->rect.x = 100;
-                    streamName->rect.y = 250 + (i * size);
-                    streamName->rect.w = 225;
-                    streamName->rect.h = size * 9 / 10;
-                    streamName->horizontal = HorizontalAlignment_Left;
-                    streamName->vertical = VerticalAlignment_Top;
-                    streamName->id = nextId++;
-                    streamName->type = MainButton_Label;
-                    streamName->userData = config;
-
-                    pUiActor isConnected =
-                      addUiLabel(&list, connected ? "Disconnect" : "Connect");
-                    isConnected->rect.x = 350;
-                    isConnected->rect.y = 250 + (i * size);
-                    isConnected->rect.w = 225;
-                    isConnected->rect.h = size * 9 / 10;
-                    isConnected->horizontal = HorizontalAlignment_Left;
-                    isConnected->vertical = VerticalAlignment_Top;
-                    isConnected->id = nextId++;
-                    isConnected->type = MainButton_Connect;
-                    isConnected->userData = config;
-
-                    pUiActor hide = addUiLabel(&list, "Hide");
+                    pUiActor hide = addUiLabel(&list, "X", 0u);
                     hide->rect.x = 1000;
                     hide->rect.y = 1000;
                     hide->rect.w = 125;
@@ -509,20 +483,89 @@ getUiMenuActors(const Menu* menu)
                     hide->vertical = VerticalAlignment_Bottom;
                     hide->id = nextId++;
                     hide->type = MainButton_Hide;
-                    hide->userData = config;
+                }
+                char buffer[KB(1)];
+                const uint32_t total =
+                  clientData.allStreams.used + playbackCount(&audioStates);
+                const int size = SDL_min(100, 750 / total);
 
-                    if (!connected ||
+                const int width = 190;
+                const int padding = 10;
+                for (uint32_t i = 0; i < clientData.allStreams.used; ++i) {
+                    const StreamDisplay* display = NULL;
+                    pServerConfiguration config =
+                      &clientData.allStreams.buffer[i];
+                    const bool connected = GetStreamDisplayFromName(
+                      &clientData.displays, &config->name, &display, NULL);
+                    int x = padding / 2;
+                    snprintf(
+                      buffer,
+                      sizeof(buffer),
+                      "%s (%s)",
+                      config->name.buffer,
+                      ServerConfigurationDataTagToCharString(config->data.tag));
+                    pUiActor streamName = addUiLabel(&list, buffer, 0u);
+                    streamName->rect.x = x;
+                    streamName->rect.y = 250 + (i * size);
+                    streamName->rect.w = width;
+                    streamName->rect.h = size * 9 / 10;
+                    streamName->horizontal = HorizontalAlignment_Left;
+                    streamName->vertical = VerticalAlignment_Top;
+                    streamName->id = nextId++;
+                    streamName->type = MainButton_Label;
+                    streamName->userData = config;
+                    x += width + padding;
+
+                    pUiActor isConnected = addUiLabel(
+                      &list, connected ? "Disconnect" : "Connect", 0u);
+                    isConnected->rect.x = x;
+                    isConnected->rect.y = 250 + (i * size);
+                    isConnected->rect.w = width;
+                    isConnected->rect.h = size * 9 / 10;
+                    isConnected->horizontal = HorizontalAlignment_Left;
+                    isConnected->vertical = VerticalAlignment_Top;
+                    isConnected->id = nextId++;
+                    isConnected->type = MainButton_Connect;
+                    isConnected->userData = config;
+                    x += width + padding;
+
+                    if (!connected || display == NULL ||
                         !clientHasWriteAccess(&display->client, config)) {
-                        break;
+                        continue;
                     }
+
+                    pUiActor hide =
+                      addUiLabel(&list, display->visible ? "Hide" : "Show", 0u);
+                    hide->rect.x = x;
+                    hide->rect.y = 250 + (i * size);
+                    hide->rect.w = width;
+                    hide->rect.h = size * 9 / 10;
+                    hide->horizontal = HorizontalAlignment_Left;
+                    hide->vertical = VerticalAlignment_Top;
+                    hide->id = nextId++;
+                    hide->type = MainButton_Visible;
+                    hide->userData = config;
+                    x += width + padding;
 
                     switch (config->data.tag) {
                         case ServerConfigurationDataTag_chat:
                         case ServerConfigurationDataTag_text: {
-                            pUiActor t = addUiLabel(&list, "Send text");
-                            t->rect.x = 600;
+                            pUiActor t = addUiLabel(&list, "Send text", 0u);
+                            t->rect.x = x;
                             t->rect.y = 250 + (i * size);
-                            t->rect.w = 225;
+                            t->rect.w = width;
+                            t->rect.h = size * 9 / 10;
+                            t->horizontal = HorizontalAlignment_Left;
+                            t->vertical = VerticalAlignment_Top;
+                            t->id = nextId++;
+                            t->type = MainButton_Data;
+                            t->userData = config;
+                        } break;
+                        case ServerConfigurationDataTag_image: {
+                            pUiActor t = addUiLabel(&list, "Send image", 0u);
+                            t->rect.x = x;
+                            t->rect.y = 250 + (i * size);
+                            t->rect.w = width;
                             t->rect.h = size * 9 / 10;
                             t->horizontal = HorizontalAlignment_Left;
                             t->vertical = VerticalAlignment_Top;
@@ -532,6 +575,19 @@ getUiMenuActors(const Menu* menu)
                         } break;
                         default:
                             break;
+                    }
+                    x += width + padding;
+                    if (display->visible) {
+                        pUiActor t = addUiLabel(&list, "Screenshot", 0u);
+                        t->rect.x = x;
+                        t->rect.y = 250 + (i * size);
+                        t->rect.w = width;
+                        t->rect.h = size * 9 / 10;
+                        t->horizontal = HorizontalAlignment_Left;
+                        t->vertical = VerticalAlignment_Top;
+                        t->id = nextId++;
+                        t->type = MainButton_Screenshot;
+                        t->userData = config;
                     }
                 }
                 for (size_t i = 0; i < audioStates.used; ++i) {
@@ -546,16 +602,16 @@ getUiMenuActors(const Menu* menu)
                     }
 
                     const int y =
-                      250 + ((clientData.allStreams.used - i) * size);
+                      250 + ((clientData.allStreams.used + i) * size);
                     snprintf(buffer,
                              sizeof(buffer),
                              "%s playback\n(%d%%)",
                              display->config.name.buffer,
                              (int)floorf(ptr->volume * 100.f));
-                    pUiActor label = addUiLabel(&list, buffer);
-                    label->rect.x = 100;
+                    pUiActor label = addUiLabel(&list, buffer, 0u);
+                    label->rect.x = 50;
                     label->rect.y = y;
-                    label->rect.w = 225;
+                    label->rect.w = 200;
                     label->rect.h = size * 9 / 10;
                     label->horizontal = HorizontalAlignment_Left;
                     label->vertical = VerticalAlignment_Top;
@@ -564,9 +620,9 @@ getUiMenuActors(const Menu* menu)
                     label->userData = ptr;
 
                     pUiActor slider = addSlider(&list, 0, 100);
-                    slider->rect.x = 350;
+                    slider->rect.x = 250;
                     slider->rect.y = y;
-                    slider->rect.w = 450;
+                    slider->rect.w = 700;
                     slider->rect.h = size * 9 / 10;
                     slider->horizontal = HorizontalAlignment_Left;
                     slider->vertical = VerticalAlignment_Top;
@@ -580,45 +636,82 @@ getUiMenuActors(const Menu* menu)
         case MenuTag_EnterText: {
             const Guid* id = &menu->id;
             bool displayMissing = false;
+            int32_t nextId = 0;
             USE_DISPLAY(clientData.mutex, end2, displayMissing, {
-                pUiActor label = addUiLabel(&list, "Sending text...");
-                label->rect.x = 500;
-                label->rect.y = 100;
-                label->rect.w = 500;
-                label->rect.h = 100;
-                label->horizontal = HorizontalAlignment_Center;
-                label->vertical = VerticalAlignment_Top;
-                label->id = EnterTextButton_Label;
-                label->userData = &display->config;
-
-                pUiActor textbox = addTextBox(&list, "Enter text here");
+                pUiActor textbox =
+                  addTextBox(&list, "Enter text to send\n", 0u);
                 textbox->rect.x = 500;
-                textbox->rect.y = 350;
+                textbox->rect.y = 125;
                 textbox->rect.w = 750;
-                textbox->rect.h = 250;
+                textbox->rect.h = 500;
                 textbox->horizontal = HorizontalAlignment_Center;
                 textbox->vertical = VerticalAlignment_Top;
-                textbox->id = EnterTextButton_TextBox;
+                textbox->type = EnterTextButton_TextBox;
+                textbox->id = nextId++;
                 textbox->userData = &display->config;
 
-                pUiActor sendButton = addUiLabel(&list, "Send");
-                sendButton->rect.x = 250;
+                pUiActor sendButton = addUiLabel(&list, "Send", 0u);
+                sendButton->rect.x = 125;
                 sendButton->rect.y = 1000;
-                sendButton->rect.w = 250;
-                sendButton->rect.h = 250;
-                sendButton->horizontal = HorizontalAlignment_Center;
+                sendButton->rect.w = 125;
+                sendButton->rect.h = 125;
+                sendButton->horizontal = HorizontalAlignment_Left;
                 sendButton->vertical = VerticalAlignment_Bottom;
-                sendButton->id = EnterTextButton_Send;
+                sendButton->type = EnterTextButton_Send;
+                sendButton->id = nextId++;
                 sendButton->userData = &display->config;
 
-                pUiActor backButton = addUiLabel(&list, "Back");
-                backButton->rect.x = 750;
+                pUiActor backButton = addUiLabel(&list, "Back", 0u);
+                backButton->rect.x = 875;
                 backButton->rect.y = 1000;
-                backButton->rect.w = 250;
-                backButton->rect.h = 250;
-                backButton->horizontal = HorizontalAlignment_Center;
+                backButton->rect.w = 125;
+                backButton->rect.h = 125;
+                backButton->horizontal = HorizontalAlignment_Right;
                 backButton->vertical = VerticalAlignment_Bottom;
-                backButton->id = EnterTextButton_Back;
+                backButton->type = EnterTextButton_Back;
+                backButton->id = nextId++;
+                backButton->userData = &display->config;
+            });
+            if (displayMissing) {
+                setUiMenu(MenuTag_Main);
+            }
+        } break;
+        case MenuTag_EnterImage: {
+            const Guid* id = &menu->id;
+            bool displayMissing = false;
+            int32_t nextId = 0;
+            USE_DISPLAY(clientData.mutex, end52, displayMissing, {
+                pUiActor textbox = addTextBox(&list, "Enter filename\n", 0u);
+                textbox->rect.x = 500;
+                textbox->rect.y = 125;
+                textbox->rect.w = 750;
+                textbox->rect.h = 500;
+                textbox->horizontal = HorizontalAlignment_Center;
+                textbox->vertical = VerticalAlignment_Top;
+                textbox->type = EnterTextButton_TextBox;
+                textbox->id = nextId++;
+                textbox->userData = &display->config;
+
+                pUiActor sendButton = addUiLabel(&list, "Send", 0u);
+                sendButton->rect.x = 125;
+                sendButton->rect.y = 1000;
+                sendButton->rect.w = 125;
+                sendButton->rect.h = 125;
+                sendButton->horizontal = HorizontalAlignment_Left;
+                sendButton->vertical = VerticalAlignment_Bottom;
+                sendButton->type = EnterTextButton_Send;
+                sendButton->id = nextId++;
+                sendButton->userData = &display->config;
+
+                pUiActor backButton = addUiLabel(&list, "Back", 0u);
+                backButton->rect.x = 875;
+                backButton->rect.y = 1000;
+                backButton->rect.w = 125;
+                backButton->rect.h = 125;
+                backButton->horizontal = HorizontalAlignment_Right;
+                backButton->vertical = VerticalAlignment_Bottom;
+                backButton->type = EnterTextButton_Back;
+                backButton->id = nextId++;
                 backButton->userData = &display->config;
             });
             if (displayMissing) {

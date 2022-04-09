@@ -151,11 +151,15 @@
 - [x] Write own Ui code
 - [x] Display audio states
 - [x] Fix background not showing when ui is displayed
-- [ ] Separate client and server code
+- [x] Allow displays to be toggled in GUI
+- [ ] Add --no-tui option (default false)
 
-### Later
+### Apr 07, 2022
+- [ ] Separate client and server code
 - [ ] Write websocket code for browser version
 - [ ] Make video replay streams work properly
+
+### Later
 - [ ] Test android
 - [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects

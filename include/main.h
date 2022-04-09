@@ -881,7 +881,15 @@ extern bool
 sendTextToServer(const char*,
                  const ServerConfigurationDataTag,
                  const Guid*,
-                 pBytes);
+                 pBytes,
+                 SDL_Window*);
+
+extern bool
+sendFileToServer(const char*,
+                 const ServerConfigurationDataTag,
+                 const Guid*,
+                 pBytes,
+                 SDL_Window*);
 
 extern const UiActor*
 findUiActor(const UiActorList*, int32_t id);
