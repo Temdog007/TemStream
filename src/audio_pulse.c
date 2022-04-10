@@ -102,7 +102,6 @@ recordSink(const SinkInput* target, pAudioState state)
         state->sinks.allocator = currentAllocator;
     }
     TemLangString realSinkName = { .allocator = currentAllocator };
-    char buffer[KB(4)] = { 0 };
     char sinkName[KB(2)];
     snprintf(sinkName,
              sizeof(sinkName),
@@ -111,6 +110,7 @@ recordSink(const SinkInput* target, pAudioState state)
              target->processId);
 
     // Make null sink
+    char buffer[KB(4)];
     snprintf(buffer, sizeof(buffer), createNullSinkCommand, sinkName, sinkName);
     int nullHandle = 0L;
     if (processOutputToNumber(buffer, &nullHandle) != EXIT_SUCCESS) {
@@ -154,7 +154,7 @@ recordSink(const SinkInput* target, pAudioState state)
     }
     int32_tListAppend(&state->sinks, &remapHandle);
 
-    // Move the target process to send audio to the null sink
+    // Move the target process to send audio to the combo sink
     snprintf(
       buffer, sizeof(buffer), moveSinkCommand, target->inputId, sinkName);
 #if _DEBUG
@@ -275,12 +275,14 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
         TemLangStringTrim(str);
         if (!foundName &&
             TemLangStringStartsWith(str, "application.name = \"")) {
-            // Will have quotes
+
             foundName = true;
             TemLangStringFree(&sink->name);
             sink->name = TemLangStringCreate(
               str->buffer + (sizeof("application.name = \"") - 1),
               currentAllocator);
+
+            // Will have quotes at the end
             TemLangStringPop(&sink->name);
             continue;
         }
@@ -298,7 +300,7 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
             sink->currentSinkId =
               (int32_t)strtol(str->buffer + (sizeof("Sink: ") - 1), NULL, 10);
 #if _DEBUG
-            printf("%s = %d\n", str->buffer, sink->currentSinkId);
+            printf("%s -> %d\n", str->buffer, sink->currentSinkId);
 #endif
             continue;
         }
@@ -307,7 +309,7 @@ stringToSinkInput(pTemLangStringList list, size_t* offset, pSinkInput sink)
             sink->inputId = (int32_t)strtol(
               str->buffer + (sizeof("Sink Input #") - 1), NULL, 10);
 #if _DEBUG
-            printf("%s = %d\n", str->buffer, sink->inputId);
+            printf("%s -> %d\n", str->buffer, sink->inputId);
 #endif
             continue;
         }

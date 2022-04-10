@@ -858,8 +858,7 @@ processOutputToStrings(const char*, pTemLangStringList);
 
 // UI
 
-extern UiActorList
-getUiMenuActors(const Menu*);
+extern UiActorList getUiMenuActors(pMenu);
 
 typedef struct RenderInfo
 {

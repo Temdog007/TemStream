@@ -265,13 +265,15 @@ printClientConfiguration(const ClientConfiguration* configuration)
 {
     return printf(
              "Width: %d\nHeight: %d\nFullscreen: %d\nTTF file: %s\nFont Size: "
-             "%d\nNo Gui: %d\nShow label: %d\nSilence Threshold: %f\n",
+             "%d\nNo Gui: %d\nNo Tui: %d\nShow label: %d\nSilence Threshold: "
+             "%f\n",
              configuration->windowWidth,
              configuration->windowHeight,
              configuration->fullscreen,
              configuration->ttfFile.buffer,
              configuration->fontSize,
              configuration->noGui,
+             configuration->noTui,
              configuration->showLabel,
              configuration->silenceThreshold) +
            printTalkMode(&configuration->talkMode) +
@@ -1781,7 +1783,10 @@ startPlaybackFromName(const char* name, pAudioState state)
 #else
       makeAudioSpec(NULL, NULL);
 #endif
-    if (name != NULL) {
+    if (name == NULL) {
+        state->name =
+          TemLangStringCreate("Default audio device", currentAllocator);
+    } else {
         state->name = TemLangStringCreate(name, currentAllocator);
     }
     state->deviceId = SDL_OpenAudioDevice(
@@ -2168,7 +2173,7 @@ saveScreenshot(SDL_Window* window,
     }
 
     char buffer2[KB(2)];
-    snprintf(buffer, sizeof(buffer), "Saved screenshot to '%s'\n", buffer);
+    snprintf(buffer2, sizeof(buffer2), "Saved screenshot to '%s'\n", buffer);
     SDL_ShowSimpleMessageBox(
       SDL_MESSAGEBOX_INFORMATION, "Screenshot", buffer2, window);
 
@@ -3791,6 +3796,24 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
                     }
                     setUiMenu(MenuTag_Main);
                 } break;
+                case EnterTextButton_Send2: {
+                    pAudioState record =
+                      currentAllocator->allocate(sizeof(AudioState));
+                    record->storedAudio = CQueueCreate(CQUEUE_SIZE);
+                    record->volume = 1.f;
+                    record->id = display->id;
+                    pSinkInput sink = actor->userData;
+                    if (recordSink(sink, record)) {
+                        AudioStatePtrListAppend(&audioStates, &record);
+                    } else {
+                        displayError(info->window,
+                                     "Failed to start recording audio",
+                                     false);
+                        AudioStateFree(record);
+                        currentAllocator->free(record);
+                    }
+                    setUiMenu(MenuTag_Main);
+                } break;
                 case EnterTextButton_Back:
                     setUiMenu(MenuTag_Main);
                     break;
@@ -4465,6 +4488,7 @@ end:
     }
     AudioStatePtrListFree(&audioStates);
 
+    MenuFree(&info.menu);
     closeHostAndPeer(host, peer);
     ClientFree(&client);
     uint8_tListFree(&bytes);

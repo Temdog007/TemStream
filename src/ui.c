@@ -444,7 +444,7 @@ playbackCount(const AudioStatePtrList* list)
 }
 
 UiActorList
-getUiMenuActors(const Menu* menu)
+getUiMenuActors(pMenu menu)
 {
     UiActorList list = { .allocator = currentAllocator };
     const Guid* id = &menu->id;
@@ -489,7 +489,7 @@ getUiMenuActors(const Menu* menu)
                 char buffer[KB(1)];
                 const uint32_t total =
                   clientData.allStreams.used + playbackCount(&audioStates);
-                const int size = SDL_min(100, 750 / total);
+                const int size = SDL_min(100, 500 / total);
 
                 const int width = 190;
                 const int padding = 10;
@@ -610,7 +610,7 @@ getUiMenuActors(const Menu* menu)
                         t->userData = config;
                     }
                 }
-                for (size_t i = 0; i < audioStates.used; ++i) {
+                for (size_t i = 0, j = 0; i < audioStates.used; ++i) {
                     AudioStatePtr ptr = audioStates.buffer[i];
                     if (ptr->isRecording) {
                         continue;
@@ -622,7 +622,7 @@ getUiMenuActors(const Menu* menu)
                     }
 
                     const int y =
-                      250 + ((clientData.allStreams.used + i) * size);
+                      250 + ((clientData.allStreams.used + j++) * size);
                     snprintf(buffer,
                              sizeof(buffer),
                              "%s (%s)\n(%d%%)",
@@ -734,20 +734,46 @@ getUiMenuActors(const Menu* menu)
             }
             break;
         case MenuTag_SendAudio:
+            SinkInputListFree(&menu->sinks);
+            menu->sinks = getSinkInputs();
             USE_DISPLAY(clientData.mutex, end5562, displayMissing, {
+                char buffer[KB(1)];
                 const int32_t count = SDL_GetNumAudioDevices(SDL_TRUE);
+                const int height =
+                  SDL_max(100, 500 / (count + menu->sinks.used));
                 for (; nextId < count; ++nextId) {
-                    pUiActor actor = addUiLabel(
-                      &list, SDL_GetAudioDeviceName(nextId, SDL_TRUE), 0U);
+                    snprintf(buffer,
+                             sizeof(buffer),
+                             "Audio Source: %s",
+                             SDL_GetAudioDeviceName(nextId, SDL_TRUE));
+                    pUiActor actor = addUiLabel(&list, buffer, 0U);
                     actor->rect.x = 100;
-                    actor->rect.y = 250 + (nextId * 100);
-                    actor->rect.w = 500;
-                    actor->rect.h = 75;
+                    actor->rect.y = 250 + (nextId * height);
+                    actor->rect.w = 800;
+                    actor->rect.h = height * 3 / 4;
                     actor->horizontal = HorizontalAlignment_Left;
                     actor->vertical = VerticalAlignment_Top;
                     actor->type = EnterTextButton_Send;
                     actor->id = nextId;
-                    actor->userData = display;
+                }
+
+                for (uint32_t i = 0; i < menu->sinks.used; ++i) {
+                    pSinkInput sink = &menu->sinks.buffer[i];
+                    snprintf(buffer,
+                             sizeof(buffer),
+                             "Window: %s (pid: %d)",
+                             sink->name.buffer,
+                             sink->processId);
+                    pUiActor actor = addUiLabel(&list, buffer, 0U);
+                    actor->rect.x = 100;
+                    actor->rect.y = 250 + (nextId * height);
+                    actor->rect.w = 800;
+                    actor->rect.h = height * 3 / 4;
+                    actor->horizontal = HorizontalAlignment_Left;
+                    actor->vertical = VerticalAlignment_Top;
+                    actor->type = EnterTextButton_Send2;
+                    actor->id = nextId++;
+                    actor->userData = sink;
                 }
 
                 pUiActor textbox = addTextBox(&list, "Select audio source", 0u);
