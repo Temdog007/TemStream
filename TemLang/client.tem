@@ -4,7 +4,6 @@ enum ClientCommand {
     ShowStatus
     ConnectToStream
     DisconnectFromStream
-    StartStreaming
     UploadText
     UploadFile
     ChangeAudioVolume
@@ -79,6 +78,7 @@ struct ClientConfiguration {
     i32 windowWidth
     i32 windowHeight
     bool noGui
+    bool noTui
     bool noAudio
     bool showLabel
     bool fullscreen

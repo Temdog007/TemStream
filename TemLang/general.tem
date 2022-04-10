@@ -114,8 +114,6 @@ variant GeneralMessage {
 
 variant LobbyMessage {
     GeneralMessage general
-    ServerConfiguration startStreaming
-    bool startStreamingAck
     [0 ServerConfiguration] allStreams
 }
 

@@ -152,9 +152,16 @@
 - [x] Display audio states
 - [x] Fix background not showing when ui is displayed
 - [x] Allow displays to be toggled in GUI
-- [ ] Add --no-tui option (default false)
 
-### Apr 07, 2022
+### Apr 10, 2022
+- [x] Add --no-tui option (default false)
+- [ ] Allow video to be sent in GUI
+- [ ] Allow audio to be sent in GUI
+- [x] Don't create streams from client
+
+### Apr 11, 2022
+- [ ] Assign role to client (Producer, Consumer, Admin); Allow certain messages based on role
+- [ ] Remove read/write access list (only have black list)
 - [ ] Separate client and server code
 - [ ] Write websocket code for browser version
 - [ ] Make video replay streams work properly

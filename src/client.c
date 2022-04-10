@@ -118,6 +118,7 @@ defaultClientConfiguration()
         .silenceThreshold = 0.f,
         .fontSize = 48,
         .noGui = false,
+        .noTui = false,
         .showLabel = true,
         .noAudio = false,
         .authentication = { .type = 0,
@@ -158,6 +159,8 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--credentials", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "-NG", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
+        STR_EQUALS(key, "-TG", keyLen, { goto parseNoTui; });
+        STR_EQUALS(key, "--no-tui", keyLen, { goto parseNoTui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "-ST", keyLen, { goto parseSilence; });
@@ -217,6 +220,10 @@ parseClientConfiguration(const int argc,
     }
     parseNoGui : {
         client->noGui = atoi(value);
+        continue;
+    }
+    parseNoTui : {
+        client->noTui = atoi(value);
         continue;
     }
     parseNoAudio : {
@@ -1978,95 +1985,6 @@ end:
 }
 
 void
-selectStreamToStart(struct pollfd inputfd, pBytes bytes, const Client* client)
-{
-    LobbyMessage message = { 0 };
-
-    askQuestion("Select the type of stream to create");
-    for (uint32_t i = 0; i < ServerConfigurationDataTag_Length; ++i) {
-        printf("%u) %s\n", i + 1U, ServerConfigurationDataTagToCharString(i));
-    }
-    puts("");
-
-    uint32_t index;
-    if (getIndexFromUser(
-          inputfd, bytes, ServerConfigurationDataTag_Length, &index, true) !=
-        UserInputResult_Input) {
-        puts("Canceling start stream");
-        goto end;
-    }
-
-    message.tag = LobbyMessageTag_startStreaming;
-    message.startStreaming.data.tag = (ServerConfigurationDataTag)index;
-    switch (index) {
-        case ServerConfigurationDataTag_text:
-            message.startStreaming.data.text = defaultTextConfiguration();
-            break;
-        case ServerConfigurationDataTag_chat:
-            message.startStreaming.data.chat = defaultChatConfiguration();
-            break;
-        case ServerConfigurationDataTag_image:
-            message.startStreaming.data.image = defaultImageConfiguration();
-            break;
-        case ServerConfigurationDataTag_audio:
-            message.startStreaming.data.audio = defaultAudioConfiguration();
-            break;
-        case ServerConfigurationDataTag_video:
-            message.startStreaming.data.video = defaultVideoConfiguration();
-            break;
-        default:
-            puts("Canceling start stream");
-            goto end;
-    }
-
-    askQuestion("What's the name of the stream?");
-    if (getStringFromUser(inputfd, bytes, true) != UserInputResult_Input) {
-        puts("Canceling start stream");
-        goto end;
-    }
-    puts("");
-
-    message.startStreaming.name =
-      TemLangStringCreate((char*)bytes->buffer, currentAllocator);
-
-    const bool yes =
-      askYesOrNoQuestion("Do you want exclusive write access?", inputfd, bytes);
-
-    if (yes) {
-        message.startStreaming.writers.tag = AccessTag_allowed;
-        message.startStreaming.writers.allowed.allocator = currentAllocator;
-        TemLangStringListAppend(&message.startStreaming.writers.allowed,
-                                &client->name);
-
-        message.startStreaming.writers.tag = AccessTag_disallowed;
-        message.startStreaming.writers.disallowed.allocator = currentAllocator;
-        TemLangStringListAppend(&message.startStreaming.writers.disallowed,
-                                &client->name);
-    } else {
-        message.startStreaming.writers.tag = AccessTag_anyone;
-        message.startStreaming.writers.anyone = NULL;
-        message.startStreaming.readers.tag = AccessTag_anyone;
-        message.startStreaming.readers.anyone = NULL;
-    }
-
-    MESSAGE_SERIALIZE(LobbyMessage, message, (*bytes));
-    printf(
-      "\nCreating '%s' stream named '%s'...\n",
-      ServerConfigurationDataTagToCharString(message.startStreaming.data.tag),
-      message.startStreaming.name.buffer);
-
-    pLobbyMessage m = currentAllocator->allocate(sizeof(LobbyMessage));
-    LobbyMessageCopy(m, &message, currentAllocator);
-    SDL_Event e = { 0 };
-    e.type = SDL_USEREVENT;
-    e.user.code = CustomEvent_SendLobbyMessage;
-    e.user.data1 = m;
-    SDL_PushEvent(&e);
-end:
-    LobbyMessageFree(&message);
-}
-
-void
 selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes, pClient client)
 {
     ServerConfigurationList list = { .allocator = currentAllocator };
@@ -2565,9 +2483,6 @@ userInputThread(void* ptr)
             case ClientCommand_Quit:
                 appDone = true;
                 goto end;
-            case ClientCommand_StartStreaming:
-                selectStreamToStart(inputfd, &bytes, client);
-                break;
             case ClientCommand_ConnectToStream:
                 selectAStreamToConnectTo(inputfd, &bytes, &rs);
                 break;
@@ -3261,14 +3176,6 @@ clientHandleLobbyMessage(const LobbyMessage* message, pClient client)
             result = ServerConfigurationListCopy(
               &clientData.allStreams, &message->allStreams, currentAllocator);
             sendUpdateUiEvent();
-            goto end;
-        case LobbyMessageTag_startStreamingAck:
-            result = true;
-            if (message->startStreamingAck) {
-                puts("Started stream.");
-            } else {
-                puts("Failed to start stream");
-            }
             goto end;
         case LobbyMessageTag_general:
             result = clientHandleGeneralMessage(&message->general, client);
@@ -4184,7 +4091,7 @@ runServerProcedure:
         goto end;
     }
 
-    if (window == NULL) {
+    if (!config->noTui) {
         SDL_Thread* thread = SDL_CreateThread(
           (SDL_ThreadFunction)userInputThread, "user_input", &client);
         if (thread == NULL) {
