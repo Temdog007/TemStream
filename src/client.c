@@ -718,7 +718,6 @@ clientHandleVideoMessage(const VideoMessage* message,
             UserInput input = { 0 };
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryVideo;
-            display->choosingPlayback = true;
             success = clientHandleGeneralMessage(&message->general,
                                                  &input.data.queryVideo.client);
             if (success &&
@@ -1511,7 +1510,7 @@ selectVideoStreamSource(struct pollfd inputfd,
                         const UserInput* ui)
 {
     if (!askYesOrNoQuestion(
-          "Do you want record video and stream it?", inputfd, bytes)) {
+          "Do you want to record video and stream it?", inputfd, bytes)) {
         return false;
     }
 
@@ -1550,7 +1549,7 @@ selectAudioStreamSource(struct pollfd inputfd,
                         pUserInput ui)
 {
     if (!askYesOrNoQuestion(
-          "Do you want record audio and stream it?", inputfd, bytes)) {
+          "Do you want to record audio and stream it?", inputfd, bytes)) {
         return false;
     }
 
@@ -3499,17 +3498,11 @@ handleUserInput(const struct pollfd inputfd,
     });
     const Guid* id = &userInput->id;
     switch (userInput->data.tag) {
-        case UserInputDataTag_queryVideo: {
-            bool d;
-            USE_DISPLAY(
-              clientData.mutex, endD, d, { display->choosingPlayback = true; });
-            if (userInput->data.queryAudio.writeAccess) {
+        case UserInputDataTag_queryVideo:
+            if (userInput->data.queryVideo.writeAccess) {
                 selectVideoStreamSource(inputfd, bytes, userInput);
             }
-            USE_DISPLAY(clientData.mutex, endD26, d, {
-                display->choosingPlayback = false;
-            });
-        } break;
+            break;
         case UserInputDataTag_queryAudio: {
             bool d;
             USE_DISPLAY(clientData.mutex, endD2, d, {
@@ -3700,10 +3693,6 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
                                     info->menu.id = display->id;
                                 }
                             } break;
-                            case ServerConfigurationDataTag_video:
-                                info->menu.tag = MenuTag_SendVideo;
-                                info->menu.id = display->id;
-                                break;
                             default:
                                 break;
                         }
@@ -3990,7 +3979,9 @@ handleUserEvent(const SDL_UserEvent* e,
         displayUserOptions();                                                  \
     } else {                                                                   \
         info.showUi = !info.showUi;                                            \
-        RENDER_NOW(w, h, info);                                                \
+        if (info.showUi) {                                                     \
+            setUiMenu(MenuTag_Main);                                           \
+        }                                                                      \
     }
 
 int

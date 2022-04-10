@@ -69,7 +69,6 @@ enum MenuTag {
     EnterText
     EnterImage
     SendAudio
-    SendVideo
 }
 
 struct SinkInput {

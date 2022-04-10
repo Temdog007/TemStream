@@ -155,7 +155,7 @@
 
 ### Apr 10, 2022
 - [x] Add --no-tui option (default false)
-- [ ] Allow video to be sent in GUI
+- [x] Allow video to be sent in GUI
 - [x] Record audio from windows
 - [x] Allow audio to be sent in GUI
 - [x] Don't create streams from client
@@ -177,6 +177,7 @@
 
 ### Bugs
 - [ ] Connecting to multiple streams quickly causes some displays to not show
+- [ ] Deadlock when switching between ui quickly
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

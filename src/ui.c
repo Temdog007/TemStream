@@ -800,34 +800,6 @@ getUiMenuActors(pMenu menu)
                 setUiMenu(MenuTag_Main);
             }
             break;
-        case MenuTag_SendVideo:
-            USE_DISPLAY(clientData.mutex, end_52, displayMissing, {
-                pUiActor textbox = addTextBox(&list, "Select video source", 0u);
-                textbox->rect.x = 500;
-                textbox->rect.y = 125;
-                textbox->rect.w = 500;
-                textbox->rect.h = 100;
-                textbox->horizontal = HorizontalAlignment_Center;
-                textbox->vertical = VerticalAlignment_Top;
-                textbox->type = EnterTextButton_TextBox;
-                textbox->id = nextId++;
-                textbox->userData = &display->config;
-
-                pUiActor backButton = addUiLabel(&list, "Back", 0u);
-                backButton->rect.x = 875;
-                backButton->rect.y = 1000;
-                backButton->rect.w = 125;
-                backButton->rect.h = 125;
-                backButton->horizontal = HorizontalAlignment_Right;
-                backButton->vertical = VerticalAlignment_Bottom;
-                backButton->type = EnterTextButton_Back;
-                backButton->id = nextId++;
-                backButton->userData = &display->config;
-            });
-            if (displayMissing) {
-                setUiMenu(MenuTag_Main);
-            }
-            break;
         default:
             break;
     }
