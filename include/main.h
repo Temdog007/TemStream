@@ -643,7 +643,6 @@ typedef struct AudioState
     int32_tList sinks;
     SDL_AudioDeviceID deviceId;
     float volume;
-    SDL_bool running;
     SDL_bool isRecording;
 } AudioState, *pAudioState;
 

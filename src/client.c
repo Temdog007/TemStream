@@ -3628,6 +3628,209 @@ handleMicrophoneMute(void* userdata, SDL_Event* e)
     return SDL_TRUE;
 }
 
+bool
+handleUiClicked(pUiActor actor, pRenderInfo info)
+{
+    if (actor == NULL || actor->id != info->focusId) {
+        return false;
+    }
+    bool changed = true;
+    switch (info->menu.tag) {
+        case MenuTag_Main: {
+            switch (actor->type) {
+                case MainButton_Hide:
+                    info->showUi = false;
+                    goto end;
+                default:
+                    break;
+            }
+            if (actor->userData == NULL) {
+                break;
+            }
+            const ServerConfiguration* config =
+              (const ServerConfiguration*)actor->userData;
+            size_t index = 0;
+            const StreamDisplay* display = NULL;
+            if (GetStreamDisplayFromName(
+                  &clientData.displays, &config->name, &display, &index)) {
+                switch (actor->type) {
+                    case MainButton_Connect:
+                        StreamDisplayListSwapRemove(&clientData.displays,
+                                                    index);
+                        break;
+                    case MainButton_Screenshot:
+                        saveScreenshot(info->window, info->renderer, display);
+                        break;
+                    case MainButton_Visible:
+                        clientData.displays.buffer[index].visible =
+                          !display->visible;
+                        break;
+                    case MainButton_Data:
+                        switch (config->data.tag) {
+                            case ServerConfigurationDataTag_chat:
+                            case ServerConfigurationDataTag_text:
+                                info->menu.tag = MenuTag_EnterText;
+                                info->menu.id = display->id;
+                                break;
+                            case ServerConfigurationDataTag_image:
+                                info->menu.tag = MenuTag_EnterImage;
+                                info->menu.id = display->id;
+                                break;
+                            case ServerConfigurationDataTag_audio: {
+                                size_t index = 0;
+                                if (AudioStateFromGuid(&audioStates,
+                                                       &display->id,
+                                                       true,
+                                                       NULL,
+                                                       &index)) {
+                                    pAudioState state =
+                                      audioStates.buffer[index];
+                                    AudioStateFree(state);
+                                    currentAllocator->free(state);
+                                    changed = AudioStatePtrListSwapRemove(
+                                      &audioStates, index);
+                                } else {
+                                    info->menu.tag = MenuTag_SendAudio;
+                                    info->menu.id = display->id;
+                                }
+                            } break;
+                            case ServerConfigurationDataTag_video:
+                                info->menu.tag = MenuTag_SendVideo;
+                                info->menu.id = display->id;
+                                break;
+                            default:
+                                break;
+                        }
+                        sendUpdateUiEvent();
+                        break;
+                    default:
+                        changed = false;
+                        break;
+                }
+            } else if (actor->type == MainButton_Connect) {
+                if (!connectToStream(config, NULL)) {
+                    displayError(
+                      info->window, "Failed to connect to stream", false);
+                }
+            } else {
+                changed = false;
+            }
+        } break;
+        case MenuTag_EnterText:
+            switch (actor->type) {
+                case EnterTextButton_Send: {
+                    if (actor->userData == NULL) {
+                        break;
+                    }
+                    const ServerConfiguration* config =
+                      (const ServerConfiguration*)actor->userData;
+                    size_t index = 0;
+                    const StreamDisplay* display = NULL;
+                    if (GetStreamDisplayFromName(&clientData.displays,
+                                                 &config->name,
+                                                 &display,
+                                                 &index)) {
+                        Bytes bytes = { .allocator = currentAllocator };
+                        const UiActor* a =
+                          findUiActor(&info->uiActors, EnterTextButton_TextBox);
+                        if (a != NULL &&
+                            !sendTextToServer(a->data.editText.text.buffer,
+                                              display->config.data.tag,
+                                              &display->id,
+                                              &bytes,
+                                              info->window)) {
+                            displayError(
+                              info->window, "Failed to send text", false);
+                        }
+                        uint8_tListFree(&bytes);
+                    }
+                    setUiMenu(MenuTag_Main);
+                } break;
+                case EnterTextButton_Back:
+                    setUiMenu(MenuTag_Main);
+                    break;
+                default:
+                    changed = false;
+                    break;
+            }
+            break;
+        case MenuTag_EnterImage:
+            switch (actor->type) {
+                case EnterTextButton_Send: {
+                    if (actor->userData == NULL) {
+                        break;
+                    }
+                    const ServerConfiguration* config =
+                      (const ServerConfiguration*)actor->userData;
+                    size_t index = 0;
+                    const StreamDisplay* display = NULL;
+                    if (GetStreamDisplayFromName(&clientData.displays,
+                                                 &config->name,
+                                                 &display,
+                                                 &index)) {
+                        Bytes bytes = { .allocator = currentAllocator };
+                        const UiActor* a =
+                          findUiActor(&info->uiActors, EnterTextButton_TextBox);
+                        if (a != NULL &&
+                            !sendFileToServer(a->data.editText.text.buffer,
+                                              display->config.data.tag,
+                                              &display->id,
+                                              &bytes,
+                                              info->window)) {
+                            displayError(
+                              info->window, "Failed to send image", false);
+                        }
+                        uint8_tListFree(&bytes);
+                    }
+                    setUiMenu(MenuTag_Main);
+                } break;
+                case EnterTextButton_Back:
+                    setUiMenu(MenuTag_Main);
+                    break;
+                default:
+                    changed = false;
+                    break;
+            }
+            break;
+        case MenuTag_SendAudio:
+            switch (actor->type) {
+                case EnterTextButton_Send: {
+                    if (actor->userData == NULL) {
+                        break;
+                    }
+                    pAudioState record =
+                      currentAllocator->allocate(sizeof(AudioState));
+                    record->storedAudio = CQueueCreate(CQUEUE_SIZE);
+                    record->volume = 1.f;
+                    record->id = ((const StreamDisplay*)actor->userData)->id;
+                    if (startRecording(
+                          SDL_GetAudioDeviceName(actor->id, SDL_TRUE),
+                          OPUS_APPLICATION_VOIP,
+                          record)) {
+                        AudioStatePtrListAppend(&audioStates, &record);
+                    } else {
+                        displayError(info->window,
+                                     "Failed to start recording audio",
+                                     false);
+                        AudioStateFree(record);
+                        currentAllocator->free(record);
+                    }
+                } break;
+                case EnterTextButton_Back:
+                    setUiMenu(MenuTag_Main);
+                    break;
+                default:
+                    break;
+            }
+            break;
+        default:
+            changed = false;
+            break;
+    }
+end:
+    return changed;
+}
+
 void
 handleUserEvent(const SDL_UserEvent* e,
                 pRenderInfo info,
@@ -3774,163 +3977,11 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             RENDER_NOW(w, h, (*info));
             break;
-        case CustomEvent_UiClicked: {
-            pUiActor actor = e->data1;
-            if (actor->id != info->focusId) {
-                break;
-            }
-            bool changed = true;
-            switch (info->menu.tag) {
-                case MenuTag_Main: {
-                    switch (actor->type) {
-                        case MainButton_Hide:
-                            info->showUi = false;
-                            goto endUiClicked;
-                        default:
-                            break;
-                    }
-                    if (actor->userData == NULL) {
-                        break;
-                    }
-                    const ServerConfiguration* config =
-                      (const ServerConfiguration*)actor->userData;
-                    size_t index = 0;
-                    const StreamDisplay* display = NULL;
-                    if (GetStreamDisplayFromName(&clientData.displays,
-                                                 &config->name,
-                                                 &display,
-                                                 &index)) {
-                        switch (actor->type) {
-                            case MainButton_Connect:
-                                StreamDisplayListSwapRemove(
-                                  &clientData.displays, index);
-                                break;
-                            case MainButton_Screenshot:
-                                saveScreenshot(
-                                  info->window, info->renderer, display);
-                                break;
-                            case MainButton_Visible:
-                                clientData.displays.buffer[index].visible =
-                                  !display->visible;
-                                break;
-                            case MainButton_Data:
-                                switch (config->data.tag) {
-                                    case ServerConfigurationDataTag_chat:
-                                    case ServerConfigurationDataTag_text:
-                                        info->menu.tag = MenuTag_EnterText;
-                                        info->menu.id = display->id;
-                                        sendUpdateUiEvent();
-                                        break;
-                                    case ServerConfigurationDataTag_image:
-                                        info->menu.tag = MenuTag_EnterImage;
-                                        info->menu.id = display->id;
-                                        sendUpdateUiEvent();
-                                        break;
-                                    default:
-                                        break;
-                                }
-                                break;
-                            default:
-                                changed = false;
-                                break;
-                        }
-                    } else if (actor->type == MainButton_Connect) {
-                        if (!connectToStream(config, NULL)) {
-                            displayError(info->window,
-                                         "Failed to connect to stream",
-                                         false);
-                        }
-                    } else {
-                        changed = false;
-                    }
-                } break;
-                case MenuTag_EnterText:
-                    switch (actor->type) {
-                        case EnterTextButton_Send: {
-                            if (actor->userData == NULL) {
-                                break;
-                            }
-                            const ServerConfiguration* config =
-                              (const ServerConfiguration*)actor->userData;
-                            size_t index = 0;
-                            const StreamDisplay* display = NULL;
-                            if (GetStreamDisplayFromName(&clientData.displays,
-                                                         &config->name,
-                                                         &display,
-                                                         &index)) {
-                                Bytes bytes = { .allocator = currentAllocator };
-                                const UiActor* a = findUiActor(
-                                  &info->uiActors, EnterTextButton_TextBox);
-                                if (a != NULL && !sendTextToServer(
-                                                   a->data.editText.text.buffer,
-                                                   display->config.data.tag,
-                                                   &display->id,
-                                                   &bytes,
-                                                   info->window)) {
-                                    displayError(info->window,
-                                                 "Failed to send text",
-                                                 false);
-                                }
-                                uint8_tListFree(&bytes);
-                            }
-                            setUiMenu(MenuTag_Main);
-                        } break;
-                        case EnterTextButton_Back:
-                            setUiMenu(MenuTag_Main);
-                            break;
-                        default:
-                            changed = false;
-                            break;
-                    }
-                    break;
-                case MenuTag_EnterImage:
-                    switch (actor->type) {
-                        case EnterTextButton_Send: {
-                            if (actor->userData == NULL) {
-                                break;
-                            }
-                            const ServerConfiguration* config =
-                              (const ServerConfiguration*)actor->userData;
-                            size_t index = 0;
-                            const StreamDisplay* display = NULL;
-                            if (GetStreamDisplayFromName(&clientData.displays,
-                                                         &config->name,
-                                                         &display,
-                                                         &index)) {
-                                Bytes bytes = { .allocator = currentAllocator };
-                                const UiActor* a = findUiActor(
-                                  &info->uiActors, EnterTextButton_TextBox);
-                                if (a != NULL && !sendFileToServer(
-                                                   a->data.editText.text.buffer,
-                                                   display->config.data.tag,
-                                                   &display->id,
-                                                   &bytes,
-                                                   info->window)) {
-                                    displayError(info->window,
-                                                 "Failed to send image",
-                                                 false);
-                                }
-                                uint8_tListFree(&bytes);
-                            }
-                            setUiMenu(MenuTag_Main);
-                        } break;
-                        case EnterTextButton_Back:
-                            setUiMenu(MenuTag_Main);
-                            break;
-                        default:
-                            changed = false;
-                            break;
-                    }
-                    break;
-                default:
-                    changed = false;
-                    break;
-            }
-        endUiClicked:
-            if (changed) {
+        case CustomEvent_UiClicked:
+            if (handleUiClicked(e->data1, info)) {
                 sendUpdateUiEvent();
             }
-        } break;
+            break;
         default:
             break;
     }

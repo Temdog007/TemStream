@@ -573,6 +573,24 @@ getUiMenuActors(const Menu* menu)
                             t->type = MainButton_Data;
                             t->userData = config;
                         } break;
+                        case ServerConfigurationDataTag_audio: {
+                            pUiActor t = addUiLabel(
+                              &list,
+                              AudioStateFromGuid(
+                                &audioStates, &display->id, true, NULL, NULL)
+                                ? "Stop recording"
+                                : "Start recording",
+                              0u);
+                            t->rect.x = x;
+                            t->rect.y = 250 + (i * size);
+                            t->rect.w = width;
+                            t->rect.h = size * 9 / 10;
+                            t->horizontal = HorizontalAlignment_Left;
+                            t->vertical = VerticalAlignment_Top;
+                            t->id = nextId++;
+                            t->type = MainButton_Data;
+                            t->userData = config;
+                        } break;
                         default:
                             break;
                     }
@@ -702,6 +720,81 @@ getUiMenuActors(const Menu* menu)
                 sendButton->type = EnterTextButton_Send;
                 sendButton->id = nextId++;
                 sendButton->userData = &display->config;
+
+                pUiActor backButton = addUiLabel(&list, "Back", 0u);
+                backButton->rect.x = 875;
+                backButton->rect.y = 1000;
+                backButton->rect.w = 125;
+                backButton->rect.h = 125;
+                backButton->horizontal = HorizontalAlignment_Right;
+                backButton->vertical = VerticalAlignment_Bottom;
+                backButton->type = EnterTextButton_Back;
+                backButton->id = nextId++;
+                backButton->userData = &display->config;
+            });
+            if (displayMissing) {
+                setUiMenu(MenuTag_Main);
+            }
+        } break;
+        case MenuTag_SendAudio: {
+            const Guid* id = &menu->id;
+            bool displayMissing = false;
+            int32_t nextId = 0;
+            const int32_t count = SDL_GetNumAudioDevices(SDL_TRUE);
+            USE_DISPLAY(clientData.mutex, end5562, displayMissing, {
+                for (; nextId < count; ++nextId) {
+                    pUiActor actor = addUiLabel(
+                      &list, SDL_GetAudioDeviceName(nextId, SDL_TRUE), 0U);
+                    actor->rect.x = 100;
+                    actor->rect.y = 250 + (nextId * 100);
+                    actor->rect.w = 500;
+                    actor->rect.h = 75;
+                    actor->horizontal = HorizontalAlignment_Left;
+                    actor->vertical = VerticalAlignment_Top;
+                    actor->type = EnterTextButton_Send;
+                    actor->id = nextId;
+                    actor->userData = display;
+                }
+
+                pUiActor textbox = addTextBox(&list, "Select audio source", 0u);
+                textbox->rect.x = 500;
+                textbox->rect.y = 125;
+                textbox->rect.w = 500;
+                textbox->rect.h = 100;
+                textbox->horizontal = HorizontalAlignment_Center;
+                textbox->vertical = VerticalAlignment_Top;
+                textbox->type = EnterTextButton_Label;
+                textbox->id = nextId++;
+
+                pUiActor backButton = addUiLabel(&list, "Back", 0u);
+                backButton->rect.x = 875;
+                backButton->rect.y = 1000;
+                backButton->rect.w = 125;
+                backButton->rect.h = 125;
+                backButton->horizontal = HorizontalAlignment_Right;
+                backButton->vertical = VerticalAlignment_Bottom;
+                backButton->type = EnterTextButton_Back;
+                backButton->id = nextId++;
+            });
+            if (displayMissing) {
+                setUiMenu(MenuTag_Main);
+            }
+        } break;
+        case MenuTag_SendVideo: {
+            const Guid* id = &menu->id;
+            bool displayMissing = false;
+            int32_t nextId = 0;
+            USE_DISPLAY(clientData.mutex, end_52, displayMissing, {
+                pUiActor textbox = addTextBox(&list, "Select video source", 0u);
+                textbox->rect.x = 500;
+                textbox->rect.y = 125;
+                textbox->rect.w = 500;
+                textbox->rect.h = 100;
+                textbox->horizontal = HorizontalAlignment_Center;
+                textbox->vertical = VerticalAlignment_Top;
+                textbox->type = EnterTextButton_TextBox;
+                textbox->id = nextId++;
+                textbox->userData = &display->config;
 
                 pUiActor backButton = addUiLabel(&list, "Back", 0u);
                 backButton->rect.x = 875;

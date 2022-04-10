@@ -68,6 +68,8 @@ enum MenuTag {
     Main
     EnterText
     EnterImage
+    SendAudio
+    SendVideo
 }
 
 struct Menu {

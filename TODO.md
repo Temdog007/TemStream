@@ -156,7 +156,8 @@
 ### Apr 10, 2022
 - [x] Add --no-tui option (default false)
 - [ ] Allow video to be sent in GUI
-- [ ] Allow audio to be sent in GUI
+- [x] Allow audio to be sent in GUI
+- [ ] Record audio from windows
 - [x] Don't create streams from client
 
 ### Apr 11, 2022
