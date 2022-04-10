@@ -40,7 +40,7 @@ defaultServerConfiguration()
         .redisPort = 6379,
         .hostname = TemLangStringCreate("localhost", currentAllocator),
         .saveDirectory = TemLangStringCreate("", currentAllocator),
-        .port = { .port = 10000u, .tag = PortTag_port },
+        .port = 10000u,
         .maxClients = 1024u,
         .timeout = STREAM_TIMEOUT,
         .writers = { .anyone = NULL, .tag = AccessTag_anyone },
@@ -61,10 +61,6 @@ parseServerConfiguration(const char* key,
     STR_EQUALS(key, "--max-clients", keyLen, { goto parseMaxClients; });
     STR_EQUALS(key, "-H", keyLen, { goto parseHostname; });
     STR_EQUALS(key, "--host-name", keyLen, { goto parseHostname; });
-    STR_EQUALS(key, "-mp", keyLen, { goto parseMinPort; });
-    STR_EQUALS(key, "--min-port", keyLen, { goto parseMinPort; });
-    STR_EQUALS(key, "-MP", keyLen, { goto parseMaxPort; });
-    STR_EQUALS(key, "--max-port", keyLen, { goto parseMaxPort; });
     STR_EQUALS(key, "-P", keyLen, { goto parsePort; });
     STR_EQUALS(key, "--port", keyLen, { goto parsePort; });
     STR_EQUALS(key, "-RI", keyLen, { goto parseIp; });
@@ -112,22 +108,9 @@ parseRedisPort : {
     config->redisPort = SDL_clamp(i, 1000, 60000);
     return true;
 }
-parseMinPort : {
-    const int i = atoi(value);
-    config->port.tag = PortTag_portRange;
-    config->port.portRange.minPort = SDL_clamp(i, 1000, 60000);
-    return true;
-}
-parseMaxPort : {
-    const int i = atoi(value);
-    config->port.tag = PortTag_portRange;
-    config->port.portRange.maxPort = SDL_clamp(i, 1000, 60000);
-    return true;
-}
 parsePort : {
     const int i = atoi(value);
-    config->port.tag = PortTag_port;
-    config->port.port = SDL_clamp(i, 1000, 60000);
+    config->port = SDL_clamp(i, 1000, 60000);
     return true;
 }
 parseTimeout : {
@@ -177,20 +160,20 @@ int
 printServerConfiguration(const ServerConfiguration* configuration)
 {
     int offset =
-      printf("Save Directory: %s\nHostname: %s\nRedis: %s:%u\nMax clients: "
-             "%u\nTimeout: %" PRIu64
+      printf("Save Directory: %s\nHostname: %s\nPort: %u\nRedis: %s:%u\nMax "
+             "clients: %u\nTimeout: %" PRIu64
              "\nHas Authentication function: %s\nRecording: %s\n",
              configuration->saveDirectory.buffer,
              configuration->hostname.buffer,
+             configuration->port,
              configuration->redisIp.buffer,
              configuration->redisPort,
              configuration->maxClients,
              configuration->timeout,
              configuration->authenticationFunction == NULL ? "No" : "Yes",
              configuration->record ? "Yes" : " No") +
-      printPort(&configuration->port) + printf("Read Access: ") +
-      printAccess(&configuration->readers) + printf("Write Access: ") +
-      printAccess(&configuration->writers);
+      printf("Read Access: ") + printAccess(&configuration->readers) +
+      printf("Write Access: ") + printAccess(&configuration->writers);
     switch (configuration->data.tag) {
         case ServerConfigurationDataTag_chat:
             offset += printChatConfiguration(&configuration->data.chat);
@@ -404,8 +387,7 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
         enet_address_get_host_ip(&address, buffer, sizeof(buffer));            \
         printf("Opened server at %s:%u\n", buffer, address.port);              \
         if (config->data.tag != ServerConfigurationDataTag_lobby) {            \
-            config->port.tag = PortTag_port;                                   \
-            config->port.port = address.port;                                  \
+            config->port = address.port;                                       \
         }                                                                      \
         globalServerData.host->maximumPacketSize = MB(1);                      \
         goto continueServer;                                                   \
@@ -488,22 +470,8 @@ runServer(pConfiguration configuration, ServerFunctions funcs)
     {
         ENetAddress address = { 0 };
         enet_address_set_host(&address, config->hostname.buffer);
-        switch (config->port.tag) {
-            case PortTag_port:
-                address.port = config->port.port;
-                CHECK_SERVER;
-                break;
-            case PortTag_portRange:
-                for (enet_uint16 port = config->port.portRange.minPort;
-                     port <= config->port.portRange.maxPort;
-                     ++port) {
-                    address.port = port;
-                    CHECK_SERVER;
-                }
-                break;
-            default:
-                break;
-        }
+        address.port = config->port;
+        CHECK_SERVER;
         fprintf(stderr, "Failed to create server\n");
         goto end;
     }

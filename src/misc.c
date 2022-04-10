@@ -222,25 +222,6 @@ printAuthentication(const Authentication* auth)
 }
 
 int
-printPort(const Port* port)
-{
-    int offset = printf("Port: ");
-    switch (port->tag) {
-        case PortTag_port:
-            offset += printf("%u\n", port->port);
-            break;
-        case PortTag_portRange:
-            offset += printf("min=%u;max=%u\n",
-                             port->portRange.minPort,
-                             port->portRange.maxPort);
-            break;
-        default:
-            break;
-    }
-    return offset;
-}
-
-int
 printAudioSpec(const SDL_AudioSpec* spec)
 {
     return printf("Frequency: %d Hz\nChannels: %u\nSilence: %u\nSamples: "
@@ -737,7 +718,7 @@ cleanupConfigurationsInRedis(redisContext* ctx)
 
         ENetAddress address = { 0 };
         enet_address_set_host(&address, config->hostname.buffer);
-        address.port = config->port.port;
+        address.port = config->port;
         ENetHost* host = enet_host_create(NULL, 2, 1, 0, 0);
         ENetPeer* peer = NULL;
         bool verified = false;
@@ -766,7 +747,9 @@ cleanupConfigurationsInRedis(redisContext* ctx)
 
     endLoop:
         closeHostAndPeer(host, peer);
-        if (!verified) {
+        if (verified) {
+            printf("Verified server: '%s'\n", config->name.buffer);
+        } else {
             printf("Removing '%s' server from list\n", config->name.buffer);
             removeConfigurationFromRedis(ctx, config);
         }

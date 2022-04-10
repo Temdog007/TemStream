@@ -307,9 +307,6 @@ printBytes(const uint8_t*, const size_t);
 extern int
 printAudioSpec(const SDL_AudioSpec*);
 
-int
-printPort(const Port* port);
-
 // Parsing
 
 extern bool
@@ -837,7 +834,11 @@ extern ClientData clientData;
 
 // Pulse Audio
 
-MAKE_DEFAULT_LIST(SinkInput);
+extern SinkInputList
+getSinkInputs();
+
+extern bool
+recordSink(const SinkInput*, pAudioState);
 
 extern bool stringToSinkInputs(pTemLangStringList, pSinkInputList);
 

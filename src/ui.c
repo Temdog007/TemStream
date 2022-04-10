@@ -447,10 +447,12 @@ UiActorList
 getUiMenuActors(const Menu* menu)
 {
     UiActorList list = { .allocator = currentAllocator };
+    const Guid* id = &menu->id;
+    bool displayMissing = false;
+    int32_t nextId = 0;
     switch (menu->tag) {
-        case MenuTag_Main: {
+        case MenuTag_Main:
             IN_MUTEX(clientData.mutex, end, {
-                int32_t nextId = 0;
                 if (ServerConfigurationListIsEmpty(&clientData.allStreams)) {
                     pUiActor label =
                       addUiLabel(&list, "No streams available", 0u);
@@ -623,7 +625,8 @@ getUiMenuActors(const Menu* menu)
                       250 + ((clientData.allStreams.used + i) * size);
                     snprintf(buffer,
                              sizeof(buffer),
-                             "%s playback\n(%d%%)",
+                             "%s (%s)\n(%d%%)",
+                             ptr->name.buffer,
                              display->config.name.buffer,
                              (int)floorf(ptr->volume * 100.f));
                     pUiActor label = addUiLabel(&list, buffer, 0u);
@@ -650,11 +653,8 @@ getUiMenuActors(const Menu* menu)
                     slider->userData = ptr;
                 }
             });
-        } break;
-        case MenuTag_EnterText: {
-            const Guid* id = &menu->id;
-            bool displayMissing = false;
-            int32_t nextId = 0;
+            break;
+        case MenuTag_EnterText:
             USE_DISPLAY(clientData.mutex, end2, displayMissing, {
                 pUiActor textbox =
                   addTextBox(&list, "Enter text to send\n", 0u);
@@ -693,11 +693,8 @@ getUiMenuActors(const Menu* menu)
             if (displayMissing) {
                 setUiMenu(MenuTag_Main);
             }
-        } break;
-        case MenuTag_EnterImage: {
-            const Guid* id = &menu->id;
-            bool displayMissing = false;
-            int32_t nextId = 0;
+            break;
+        case MenuTag_EnterImage:
             USE_DISPLAY(clientData.mutex, end52, displayMissing, {
                 pUiActor textbox = addTextBox(&list, "Enter filename\n", 0u);
                 textbox->rect.x = 500;
@@ -735,13 +732,10 @@ getUiMenuActors(const Menu* menu)
             if (displayMissing) {
                 setUiMenu(MenuTag_Main);
             }
-        } break;
-        case MenuTag_SendAudio: {
-            const Guid* id = &menu->id;
-            bool displayMissing = false;
-            int32_t nextId = 0;
-            const int32_t count = SDL_GetNumAudioDevices(SDL_TRUE);
+            break;
+        case MenuTag_SendAudio:
             USE_DISPLAY(clientData.mutex, end5562, displayMissing, {
+                const int32_t count = SDL_GetNumAudioDevices(SDL_TRUE);
                 for (; nextId < count; ++nextId) {
                     pUiActor actor = addUiLabel(
                       &list, SDL_GetAudioDeviceName(nextId, SDL_TRUE), 0U);
@@ -779,11 +773,8 @@ getUiMenuActors(const Menu* menu)
             if (displayMissing) {
                 setUiMenu(MenuTag_Main);
             }
-        } break;
-        case MenuTag_SendVideo: {
-            const Guid* id = &menu->id;
-            bool displayMissing = false;
-            int32_t nextId = 0;
+            break;
+        case MenuTag_SendVideo:
             USE_DISPLAY(clientData.mutex, end_52, displayMissing, {
                 pUiActor textbox = addTextBox(&list, "Select video source", 0u);
                 textbox->rect.x = 500;
@@ -810,7 +801,7 @@ getUiMenuActors(const Menu* menu)
             if (displayMissing) {
                 setUiMenu(MenuTag_Main);
             }
-        } break;
+            break;
         default:
             break;
     }

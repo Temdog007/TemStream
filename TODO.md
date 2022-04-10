@@ -156,8 +156,8 @@
 ### Apr 10, 2022
 - [x] Add --no-tui option (default false)
 - [ ] Allow video to be sent in GUI
-- [x] Allow audio to be sent in GUI
 - [ ] Record audio from windows
+- [x] Allow audio to be sent in GUI
 - [x] Don't create streams from client
 
 ### Apr 11, 2022
@@ -168,10 +168,15 @@
 - [ ] Make video replay streams work properly
 
 ### Later
+- [ ] Test browser
+- [ ] Make push to talk not apply to window recordings
 - [ ] Test android
 - [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls, use proxy)
+
+### Bugs
+- [ ] Connecting to multiple streams quickly causes some displays to not show
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

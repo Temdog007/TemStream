@@ -159,7 +159,7 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--credentials", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "-NG", keyLen, { goto parseNoGui; });
         STR_EQUALS(key, "--no-gui", keyLen, { goto parseNoGui; });
-        STR_EQUALS(key, "-TG", keyLen, { goto parseNoTui; });
+        STR_EQUALS(key, "-NT", keyLen, { goto parseNoTui; });
         STR_EQUALS(key, "--no-tui", keyLen, { goto parseNoTui; });
         STR_EQUALS(key, "-NA", keyLen, { goto parseNoAudio; });
         STR_EQUALS(key, "--no-audio", keyLen, { goto parseNoAudio; });
@@ -928,11 +928,6 @@ streamConnectionThread(void* ptr)
     ServerConfigurationDataTag tag = { 0 };
     USE_DISPLAY(clientData.mutex, fend, displayMissing, {
         tag = config->data.tag;
-        if (config->port.tag != PortTag_port) {
-            printf("Cannot open connection to stream due "
-                   "to an invalid port\n");
-            goto fend;
-        }
 
         host = enet_host_create(NULL, 1, 2, 0, 0);
         if (host == NULL) {
@@ -942,7 +937,7 @@ streamConnectionThread(void* ptr)
         {
             ENetAddress address = { 0 };
             enet_address_set_host(&address, config->hostname.buffer);
-            address.port = config->port.port;
+            address.port = config->port;
             peer = enet_host_connect(host, &address, 2, config->data.tag);
             char buffer[512] = { 0 };
             enet_address_get_host_ip(&address, buffer, sizeof(buffer));
@@ -3022,6 +3017,9 @@ drawTextures(SDL_Renderer* renderer,
     }
     for (size_t i = 0; i < clientData.displays.used; ++i) {
         pStreamDisplay display = &clientData.displays.buffer[i];
+        if (!display->visible) {
+            continue;
+        }
         SDL_Texture* texture = display->texture;
         if (texture == NULL) {
             continue;
@@ -3634,6 +3632,10 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
     if (actor == NULL || actor->id != info->focusId) {
         return false;
     }
+    size_t index = 0;
+    const StreamDisplay* display = NULL;
+    GetStreamDisplayFromGuid(
+      &clientData.displays, &info->menu.id, &display, &index);
     bool changed = true;
     switch (info->menu.tag) {
         case MenuTag_Main: {
@@ -3649,12 +3651,11 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
             }
             const ServerConfiguration* config =
               (const ServerConfiguration*)actor->userData;
-            size_t index = 0;
-            const StreamDisplay* display = NULL;
             if (GetStreamDisplayFromName(
                   &clientData.displays, &config->name, &display, &index)) {
                 switch (actor->type) {
                     case MainButton_Connect:
+                        AudioStateRemoveFromList(&audioStates, &display->id);
                         StreamDisplayListSwapRemove(&clientData.displays,
                                                     index);
                         break;
@@ -3719,31 +3720,19 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
         case MenuTag_EnterText:
             switch (actor->type) {
                 case EnterTextButton_Send: {
-                    if (actor->userData == NULL) {
-                        break;
+                    Bytes bytes = { .allocator = currentAllocator };
+                    const UiActor* a =
+                      findUiActor(&info->uiActors, EnterTextButton_TextBox);
+                    if (a != NULL &&
+                        !sendTextToServer(a->data.editText.text.buffer,
+                                          display->config.data.tag,
+                                          &display->id,
+                                          &bytes,
+                                          info->window)) {
+                        displayError(
+                          info->window, "Failed to send text", false);
                     }
-                    const ServerConfiguration* config =
-                      (const ServerConfiguration*)actor->userData;
-                    size_t index = 0;
-                    const StreamDisplay* display = NULL;
-                    if (GetStreamDisplayFromName(&clientData.displays,
-                                                 &config->name,
-                                                 &display,
-                                                 &index)) {
-                        Bytes bytes = { .allocator = currentAllocator };
-                        const UiActor* a =
-                          findUiActor(&info->uiActors, EnterTextButton_TextBox);
-                        if (a != NULL &&
-                            !sendTextToServer(a->data.editText.text.buffer,
-                                              display->config.data.tag,
-                                              &display->id,
-                                              &bytes,
-                                              info->window)) {
-                            displayError(
-                              info->window, "Failed to send text", false);
-                        }
-                        uint8_tListFree(&bytes);
-                    }
+                    uint8_tListFree(&bytes);
                     setUiMenu(MenuTag_Main);
                 } break;
                 case EnterTextButton_Back:
@@ -3757,31 +3746,19 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
         case MenuTag_EnterImage:
             switch (actor->type) {
                 case EnterTextButton_Send: {
-                    if (actor->userData == NULL) {
-                        break;
+                    Bytes bytes = { .allocator = currentAllocator };
+                    const UiActor* a =
+                      findUiActor(&info->uiActors, EnterTextButton_TextBox);
+                    if (a != NULL &&
+                        !sendFileToServer(a->data.editText.text.buffer,
+                                          display->config.data.tag,
+                                          &display->id,
+                                          &bytes,
+                                          info->window)) {
+                        displayError(
+                          info->window, "Failed to send image", false);
                     }
-                    const ServerConfiguration* config =
-                      (const ServerConfiguration*)actor->userData;
-                    size_t index = 0;
-                    const StreamDisplay* display = NULL;
-                    if (GetStreamDisplayFromName(&clientData.displays,
-                                                 &config->name,
-                                                 &display,
-                                                 &index)) {
-                        Bytes bytes = { .allocator = currentAllocator };
-                        const UiActor* a =
-                          findUiActor(&info->uiActors, EnterTextButton_TextBox);
-                        if (a != NULL &&
-                            !sendFileToServer(a->data.editText.text.buffer,
-                                              display->config.data.tag,
-                                              &display->id,
-                                              &bytes,
-                                              info->window)) {
-                            displayError(
-                              info->window, "Failed to send image", false);
-                        }
-                        uint8_tListFree(&bytes);
-                    }
+                    uint8_tListFree(&bytes);
                     setUiMenu(MenuTag_Main);
                 } break;
                 case EnterTextButton_Back:
@@ -3795,14 +3772,11 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
         case MenuTag_SendAudio:
             switch (actor->type) {
                 case EnterTextButton_Send: {
-                    if (actor->userData == NULL) {
-                        break;
-                    }
                     pAudioState record =
                       currentAllocator->allocate(sizeof(AudioState));
                     record->storedAudio = CQueueCreate(CQUEUE_SIZE);
                     record->volume = 1.f;
-                    record->id = ((const StreamDisplay*)actor->userData)->id;
+                    record->id = display->id;
                     if (startRecording(
                           SDL_GetAudioDeviceName(actor->id, SDL_TRUE),
                           OPUS_APPLICATION_VOIP,
@@ -3815,6 +3789,7 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
                         AudioStateFree(record);
                         currentAllocator->free(record);
                     }
+                    setUiMenu(MenuTag_Main);
                 } break;
                 case EnterTextButton_Back:
                     setUiMenu(MenuTag_Main);
@@ -4042,7 +4017,8 @@ doRunClient(const Configuration* configuration,
                         .renderer = renderer,
                         .font = ttfFont,
                         .showUi = window != NULL,
-                        .menu = { .tag = MenuTag_Main },
+                        .menu = { .tag = MenuTag_Main,
+                                  .sinks = { .allocator = currentAllocator } },
                         .focusId = INT_MAX,
                         .uiActors = { .allocator = currentAllocator } };
 
@@ -4735,6 +4711,7 @@ getHostnameFromGUI(const Configuration* configuration)
         SDL_Delay(1u);
     }
 end:
+    MenuFree(&info.menu);
     for (size_t i = 0; i < actorCount; ++i) {
         UiActorFree(&actors[i]);
     }

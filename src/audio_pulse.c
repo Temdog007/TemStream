@@ -73,22 +73,11 @@ processOutputToNumber(const char* command, int* output)
     return result;
 }
 
-bool
-startWindowAudioStreaming(const struct pollfd inputfd,
-                          pBytes bytes,
-                          pAudioState state)
+SinkInputList
+getSinkInputs()
 {
-    if (state->sinks.allocator == NULL) {
-        state->sinks.allocator = currentAllocator;
-    }
-    bool result = false;
-
-    char buffer[KB(4)] = { 0 };
-    TemLangString realSinkName = { .allocator = currentAllocator };
-    TemLangStringList output = { .allocator = currentAllocator };
     SinkInputList sinks = { .allocator = currentAllocator };
-    puts("Checking for audio playing processes...");
-
+    TemLangStringList output = { .allocator = currentAllocator };
     if (processOutputToStrings("pactl list sink-inputs", &output) != 0 ||
         TemLangStringListIsEmpty(&output)) {
         fputs("Failed to find audio playing processes\n", stderr);
@@ -99,29 +88,21 @@ startWindowAudioStreaming(const struct pollfd inputfd,
         fputs("Failed to find any audio sinks\n", stderr);
         goto end;
     }
+end:
+    TemLangStringListFree(&output);
+    return sinks;
+}
 
-    uint32_t index = 0;
-    if (sinks.used == 1) {
-        const SinkInput* sink = &sinks.buffer[0];
-        printf("Selecting only available process: ");
-        printSinkInput(sink);
-        puts("");
-    } else {
-        askQuestion("Select a process");
-        for (size_t i = 0; i < sinks.used; ++i) {
-            const SinkInput* sink = &sinks.buffer[i];
-            printf("%zu) ", i + 1);
-            printSinkInput(sink);
-            puts("");
-        }
-        if (getIndexFromUser(inputfd, bytes, sinks.used, &index, true) !=
-            UserInputResult_Input) {
-            goto end;
-        }
+bool
+recordSink(const SinkInput* target, pAudioState state)
+{
+    bool result = false;
+
+    if (state->sinks.allocator == NULL) {
+        state->sinks.allocator = currentAllocator;
     }
-
-    const SinkInput* target = &sinks.buffer[index];
-
+    TemLangString realSinkName = { .allocator = currentAllocator };
+    char buffer[KB(4)] = { 0 };
     char sinkName[KB(2)];
     snprintf(sinkName,
              sizeof(sinkName),
@@ -195,11 +176,45 @@ startWindowAudioStreaming(const struct pollfd inputfd,
         unloadSink(nullHandle);
         unloadSink(comboHandle);
     }
+end:
+    TemLangStringFree(&realSinkName);
+    return result;
+}
+
+bool
+startWindowAudioStreaming(const struct pollfd inputfd,
+                          pBytes bytes,
+                          pAudioState state)
+{
+    bool result = false;
+
+    puts("Checking for audio playing processes...");
+
+    SinkInputList sinks = getSinkInputs();
+    uint32_t index = 0;
+    if (sinks.used == 1) {
+        const SinkInput* sink = &sinks.buffer[0];
+        printf("Selecting only available process: ");
+        printSinkInput(sink);
+        puts("");
+    } else {
+        askQuestion("Select a process");
+        for (size_t i = 0; i < sinks.used; ++i) {
+            const SinkInput* sink = &sinks.buffer[i];
+            printf("%zu) ", i + 1);
+            printSinkInput(sink);
+            puts("");
+        }
+        if (getIndexFromUser(inputfd, bytes, sinks.used, &index, true) !=
+            UserInputResult_Input) {
+            goto end;
+        }
+    }
+
+    result = recordSink(&sinks.buffer[index], state);
 
 end:
     SinkInputListFree(&sinks);
-    TemLangStringFree(&realSinkName);
-    TemLangStringListFree(&output);
     return result;
 }
 

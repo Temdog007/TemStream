@@ -72,9 +72,19 @@ enum MenuTag {
     SendVideo
 }
 
+struct SinkInput {
+    string name
+    i32 inputId
+    i32 currentSinkId
+    i32 processId
+}
+
+inlineC "MAKE_DEFAULT_LIST(SinkInput);"
+
 struct Menu {
     Guid id
     MenuTag tag
+    [0 SinkInput] sinks
 }
 
 enum MainButton {
@@ -91,5 +101,6 @@ enum EnterTextButton {
     Label
     TextBox
     Send
+    Send2
     Back
 }

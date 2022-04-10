@@ -198,13 +198,6 @@ struct AudioSendThreadData {
     Guid id
 }
 
-struct SinkInput {
-    string name
-    i32 inputId
-    i32 currentSinkId
-    i32 processId
-}
-
 struct Ratio {
     u32 numerator
     u32 denominator

@@ -50,16 +50,6 @@ variant ServerConfigurationData {
     ReplayConfiguration replay
 }
 
-struct PortRange {
-    u16 minPort
-    u16 maxPort
-}
-
-variant Port {
-    PortRange portRange
-    u16 port
-}
-
 struct Authentication {
     string value
     i32 type
@@ -75,7 +65,7 @@ struct ServerConfiguration {
     string name
     string saveDirectory
     u64 timeout
-    Port port
+    u16 port
     i32 redisPort
     u32 maxClients
     bool record
