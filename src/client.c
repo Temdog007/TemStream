@@ -3,25 +3,6 @@
 #define MIN_WIDTH 32
 #define MIN_HEIGHT 32
 
-#define RENDER_NOW(w, h, info)                                                 \
-    drawTextures(info.renderer,                                                \
-                 info.font,                                                    \
-                 targetDisplay,                                                \
-                 (float)w - MIN_WIDTH,                                         \
-                 (float)h - MIN_HEIGHT,                                        \
-                 mouseState == (MouseState_Visible | MouseState_InWindow));    \
-    if (info.showUi) {                                                         \
-        const SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };              \
-        if (SDL_SetRenderDrawBlendMode(info.renderer, SDL_BLENDMODE_BLEND) !=  \
-              0 ||                                                             \
-            SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 96u) != 0 ||     \
-            SDL_RenderFillRect(info.renderer, &rect) != 0) {                   \
-            fprintf(stderr, "Failed to render: %s\n", SDL_GetError());         \
-        }                                                                      \
-        renderUiActors(&info);                                                 \
-    }                                                                          \
-    SDL_RenderPresent(info.renderer);
-
 #define DEFAULT_CHAT_COUNT 5
 
 SDL_mutex* clientMutex = NULL;
@@ -68,6 +49,15 @@ clientHandleLobbyMessage(const LobbyMessage* message, pClient client);
 
 bool
 clientHandleGeneralMessage(const GeneralMessage* message, pClient client);
+
+void
+sendRenderEvent()
+{
+    SDL_Event e = { 0 };
+    e.type = SDL_USEREVENT;
+    e.user.code = CustomEvent_Render;
+    SDL_PushEvent(&e);
+}
 
 void
 updateStreamDisplay(const Guid* id)
@@ -3817,10 +3807,8 @@ end:
 void
 handleUserEvent(const SDL_UserEvent* e,
                 pRenderInfo info,
-                const size_t targetDisplay,
                 ENetPeer* peer,
                 pBytes bytes,
-                const MouseState mouseState,
                 const int w,
                 const int h)
 {
@@ -3858,7 +3846,7 @@ handleUserEvent(const SDL_UserEvent* e,
                 default:
                     break;
             }
-            RENDER_NOW(w, h, (*info));
+            sendRenderEvent();
         } break;
         case CustomEvent_SaveScreenshot: {
             const Guid id = *(const Guid*)e->data1;
@@ -3891,7 +3879,7 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             CurrentAudioFree(ptr);
             currentAllocator->free(ptr);
-            RENDER_NOW(w, h, (*info));
+            sendRenderEvent();
         } break;
         case CustomEvent_RecordingAudio: {
             const SDL_AudioDeviceID deviceId =
@@ -3927,7 +3915,7 @@ handleUserEvent(const SDL_UserEvent* e,
             }
             VideoFrameFree(ptr);
             currentAllocator->free(ptr);
-            RENDER_NOW(w, h, (*info));
+            sendRenderEvent();
         } break;
         case CustomEvent_SetUiMenu:
             info->menu.tag = MenuTag_Main;
@@ -3936,7 +3924,7 @@ handleUserEvent(const SDL_UserEvent* e,
         case CustomEvent_UpdateUi: {
             UiActorListFree(&info->uiActors);
             info->uiActors = getUiMenuActors(&info->menu);
-            RENDER_NOW(w, h, (*info));
+            sendRenderEvent();
         } break;
         case CustomEvent_UiChanged:
             switch (info->menu.tag) {
@@ -3958,7 +3946,7 @@ handleUserEvent(const SDL_UserEvent* e,
                 default:
                     break;
             }
-            RENDER_NOW(w, h, (*info));
+            sendRenderEvent();
             break;
         case CustomEvent_UiClicked:
             if (handleUiClicked(e->data1, info)) {
@@ -4146,12 +4134,21 @@ runServerProcedure:
         info.uiActors = getUiMenuActors(&info.menu);
     }
 
+    bool needRender = false;
     while (!appDone) {
         if (!checkForMessagesFromLobby(host, &event, &client)) {
             appDone = true;
             break;
         }
-        while (!appDone && SDL_PollEvent(&e)) {
+        while (!appDone) {
+            SDL_LockMutex(clientData.mutex);
+            const bool foundEvent = SDL_PollEvent(&e) == 1;
+            SDL_UnlockMutex(clientData.mutex);
+
+            if (!foundEvent) {
+                break;
+            }
+
             int w, h;
             SDL_GetWindowSize(window, &w, &h);
             SDL_LockMutex(clientData.mutex);
@@ -4170,7 +4167,7 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW(w, h, info);
+                    sendRenderEvent();
                     break;
                 case SDL_KEYDOWN:
                     if (e.key.keysym.scancode == SDL_SCANCODE_AC_BACK) {
@@ -4247,7 +4244,7 @@ runServerProcedure:
                     if (findDisplayFromPoint(&point, &targetDisplay)) {
                         hasTarget = true;
                         SDL_SetWindowGrab(window, true);
-                        RENDER_NOW(w, h, info);
+                        sendRenderEvent();
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
@@ -4257,7 +4254,7 @@ runServerProcedure:
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
                     SDL_SetWindowGrab(window, false);
-                    RENDER_NOW(w, h, info);
+                    sendRenderEvent();
                     break;
                 case SDL_MOUSEMOTION:
                     lastMouseMove = e.motion.timestamp;
@@ -4297,7 +4294,7 @@ runServerProcedure:
                           display->dstRect.x, 0.f, w - display->dstRect.w);
                         display->dstRect.y = SDL_clamp(
                           display->dstRect.y, 0.f, h - display->dstRect.h);
-                        RENDER_NOW(w, h, info);
+                        sendRenderEvent();
                     } else {
                         SDL_FPoint point = { 0 };
                         int x, y;
@@ -4306,7 +4303,7 @@ runServerProcedure:
                         point.y = (float)y;
                         targetDisplay = UINT_MAX;
                         findDisplayFromPoint(&point, &targetDisplay);
-                        RENDER_NOW(w, h, info);
+                        sendRenderEvent();
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
@@ -4342,17 +4339,14 @@ runServerProcedure:
                         default:
                             break;
                     }
-                    RENDER_NOW(w, h, info);
+                    sendRenderEvent();
                 } break;
                 case SDL_USEREVENT:
-                    handleUserEvent(&e.user,
-                                    &info,
-                                    targetDisplay,
-                                    peer,
-                                    &bytes,
-                                    mouseState,
-                                    w,
-                                    h);
+                    if (e.user.code == CustomEvent_Render) {
+                        needRender = true;
+                        break;
+                    }
+                    handleUserEvent(&e.user, &info, peer, &bytes, w, h);
                     break;
                 case SDL_DROPFILE: {
                     if (info.showUi) {
@@ -4457,6 +4451,30 @@ runServerProcedure:
         } else {
             SDL_ShowCursor(SDL_ENABLE);
             mouseState |= MouseState_Visible;
+        }
+        if (needRender) {
+            int w, h;
+            SDL_GetWindowSize(window, &w, &h);
+            drawTextures(info.renderer,
+                         info.font,
+                         targetDisplay,
+                         (float)w - MIN_WIDTH,
+                         (float)h - MIN_HEIGHT,
+                         mouseState ==
+                           (MouseState_Visible | MouseState_InWindow));
+            if (info.showUi) {
+                const SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
+                if (SDL_SetRenderDrawBlendMode(info.renderer,
+                                               SDL_BLENDMODE_BLEND) != 0 ||
+                    SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 96u) !=
+                      0 ||
+                    SDL_RenderFillRect(info.renderer, &rect) != 0) {
+                    fprintf(stderr, "Failed to render: %s\n", SDL_GetError());
+                }
+                renderUiActors(&info);
+            }
+            SDL_RenderPresent(info.renderer);
+            needRender = false;
         }
         SDL_Delay(1u);
     }

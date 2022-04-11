@@ -179,7 +179,7 @@
 
 ### Bugs
 - [x] Connecting to multiple streams quickly causes some displays to not show
-- [ ] Deadlock when switching between ui and no ui quickly while watching video stream with audio
+- [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

@@ -25,6 +25,7 @@ enum CustomEvent {
     UpdateUi
     UiClicked
     UiChanged
+    Render
 }
 
 struct VideoFrame {
