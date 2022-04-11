@@ -1,21 +1,25 @@
 #include <include/main.h>
 
-#include "audio.c"
-#include "audio_decode.c"
-#include "audio_pulse.c"
 #include "base64.c"
-#include "chat.c"
 #include "circular_queue.c"
-#include "client.c"
+#include "misc.c"
+
+#if TEMSTREAM_SERVER
+#include "audio.c"
+#include "chat.c"
 #include "image.c"
 #include "lobby.c"
-#include "misc.c"
-#include "rendering.c"
+#include "redis.c"
 #include "replay.c"
 #include "server.c"
 #include "text.c"
-#include "ui.c"
 #include "video.c"
+#else
+#include "audio_decode.c"
+#include "audio_pulse.c"
+#include "client.c"
+#include "rendering.c"
+#include "ui.c"
 #include "video_x11.c"
 #include "webcam.c"
 
@@ -23,6 +27,7 @@
 #include "vpx.c"
 #else
 #include "openh264.c"
+#endif
 #endif
 
 const Allocator* currentAllocator = NULL;
@@ -148,6 +153,7 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
 {
     int result = EXIT_FAILURE;
 
+#if TEMSTREAM_SERVER
     if (argc > 1) {
         const char* streamType = argv[1];
         const size_t len = strlen(streamType);
@@ -167,16 +173,9 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
         STR_EQUALS(streamType, "R", len, { goto runReplay; });
         STR_EQUALS(streamType, "replay", len, { goto runReplay; });
     }
+#endif
     switch (configuration->tag) {
-        case ConfigurationTag_none:
-            if (parseClientConfiguration(argc, argv, configuration)) {
-                result = runClient(configuration);
-                break;
-            }
-            break;
-        case ConfigurationTag_client:
-            result = runClient(configuration);
-            break;
+#if TEMSTREAM_SERVER
         case ConfigurationTag_server:
             switch (configuration->server.data.tag) {
                 case ServerConfigurationDataTag_audio:
@@ -208,11 +207,23 @@ runApp(const int argc, const char** argv, pConfiguration configuration)
                     break;
             }
             break;
+#else
+        case ConfigurationTag_none:
+            if (parseClientConfiguration(argc, argv, configuration)) {
+                result = runClient(configuration);
+                break;
+            }
+            break;
+        case ConfigurationTag_client:
+            result = runClient(configuration);
+            break;
+#endif
         default:
             break;
     }
     goto end;
 
+#if TEMSTREAM_SERVER
 runLobby : {
     configuration->tag = ConfigurationTag_server;
     configuration->server = defaultServerConfiguration();
@@ -269,6 +280,7 @@ runReplay : {
     }
     goto end;
 }
+#endif
 
 end:
     return result;
@@ -283,6 +295,21 @@ printVersion()
     SDL_version compiledSdl;
     SDL_VERSION(&compiledSdl);
 
+#if TEMSTREAM_SERVER
+    return printf(
+      "TemStream Server %d.%d.%d\nSDL compiled %u.%u.%u\nSDL linked "
+      "%u.%u.%u\nENet %x\n",
+      VERSION_MAJOR,
+      VERSION_MINOR,
+      VERSION_PATCH,
+      compiledSdl.major,
+      compiledSdl.minor,
+      compiledSdl.patch,
+      linkedSdl.major,
+      linkedSdl.minor,
+      linkedSdl.patch,
+      version);
+#else
     SDL_version ttfVersion;
     SDL_TTF_VERSION(&ttfVersion);
 
@@ -308,6 +335,7 @@ printVersion()
                   imgVersion.patch,
                   version,
                   opus_get_version_string());
+#endif
 }
 
 void
@@ -352,12 +380,15 @@ int
 printConfiguration(const Configuration* configuration)
 {
     switch (configuration->tag) {
-        case ConfigurationTag_client:
-            return printClientConfiguration(&configuration->client);
-            break;
+#if TEMSTREAM_SERVER
         case ConfigurationTag_server:
             return printServerConfiguration(&configuration->server);
             break;
+#else
+        case ConfigurationTag_client:
+            return printClientConfiguration(&configuration->client);
+            break;
+#endif
         default:
             break;
     }

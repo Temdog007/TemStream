@@ -162,10 +162,14 @@
 
 ### Apr 11, 2022
 - [ ] Send chat rejected message on bad chat messages
-- [ ] Assign role to client (Producer, Consumer, Admin); Allow certain messages based on role
-- [ ] Remove read/write access list (only have black list)
-- [ ] Separate client and server code
+- [ ] Assign role to client (Anonymous, Producer, Consumer, Admin); Allow certain messages based on role
+- [ ] Remove read/write access list (only have black list and flag to allow anonymous)
+- [x] Separate client and server code
+
+### Apr 12, 2022
 - [ ] Write websocket code for browser version
+
+### Apr 13, 2022
 - [ ] Make video replay streams work properly
 
 ### Later

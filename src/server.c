@@ -202,14 +202,6 @@ printServerConfiguration(const ServerConfiguration* configuration)
     return offset;
 }
 
-int
-printServerConfigurationForClient(const ServerConfiguration* config)
-{
-    return printf("%s (%s)\n",
-                  config->name.buffer,
-                  ServerConfigurationDataTagToCharString(config->data.tag));
-}
-
 bool
 handleGeneralMessage(const GeneralMessage* message,
                      pServerData serverData,
@@ -341,13 +333,6 @@ writeServerFileBytes(const ServerConfiguration* config,
         fwrite(bytes->buffer, sizeof(uint8_t), bytes->used, file);
     }
     fclose(file);
-}
-
-bool
-lowMemory()
-{
-    return currentAllocator->used() >
-           (currentAllocator->totalSize() * 95u / 100u);
 }
 
 int
