@@ -863,6 +863,7 @@ extern UiActorList getUiMenuActors(pMenu);
 typedef struct RenderInfo
 {
     UiActorList uiActors;
+    RandomState rs;
     Menu menu;
     SDL_Window* window;
     SDL_Renderer* renderer;

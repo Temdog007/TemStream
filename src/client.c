@@ -1254,12 +1254,8 @@ connectToStream(const ServerConfiguration* config, pRandomState rs)
     StreamDisplay display = { 0 };
     display.visible = true;
     display.outgoing.allocator = currentAllocator;
-    if (rs == NULL) {
-        RandomState frs = makeRandomState();
-        display.id = randomGuid(&frs);
-    } else {
-        display.id = randomGuid(rs);
-    }
+    display.id = randomGuid(rs);
+
     pGuid id = currentAllocator->allocate(sizeof(Guid));
     *id = display.id;
     ServerConfigurationCopy(&display.config, config, currentAllocator);
@@ -3703,7 +3699,7 @@ handleUiClicked(pUiActor actor, pRenderInfo info)
                         break;
                 }
             } else if (actor->type == MainButton_Connect) {
-                if (!connectToStream(config, NULL)) {
+                if (!connectToStream(config, &info->rs)) {
                     displayError(
                       info->window, "Failed to connect to stream", false);
                 }
@@ -4031,6 +4027,7 @@ doRunClient(const Configuration* configuration,
                         .renderer = renderer,
                         .font = ttfFont,
                         .showUi = window != NULL,
+                        .rs = makeRandomState(),
                         .menu = { .tag = MenuTag_Main,
                                   .sinks = { .allocator = currentAllocator } },
                         .focusId = INT_MAX,

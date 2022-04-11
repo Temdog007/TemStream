@@ -161,6 +161,7 @@
 - [x] Don't create streams from client
 
 ### Apr 11, 2022
+- [ ] Send chat rejected message on bad chat messages
 - [ ] Assign role to client (Producer, Consumer, Admin); Allow certain messages based on role
 - [ ] Remove read/write access list (only have black list)
 - [ ] Separate client and server code
@@ -168,6 +169,7 @@
 - [ ] Make video replay streams work properly
 
 ### Later
+- [ ] Fix chat sender and re-test
 - [ ] Test browser
 - [ ] Make push to talk not apply to window recordings
 - [ ] Test android
@@ -176,7 +178,7 @@
 - [ ] SSL encryption (dtls, use proxy)
 
 ### Bugs
-- [ ] Connecting to multiple streams quickly causes some displays to not show
+- [x] Connecting to multiple streams quickly causes some displays to not show
 - [ ] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 
 ### Maybe
