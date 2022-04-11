@@ -518,6 +518,16 @@ clientHandleChatMessage(const ChatMessage* message, pStreamDisplay display)
             }
             updateStreamDisplay(&display->id);
         } break;
+        case ChatMessageTag_reject: {
+            puts("Chat message was rejected");
+            SDL_Event e = { 0 };
+            e.type = SDL_USEREVENT;
+            e.user.code = CustomEvent_ShowSimpleMessage;
+            e.user.data1 = "Chat message rejected";
+            e.user.data2 =
+              "Chat message was rejected and not uploaded to the server";
+            success = SDL_PushEvent(&e) == 1;
+        } break;
         case ChatMessageTag_general:
             success =
               clientHandleGeneralMessage(&message->general, &display->client);
@@ -4134,7 +4144,7 @@ runServerProcedure:
         info.uiActors = getUiMenuActors(&info.menu);
     }
 
-    bool needRender = false;
+    bool needRender = true;
     while (!appDone) {
         if (!checkForMessagesFromLobby(host, &event, &client)) {
             appDone = true;

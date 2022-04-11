@@ -549,6 +549,20 @@ getUiMenuActors(pMenu menu)
                     hide->userData = config;
                     x += width + padding;
 
+                    if (display->visible) {
+                        pUiActor t = addUiLabel(&list, "Screenshot", 0u);
+                        t->rect.x = x;
+                        t->rect.y = 250 + (i * size);
+                        t->rect.w = width;
+                        t->rect.h = size * 9 / 10;
+                        t->horizontal = HorizontalAlignment_Left;
+                        t->vertical = VerticalAlignment_Top;
+                        t->id = nextId++;
+                        t->type = MainButton_Screenshot;
+                        t->userData = config;
+                        x += width + padding;
+                    }
+
                     switch (config->data.tag) {
                         case ServerConfigurationDataTag_chat:
                         case ServerConfigurationDataTag_text: {
@@ -597,18 +611,6 @@ getUiMenuActors(pMenu menu)
                             break;
                     }
                     x += width + padding;
-                    if (display->visible) {
-                        pUiActor t = addUiLabel(&list, "Screenshot", 0u);
-                        t->rect.x = x;
-                        t->rect.y = 250 + (i * size);
-                        t->rect.w = width;
-                        t->rect.h = size * 9 / 10;
-                        t->horizontal = HorizontalAlignment_Left;
-                        t->vertical = VerticalAlignment_Top;
-                        t->id = nextId++;
-                        t->type = MainButton_Screenshot;
-                        t->userData = config;
-                    }
                 }
                 for (size_t i = 0, j = 0; i < audioStates.used; ++i) {
                     AudioStatePtr ptr = audioStates.buffer[i];

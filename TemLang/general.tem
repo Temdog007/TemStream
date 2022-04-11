@@ -120,6 +120,7 @@ variant ChatMessage {
     string message
     Chat newChat
     [ 0 Chat ] logs
+    null reject
 }
 
 variant TextMessage {

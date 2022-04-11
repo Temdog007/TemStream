@@ -28,6 +28,7 @@ parseChatConfiguration(const int argc,
                        pConfiguration configuration)
 {
     configuration->server.data.tag = ServerConfigurationDataTag_chat;
+    configuration->server.data.chat = defaultChatConfiguration();
     pChatConfiguration chat = &configuration->server.data.chat;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
@@ -68,6 +69,14 @@ onConnectForChat(ENetPeer* peer, pServerData serverData)
     return true;
 }
 
+void
+sendReject(ENetPeer* peer, pBytes bytes)
+{
+    ChatMessage m = { .tag = ChatMessageTag_reject, .reject = NULL };
+    MESSAGE_SERIALIZE(ChatMessage, m, (*bytes));
+    sendBytes(peer, 1, SERVER_CHANNEL, bytes, SendFlags_Normal);
+}
+
 bool
 handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
 {
@@ -94,6 +103,7 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             result = true;
             if (config->maxLength > 0 &&
                 config->maxLength < message->message.used) {
+                sendReject(peer, &serverData->bytes);
                 printf("Got a chat message with the length of %u. But %u is "
                        "the max\n",
                        message->message.used,
@@ -101,7 +111,9 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                 break;
             }
             const uint64_t now = SDL_GetTicks64();
-            if (now - client->lastMessage < config->interval) {
+            printf("%zu\n", now - client->lastMessage);
+            if (now - client->lastMessage < config->interval * 1000u) {
+                sendReject(peer, &serverData->bytes);
                 printf(
                   "Client '%s' sent a chat message sooner than the interval\n",
                   client->name.buffer);

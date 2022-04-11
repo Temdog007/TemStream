@@ -41,8 +41,9 @@ onLobbyDownTime(pServerData serverData)
         updateLobbyClients(serverData);
     } else {
         const uint64_t now = SDL_GetTicks64();
-        if (now - lastStreamRefresh >=
-            serverData->config->data.lobby.refreshRate * 1000U) {
+        if (lastStreamRefresh == 0 ||
+            now - lastStreamRefresh >=
+              serverData->config->data.lobby.refreshRate * 1000U) {
             lastStreamRefresh = now;
 #if _DEBUG
             char buffer[KB(2)];

@@ -26,6 +26,7 @@ parseTextConfiguration(const int argc,
                        pConfiguration configuration)
 {
     configuration->server.data.tag = ServerConfigurationDataTag_text;
+    configuration->server.data.text = defaultTextConfiguration();
     pTextConfiguration text = &configuration->server.data.text;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];

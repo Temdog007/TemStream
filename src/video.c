@@ -27,6 +27,7 @@ parseVideoConfiguration(const int argc,
                         pConfiguration configuration)
 {
     configuration->server.data.tag = ServerConfigurationDataTag_video;
+    configuration->server.data.video = defaultVideoConfiguration();
     pVideoConfiguration video = &configuration->server.data.video;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];

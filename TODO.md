@@ -161,7 +161,7 @@
 - [x] Don't create streams from client
 
 ### Apr 11, 2022
-- [ ] Send chat rejected message on bad chat messages
+- [x] Send chat rejected message on bad chat messages
 - [ ] Assign role to client (Anonymous, Producer, Consumer, Admin); Allow certain messages based on role
 - [ ] Remove read/write access list (only have black list and flag to allow anonymous)
 - [x] Separate client and server code

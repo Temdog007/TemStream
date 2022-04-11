@@ -30,6 +30,7 @@ parseReplayConfiguration(const int argc,
                          pConfiguration configuration)
 {
     configuration->server.data.tag = ServerConfigurationDataTag_replay;
+    configuration->server.data.replay = defaultReplayConfiguration();
     pReplayConfiguration replay = &configuration->server.data.replay;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];

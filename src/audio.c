@@ -27,6 +27,7 @@ parseAudioConfiguration(const int argc,
                         pConfiguration configuration)
 {
     configuration->server.data.tag = ServerConfigurationDataTag_audio;
+    configuration->server.data.audio = defaultAudioConfiguration();
     pAudioConfiguration audio = &configuration->server.data.audio;
     for (int i = 2; i < argc - 1; i += 2) {
         const char* key = argv[i];
