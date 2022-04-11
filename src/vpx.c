@@ -54,6 +54,8 @@ VideoEncoderInit(pVideoEncoder codec, const WindowData* data, const bool b)
     printf("Using encoder: %s with %d threads\n",
            vpx_codec_iface_name(codec_encoder_interface()),
            SDL_GetCPUCount());
+    // printf("Using encoder: %s\n",
+    //        vpx_codec_iface_name(codec_encoder_interface()));
 
     const vpx_codec_err_t res =
       vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
