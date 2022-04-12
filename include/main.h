@@ -43,7 +43,7 @@ extern char
 RandomChar(pRandomState rs);
 
 extern TemLangString
-RandomString(pRandomState, size_t min, size_t max);
+RandomString(pRandomState, size_t min, size_t max, const bool);
 
 extern bool
 clientHasRole(const Client*, ClientRole);

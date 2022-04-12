@@ -108,7 +108,7 @@ defaultClientConfiguration()
         .silenceThreshold = 0.f,
         .fontSize = 48,
         .noGui = false,
-        .noTui = false,
+        .noTui = true,
         .showLabel = true,
         .noAudio = false,
         .credentials = TemLangStringCreate("", currentAllocator),
@@ -287,7 +287,8 @@ getUserInput(struct pollfd inputfd, pBytes bytes)
 
     ssize_t size = read(inputfd.fd, bytes->buffer, bytes->size);
     if (size == 0) {
-        return UserInputResult_NoInput;
+        puts("User input terminal is closed");
+        return UserInputResult_Error;
     }
     if (size < 0) {
         perror("read");
@@ -513,6 +514,10 @@ clientHandleChatMessage(const ChatMessage* message, pStreamDisplay display)
             e.user.data2 =
               "Chat message was rejected and not uploaded to the server";
             success = SDL_PushEvent(&e) == 1;
+        } break;
+        case ChatMessageTag_configuration: {
+            // Store this information somewhere...
+            success = true;
         } break;
         case ChatMessageTag_general:
             success =
@@ -1020,8 +1025,18 @@ streamConnectionThread(void* ptr)
                 display->outgoing.used = 0;
             }
         });
-        while (incomingPackets.used < MAX_PACKETS &&
-               enet_host_service(host, &event, 0U) > 0) {
+        while (incomingPackets.used < MAX_PACKETS && !appDone &&
+               !displayMissing) {
+            if (enet_host_service(host, &event, 1U) < 0) {
+                USE_DISPLAY(clientData.mutex, fend3yut56, displayMissing, {
+                    fprintf(
+                      stderr,
+                      "Lost connection to stream '%s(%s)'\n",
+                      config->name.buffer,
+                      ServerConfigurationDataTagToCharString(config->data.tag));
+                });
+                goto end;
+            }
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
                     USE_DISPLAY(clientData.mutex, fend3, displayMissing, {
@@ -1039,18 +1054,21 @@ streamConnectionThread(void* ptr)
                                ServerConfigurationDataTagToCharString(
                                  config->data.tag));
                     });
+                    sendUpdateUiEvent();
                     goto end;
                 case ENET_EVENT_TYPE_RECEIVE:
                     NullValueListAppend(&incomingPackets,
                                         (NullValue*)&event.packet);
                     break;
                 case ENET_EVENT_TYPE_NONE:
-                    break;
+                    goto afterReceivingMessages;
                 default:
                     break;
             }
         }
 
+    afterReceivingMessages:
+        (void)NULL;
         pAudioState record = NULL;
         IN_MUTEX(clientData.mutex, endRecord, {
             size_t listIndex = 0;
@@ -2530,6 +2548,7 @@ userInputThread(void* ptr)
         displayUserOptions();
     }
 end:
+    puts("Closing user input thread");
     uint8_tListFree(&bytes);
     SDL_AtomicDecRef(&runningThreads);
     return EXIT_SUCCESS;
@@ -3192,40 +3211,42 @@ bool
 checkForMessagesFromLobby(ENetHost* host, ENetEvent* event, pClient client)
 {
     bool result = false;
-    while (!appDone && enet_host_service(host, event, 0U) >= 0) {
-        switch (event->type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                puts("Unexpected connect event from server");
-                appDone = true;
-                goto end;
-            case ENET_EVENT_TYPE_DISCONNECT:
-                puts("Disconnected from server");
-                appDone = true;
-                goto end;
-            case ENET_EVENT_TYPE_NONE:
-                result = true;
-                goto end;
-            case ENET_EVENT_TYPE_RECEIVE: {
-                result = true;
-                const Bytes temp = { .allocator = currentAllocator,
-                                     .buffer = event->packet->data,
-                                     .size = event->packet->dataLength,
-                                     .used = event->packet->dataLength };
-
-                LobbyMessage message = { 0 };
-                MESSAGE_DESERIALIZE(LobbyMessage, message, temp);
-
-                IN_MUTEX(clientData.mutex, f, {
-                    result = clientHandleLobbyMessage(&message, client);
-                });
-
-                enet_packet_destroy(event->packet);
-                LobbyMessageFree(&message);
-            } break;
-            default:
-                break;
-        }
+    if (enet_host_service(host, event, 1U) < 0) {
+        goto end;
     }
+
+    switch (event->type) {
+        case ENET_EVENT_TYPE_CONNECT:
+            puts("Unexpected connect event from server");
+            appDone = true;
+            goto end;
+        case ENET_EVENT_TYPE_DISCONNECT:
+            appDone = true;
+            goto end;
+        case ENET_EVENT_TYPE_NONE:
+            result = true;
+            goto end;
+        case ENET_EVENT_TYPE_RECEIVE: {
+            result = true;
+            const Bytes temp = { .allocator = currentAllocator,
+                                 .buffer = event->packet->data,
+                                 .size = event->packet->dataLength,
+                                 .used = event->packet->dataLength };
+
+            LobbyMessage message = { 0 };
+            MESSAGE_DESERIALIZE(LobbyMessage, message, temp);
+
+            IN_MUTEX(clientData.mutex, f, {
+                result = clientHandleLobbyMessage(&message, client);
+            });
+
+            enet_packet_destroy(event->packet);
+            LobbyMessageFree(&message);
+        } break;
+        default:
+            break;
+    }
+
 end:
     return result;
 }
@@ -3935,6 +3956,9 @@ handleUserEvent(const SDL_UserEvent* e,
             sendUpdateUiEvent();
             break;
         case CustomEvent_UpdateUi: {
+            if (info->window == NULL) {
+                break;
+            }
             UiActorListFree(&info->uiActors);
             info->uiActors = getUiMenuActors(&info->menu);
             sendRenderEvent();
@@ -4139,6 +4163,10 @@ runServerProcedure:
     bool needRender = true;
     while (!appDone) {
         if (!checkForMessagesFromLobby(host, &event, &client)) {
+            puts("Disconnected from server");
+            if (info->window != NULL) {
+                displayError(info->window, "Lost connection to server", false);
+            }
             appDone = true;
             break;
         }

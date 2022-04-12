@@ -1,7 +1,6 @@
-#include <include/main.h>
-
-#include <src/base64.c>
 #include <src/misc.c>
+
+#include <src/circular_queue.c>
 
 const Allocator* currentAllocator = NULL;
 bool appDone = true;
@@ -9,13 +8,16 @@ bool appDone = true;
 int
 main(int argc, char** argv)
 {
-    if (argc < 3) {
-        fprintf(stderr, "Need ip address\n");
+    if (argc < 4) {
+        fprintf(stderr, "Need ip address, port, and credentials\n");
         return EXIT_FAILURE;
     }
 
+    const char* hostname = argv[1];
+    const char* port = argv[2];
+    const char* creds = argv[3];
+
     int result = EXIT_FAILURE;
-    const int messages = argc == 3 ? 10 : atoi(argv[3]);
 
     Allocator allocator = makeDefaultAllocator();
     currentAllocator = &allocator;
@@ -31,8 +33,8 @@ main(int argc, char** argv)
     }
     {
         ENetAddress address = { 0 };
-        enet_address_set_host(&address, argv[1]);
-        address.port = (uint16_t)atoi(argv[2]);
+        enet_address_set_host(&address, hostname);
+        address.port = (uint16_t)atoi(port);
         peer =
           enet_host_connect(host, &address, 2, ServerConfigurationDataTag_chat);
         char buffer[512] = { 0 };
@@ -58,8 +60,8 @@ main(int argc, char** argv)
           "Connected to server: %s:%u\n", buffer, event.peer->address.port);
         message.tag = ChatMessageTag_general;
         message.general.tag = GeneralMessageTag_authenticate;
-        message.general.authenticate.tag = ClientAuthenticationTag_none;
-        message.general.authenticate.none = NULL;
+        message.general.authenticate =
+          TemLangStringCreate(creds, currentAllocator);
         MESSAGE_SERIALIZE(ChatMessage, message, bytes);
         sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, SendFlags_Normal);
     } else {
@@ -74,9 +76,13 @@ main(int argc, char** argv)
     }
 
     RandomState rs = makeRandomState();
+    const int64_t messages = random64(&rs) % 100UL;
+    printf("Sending %" PRId64 " messages\n", messages);
+
     int sent = 0;
+    uint32_t interval = 0;
     // Wait for chat interval
-    while (enet_host_service(host, &event, 3100U) >= 0) {
+    while (enet_host_service(host, &event, interval * 1001u) >= 0) {
         switch (event.type) {
             case ENET_EVENT_TYPE_DISCONNECT:
                 puts("Disconnecting...");
@@ -91,12 +97,24 @@ main(int argc, char** argv)
                     case ChatMessageTag_general:
                         switch (message.general.tag) {
                             case GeneralMessageTag_authenticateAck: {
-                                printf("Client name: %s\n",
-                                       message.general.authenticateAck.buffer);
+                                TemLangString s =
+                                  getAllRoles(&message.general.authenticateAck);
+                                printf(
+                                  "Client name: '%s' (%s)\n",
+                                  message.general.authenticateAck.name.buffer,
+                                  s.buffer);
+                                TemLangStringFree(&s);
                             } break;
                             default:
                                 break;
                         }
+                        break;
+                    case ChatMessageTag_configuration:
+                        interval = message.configuration.interval;
+                        printf("Interval set to %u second(s)\n", interval);
+                        break;
+                    case ChatMessageTag_reject:
+                        puts("Message got rejected");
                         break;
                     default:
                         break;
@@ -104,9 +122,12 @@ main(int argc, char** argv)
                 enet_packet_destroy(event.packet);
             } break;
             case ENET_EVENT_TYPE_NONE: {
+                if (interval == 0) {
+                    break;
+                }
                 ChatMessageFree(&message);
                 message.tag = ChatMessageTag_message;
-                message.message = RandomString(&rs, 10U, 128U);
+                message.message = RandomString(&rs, 10U, 128U, false);
                 printf("Sending message: %s\n", message.message.buffer);
                 MESSAGE_SERIALIZE(ChatMessage, message, bytes);
                 sendBytes(peer, 1, CLIENT_CHANNEL, &bytes, SendFlags_Normal);
@@ -128,3 +149,7 @@ end:
 
     return result;
 }
+
+void
+unloadSink()
+{}

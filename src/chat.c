@@ -62,10 +62,52 @@ parseChatConfiguration(const int argc,
 bool
 onConnectForChat(ENetPeer* peer, pServerData serverData)
 {
-    if (getServerFileBytes(serverData->config, &serverData->bytes)) {
+    char buffer[KB(4)];
+    FILE* file = fopen(getServerFileName(serverData->config, buffer), "rb");
+    if (file != NULL) {
+        ChatMessage m = { 0 };
+        m.tag = ChatMessageTag_logs;
+        m.logs.allocator = currentAllocator;
+        while (fgets(buffer, sizeof(buffer), file)) {
+            const size_t len = strlen(buffer);
+            if (len == 0) {
+                continue;
+            }
+            // Remove newline character
+            if (buffer[len - 1] == '\n') {
+                buffer[len - 1] = '\0';
+            }
+            if (!b64_decode(buffer, &serverData->bytes)) {
+                fprintf(
+                  stderr,
+                  "Failed to decode base64 string (size %zu) in chat log\n",
+                  len);
+                continue;
+            }
+            Chat c = { 0 };
+            MESSAGE_DESERIALIZE(Chat, c, serverData->bytes);
+            ChatListAppend(&m.logs, &c);
+            ChatFree(&c);
+        }
+#if _DEBUG
+        printf("Sending %u chat messages from log\n", m.logs.used);
+#endif
+        MESSAGE_SERIALIZE(ChatMessage, m, serverData->bytes);
         sendBytes(
           peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
+        ChatMessageFree(&m);
+        enet_host_flush(serverData->host);
+
+        fclose(file);
     }
+
+    ChatMessage m = { 0 };
+    m.tag = ChatMessageTag_configuration;
+    m.configuration = serverData->config->data.chat;
+    MESSAGE_SERIALIZE(ChatMessage, m, serverData->bytes);
+    sendBytes(peer, 1, SERVER_CHANNEL, &serverData->bytes, SendFlags_Normal);
+    // Don't free. Configuration wasn't allocated
+
     return true;
 }
 
@@ -111,42 +153,40 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
                 break;
             }
             const uint64_t now = SDL_GetTicks64();
-            printf("%zu\n", now - client->lastMessage);
             if (now - client->lastMessage < config->interval * 1000u) {
                 sendReject(peer, &serverData->bytes);
-                printf(
-                  "Client '%s' sent a chat message sooner than the interval\n",
-                  client->name.buffer);
+                printf("Client '%s' sent a chat message sooner than the "
+                       "interval: %u second(s)\n",
+                       client->name.buffer,
+                       config->interval);
                 break;
             }
             client->lastMessage = now;
 
-            Chat newChat = { 0 };
-            newChat.timestamp = (int64_t)time(NULL);
-            TemLangStringCopy(&newChat.author, &client->name, currentAllocator);
-            TemLangStringCopy(
-              &newChat.message, &message->message, currentAllocator);
-
             chatMessage.tag = ChatMessageTag_newChat;
-            ChatCopy(&chatMessage.newChat, &newChat, currentAllocator);
+            chatMessage.newChat.timestamp = (int64_t)time(NULL);
+            TemLangStringCopy(
+              &chatMessage.newChat.author, &client->name, currentAllocator);
+            TemLangStringCopy(&chatMessage.newChat.message,
+                              &message->message,
+                              currentAllocator);
 
             MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
-            ENetPacket* packet = BytesToPacket(
-              serverData->bytes.buffer, serverData->bytes.used, true);
+            ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
+                                               serverData->bytes.used,
+                                               SendFlags_Normal);
             sendPacketToReaders(serverData->host, packet);
 
-            if (getServerFileBytes(serverData->config, &serverData->bytes)) {
-                MESSAGE_DESERIALIZE(
-                  ChatMessage, chatMessage, serverData->bytes);
-            } else {
-                ChatMessageFree(&chatMessage);
-                chatMessage.tag = ChatMessageTag_logs;
-                chatMessage.logs.allocator = currentAllocator;
-            }
-            ChatListAppend(&chatMessage.logs, &newChat);
-            MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
-            writeServerFileBytes(serverData->config, &serverData->bytes, true);
-            ChatFree(&newChat);
+            MESSAGE_SERIALIZE(Chat, chatMessage.newChat, serverData->bytes);
+            TemLangString str = b64_encode(&serverData->bytes);
+            TemLangStringAppendChar(&str, '\n');
+            Bytes temp = { .buffer = (uint8_t*)str.buffer,
+                           .used = str.used,
+                           .size = str.size };
+            writeServerFileBytes(serverData->config, &temp, false);
+            TemLangStringFree(&str);
+
+            enet_host_flush(serverData->host);
             break;
         default:
 #if _DEBUG

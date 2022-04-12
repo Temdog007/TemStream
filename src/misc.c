@@ -50,43 +50,49 @@ randomBetween64(pRandomState rs, const uint64_t min, const uint64_t max)
     return min + (random64(rs) % (max - min));
 }
 
+char
+RandomChar(pRandomState rs)
+{
+    while (true) {
+        const char c = (char)(random64(rs) % 128ULL);
+        if (isprint(c)) {
+            return c;
+        }
+    }
+}
+
+char
+RandomAlNum(pRandomState rs)
+{
+    while (true) {
+        const char c = (char)(random64(rs) % 128ULL);
+        if (isalnum(c)) {
+            return c;
+        }
+    }
+}
+
 TemLangString
 RandomClientName(pRandomState rs)
 {
-    TemLangString name = RandomString(rs, 3, 10);
+    TemLangString name = RandomString(rs, 3, 10, true);
     TemLangStringInsertChar(&name, '@', 0);
     return name;
 }
 
 TemLangString
-RandomString(pRandomState rs, const uint64_t min, const uint64_t max)
+RandomString(pRandomState rs,
+             const uint64_t min,
+             const uint64_t max,
+             const bool isName)
 {
     const uint64_t len = randomBetween64(rs, min, max);
     TemLangString name = { .allocator = currentAllocator };
     for (size_t i = 0; i < len; ++i) {
-        TemLangStringAppendChar(&name, RandomChar(rs));
+        TemLangStringAppendChar(&name,
+                                isName ? RandomAlNum(rs) : RandomChar(rs));
     }
     return name;
-}
-
-char
-RandomChar(pRandomState rs)
-{
-    do {
-        const char c = (char)(random64(rs) % 128ULL);
-        switch (c) {
-            case ':':
-                continue;
-            case '_':
-            case ' ':
-                return c;
-            default:
-                if (isalnum(c)) {
-                    return c;
-                }
-                continue;
-        }
-    } while (true);
 }
 
 bool

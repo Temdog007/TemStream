@@ -169,7 +169,8 @@
 ### Apr 12, 2022
 - [x] Add z-order to stream displays
 - [x] Inline font file as a default
-- [ ] Fix chat sender and re-test
+- [x] Fix chat sender and re-test
+- [x] Redo chat logs to not need to loaded in memory
 - [ ] Make layout message
 
 ### Apr 13, 2022

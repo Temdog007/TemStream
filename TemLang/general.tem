@@ -128,6 +128,7 @@ inlineC "MAKE_DEFAULT_LIST(Chat);"
 
 variant ChatMessage {
     GeneralMessage general
+    ChatConfiguration configuration
     string message
     Chat newChat
     [ 0 Chat ] logs
