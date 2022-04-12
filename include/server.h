@@ -2,19 +2,21 @@
 
 #include "main.h"
 
+#include <dlfcn.h>
 #include <hiredis.h>
 
 #define TEM_STREAM_SERVER_KEY "TemStream Servers"
 #define TEM_STREAM_SERVER_DIRTY_KEY "TemStream Servers Dirty"
 
-typedef bool (*AuthenticateFunc)(int, char*);
+typedef int (*AuthenticateFunc)(const char*, char*);
 
 extern void
-sendPacketToReaders(ENetHost*, ENetPacket*, const Access*);
+sendPacketToReaders(ENetHost*, ENetPacket*);
 
 typedef struct ServerData
 {
     Bytes bytes;
+    RandomState rs;
     ENetHost* host;
     const ServerConfiguration* config;
     redisContext* ctx;
@@ -62,7 +64,10 @@ storeClientMessage(pServerData data, const ServerMessage*);
 #define CAST_MESSAGE(name, ptr) name* message = (name*)ptr
 
 extern bool
-handleGeneralMessage(const GeneralMessage*, pServerData, pGeneralMessage);
+handleGeneralMessage(const GeneralMessage*,
+                     ENetPeer*,
+                     pServerData,
+                     pGeneralMessage);
 
 #define SERVER_FUNCTIONS(T)                                                    \
     extern bool parse##T##Configuration(                                       \
@@ -153,16 +158,12 @@ SERVER_FUNCTIONS(Replay);
     }
 
 extern bool
-authenticateClient(pClient,
-                   const AuthenticateFunc,
-                   const Authentication*,
-                   pRandomState);
+authenticateClient(pClient, const AuthenticateFunc, const char*);
 
 extern AuthenticateResult
 handleClientAuthentication(pClient,
                            const AuthenticateFunc,
-                           const GeneralMessage*,
-                           pRandomState);
+                           const GeneralMessage*);
 
 // Redis
 

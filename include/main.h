@@ -37,9 +37,6 @@ const extern Guid ZeroGuid;
 
 extern SDL_atomic_t runningThreads;
 
-extern bool
-ClientGuidEquals(const pClient*, const Guid*);
-
 extern TemLangString RandomClientName(pRandomState);
 
 extern char
@@ -48,8 +45,11 @@ RandomChar(pRandomState rs);
 extern TemLangString
 RandomString(pRandomState, size_t min, size_t max);
 
-MAKE_COPY_AND_FREE(pClient);
-MAKE_DEFAULT_LIST(pClient);
+extern bool
+clientHasRole(const Client*, ClientRole);
+
+extern TemLangString
+getAllRoles(const Client*);
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 1
@@ -138,9 +138,6 @@ extern int
 printServerConfigurationForClient(const ServerConfiguration*);
 
 extern int
-printAuthentication(const Authentication*);
-
-extern int
 printSendingPacket(const ENetPacket*);
 
 extern int
@@ -177,9 +174,6 @@ extern void
 parseFailure(const char* type, const char* arg1, const char* arg2);
 
 // Searches
-
-extern bool
-GetClientFromGuid(const pClientList*, const Guid*, const pClient**, size_t*);
 
 extern bool
 GetStreamFromName(const ServerConfigurationList*,
@@ -277,17 +271,6 @@ b64_encode(const Bytes* bytes);
 
 extern bool
 b64_decode(const char* in, pBytes bytes);
-
-// Access
-
-extern bool
-clientHasAccess(const Client* client, const Access* access);
-
-extern bool
-clientHasReadAccess(const Client* client, const ServerConfiguration* config);
-
-extern bool
-clientHasWriteAccess(const Client* client, const ServerConfiguration* config);
 
 extern bool
 lowMemory();

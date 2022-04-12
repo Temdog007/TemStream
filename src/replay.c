@@ -107,7 +107,7 @@ handleReplayMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ReplayMessage replayMessage = { 0 };
             replayMessage.tag = ReplayMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, serverData, &replayMessage.general);
+              &message->general, peer, serverData, &replayMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(
                   ReplayMessage, replayMessage, serverData->bytes);

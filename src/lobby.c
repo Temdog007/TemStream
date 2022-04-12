@@ -29,7 +29,7 @@ updateLobbyClients(pServerData serverData)
     MESSAGE_SERIALIZE(LobbyMessage, message, serverData->bytes);
     ENetPacket* packet = BytesToPacket(
       serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
-    sendPacketToReaders(serverData->host, packet, &serverData->config->readers);
+    sendPacketToReaders(serverData->host, packet);
     LobbyMessageFree(&message);
 }
 
@@ -123,7 +123,7 @@ handleLobbyMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
         case LobbyMessageTag_general:
             lobbyMessage.tag = LobbyMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, serverData, &lobbyMessage.general);
+              &message->general, peer, serverData, &lobbyMessage.general);
             break;
         default:
             break;

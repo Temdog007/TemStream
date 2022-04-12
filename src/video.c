@@ -64,7 +64,7 @@ handleVideoMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             VideoMessage videoMessage = { 0 };
             videoMessage.tag = TextMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, serverData, &videoMessage.general);
+              &message->general, peer, serverData, &videoMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(
                   VideoMessage, videoMessage, serverData->bytes);
@@ -81,8 +81,7 @@ handleVideoMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
                                                serverData->bytes.used,
                                                SendFlags_Normal);
-            sendPacketToReaders(
-              serverData->host, packet, &serverData->config->readers);
+            sendPacketToReaders(serverData->host, packet);
             result = VideoMessageCopy(&sizeMessage, message, currentAllocator);
         } break;
         case VideoMessageTag_video: {
@@ -91,8 +90,7 @@ handleVideoMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
                                                serverData->bytes.used,
                                                SendFlags_Video);
-            sendPacketToReaders(
-              serverData->host, packet, &serverData->config->readers);
+            sendPacketToReaders(serverData->host, packet);
         } break;
         default:
 #if _DEBUG

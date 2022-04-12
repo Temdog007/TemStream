@@ -162,18 +162,22 @@
 
 ### Apr 11, 2022
 - [x] Send chat rejected message on bad chat messages
-- [ ] Assign role to client (Anonymous, Producer, Consumer, Admin); Allow certain messages based on role
-- [ ] Remove read/write access list (only have black list and flag to allow anonymous)
+- [x] Assign role to client (Producer, Consumer, Admin); Allow certain messages based on role
 - [x] Separate client and server code
+- [x] Remove read/write access list
 
 ### Apr 12, 2022
-- [ ] Write websocket code for browser version
+- [ ] Add z-order to stream displays
+- [ ] Inline font file as a default
+- [ ] Fix chat sender and re-test
 
 ### Apr 13, 2022
+- [ ] Write websocket code for browser version
+
+### Apr 14, 2022
 - [ ] Make video replay streams work properly
 
 ### Later
-- [ ] Fix chat sender and re-test
 - [ ] Test browser
 - [ ] Make push to talk not apply to window recordings
 - [ ] Test android

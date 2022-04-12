@@ -2,31 +2,23 @@
 
 ServerData globalServerData = { 0 };
 
-// Assigns client a name and id also
 bool
 authenticateClient(pClient client,
                    const AuthenticateFunc func,
-                   const Authentication* auth,
-                   pRandomState rs)
+                   const char* credentials)
 {
-    char buffer[KB(4)];
-    memcpy(buffer, auth->value.buffer, auth->value.used);
     if (func) {
-        return func(auth->type, buffer);
+        char buffer[256] = { 0 };
+        client->role = (ClientRole)func(credentials, buffer);
+        client->name = TemLangStringCreate(buffer, currentAllocator);
+        return clientHasRole(client, ClientRole_Admin) ||
+               clientHasRole(client, ClientRole_Producer) ||
+               clientHasRole(client, ClientRole_Consumer);
     } else {
-        switch (auth->type) {
-            case 0:
-                // Give client random name and id
-                client->name = RandomClientName(rs);
-                client->id = randomGuid(rs);
-                return true;
-            default:
-#if _DEBUG
-                printf("Unknown authentication type (%d) from client",
-                       auth->type);
-#endif
-                return false;
-        }
+        // Give client random name and id
+        client->name = RandomClientName(&globalServerData.rs);
+        client->role =
+          ClientRole_Consumer | ClientRole_Producer | ClientRole_Admin;
         return true;
     }
 }
@@ -43,9 +35,7 @@ defaultServerConfiguration()
         .port = 10000u,
         .maxClients = 1024u,
         .timeout = STREAM_TIMEOUT,
-        .writers = { .anyone = NULL, .tag = AccessTag_anyone },
-        .readers = { .anyone = NULL, .tag = AccessTag_anyone },
-        .authenticationFunction = NULL,
+        .authenticationHandle = NULL,
         .data = { .none = NULL, .tag = ServerConfigurationDataTag_none },
         .record = true
     };
@@ -75,7 +65,8 @@ parseServerConfiguration(const char* key,
     STR_EQUALS(key, "--replay", keyLen, { goto parseRecord; });
     STR_EQUALS(key, "-N", keyLen, { goto parseName; });
     STR_EQUALS(key, "--name", keyLen, { goto parseName; });
-    // TODO: parse authentication
+    STR_EQUALS(key, "-A", keyLen, { goto parseAuthentication; });
+    STR_EQUALS(key, "--authentication", keyLen, { goto parseAuthentication; });
     return false;
 
 parseName : {
@@ -122,38 +113,13 @@ parseRecord : {
     config->record = atoi(value);
     return true;
 }
-}
-
-int
-printAccess(const Access* access)
-{
-    switch (access->tag) {
-        case AccessTag_anyone:
-            return puts("Anyone");
-        case AccessTag_allowed: {
-            int offset = 0;
-            printf("Allowed: ");
-            for (size_t i = 0; i < access->allowed.used; ++i) {
-                offset += printf("%s%s",
-                                 access->allowed.buffer[i].buffer,
-                                 i == access->allowed.used - 1U ? "\n" : ", ");
-            }
-            return offset;
-        } break;
-        case AccessTag_disallowed: {
-            int offset = 0;
-            printf("Disallowed: ");
-            for (size_t i = 0; i < access->disallowed.used; ++i) {
-                offset +=
-                  printf("%s%s",
-                         access->disallowed.buffer[i].buffer,
-                         i == access->disallowed.used - 1U ? "\n" : ", ");
-            }
-            return offset;
-        } break;
-        default:
-            return 0;
+parseAuthentication : {
+    if (config->authenticationHandle != NULL) {
+        dlclose(config->authenticationHandle);
     }
+    config->authenticationHandle = dlopen(value, RTLD_LAZY);
+    return config->authenticationHandle != NULL;
+}
 }
 
 int
@@ -170,10 +136,8 @@ printServerConfiguration(const ServerConfiguration* configuration)
              configuration->redisPort,
              configuration->maxClients,
              configuration->timeout,
-             configuration->authenticationFunction == NULL ? "No" : "Yes",
-             configuration->record ? "Yes" : " No") +
-      printf("Read Access: ") + printAccess(&configuration->readers) +
-      printf("Write Access: ") + printAccess(&configuration->writers);
+             configuration->authenticationHandle == NULL ? "No" : "Yes",
+             configuration->record ? "Yes" : " No");
     switch (configuration->data.tag) {
         case ServerConfigurationDataTag_chat:
             offset += printChatConfiguration(&configuration->data.chat);
@@ -204,6 +168,7 @@ printServerConfiguration(const ServerConfiguration* configuration)
 
 bool
 handleGeneralMessage(const GeneralMessage* message,
+                     ENetPeer* peer,
                      pServerData serverData,
                      pGeneralMessage output)
 {
@@ -220,7 +185,29 @@ handleGeneralMessage(const GeneralMessage* message,
                 if (client == NULL) {
                     continue;
                 }
-                TemLangStringListAppend(&output->getClientsAck, &client->name);
+                ClientListAppend(&output->getClientsAck, client);
+            }
+        } break;
+        case GeneralMessageTag_removeClient: {
+            pClient sender = peer->data;
+            if (sender == NULL) {
+                return false;
+            }
+            if (!clientHasRole(sender, ClientRole_Admin)) {
+                return false;
+            }
+            ENetHost* host = serverData->host;
+            for (size_t i = 0; i < host->peerCount; ++i) {
+                ENetPeer* p = &host->peers[i];
+                pClient client = p->data;
+                if (client == NULL) {
+                    continue;
+                }
+                if (TemLangStringsAreEqual(&client->name,
+                                           &message->removeClient)) {
+                    enet_peer_disconnect(p, 0);
+                    break;
+                }
             }
         } break;
         default:
@@ -236,17 +223,17 @@ handleGeneralMessage(const GeneralMessage* message,
 AuthenticateResult
 handleClientAuthentication(pClient client,
                            const AuthenticateFunc func,
-                           const GeneralMessage* message,
-                           pRandomState rs)
+                           const GeneralMessage* message)
 {
-    if (GuidEquals(&client->id, &ZeroGuid)) {
+    if (client->name.buffer == NULL) {
         if (message != NULL && message->tag == GeneralMessageTag_authenticate) {
-            if (authenticateClient(client, func, &message->authenticate, rs)) {
-                char buffer[128];
-                getGuidString(&client->id, buffer);
+            if (authenticateClient(
+                  client, func, message->authenticate.buffer)) {
+                TemLangString s = getAllRoles(client);
                 printf("Client assigned name '%s' (%s)\n",
                        client->name.buffer,
-                       buffer);
+                       s.buffer);
+                TemLangStringFree(&s);
                 return AuthenticateResult_Success;
             } else {
                 puts("Client failed authentication");
@@ -355,8 +342,10 @@ VerifyClientPacket(ENetHost* host, ENetEvent* e)
             if (client == NULL) {
                 break;
             }
-            return clientHasWriteAccess(client, globalServerData.config) ? 0
-                                                                         : 1;
+            return (clientHasRole(client, ClientRole_Admin) ||
+                    clientHasRole(client, ClientRole_Producer))
+                     ? 0
+                     : 1;
         } break;
         default:
             break;
@@ -390,8 +379,7 @@ checkClientTime(uint64_t* lastCheck, const ServerConfiguration* config)
             continue;
         }
         ++connectedPeers;
-        if (now - client->joinTime > 10000LL &&
-            GuidEquals(&client->id, &ZeroGuid)) {
+        if (now - client->joinTime > 10000LL && client->name.buffer == NULL) {
             char buffer[KB(1)] = { 0 };
             enet_address_get_host_ip(&peer->address, buffer, sizeof(buffer));
             printf("Removing client '%s:%u' because it failed to send "
@@ -486,7 +474,13 @@ continueServer:
     }
     PRINT_MEMORY;
 
-    RandomState rs = makeRandomState();
+    AuthenticateFunc func = NULL;
+    if (globalServerData.config->authenticationHandle != NULL) {
+        func =
+          dlsym(globalServerData.config->authenticationHandle, "authenticate");
+    }
+
+    globalServerData.rs = makeRandomState();
     ENetEvent event = { 0 };
     uint64_t lastCheck = SDL_GetTicks64();
     while (!appDone) {
@@ -505,7 +499,6 @@ continueServer:
                            buffer,
                            event.peer->address.port);
                     pClient client = currentAllocator->allocate(sizeof(Client));
-                    client->payload.allocator = currentAllocator;
                     client->name.allocator = currentAllocator;
                     client->joinTime = SDL_GetTicks64();
                     // name and id will be set after parsing authentication
@@ -538,22 +531,12 @@ continueServer:
                     void* message = funcs.deserializeMessage(&temp);
 
                     switch (handleClientAuthentication(
-                      client,
-                      config->authenticationFunction,
-                      funcs.getGeneralMessage(message),
-                      &rs)) {
+                      client, func, funcs.getGeneralMessage(message))) {
                         case AuthenticateResult_Success: {
-                            if ((!clientHasReadAccess(client, config) &&
-                                 !clientHasWriteAccess(client, config))) {
-                                enet_peer_disconnect(event.peer, 0);
-                                break;
-                            }
-
                             GeneralMessage gm = { 0 };
                             gm.tag = GeneralMessageTag_authenticateAck;
-                            TemLangStringCopy(&gm.authenticateAck,
-                                              &client->name,
-                                              currentAllocator);
+                            ClientCopy(
+                              &gm.authenticateAck, client, currentAllocator);
                             funcs.sendGeneral(
                               &gm, &globalServerData.bytes, event.peer);
                             GeneralMessageFree(&gm);

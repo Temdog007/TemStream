@@ -89,7 +89,7 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
         case ChatMessageTag_general:
             chatMessage.tag = ChatMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, serverData, &chatMessage.general);
+              &message->general, peer, serverData, &chatMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
                 sendBytes(peer,
@@ -133,8 +133,7 @@ handleChatMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             MESSAGE_SERIALIZE(ChatMessage, chatMessage, serverData->bytes);
             ENetPacket* packet = BytesToPacket(
               serverData->bytes.buffer, serverData->bytes.used, true);
-            sendPacketToReaders(
-              serverData->host, packet, &serverData->config->readers);
+            sendPacketToReaders(serverData->host, packet);
 
             if (getServerFileBytes(serverData->config, &serverData->bytes)) {
                 MESSAGE_DESERIALIZE(

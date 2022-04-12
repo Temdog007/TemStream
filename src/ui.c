@@ -532,7 +532,7 @@ getUiMenuActors(pMenu menu)
                     x += width + padding;
 
                     if (!connected || display == NULL ||
-                        !clientHasWriteAccess(&display->client, config)) {
+                        !clientHasRole(&display->client, ClientRole_Producer)) {
                         continue;
                     }
 

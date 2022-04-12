@@ -62,7 +62,7 @@ handleAudioMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             AudioMessage audioMessage = { 0 };
             audioMessage.tag = TextMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, serverData, &audioMessage.general);
+              &message->general, peer, serverData, &audioMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(
                   AudioMessage, audioMessage, serverData->bytes);
@@ -80,8 +80,7 @@ handleAudioMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ENetPacket* packet = BytesToPacket(serverData->bytes.buffer,
                                                serverData->bytes.used,
                                                SendFlags_Audio);
-            sendPacketToReaders(
-              serverData->host, packet, &serverData->config->readers);
+            sendPacketToReaders(serverData->host, packet);
         } break;
         default:
 #if _DEBUG

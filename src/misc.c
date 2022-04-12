@@ -3,6 +3,28 @@
 const Guid ZeroGuid = { .numbers = { 0ULL, 0ULL } };
 SDL_atomic_t runningThreads = { 0 };
 
+bool
+clientHasRole(const Client* client, const ClientRole check)
+{
+    return (client->role & check) != 0;
+}
+
+TemLangString
+getAllRoles(const Client* c)
+{
+    TemLangString s = { .allocator = currentAllocator };
+    for (ClientRole i = 0; i < ClientRole_Length; ++i) {
+        const ClientRole role = 1 << i;
+        if (clientHasRole(c, role)) {
+            TemLangStringAppendFormat(s, "%s, ", ClientRoleToCharString(role));
+        }
+    }
+    if (TemLangStringIsEmpty(&s)) {
+        s = TemLangStringCreate("None", currentAllocator);
+    }
+    return s;
+}
+
 void
 sendBytes(ENetPeer* peers,
           const size_t peerCount,
@@ -20,44 +42,6 @@ sendBytes(ENetPeer* peers,
     if (packet->referenceCount == 0) {
         enet_packet_destroy(packet);
     }
-}
-
-bool
-clientHasAccess(const Client* client, const Access* access)
-{
-    switch (access->tag) {
-        case AccessTag_anyone:
-            return true;
-        case AccessTag_allowed:
-            return TemLangStringListFindIf(
-              &access->allowed,
-              (TemLangStringListFindFunc)TemLangStringsAreEqual,
-              &client->name,
-              NULL,
-              NULL);
-        case AccessTag_disallowed:
-            return TemLangStringListFindIf(
-              &access->disallowed,
-              (TemLangStringListFindFunc)TemLangStringsAreEqual,
-              &client->name,
-              NULL,
-              NULL);
-        default:
-            break;
-    }
-    return false;
-}
-
-bool
-clientHasReadAccess(const Client* client, const ServerConfiguration* config)
-{
-    return clientHasAccess(client, &config->readers);
-}
-
-bool
-clientHasWriteAccess(const Client* client, const ServerConfiguration* config)
-{
-    return clientHasAccess(client, &config->writers);
 }
 
 uint64_t
@@ -216,12 +200,6 @@ printReceivedPacket(const ENetPacket* packet)
 }
 
 int
-printAuthentication(const Authentication* auth)
-{
-    return printf("Authentication: %s (%d)\n", auth->value.buffer, auth->type);
-}
-
-int
 printAudioSpec(const SDL_AudioSpec* spec)
 {
     return printf("Frequency: %d Hz\nChannels: %u\nSilence: %u\nSamples: "
@@ -231,16 +209,6 @@ printAudioSpec(const SDL_AudioSpec* spec)
                   spec->silence,
                   spec->samples,
                   spec->size);
-}
-
-bool
-GetClientFromGuid(const pClientList* list,
-                  const Guid* guid,
-                  const pClient** client,
-                  size_t* index)
-{
-    return pClientListFindIf(
-      list, (pClientListFindFunc)ClientGuidEquals, guid, client, index);
 }
 
 bool
@@ -323,12 +291,6 @@ ServerConfigurationTagEquals(const ServerConfiguration* c,
                              const ServerConfigurationDataTag* tag)
 {
     return c->data.tag == *tag;
-}
-
-bool
-ClientGuidEquals(const pClient* client, const Guid* guid)
-{
-    return GuidEquals(&(*client)->id, guid);
 }
 
 TSAllocator tsAllocator = { 0 };
@@ -571,12 +533,12 @@ AudioStateFromId(const AudioStatePtrList* list,
 #endif
 
 void
-sendPacketToReaders(ENetHost* host, ENetPacket* packet, const Access* access)
+sendPacketToReaders(ENetHost* host, ENetPacket* packet)
 {
     for (size_t i = 0; i < host->peerCount; ++i) {
         ENetPeer* peer = &host->peers[i];
         pClient client = peer->data;
-        if (client == NULL || !clientHasAccess(client, access)) {
+        if (client == NULL || (client->role & ClientRole_Consumer) == 0) {
             continue;
         }
         PEER_SEND(peer, SERVER_CHANNEL, packet);

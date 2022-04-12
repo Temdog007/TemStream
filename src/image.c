@@ -34,7 +34,7 @@ onImageDownTime(pServerData serverData)
         MESSAGE_SERIALIZE(ImageMessage, m, serverData->bytes);
         packet = BytesToPacket(
           serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
-        sendPacketToReaders(host, packet, &serverData->config->readers);
+        sendPacketToReaders(host, packet);
     }
 
     int fd = -1;
@@ -59,7 +59,7 @@ onImageDownTime(pServerData serverData)
         MESSAGE_SERIALIZE(ImageMessage, m, serverData->bytes);
         packet = BytesToPacket(
           serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
-        sendPacketToReaders(host, packet, &serverData->config->readers);
+        sendPacketToReaders(host, packet);
         imageSendOffset += s;
 #if PRINT_CHUNKS
         printf("Sending image chunk: %zu\n", imageSendOffset);
@@ -72,7 +72,7 @@ onImageDownTime(pServerData serverData)
         MESSAGE_SERIALIZE(ImageMessage, m, serverData->bytes);
         packet = BytesToPacket(
           serverData->bytes.buffer, serverData->bytes.used, SendFlags_Normal);
-        sendPacketToReaders(host, packet, &serverData->config->readers);
+        sendPacketToReaders(host, packet);
         needImageSend = false;
     }
 
@@ -120,7 +120,7 @@ handleImageMessage(const void* ptr, ENetPeer* peer, pServerData serverData)
             ImageMessage imageMessage = { 0 };
             imageMessage.tag = TextMessageTag_general;
             result = handleGeneralMessage(
-              &message->general, serverData, &imageMessage.general);
+              &message->general, peer, serverData, &imageMessage.general);
             if (result) {
                 MESSAGE_SERIALIZE(
                   ImageMessage, imageMessage, serverData->bytes);

@@ -50,16 +50,11 @@ variant ServerConfigurationData {
     ReplayConfiguration replay
 }
 
-struct Authentication {
-    string value
-    i32 type
-}
+inlineC "extern int dlclose(void*);"
 
-struct ServerConfiguration {
+resource ServerConfiguration {
     ServerConfigurationData data
-    Access writers
-    Access readers
-    null authenticationFunction
+    null authenticationHandle
     string redisIp
     string hostname
     string name
@@ -69,6 +64,12 @@ struct ServerConfiguration {
     i32 redisPort
     u32 maxClients
     bool record
+} sc {
+    inlineC "
+        if(sc.authenticationHandle != NULL){
+            dlclose(sc.authenticationHandle);
+        }
+    "
 }
 
 variant OptionalServerConfiguration {
@@ -77,12 +78,6 @@ variant OptionalServerConfiguration {
 }
 
 inlineC "MAKE_DEFAULT_LIST(ServerConfiguration);"
-
-variant Access {
-    null anyone
-    [ 0 string ] allowed
-    [ 0 string ] disallowed
-}
 
 variant OptionalGuid {
     Guid guid
@@ -94,12 +89,28 @@ variant StringOrGuid{
     Guid id
 }
 
+flag ClientRole {
+    Consumer
+    Producer
+    Admin
+}
+
+struct Client {
+    string name
+    i64 joinTime
+    u64 lastMessage
+    ClientRole role
+}
+
+inlineC "MAKE_DEFAULT_LIST(Client);"
+
 // Messages for all streams
 variant GeneralMessage {
-    Authentication authenticate
-    string authenticateAck
+    string authenticate
+    Client authenticateAck
     null getClients
-    [0 string] getClientsAck
+    [0 Client] getClientsAck
+    string removeClient
 }
 
 variant LobbyMessage {

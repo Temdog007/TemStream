@@ -35,24 +35,10 @@ struct VideoFrame {
     u16 height
 }
 
-struct Client {
-    string name
-    [ 0 u8 ] payload
-    Guid id
-    i64 joinTime
-    u64 lastMessage
-}
-
-struct ClientQuery {
-    Client client
-    bool readAccess
-    bool writeAccess
-}
-
 variant UserInputData {
     null startStream
-    ClientQuery queryAudio
-    ClientQuery queryVideo
+    Client queryAudio
+    Client queryVideo
     string file
     string text
 }
@@ -72,7 +58,7 @@ variant TalkMode {
 
 struct ClientConfiguration {
     string ttfFile
-    Authentication authentication
+    string credentials
     TalkMode talkMode
     f32 silenceThreshold
     i32 fontSize

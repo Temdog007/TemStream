@@ -111,9 +111,7 @@ defaultClientConfiguration()
         .noTui = false,
         .showLabel = true,
         .noAudio = false,
-        .authentication = { .type = 0,
-                            .value =
-                              TemLangStringCreate("", currentAllocator) },
+        .credentials = TemLangStringCreate("", currentAllocator),
         .talkMode = { .none = NULL, .tag = TalkModeTag_none },
         .ttfFile = TemLangStringCreate(
           "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
@@ -142,9 +140,6 @@ parseClientConfiguration(const int argc,
         STR_EQUALS(key, "--height", keyLen, { goto parseHeight; });
         STR_EQUALS(key, "-F", keyLen, { goto parseFullscreen; });
         STR_EQUALS(key, "--fullscreen", keyLen, { goto parseFullscreen; });
-        STR_EQUALS(key, "-CT", keyLen, { goto parseCredentialType; });
-        STR_EQUALS(
-          key, "--credential-type", keyLen, { goto parseCredentialType; });
         STR_EQUALS(key, "-C", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "--credentials", keyLen, { goto parseCredentials; });
         STR_EQUALS(key, "-NG", keyLen, { goto parseNoGui; });
@@ -198,14 +193,9 @@ parseClientConfiguration(const int argc,
         client->fullscreen = atoi(value);
         continue;
     }
-    parseCredentialType : {
-        client->authentication.type = atoi(value);
-        continue;
-    }
     parseCredentials : {
-        TemLangStringFree(&client->authentication.value);
-        client->authentication.value =
-          TemLangStringCreate(value, currentAllocator);
+        TemLangStringFree(&client->credentials);
+        client->credentials = TemLangStringCreate(value, currentAllocator);
         continue;
     }
     parseNoGui : {
@@ -266,8 +256,7 @@ printClientConfiguration(const ClientConfiguration* configuration)
              configuration->noTui,
              configuration->showLabel,
              configuration->silenceThreshold) +
-           printTalkMode(&configuration->talkMode) +
-           printAuthentication(&configuration->authentication);
+           printTalkMode(&configuration->talkMode);
 }
 
 void
@@ -383,64 +372,63 @@ end:
 }
 
 void
-sendAuthentication(ENetPeer* peer, const ServerConfigurationDataTag type)
+sendAuthentication(ENetPeer* peer,
+                   const TemLangString* authentication,
+                   const ServerConfigurationDataTag type)
 {
     uint8_t buffer[KB(2)] = { 0 };
     Bytes bytes = { .allocator = currentAllocator,
                     .buffer = buffer,
                     .used = 0,
                     .size = sizeof(buffer) };
-    const Authentication authentication =
-      ((const ClientConfiguration*)clientData.configuration)->authentication;
-    // printAuthentication(&authentication);
     switch (type) {
         case ServerConfigurationDataTag_lobby: {
             LobbyMessage message = { 0 };
             message.tag = LobbyMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(LobbyMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_chat: {
             ChatMessage message = { 0 };
             message.tag = ChatMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(ChatMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_text: {
             TextMessage message = { 0 };
             message.tag = TextMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(TextMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_audio: {
             AudioMessage message = { 0 };
             message.tag = AudioMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(AudioMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_image: {
             ImageMessage message = { 0 };
             message.tag = ImageMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(ImageMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_video: {
             VideoMessage message = { 0 };
             message.tag = VideoMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(VideoMessage, message, bytes);
         } break;
         case ServerConfigurationDataTag_replay: {
             ReplayMessage message = { 0 };
             message.tag = ReplayMessageTag_general;
             message.general.tag = GeneralMessageTag_authenticate;
-            message.general.authenticate = authentication;
+            message.general.authenticate = *authentication;
             MESSAGE_SERIALIZE(ReplayMessage, message, bytes);
         } break;
         default:
@@ -642,13 +630,9 @@ clientHandleAudioMessage(const AudioMessage* message,
             input.data.tag = UserInputDataTag_queryAudio;
             display->choosingPlayback = true;
             success = clientHandleGeneralMessage(&message->general,
-                                                 &input.data.queryAudio.client);
+                                                 &input.data.queryAudio);
             if (success &&
                 message->general.tag == GeneralMessageTag_authenticateAck) {
-                input.data.queryAudio.writeAccess = clientHasWriteAccess(
-                  &input.data.queryAudio.client, &display->config);
-                input.data.queryAudio.readAccess = clientHasReadAccess(
-                  &input.data.queryAudio.client, &display->config);
                 success = UserInputListAppend(&userInputs, &input);
             }
             UserInputFree(&input);
@@ -719,13 +703,9 @@ clientHandleVideoMessage(const VideoMessage* message,
             input.id = display->id;
             input.data.tag = UserInputDataTag_queryVideo;
             success = clientHandleGeneralMessage(&message->general,
-                                                 &input.data.queryVideo.client);
+                                                 &input.data.queryVideo);
             if (success &&
                 message->general.tag == GeneralMessageTag_authenticateAck) {
-                input.data.queryVideo.writeAccess = clientHasWriteAccess(
-                  &input.data.queryVideo.client, &display->config);
-                input.data.queryVideo.readAccess = clientHasReadAccess(
-                  &input.data.queryVideo.client, &display->config);
                 success = UserInputListAppend(&userInputs, &input);
             }
             UserInputFree(&input);
@@ -963,7 +943,8 @@ streamConnectionThread(void* ptr)
           "Connected to server: %s:%u\n", buffer, event.peer->address.port);
         USE_DISPLAY(clientData.mutex, fend2, displayMissing, {
             display->mtu = peer->mtu;
-            sendAuthentication(peer, config->data.tag);
+            const ClientConfiguration* cc = clientData.configuration;
+            sendAuthentication(peer, &cc->credentials, config->data.tag);
         });
     } else {
         fprintf(stderr, "Failed to connect to server\n");
@@ -2011,8 +1992,10 @@ selectStreamToSendTextTo(struct pollfd inputfd, pBytes bytes, pClient client)
         goto end;
     }
 
-    if (!clientHasWriteAccess(client, &list.buffer[i])) {
-        puts("Write access is not granted for this stream");
+    if (!clientHasRole(client, ClientRole_Producer)) {
+        TemLangString s = getAllRoles(client);
+        printf("Cannot produce content for this stream. Role (%s)\n", s.buffer);
+        TemLangStringFree(&s);
         goto end;
     }
 
@@ -2071,8 +2054,8 @@ selectStreamToUploadFileTo(struct pollfd inputfd, pBytes bytes, pClient client)
         goto end;
     }
 
-    if (!clientHasWriteAccess(client, &list.buffer[i])) {
-        puts("Write access is not granted for this stream");
+    if (!clientHasRole(client, ClientRole_Producer)) {
+        puts("Cannot produce content for this stream");
         goto end;
     }
 
@@ -2420,10 +2403,6 @@ selectStreamToChangeAudioSource(struct pollfd inputfd, pBytes bytes)
             ui.id = display->id;
             display->choosingPlayback = true;
             ui.data.tag = UserInputDataTag_queryAudio;
-            ui.data.queryAudio.readAccess =
-              clientHasReadAccess(&display->client, &display->config);
-            ui.data.queryAudio.writeAccess =
-              clientHasWriteAccess(&display->client, &display->config);
             UserInputListAppend(&userInputs, &ui);
             UserInputFree(&ui);
         }
@@ -3130,14 +3109,21 @@ clientHandleGeneralMessage(const GeneralMessage* message, pClient client)
         case GeneralMessageTag_getClientsAck:
             askQuestion("Clients");
             for (size_t i = 0; i < message->getClientsAck.used; ++i) {
-                puts(message->getClientsAck.buffer[i].buffer);
+                const Client* client = &message->getClientsAck.buffer[i];
+                TemLangString s = getAllRoles(client);
+                printf("%s: %s\n", client->name.buffer, s.buffer);
+                TemLangStringFree(&s);
             }
             puts("");
             return true;
         case GeneralMessageTag_authenticateAck:
-            TemLangStringCopy(
-              &client->name, &message->authenticateAck, currentAllocator);
-            printf("Client authenticated as %s\n", client->name.buffer);
+            ClientCopy(client, &message->authenticateAck, currentAllocator);
+            TemLangString s = getAllRoles(client);
+            printf("Client authenticated as %s (%s)\n",
+                   client->name.buffer,
+                   s.buffer);
+            TemLangStringFree(&s);
+            sendUpdateUiEvent();
             return true;
         default:
             printf("Unexpected message from lobby server: %s\n",
@@ -3495,7 +3481,8 @@ handleUserInput(const struct pollfd inputfd,
     const Guid* id = &userInput->id;
     switch (userInput->data.tag) {
         case UserInputDataTag_queryVideo:
-            if (userInput->data.queryVideo.writeAccess) {
+            if (clientHasRole(&userInput->data.queryVideo,
+                              ClientRole_Producer)) {
                 selectVideoStreamSource(inputfd, bytes, userInput);
             }
             break;
@@ -3505,7 +3492,8 @@ handleUserInput(const struct pollfd inputfd,
                 display->choosingPlayback = true;
             });
             bool ask = false;
-            if (userInput->data.queryAudio.writeAccess) {
+            if (clientHasRole(&userInput->data.queryAudio,
+                              ClientRole_Producer)) {
                 UserInput ui = { 0 };
                 ui.id = userInput->id;
                 ui.data.tag = UserInputDataTag_Invalid;
@@ -3530,7 +3518,8 @@ handleUserInput(const struct pollfd inputfd,
                 }
                 UserInputFree(&ui);
             }
-            if (userInput->data.queryAudio.readAccess) {
+            if (clientHasRole(&userInput->data.queryAudio,
+                              ClientRole_Consumer)) {
                 pAudioState playback =
                   currentAllocator->allocate(sizeof(AudioState));
                 playback->storedAudio = CQueueCreate(CQUEUE_SIZE);
@@ -4083,7 +4072,8 @@ doRunClient(const Configuration* configuration,
               &event.peer->address, buffer, sizeof(buffer));
             printf(
               "Connected to server: %s:%u\n", buffer, event.peer->address.port);
-            sendAuthentication(peer, ServerConfigurationDataTag_lobby);
+            sendAuthentication(
+              peer, &config->credentials, ServerConfigurationDataTag_lobby);
             goto runServerProcedure;
         }
     }
@@ -4108,8 +4098,7 @@ runServerProcedure:
         const bool success = m.tag == LobbyMessageTag_general &&
                              m.general.tag == GeneralMessageTag_authenticateAck;
         if (success) {
-            TemLangStringCopy(
-              &client.name, &m.general.authenticateAck, currentAllocator);
+            ClientCopy(&client, &m.general.authenticateAck, currentAllocator);
             LobbyMessageFree(&m);
         } else {
             LobbyMessageFree(&m);
@@ -4396,8 +4385,7 @@ runServerProcedure:
                         puts("No stream to send file too...");
                         goto endDropFile;
                     }
-                    if (!clientHasWriteAccess(&display->client,
-                                              &display->config)) {
+                    if (!clientHasRole(&display->client, ClientRole_Producer)) {
                         printf("Cannot send file to stream '%s' because client "
                                "doesn't have write access",
                                display->config.name.buffer);
