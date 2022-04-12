@@ -113,8 +113,7 @@ defaultClientConfiguration()
         .noAudio = false,
         .credentials = TemLangStringCreate("", currentAllocator),
         .talkMode = { .none = NULL, .tag = TalkModeTag_none },
-        .ttfFile = TemLangStringCreate(
-          "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", currentAllocator)
+        .ttfFile = TemLangStringCreate("", currentAllocator)
     };
 }
 
@@ -4362,6 +4361,7 @@ runServerProcedure:
                         puts("Loading new font...");
                         if (loadNewFont(
                               e.drop.file, config->fontSize, &ttfFont)) {
+                            info.font = ttfFont;
                             updateAllDisplays(renderer, ttfFont, w, h);
                             puts("Loaded new font");
                         }
@@ -4625,7 +4625,12 @@ getHostnameFromGUI(const Configuration* configuration)
         printf("Current renderer: %s\n", info.name);
     }
 
-    ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
+    if (TemLangStringIsEmpty(&config->ttfFile)) {
+        SDL_RWops* rw = SDL_RWFromConstMem(DefaultFont, sizeof(DefaultFont));
+        ttfFont = TTF_OpenFontRW(rw, 0, config->fontSize);
+    } else {
+        ttfFont = TTF_OpenFont(config->ttfFile.buffer, config->fontSize);
+    }
     if (ttfFont == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", TTF_GetError());
         displayError(window, "Failed to start", true);

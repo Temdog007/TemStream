@@ -168,8 +168,9 @@
 
 ### Apr 12, 2022
 - [ ] Add z-order to stream displays
-- [ ] Inline font file as a default
+- [x] Inline font file as a default
 - [ ] Fix chat sender and re-test
+- [ ] Make layout message
 
 ### Apr 13, 2022
 - [ ] Write websocket code for browser version
@@ -178,10 +179,11 @@
 - [ ] Make video replay streams work properly
 
 ### Later
+- [ ] Write example code for authentication
+- [ ] Make default background to display if no stream displays present
 - [ ] Test browser
 - [ ] Make push to talk not apply to window recordings
 - [ ] Test android
-- [ ] Make layout message
 - [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects
 - [ ] SSL encryption (dtls, use proxy)
 
