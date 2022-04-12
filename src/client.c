@@ -165,7 +165,6 @@ parseClientConfiguration(const int argc,
               TemLangStringCreate(value, currentAllocator);
             continue;
         });
-        // TODO: parse authentication
         if (!parseCommonConfiguration(key, value, configuration)) {
             parseFailure("Client", key, value);
             return false;
@@ -3957,45 +3956,44 @@ handleUserEvent(const SDL_UserEvent* e,
 }
 
 #define HANDLE_MENU_BUTTON                                                     \
-    if (window == NULL) {                                                      \
+    if (info->window == NULL) {                                                \
         displayUserOptions();                                                  \
     } else {                                                                   \
-        info.showUi = !info.showUi;                                            \
-        if (info.showUi) {                                                     \
+        info->showUi = !info->showUi;                                          \
+        if (info->showUi) {                                                    \
             setUiMenu(MenuTag_Main);                                           \
         }                                                                      \
     }
 
 int
 doRunClient(const Configuration* configuration,
-            SDL_Window* window,
-            SDL_Renderer* renderer,
-            TTF_Font* ttfFont,
+            pRenderInfo info,
             const char* hostname,
             const uint16_t port)
 {
     clientData.configuration = (NullValue)&configuration->client;
-    clientData.window = window;
+    clientData.window = info->window;
 
     int result = EXIT_FAILURE;
     puts("Running client...");
 
-    SDL_RenderClear(renderer);
+    SDL_RenderClear(info->renderer);
     {
         int w, h;
-        SDL_GetWindowSize(window, &w, &h);
+        SDL_GetWindowSize(info->window, &w, &h);
         const SDL_Rect rect = {
             .x = w / 10, .y = h * 4 / 10, .w = w * 8 / 10, .h = h * 2 / 10
         };
         const SDL_Color fg = { 255u, 255u, 255u, 255u };
         const SDL_Color bg = { 0u, 0u, 0u, 255u };
         SDL_Surface* surface =
-          TTF_RenderUTF8_Shaded_Wrapped(ttfFont, "Connecting...", fg, bg, 0);
-        SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-        SDL_RenderCopy(renderer, texture, NULL, &rect);
+          TTF_RenderUTF8_Shaded_Wrapped(info->font, "Connecting...", fg, bg, 0);
+        SDL_Texture* texture =
+          SDL_CreateTextureFromSurface(info->renderer, surface);
+        SDL_RenderCopy(info->renderer, texture, NULL, &rect);
         SDL_DestroyTexture(texture);
         SDL_FreeSurface(surface);
-        SDL_RenderPresent(renderer);
+        SDL_RenderPresent(info->renderer);
     }
 
     const ClientConfiguration* config = &configuration->client;
@@ -4008,16 +4006,6 @@ doRunClient(const Configuration* configuration,
     ENetHost* host = NULL;
     ENetPeer* peer = NULL;
     Client client = { 0 };
-
-    RenderInfo info = { .window = window,
-                        .renderer = renderer,
-                        .font = ttfFont,
-                        .showUi = window != NULL,
-                        .rs = makeRandomState(),
-                        .menu = { .tag = MenuTag_Main,
-                                  .sinks = { .allocator = currentAllocator } },
-                        .focusId = INT_MAX,
-                        .uiActors = { .allocator = currentAllocator } };
 
     clientData.displays.allocator = currentAllocator;
     clientData.allStreams.allocator = currentAllocator;
@@ -4057,7 +4045,7 @@ doRunClient(const Configuration* configuration,
     }
     if (peer == NULL) {
         fprintf(stderr, "Failed to connect to server\n");
-        displayError(window, "Failed to connect to server", false);
+        displayError(info->window, "Failed to connect to server", false);
         appDone = true;
         goto end;
     }
@@ -4078,7 +4066,7 @@ doRunClient(const Configuration* configuration,
     }
 
     fprintf(stderr, "Failed to connect to server\n");
-    displayError(window, "Failed to connect to server", false);
+    displayError(info->window, "Failed to connect to server", false);
     enet_peer_reset(peer);
     peer = NULL;
     appDone = true;
@@ -4128,8 +4116,8 @@ runServerProcedure:
 
     uint32_t lastMouseMove = 0;
     MouseState mouseState = MouseState_Visible | MouseState_InWindow;
-    if (window != NULL) {
-        info.uiActors = getUiMenuActors(&info.menu);
+    if (info->window != NULL) {
+        info->uiActors = getUiMenuActors(&info->menu);
     }
 
     bool needRender = true;
@@ -4148,7 +4136,7 @@ runServerProcedure:
             }
 
             int w, h;
-            SDL_GetWindowSize(window, &w, &h);
+            SDL_GetWindowSize(info->window, &w, &h);
             SDL_LockMutex(clientData.mutex);
             switch (e.type) {
                 case SDL_QUIT:
@@ -4199,19 +4187,19 @@ runServerProcedure:
 #endif
                         case SDLK_v:
                             if ((e.key.keysym.mod & KMOD_CTRL) == 0 ||
-                                info.showUi) {
+                                info->showUi) {
                                 break;
                             }
                             e.type = SDL_DROPTEXT;
                             e.drop.file = SDL_GetClipboardText();
                             e.drop.timestamp = SDL_GetTicks64();
-                            e.drop.windowID = SDL_GetWindowID(window);
+                            e.drop.windowID = SDL_GetWindowID(info->window);
                             SDL_PushEvent(&e);
                             break;
                         case SDLK_RETURN:
                         case SDLK_RETURN2:
                         case SDLK_KP_ENTER:
-                            if (info.showUi) {
+                            if (info->showUi) {
                                 break;
                             }
                             HANDLE_MENU_BUTTON;
@@ -4221,7 +4209,7 @@ runServerProcedure:
                     }
                     break;
                 case SDL_MOUSEBUTTONDOWN: {
-                    if (info.showUi) {
+                    if (info->showUi) {
                         break;
                     }
                     switch (e.button.button) {
@@ -4241,22 +4229,22 @@ runServerProcedure:
                     point.y = e.button.y;
                     if (findDisplayFromPoint(&point, &targetDisplay)) {
                         hasTarget = true;
-                        SDL_SetWindowGrab(window, true);
+                        SDL_SetWindowGrab(info->window, true);
                         sendRenderEvent();
                     }
                 } break;
                 case SDL_MOUSEBUTTONUP:
-                    if (info.showUi) {
+                    if (info->showUi) {
                         break;
                     }
                     hasTarget = false;
                     targetDisplay = UINT32_MAX;
-                    SDL_SetWindowGrab(window, false);
+                    SDL_SetWindowGrab(info->window, false);
                     sendRenderEvent();
                     break;
                 case SDL_MOUSEMOTION:
                     lastMouseMove = e.motion.timestamp;
-                    if (info.showUi) {
+                    if (info->showUi) {
                         break;
                     }
                     if (hasTarget) {
@@ -4305,7 +4293,7 @@ runServerProcedure:
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
-                    if (info.showUi) {
+                    if (info->showUi) {
                         break;
                     }
                     if (targetDisplay >= clientData.displays.used) {
@@ -4330,7 +4318,8 @@ runServerProcedure:
 
                             const float width = display->dstRect.w;
                             const float height = display->dstRect.h;
-                            updateChatDisplay(renderer, ttfFont, w, h, display);
+                            updateChatDisplay(
+                              info->renderer, info->font, w, h, display);
                             display->dstRect.w = width;
                             display->dstRect.h = height;
                         } break;
@@ -4344,10 +4333,10 @@ runServerProcedure:
                         needRender = true;
                         break;
                     }
-                    handleUserEvent(&e.user, &info, peer, &bytes, w, h);
+                    handleUserEvent(&e.user, info, peer, &bytes, w, h);
                     break;
                 case SDL_DROPFILE: {
-                    if (info.showUi) {
+                    if (info->showUi) {
                         goto endDropFile;
                     }
                     // Look for image stream
@@ -4360,9 +4349,8 @@ runServerProcedure:
                     if (ext.tag == FileExtensionTag_font) {
                         puts("Loading new font...");
                         if (loadNewFont(
-                              e.drop.file, config->fontSize, &ttfFont)) {
-                            info.font = ttfFont;
-                            updateAllDisplays(renderer, ttfFont, w, h);
+                              e.drop.file, config->fontSize, &info->font)) {
+                            updateAllDisplays(info->renderer, info->font, w, h);
                             puts("Loaded new font");
                         }
                         goto endDropFile;
@@ -4402,7 +4390,7 @@ runServerProcedure:
                     SDL_free(e.drop.file);
                 } break;
                 case SDL_DROPTEXT: {
-                    if (info.showUi) {
+                    if (info->showUi) {
                         goto endDropText;
                     }
                     // Look for a text or chat stream
@@ -4439,8 +4427,8 @@ runServerProcedure:
                     break;
             }
             SDL_UnlockMutex(clientData.mutex);
-            if (info.showUi) {
-                updateUiActors(&e, &info);
+            if (info->showUi) {
+                updateUiActors(&e, info);
             }
         }
         if (SDL_GetTicks() - lastMouseMove > 1000U) {
@@ -4452,26 +4440,26 @@ runServerProcedure:
         }
         if (needRender) {
             int w, h;
-            SDL_GetWindowSize(window, &w, &h);
-            drawTextures(info.renderer,
-                         info.font,
+            SDL_GetWindowSize(info->window, &w, &h);
+            drawTextures(info->renderer,
+                         info->font,
                          targetDisplay,
                          (float)w - MIN_WIDTH,
                          (float)h - MIN_HEIGHT,
                          mouseState ==
                            (MouseState_Visible | MouseState_InWindow));
-            if (info.showUi) {
+            if (info->showUi) {
                 const SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-                if (SDL_SetRenderDrawBlendMode(info.renderer,
+                if (SDL_SetRenderDrawBlendMode(info->renderer,
                                                SDL_BLENDMODE_BLEND) != 0 ||
-                    SDL_SetRenderDrawColor(info.renderer, 0u, 0u, 0u, 96u) !=
+                    SDL_SetRenderDrawColor(info->renderer, 0u, 0u, 0u, 96u) !=
                       0 ||
-                    SDL_RenderFillRect(info.renderer, &rect) != 0) {
+                    SDL_RenderFillRect(info->renderer, &rect) != 0) {
                     fprintf(stderr, "Failed to render: %s\n", SDL_GetError());
                 }
-                renderUiActors(&info);
+                renderUiActors(info);
             }
-            SDL_RenderPresent(info.renderer);
+            SDL_RenderPresent(info->renderer);
             needRender = false;
         }
         SDL_Delay(1u);
@@ -4481,7 +4469,7 @@ runServerProcedure:
 
 end:
     appDone = true;
-    UiActorListFree(&info.uiActors);
+    UiActorListFree(&info->uiActors);
     // FontFree(&font);
     while (SDL_AtomicGet(&runningThreads) > 0) {
         SDL_Delay(1);
@@ -4492,7 +4480,7 @@ end:
     }
     AudioStatePtrListFree(&audioStates);
 
-    MenuFree(&info.menu);
+    MenuFree(&info->menu);
     closeHostAndPeer(host, peer);
     ClientFree(&client);
     uint8_tListFree(&bytes);
@@ -4565,7 +4553,8 @@ getHostnameFromTUI(const Configuration* configuration)
         }
     }
     const uint16_t port = strtoul((char*)portStr, NULL, 10);
-    return doRunClient(configuration, NULL, NULL, NULL, (char*)hostname, port);
+    RenderInfo info = { 0 };
+    return doRunClient(configuration, &info, (char*)hostname, port);
 }
 
 void
@@ -4677,6 +4666,9 @@ getHostnameFromGUI(const Configuration* configuration)
         .renderer = renderer,
         .window = window,
         .showUi = true,
+        .rs = makeRandomState(),
+        .menu = { .tag = MenuTag_Main,
+                  .sinks = { .allocator = currentAllocator } },
         .uiActors = { .buffer = actors, .used = actorCount, .size = actorCount }
     };
     renderUi(&info);
@@ -4721,9 +4713,7 @@ getHostnameFromGUI(const Configuration* configuration)
                             }
                             result = doRunClient(
                               configuration,
-                              window,
-                              renderer,
-                              ttfFont,
+                              &info,
                               actors[1].data.editText.text.buffer,
                               strtoul(
                                 actors[2].data.editText.text.buffer, NULL, 10));
@@ -4748,7 +4738,7 @@ end:
     for (size_t i = 0; i < actorCount; ++i) {
         UiActorFree(&actors[i]);
     }
-    TTF_CloseFont(ttfFont);
+    TTF_CloseFont(info.font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     return result;

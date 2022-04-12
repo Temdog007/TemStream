@@ -105,11 +105,12 @@ resource StreamDisplay {
     FRect dstRect
     OptionalRect srcRect
     Guid id
+    null texture
     u32 recordings
     u32 mtu
+    i32 zOrder
     bool choosingPlayback
-    bool visible
-    null texture
+    bool visible    
 } r {
     inlineC "
         SDL_DestroyTexture(r.texture);
