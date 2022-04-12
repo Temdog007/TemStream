@@ -2965,6 +2965,17 @@ updateAllDisplays(SDL_Renderer* renderer,
     }
 }
 
+int
+StreamDisplaySort(const StreamDisplay* a, const StreamDisplay* b)
+{
+    if (a->zOrder < b->zOrder) {
+        return -1;
+    } else if (a->zOrder > b->zOrder) {
+        return 1;
+    }
+    return 0;
+}
+
 void
 drawTextures(SDL_Renderer* renderer,
              TTF_Font* ttfFont,
@@ -2982,15 +2993,12 @@ drawTextures(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, 0x33u, 0x33u, 0x33u, 0xffu);
     SDL_RenderClear(renderer);
 
+    StreamDisplayListSort(&clientData.displays,
+                          (__compar_fn_t)StreamDisplaySort);
+
     const StreamDisplay* display = NULL;
     if (target < clientData.displays.used && canShowLabel) {
         display = &clientData.displays.buffer[target];
-        if (display->texture != NULL && display->visible) {
-            SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
-            const SDL_FRect rect =
-              expandRect((const SDL_FRect*)&display->dstRect, 1.025f, 1.025f);
-            SDL_RenderFillRectF(renderer, &rect);
-        }
     }
     for (size_t i = 0; i < clientData.displays.used; ++i) {
         pStreamDisplay display = &clientData.displays.buffer[i];
@@ -3000,6 +3008,14 @@ drawTextures(SDL_Renderer* renderer,
         SDL_Texture* texture = display->texture;
         if (texture == NULL) {
             continue;
+        }
+        if (target == i) {
+            if (display->texture != NULL && display->visible) {
+                SDL_SetRenderDrawColor(renderer, 0xffu, 0xffu, 0x0u, 0xffu);
+                const SDL_FRect rect = expandRect(
+                  (const SDL_FRect*)&display->dstRect, 1.025f, 1.025f);
+                SDL_RenderFillRectF(renderer, &rect);
+            }
         }
         SDL_FRect* rect = (SDL_FRect*)&display->dstRect;
         rect->x = SDL_clamp(rect->x, 0, maxX);

@@ -167,7 +167,7 @@
 - [x] Remove read/write access list
 
 ### Apr 12, 2022
-- [ ] Add z-order to stream displays
+- [x] Add z-order to stream displays
 - [x] Inline font file as a default
 - [ ] Fix chat sender and re-test
 - [ ] Make layout message
