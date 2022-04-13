@@ -171,9 +171,10 @@
 - [x] Inline font file as a default
 - [x] Fix chat sender and re-test
 - [x] Redo chat logs to not need to loaded in memory
-- [ ] Make layout message
 
 ### Apr 13, 2022
+- [x] Make layout message
+- [x] Fix user input freezing app when run in background
 - [ ] Write websocket code for browser version
 
 ### Apr 14, 2022

@@ -51,11 +51,15 @@ main(const int argc, const char** argv)
     printVersion();
 
     {
-        struct sigaction action;
+        struct sigaction action = { 0 };
         action.sa_handler = signalHandler;
         sigemptyset(&action.sa_mask);
         action.sa_flags = 0;
-        sigaction(SIGINT, &action, NULL);
+        if (sigaction(SIGINT, &action, NULL) == -1 ||
+            sigaction(SIGTTIN, &action, NULL) == -1) {
+            perror("sigaction");
+            goto end;
+        }
     }
     {
         // Look for -M or --memory
@@ -338,12 +342,22 @@ printVersion()
 #endif
 }
 
+bool allowUserInput = true;
 void
 signalHandler(int signal)
 {
-    if (signal == SIGINT) {
-        puts("Ending TemStream");
-        appDone = true;
+    switch (signal) {
+        case SIGINT:
+            puts("Ending TemStream");
+            appDone = true;
+            break;
+        case SIGTTIN:
+            puts("TemStream is running in the background but tried to read "
+                 "from standrard input.");
+            allowUserInput = false;
+            break;
+        default:
+            break;
     }
 }
 

@@ -113,11 +113,6 @@ variant GeneralMessage {
     string removeClient
 }
 
-variant LobbyMessage {
-    GeneralMessage general
-    [0 ServerConfiguration] allStreams
-}
-
 struct Chat {
     string message
     string author

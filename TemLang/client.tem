@@ -212,5 +212,3 @@ flag MouseState {
     InWindow
     Visible
 }
-
-inlineData DefaultFont "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf" 

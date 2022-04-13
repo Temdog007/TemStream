@@ -18,6 +18,7 @@
 #include <IO.h>
 
 #include <generated/general.h>
+#include <generated/resource.h>
 
 #include "circular_queue.h"
 
@@ -64,6 +65,8 @@ extern bool appDone;
 
 extern void
 signalHandler(int);
+
+extern bool allowUserInput;
 
 extern Configuration
 defaultConfiguration();

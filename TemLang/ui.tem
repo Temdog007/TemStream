@@ -103,3 +103,17 @@ enum EnterTextButton {
     Send2
     Back
 }
+
+struct Layout {
+    string target
+    FRect rect
+    i32 zOrder
+}
+
+inlineC "MAKE_DEFAULT_LIST(Layout);"
+
+variant LobbyMessage {
+    GeneralMessage general
+    [0 ServerConfiguration] allStreams
+    [0 Layout] layouts
+}

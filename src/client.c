@@ -9,6 +9,7 @@ SDL_mutex* clientMutex = NULL;
 ClientData clientData = { 0 };
 UserInputList userInputs = { 0 };
 AudioStatePtrList audioStates = { 0 };
+LayoutList layoutList = { 0 };
 SDL_atomic_t continueSelection = { 0 };
 
 int
@@ -108,7 +109,7 @@ defaultClientConfiguration()
         .silenceThreshold = 0.f,
         .fontSize = 48,
         .noGui = false,
-        .noTui = true,
+        .noTui = false,
         .showLabel = true,
         .noAudio = false,
         .credentials = TemLangStringCreate("", currentAllocator),
@@ -2443,7 +2444,7 @@ userInputThread(void* ptr)
                               .revents = 0,
                               .fd = STDIN_FILENO };
     uint32_t index = 0;
-    while (!appDone) {
+    while (!appDone && allowUserInput) {
 
         IN_MUTEX(clientData.mutex, end4, {
             for (size_t i = 0; i < userInputs.used; ++i) {
@@ -3006,6 +3007,19 @@ drawTextures(SDL_Renderer* renderer,
     if (renderer == NULL) {
         return;
     }
+
+    for (size_t i = 0; i < layoutList.used; ++i) {
+        size_t index = 0;
+        const Layout* layout = &layoutList.buffer[i];
+        if (!GetStreamDisplayFromName(
+              &clientData.displays, &layout->target, NULL, &index)) {
+            continue;
+        }
+
+        pStreamDisplay display = &clientData.displays.buffer[index];
+        display->zOrder = layout->zOrder;
+        display->dstRect = layout->rect;
+    }
     SDL_SetRenderTarget(renderer, NULL);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
@@ -3196,6 +3210,10 @@ clientHandleLobbyMessage(const LobbyMessage* message, pClient client)
             goto end;
         case LobbyMessageTag_general:
             result = clientHandleGeneralMessage(&message->general, client);
+            goto end;
+        case LobbyMessageTag_layouts:
+            result =
+              LayoutListCopy(&layoutList, &message->layouts, currentAllocator);
             goto end;
         default:
             break;
@@ -4066,6 +4084,7 @@ doRunClient(const Configuration* configuration,
 
     userInputs.allocator = currentAllocator;
     audioStates.allocator = currentAllocator;
+    layoutList.allocator = currentAllocator;
 
     host = enet_host_create(NULL, 1, 2, 0, 0);
     if (host == NULL) {
@@ -4523,6 +4542,8 @@ end:
         currentAllocator->free(audioStates.buffer[i]);
     }
     AudioStatePtrListFree(&audioStates);
+
+    LayoutListFree(&layoutList);
 
     MenuFree(&info->menu);
     closeHostAndPeer(host, peer);
