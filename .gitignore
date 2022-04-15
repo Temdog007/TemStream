@@ -102,4 +102,5 @@ yarn-error.log*
 streams/
 junk/
 
-3rdParty/
+debug/
+release/

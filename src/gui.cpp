@@ -87,6 +87,23 @@ bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e)
 	}
 }
 
+void drawMenu()
+{
+	if (ImGui::BeginMainMenuBar())
+	{
+		if (ImGui::BeginMenu("File"))
+		{
+			bool selected = false;
+			if (ImGui::MenuItem("Exit", "Alt+F4", &selected))
+			{
+				TemStream::appDone = true;
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
+	}
+}
+
 namespace TemStream
 {
 int runGui()
@@ -138,17 +155,18 @@ int runGui()
 			default:
 				break;
 			}
-
-			ImGui_ImplSDLRenderer_NewFrame();
-			ImGui_ImplSDL2_NewFrame();
-			ImGui::NewFrame();
-
-			ImGui::Render();
-			SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
-			SDL_RenderClear(gui.renderer);
-			ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
-			SDL_RenderPresent(gui.renderer);
 		}
+		ImGui_ImplSDLRenderer_NewFrame();
+		ImGui_ImplSDL2_NewFrame();
+		ImGui::NewFrame();
+
+		drawMenu();
+
+		ImGui::Render();
+		SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
+		SDL_RenderClear(gui.renderer);
+		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
+		SDL_RenderPresent(gui.renderer);
 	}
 
 	ImGui_ImplSDLRenderer_Shutdown();
