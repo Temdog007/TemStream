@@ -4,27 +4,16 @@
 
 namespace TemStream
 {
-class Producer : public Peer
+class Producer
 {
   private:
 	std::mutex mutex;
-
-	bool handleData(const Bytes &) override;
+	int fd;
 
   public:
 	Producer();
 	~Producer();
 
-	bool init(const char *hostname, const char *port) override;
-
-	template <class T> bool sendMessage(const T &t)
-	{
-		std::istringstream is;
-		cereal::PortableBinaryInputArchive in(is);
-		in(t);
-		const std::string str(is.str());
-		std::lock_guard<std::mutex> guard(mutex);
-		return sendData(fd, reinterpret_cast<const uint8_t *>(str.data()), str.size());
-	}
+	bool init(const char *hostname, const char *port);
 };
 } // namespace TemStream

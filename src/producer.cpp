@@ -2,22 +2,18 @@
 
 namespace TemStream
 {
-Producer::Producer() : Peer(), mutex()
+Producer::Producer() : mutex(), fd(-1)
 {
 }
 
 Producer::~Producer()
 {
+	::close(fd);
+	fd = -1;
 }
 
 bool Producer::init(const char *hostname, const char *port)
 {
 	return openSocket(fd, hostname, port, false);
-}
-
-bool Producer::handleData(const Bytes &)
-{
-	fprintf(stderr, "Producer::handleData Producer does not handle data from other peers!\n");
-	return false;
 }
 } // namespace TemStream

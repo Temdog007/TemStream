@@ -32,13 +32,14 @@ set(SOURCES src/addrinfo.cpp
     src/misc.cpp 
     src/peer.cpp 
     src/producer.cpp
-    src/server.cpp)
+    src/serverPeer.cpp)
 
 set(HEADERS include/addrinfo.hpp
     include/main.hpp
     include/message.hpp
     include/peer.hpp
     include/producer.hpp
+    include/serverPeer.hpp
     include/TemStreamConfig.h)
 
 add_executable(TemStream ${SOURCES} ${HEADERS})
@@ -48,4 +49,8 @@ target_include_directories(TemStream PRIVATE "${SDL2_SOURCE_DIR}/include")
 target_include_directories(TemStream PRIVATE "${CEREAL_SOURCE_DIR}/include")
 target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/imgui")
 
-target_link_libraries(TemStream PRIVATE cereal ImGui)
+target_link_libraries(TemStream PRIVATE SDL2 cereal ImGui)
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(TemStream PRIVATE Threads::Threads)

@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-Peer::Peer() : data(), info(), nextMessageSize(std::nullopt), fd(-1)
+Peer::Peer(int fd) : data(), nextMessageSize(std::nullopt), info(), fd(fd)
 {
 }
 
@@ -17,10 +17,19 @@ void Peer::close()
 	fd = -1;
 }
 
-bool Peer::readData()
+bool Peer::readData(const int timeout)
 {
-	std::array<uint8_t, KB(8)> buffer;
-	ssize_t r = read(fd, buffer.data(), sizeof(buffer));
+	switch (pollSocket(fd, timeout))
+	{
+	case PollState::Error:
+		return false;
+	case PollState::GotData:
+		break;
+	default:
+		return true;
+	}
+
+	const ssize_t r = read(fd, buffer.data(), buffer.size());
 	if (r < 0)
 	{
 		perror("read");
@@ -31,19 +40,18 @@ bool Peer::readData()
 		return false;
 	}
 
-	data.insert(data.end(), buffer.begin(), buffer.end());
+	data.insert(data.end(), buffer.begin(), buffer.begin() + r);
 	if (!nextMessageSize.has_value())
 	{
 		if (data.size() < sizeof(uint32_t))
 		{
 			return true;
 		}
-		std::stringstream ss;
-		for (int i = 0; i < sizeof(uint32_t); ++i)
-		{
-			ss << data.at(i);
-		}
+
+		std::ostringstream ss;
+		ss.write(data.data(), sizeof(uint32_t));
 		cereal::PortableBinaryOutputArchive ar(ss);
+
 		uint32_t value = 0;
 		ar(value);
 		nextMessageSize = value;
@@ -53,20 +61,38 @@ bool Peer::readData()
 
 	if (*nextMessageSize == data.size())
 	{
-		const bool result = handleData(data);
+		std::ostringstream ss;
+		ss.write(data.data(), r);
+		cereal::PortableBinaryOutputArchive ar(ss);
+
+		MessagePacket packet;
+		ar(packet);
+
+		const bool result = handlePacket(packet);
 		data.clear();
 		nextMessageSize = std::nullopt;
 		return result;
 	}
 	else if (*nextMessageSize < data.size())
 	{
-		std::vector newV(data.begin() + *nextMessageSize, data.end());
-		data.erase(data.begin() + *nextMessageSize, data.end());
-		const bool result = handleData(data);
+		std::ostringstream ss;
+		ss.write(data.data(), r);
+		cereal::PortableBinaryOutputArchive ar(ss);
+
+		MessagePacket packet;
+		ar(packet);
+
+		const bool result = handlePacket(packet);
+		data.erase(data.begin(), data.begin() + *nextMessageSize);
 		nextMessageSize = std::nullopt;
-		data = std::move(newV);
 		return result;
 	}
 	return true;
+}
+
+bool Peer::handlePacket(const MessagePacket &packet)
+{
+	currentPacket = &packet;
+	return std::visit(*this, packet.message);
 }
 } // namespace TemStream
