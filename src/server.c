@@ -1,7 +1,5 @@
 #include <include/main.h>
 
-ServerData globalServerData = { 0 };
-
 bool
 authenticateClient(pClient client,
                    const AuthenticateFunc func,

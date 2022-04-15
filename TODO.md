@@ -175,12 +175,19 @@
 ### Apr 13, 2022
 - [x] Make layout message
 - [x] Fix user input freezing app when run in background
-- [ ] Write websocket code for browser version
+
 
 ### Apr 14, 2022
-- [ ] Make video replay streams work properly
+- [ ] Rewrite
+    - [ ] C++ (remove all references to TemLang code)
+    - [ ] Remove ENet; Just use TCP
+    - [ ] Remove UI; Just use ImGui
+    - [ ] Add gitmodules for 3rd dependencies
 
 ### Later
+- [ ] Create transcode stream (move OpenCL resize code to this stream)
+- [ ] Write websocket code for browser version
+- [ ] Make video replay streams work properly
 - [ ] Write example code for authentication
 - [ ] Make default background to display if no stream displays present
 - [ ] Test browser

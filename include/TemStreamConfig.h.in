@@ -1,0 +1,3 @@
+#define TemStream_VERSION_MAJOR @TemStream_VERSION_MAJOR@
+#define TemStream_VERSION_MINOR @TemStream_VERSION_MINOR@
+#define TemStream_VERSION_PATCH @TemStream_VERSION_PATCH@

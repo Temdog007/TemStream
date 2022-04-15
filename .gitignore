@@ -96,9 +96,10 @@ yarn-error.log*
 *.*_tcp
 *.*_udp
 *.png
-*.txt
 *.temstream
 *.temstream_replay
 
 streams/
 junk/
+
+3rdParty/
