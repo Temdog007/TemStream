@@ -10,29 +10,42 @@ configure_file(include/TemStreamConfig.h.in ../include/TemStreamConfig.h)
 add_subdirectory(cereal)
 add_subdirectory(SDL)
 
+add_library(ImGui 
+    imgui/imgui.cpp
+    imgui/imgui_draw.cpp
+    imgui/imgui_tables.cpp
+    imgui/imgui_widgets.cpp
+    imgui/imgui_impl_sdl.cpp
+    imgui/imgui_impl_sdlrenderer.cpp
+    imgui/imgui.h
+    imgui/imgui_internal.h
+    imgui/imgui_impl_sdl.h
+    imgui/imgui_impl_sdlrenderer.h)
+
+target_include_directories(ImGui PRIVATE "${SDL2_SOURCE_DIR}/include")
+
+target_link_libraries(ImGui PRIVATE SDL2)
+
 set(SOURCES src/addrinfo.cpp 
+    src/gui.cpp
     src/main.cpp
     src/misc.cpp 
     src/peer.cpp 
     src/producer.cpp
-    imgui/imgui.cpp
-    imgui/imgui_draw.cpp
-    imgui/imgui_tables.cpp
-    imgui/imgui_widgets.cpp)
+    src/server.cpp)
 
 set(HEADERS include/addrinfo.hpp
     include/main.hpp
     include/message.hpp
     include/peer.hpp
     include/producer.hpp
-    include/TemStreamConfig.h
-    imgui/imgui.h)
+    include/TemStreamConfig.h)
 
 add_executable(TemStream ${SOURCES} ${HEADERS})
 
 target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_include_directories(TemStream PRIVATE "${SDL2_SOURCE_DIR}/include")
-target_include_directories(TemStream PRIVATE "${SDL2_SOURCE_DIR}/imgui")
 target_include_directories(TemStream PRIVATE "${CEREAL_SOURCE_DIR}/include")
+target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/imgui")
 
-target_link_libraries(TemStream PRIVATE cereal)
+target_link_libraries(TemStream PRIVATE cereal ImGui)

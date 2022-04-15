@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-enum PeerRole : uint16_t
+enum PeerType : uint16_t
 {
 	Consumer,
 	Producer,
@@ -14,21 +14,21 @@ enum PeerRole : uint16_t
 struct PeerInformation
 {
 	std::string name;
-	PeerRole role;
+	PeerType role;
 
 	bool isConsumer() const
 	{
-		return (role & PeerRole::Consumer) != 0;
+		return (role & PeerType::Consumer) != 0;
 	}
 
 	bool isProducer() const
 	{
-		return (role & PeerRole::Producer) != 0;
+		return (role & PeerType::Producer) != 0;
 	}
 
 	bool isServer() const
 	{
-		return (role & PeerRole::Server) != 0;
+		return (role & PeerType::Server) != 0;
 	}
 
 	template <class Archive> void serialize(Archive &archive)

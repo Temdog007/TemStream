@@ -15,6 +15,10 @@
 #include <cereal/archives/portable_binary.hpp>
 #include <cereal/cereal.hpp>
 
+#include <imgui.h>
+#include <imgui_impl_sdl.h>
+#include <imgui_impl_sdlrenderer.h>
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -48,6 +52,12 @@ extern bool sendData(int, const uint8_t *, size_t);
 extern PollState pollSocket(struct pollfd &con, const int timeout = 1);
 
 extern void *get_in_addr(struct sockaddr *sa);
+
+extern bool appDone;
+
+extern int runServer(int, char **);
+
+extern int runGui();
 } // namespace TemStream
 
 #include "TemStreamConfig.h"
