@@ -186,8 +186,8 @@
 
 ### Apr 16, 2022
 - [x] Socket interface
-- [ ] Add default font (Ubunutu font)
-- [ ] Allow font to be changed
+- [x] Add default font (Ubunutu font)
+- [x] Allow font to be changed
 - [ ] Make displays movable
 - [ ] Make displays resizable
 - [ ] Make displays hideable

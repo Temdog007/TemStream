@@ -10,6 +10,7 @@ class TemStreamGui
 	std::optional<Address> connectToServer;
 	std::unique_ptr<ClientPeer> peer;
 	std::mutex peerMutex;
+	int fontIndex;
 
   public:
 	SDL_Window *window;
@@ -24,10 +25,12 @@ class TemStreamGui
 	bool init();
 	bool connect(const Address &);
 	void update();
-	void draw();
+	void draw(ImGuiIO &);
 
 	void flush(MessagePackets &);
 
 	bool isConnected();
+
+	void pushFont(ImGuiIO &);
 };
 } // namespace TemStream

@@ -1,12 +1,21 @@
 #include <main.hpp>
 
+#include "fonts/Cousine.cpp"
+#include "fonts/DroidSans.cpp"
+#include "fonts/Karla.cpp"
+#include "fonts/ProggyClean.cpp"
+#include "fonts/ProggyTiny.cpp"
+#include "fonts/Roboto.cpp"
+#include "fonts/Ubuntuu.cpp"
+
 bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e);
 
 namespace TemStream
 {
 int DefaultPort = 10000;
 
-TemStreamGui::TemStreamGui() : connectToServer(), peer(nullptr), peerMutex(), window(nullptr), renderer(nullptr)
+TemStreamGui::TemStreamGui()
+	: connectToServer(), peer(nullptr), peerMutex(), fontIndex(1), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -44,6 +53,15 @@ void TemStreamGui::flush(MessagePackets &packets)
 	{
 		peer->flush(packets);
 	}
+}
+
+void TemStreamGui::pushFont(ImGuiIO &io)
+{
+	if (fontIndex >= io.Fonts->Fonts.size())
+	{
+		fontIndex = 0;
+	}
+	ImGui::PushFont(io.Fonts->Fonts[fontIndex]);
 }
 
 bool TemStreamGui::init()
@@ -95,7 +113,7 @@ bool TemStreamGui::connect(const Address &address)
 	return true;
 }
 
-void TemStreamGui::draw()
+void TemStreamGui::draw(ImGuiIO &io)
 {
 	if (ImGui::BeginMainMenuBar())
 	{
@@ -108,6 +126,13 @@ void TemStreamGui::draw()
 			}
 			ImGui::EndMenu();
 		}
+		ImGui::Separator();
+		if (ImGui::BeginMenu("View"))
+		{
+			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
+			ImGui::EndMenu();
+		}
+		ImGui::Separator();
 		if (ImGui::BeginMenu("Connections"))
 		{
 			const bool connectedToServer = isConnected();
@@ -176,16 +201,27 @@ int runGui()
 		return EXIT_FAILURE;
 	}
 
+	puts("ImGui v" IMGUI_VERSION);
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
 	ImGuiIO &io = ImGui::GetIO();
-	(void)io;
 
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplSDL2_InitForSDLRenderer(gui.window, gui.renderer);
 	ImGui_ImplSDLRenderer_Init(gui.renderer);
+
+	const float fontSize = 36.f;
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Cousine_compressed_data, Cousine_compressed_size, fontSize);
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)DroidSans_compressed_data, DroidSans_compressed_size, fontSize);
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Karla_compressed_data, Karla_compressed_size, fontSize);
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)ProggyClean_compressed_data, ProggyClean_compressed_size,
+											 fontSize);
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)ProggyTiny_compressed_data, ProggyTiny_compressed_size, fontSize);
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Roboto_compressed_data, Roboto_compressed_size, fontSize);
+	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Ubuntuu_compressed_data, Ubuntuu_compressed_size, fontSize);
 
 	std::unordered_map<MessageSource, StreamDisplay> displays;
 	std::vector<MessagePacket> messages;
@@ -242,7 +278,11 @@ int runGui()
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-		gui.draw();
+		gui.pushFont(io);
+
+		gui.draw(io);
+
+		ImGui::PopFont();
 
 		ImGui::Render();
 

@@ -104,3 +104,7 @@ junk/
 
 debug/
 release/
+
+python/
+
+font_compressor
