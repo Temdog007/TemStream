@@ -50,8 +50,8 @@
 
 namespace TemStream
 {
-extern std::atomic<int32_t> runningThreads;
 using Bytes = std::vector<char>;
+extern std::atomic<int32_t> runningThreads;
 enum PollState
 {
 	Error,
@@ -75,11 +75,14 @@ extern int DefaultPort;
 
 #include "TemStreamConfig.h"
 
+#include "colors.hpp"
+
 #include "addrinfo.hpp"
 #include "memoryStream.hpp"
 #include "peerInformation.hpp"
 
 #include "message.hpp"
+#include "socket.hpp"
 
 #include "peer.hpp"
 #include "producer.hpp"
@@ -89,5 +92,3 @@ extern int DefaultPort;
 
 #include "gui.hpp"
 #include "streamDisplay.hpp"
-
-#include "colors.hpp"

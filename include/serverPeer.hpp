@@ -9,7 +9,7 @@ extern int runServer(int, const char **);
 class ServerPeer : public Peer, public MessagePacketHandler
 {
   public:
-	ServerPeer(int);
+	ServerPeer(std::unique_ptr<Socket> &&);
 	virtual ~ServerPeer();
 
 	bool handlePacket(const MessagePacket &) override;

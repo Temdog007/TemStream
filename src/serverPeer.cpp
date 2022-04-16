@@ -3,36 +3,14 @@
 namespace TemStream
 {
 PeerInformation peerInformation;
-bool getIpAndPort(const int fd, std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port)
-{
-	struct sockaddr_storage addr;
-	socklen_t size = sizeof(addr);
-	if (getpeername(fd, (struct sockaddr *)&addr, &size) < 0)
-	{
-		perror("getpeername");
-		return false;
-	}
 
-	if (addr.ss_family == AF_INET)
-	{
-		struct sockaddr_in *s = (struct sockaddr_in *)&addr;
-		inet_ntop(addr.ss_family, &s->sin_addr, str.data(), str.size());
-		port = ntohs(s->sin_port);
-	}
-	else
-	{
-		struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
-		inet_ntop(addr.ss_family, &s->sin6_addr, str.data(), str.size());
-		port = ntohs(s->sin6_port);
-	}
-	return true;
-}
-void runPeerConnection(const int fd)
+void runPeerConnection(std::unique_ptr<Socket> &&s)
 {
-	ServerPeer peer(fd);
+	ServerPeer peer(std::move(s));
 	std::array<char, INET6_ADDRSTRLEN> str;
 	uint16_t port = 0;
-	if (!getIpAndPort(fd, str, port))
+	Bytes bytes;
+	if (!peer->getIpAndPort(str, port))
 	{
 		goto end;
 	}
@@ -41,14 +19,14 @@ void runPeerConnection(const int fd)
 	{
 		MessagePacket packet;
 		packet.message = peerInformation;
-		if (!peer.sendMessage(packet))
+		if (!peer->sendPacket(packet))
 		{
 			goto end;
 		}
 	}
 	while (!appDone)
 	{
-		if (!peer.readData(1000))
+		if (!peer.readAndHandle(1000))
 		{
 			break;
 		}
@@ -99,10 +77,6 @@ int runServer(const int argc, const char **argv)
 
 	while (!appDone)
 	{
-		struct pollfd inputfd;
-		inputfd.events = POLLIN;
-		inputfd.fd = fd;
-		inputfd.revents = 0;
 		switch (pollSocket(fd, 1000))
 		{
 		case PollState::GotData:
@@ -123,19 +97,17 @@ int runServer(const int argc, const char **argv)
 			continue;
 		}
 
+		auto s = std::make_unique<TcpSocket>(newfd);
+
 		std::array<char, INET6_ADDRSTRLEN> str;
 		uint16_t port;
-		if (getIpAndPort(newfd, str, port))
+		if (s->getIpAndPort(str, port))
 		{
 			printf("New connection: %s:%u\n", str.data(), port);
 
 			++runningThreads;
-			std::thread thread(runPeerConnection, newfd);
+			std::thread thread(runPeerConnection, std::move(s));
 			thread.detach();
-		}
-		else
-		{
-			::close(newfd);
 		}
 	}
 
@@ -150,7 +122,7 @@ end:
 	}
 	return result;
 }
-ServerPeer::ServerPeer(int fd) : Peer(fd)
+ServerPeer::ServerPeer(std::unique_ptr<Socket> &&s) : Peer(std::move(s))
 {
 }
 ServerPeer::~ServerPeer()

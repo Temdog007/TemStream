@@ -7,7 +7,7 @@ namespace TemStream
 class MemoryBuffer : public std::basic_streambuf<char>
 {
   private:
-	std::vector<char> buffer;
+	Bytes buffer;
 	std::streamsize writePoint, readPoint;
 
   public:

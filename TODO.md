@@ -185,6 +185,7 @@
     - [x] Add gitmodules for 3rd dependencies
 
 ### Apr 16, 2022
+- [x] Socket interface
 - [ ] Add default font (Ubunutu font)
 - [ ] Allow font to be changed
 - [ ] Make displays movable
@@ -193,8 +194,6 @@
 - [ ] Render text stream
 
 ### Later
-- [ ] Remove chat stram
-- [ ] Make Socket interface (for websocket and SSL)
 - [ ] Remove OpenCL code
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 - [ ] Make video replay streams work properly

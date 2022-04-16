@@ -7,19 +7,17 @@ namespace TemStream
 class Peer
 {
   private:
-	std::array<char, KB(8)> buffer;
-	Bytes data;
+	Bytes bytes;
 	std::optional<uint32_t> nextMessageSize;
-
-	void close();
 
   protected:
 	PeerInformation info;
-	int fd;
+	std::unique_ptr<Socket> mSocket;
 
   public:
-	Peer(int);
+	Peer(std::unique_ptr<Socket> &&);
 	Peer(const Peer &) = delete;
+	Peer(Peer &&) = delete;
 	virtual ~Peer();
 
 	const PeerInformation &getInfo() const
@@ -27,9 +25,12 @@ class Peer
 		return info;
 	}
 
-	bool sendMessage(const MessagePacket &) const;
-	bool sendData(const void *, size_t) const;
-	bool readData(const int timeout);
+	Socket *operator->()
+	{
+		return mSocket.get();
+	}
+
+	bool readAndHandle(const int);
 
 	virtual bool handlePacket(const MessagePacket &) = 0;
 };

@@ -12,19 +12,17 @@ bool Address::operator==(const Address &a) const
 {
 	return port == a.port && hostname == a.hostname;
 }
-std::optional<int> Address::makeSocket() const
+std::unique_ptr<TcpSocket> Address::makeTcpSocket() const
 {
-	int fd = -1;
-	char portStr[64];
-	snprintf(portStr, sizeof(portStr), "%d", port);
-	if (openSocket(fd, hostname.c_str(), portStr, false))
+	auto ptr = std::make_unique<TcpSocket>();
+	if (ptr->connectWithAddress(*this, false))
 	{
-		return fd;
+		return ptr;
 	}
-	close(fd);
-	return std::nullopt;
+	return nullptr;
 }
-ClientPeer::ClientPeer(const Address &address, const int fd) : Peer(fd), address(address), messages()
+ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s)
+	: Peer(std::move(s)), address(address), messages()
 {
 }
 ClientPeer::~ClientPeer()

@@ -14,7 +14,7 @@ struct Address
 
 	bool operator==(const Address &) const;
 
-	std::optional<int> makeSocket() const;
+	std::unique_ptr<TcpSocket> makeTcpSocket() const;
 };
 } // namespace TemStream
 namespace std
@@ -37,7 +37,7 @@ class ClientPeer : public Peer
 	MessagePackets messages;
 
   public:
-	ClientPeer(const Address &, int);
+	ClientPeer(const Address &, std::unique_ptr<Socket>);
 	ClientPeer(const ClientPeer &) = delete;
 	ClientPeer(ClientPeer &&) = delete;
 	virtual ~ClientPeer();

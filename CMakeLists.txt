@@ -38,6 +38,7 @@ set(SOURCES src/addrinfo.cpp
     src/peer.cpp 
     src/producer.cpp
     src/serverPeer.cpp
+    src/socket.cpp
     src/streamDisplay.cpp)
 
 set(HEADERS include/addrinfo.hpp
@@ -49,10 +50,17 @@ set(HEADERS include/addrinfo.hpp
     include/peer.hpp
     include/producer.hpp
     include/serverPeer.hpp
+    include/socket.hpp
     include/streamDisplay.hpp
     include/TemStreamConfig.h)
 
 add_executable(TemStream ${SOURCES} ${HEADERS})
+
+if(MSVC)
+  target_compile_options(TemStream PRIVATE /W4 /WX)
+else()
+  target_compile_options(TemStream PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 
 target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_include_directories(TemStream PRIVATE "${SDL2_SOURCE_DIR}/include")

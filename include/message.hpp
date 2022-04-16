@@ -32,9 +32,11 @@ struct RequestPeers
 {
 	template <class Archive> void save(Archive &ar) const
 	{
+		(void)ar;
 	}
 	template <class Archive> void serialize(Archive &ar)
 	{
+		(void)ar;
 	}
 };
 using TextMessage = std::string;

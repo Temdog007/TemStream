@@ -6,7 +6,7 @@ namespace TemStream
 {
 int DefaultPort = 10000;
 
-TemStreamGui::TemStreamGui() : connectToServer(), peerMutex(), window(nullptr), renderer(nullptr), peer(nullptr)
+TemStreamGui::TemStreamGui() : connectToServer(), peer(nullptr), peerMutex(), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -30,7 +30,7 @@ void TemStreamGui::update()
 	std::lock_guard<std::mutex> guard(peerMutex);
 	if (peer != nullptr)
 	{
-		if (!peer->readData(0))
+		if (!peer->readAndHandle(0))
 		{
 			peer = nullptr;
 		}
@@ -80,8 +80,8 @@ bool TemStreamGui::init()
 bool TemStreamGui::connect(const Address &address)
 {
 	printf("Connecting to server: %s:%d\n", address.hostname.c_str(), address.port);
-	const auto fd = address.makeSocket();
-	if (!fd.has_value())
+	auto s = address.makeTcpSocket();
+	if (s == nullptr)
 	{
 		char buffer[KB(1)];
 		snprintf(buffer, sizeof(buffer), "Failed to connect to server: %s:%d", address.hostname.c_str(), address.port);
@@ -90,7 +90,7 @@ bool TemStreamGui::connect(const Address &address)
 	}
 
 	std::lock_guard<std::mutex> guard(peerMutex);
-	peer = std::make_unique<ClientPeer>(address, *fd);
+	peer = std::make_unique<ClientPeer>(address, std::move(s));
 	printf("Connected to server: %s:%d\n", address.hostname.c_str(), address.port);
 	return true;
 }
