@@ -188,12 +188,15 @@
 - [x] Socket interface
 - [x] Add default font (Ubunutu font)
 - [x] Allow font to be changed
+- [ ] Send text to server
+- [ ] Process text from server
 - [ ] Make displays movable
 - [ ] Make displays resizable
 - [ ] Make displays hideable
 - [ ] Render text stream
 
 ### Later
+- [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 - [ ] Make video replay streams work properly
@@ -206,5 +209,6 @@
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 
 ### Maybe
+- [ ] Make custom allocator
 - [ ] Make plug in library for OBS to send video and audio to server
 - [ ] Fix loading tga files

@@ -9,13 +9,14 @@
 #include "fonts/Ubuntuu.cpp"
 
 bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e);
+const float fontSize = 36.f;
 
 namespace TemStream
 {
 int DefaultPort = 10000;
 
-TemStreamGui::TemStreamGui()
-	: connectToServer(), peer(nullptr), peerMutex(), fontIndex(1), window(nullptr), renderer(nullptr)
+TemStreamGui::TemStreamGui(ImGuiIO &io)
+	: connectToServer(), peer(nullptr), peerMutex(), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -55,7 +56,7 @@ void TemStreamGui::flush(MessagePackets &packets)
 	}
 }
 
-void TemStreamGui::pushFont(ImGuiIO &io)
+void TemStreamGui::pushFont()
 {
 	if (fontIndex >= io.Fonts->Fonts.size())
 	{
@@ -113,13 +114,17 @@ bool TemStreamGui::connect(const Address &address)
 	return true;
 }
 
-void TemStreamGui::draw(ImGuiIO &io)
+void TemStreamGui::draw()
 {
 	if (ImGui::BeginMainMenuBar())
 	{
 		if (ImGui::BeginMenu("File"))
 		{
 			bool selected = false;
+			if (!pendingFile.has_value() && ImGui::MenuItem("Open", "", &selected))
+			{
+				pendingFile = "";
+			}
 			if (ImGui::MenuItem("Exit", "", &selected))
 			{
 				TemStream::appDone = true;
@@ -127,13 +132,15 @@ void TemStreamGui::draw(ImGuiIO &io)
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
+
 		if (ImGui::BeginMenu("View"))
 		{
 			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
-		if (ImGui::BeginMenu("Connections"))
+
+		if (ImGui::BeginMenu("Connection"))
 		{
 			const bool connectedToServer = isConnected();
 			bool selected = false;
@@ -163,12 +170,14 @@ void TemStreamGui::draw(ImGuiIO &io)
 			}
 			ImGui::EndMenu();
 		}
+		ImGui::Separator();
+
 		ImGui::EndMainMenuBar();
 	}
 	bool opened = true;
 	if (connectToServer.has_value())
 	{
-		if (ImGui::Begin("Connect to server", &opened))
+		if (ImGui::Begin("Connect to server", &opened, ImGuiWindowFlags_NoCollapse))
 		{
 			ImGui::InputText("Hostname", &connectToServer->hostname);
 			ImGui::InputInt("Port", &connectToServer->port);
@@ -184,6 +193,59 @@ void TemStreamGui::draw(ImGuiIO &io)
 	{
 		connectToServer = std::nullopt;
 	}
+
+	if (pendingFile.has_value())
+	{
+		opened = true;
+		if (ImGui::Begin("Enter file path", &opened, ImGuiWindowFlags_NoCollapse))
+		{
+			ImGui::InputText("File path", &*pendingFile);
+			ImGui::SameLine();
+			if (ImGui::Button("Load"))
+			{
+				char *ptr = reinterpret_cast<char *>(SDL_malloc(pendingFile->size() + 1));
+				strcpy(ptr, pendingFile->c_str());
+				pendingFile = std::nullopt;
+
+				SDL_Event e;
+				e.type = SDL_DROPFILE;
+				e.drop.file = ptr;
+				e.drop.timestamp = SDL_GetTicks();
+				e.drop.windowID = SDL_GetWindowID(window);
+				if (SDL_PushEvent(&e) != 0)
+				{
+					SDL_free(ptr);
+				}
+			}
+		}
+		ImGui::End();
+	}
+}
+
+const char *getExtension(const char *filename)
+{
+	size_t len = strlen(filename);
+	const char *c = filename + (len - 1);
+	for (; *c != *filename; --c)
+	{
+		if (*c == '.')
+		{
+			return c + 1;
+		}
+	}
+	return filename;
+}
+
+bool TemStreamGui::handleFile(const char *filename)
+{
+	(void)filename;
+	return true;
+}
+
+bool TemStreamGui::handleText(const char *text)
+{
+	(void)text;
+	return true;
 }
 
 bool TemStreamGui::isConnected()
@@ -194,13 +256,6 @@ bool TemStreamGui::isConnected()
 
 int runGui()
 {
-	TemStreamGui gui;
-	if (!gui.init())
-	{
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed", "Failed to start app", NULL);
-		return EXIT_FAILURE;
-	}
-
 	puts("ImGui v" IMGUI_VERSION);
 
 	IMGUI_CHECKVERSION();
@@ -210,10 +265,16 @@ int runGui()
 
 	ImGui::StyleColorsDark();
 
+	TemStreamGui gui(io);
+	if (!gui.init())
+	{
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed", "Failed to start app", NULL);
+		return EXIT_FAILURE;
+	}
+
 	ImGui_ImplSDL2_InitForSDLRenderer(gui.window, gui.renderer);
 	ImGui_ImplSDLRenderer_Init(gui.renderer);
 
-	const float fontSize = 36.f;
 	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Cousine_compressed_data, Cousine_compressed_size, fontSize);
 	io.Fonts->AddFontFromMemoryCompressedTTF((void *)DroidSans_compressed_data, DroidSans_compressed_size, fontSize);
 	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Karla_compressed_data, Karla_compressed_size, fontSize);
@@ -245,6 +306,23 @@ int runGui()
 				{
 					appDone = true;
 				}
+				break;
+			case SDL_DROPTEXT:
+				if (!gui.handleText(event.drop.file))
+				{
+					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Dropped text error",
+											 "Failed to handle dropped text", gui.window);
+				}
+				SDL_free(event.drop.file);
+				break;
+			case SDL_DROPFILE:
+				if (!gui.handleFile(event.drop.file))
+				{
+					char buffer[KB(2)];
+					snprintf(buffer, sizeof(buffer), "Failed to handle dropped file: %s", event.drop.file);
+					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Dropped text error", buffer, gui.window);
+				}
+				SDL_free(event.drop.file);
 				break;
 			default:
 				break;
@@ -278,9 +356,9 @@ int runGui()
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-		gui.pushFont(io);
+		gui.pushFont();
 
-		gui.draw(io);
+		gui.draw();
 
 		ImGui::PopFont();
 
