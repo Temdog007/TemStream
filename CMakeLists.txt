@@ -30,6 +30,7 @@ target_link_libraries(ImGui PRIVATE SDL2)
 
 set(SOURCES src/addrinfo.cpp 
     src/clientPeer.cpp
+    src/colors.cpp
     src/gui.cpp
     src/main.cpp
     src/memoryStream.cpp 
@@ -41,6 +42,7 @@ set(SOURCES src/addrinfo.cpp
 
 set(HEADERS include/addrinfo.hpp
     include/clientPeer.hpp
+    include/colors.hpp
     include/main.hpp
     include/memoryStream.hpp
     include/message.hpp

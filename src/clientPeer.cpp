@@ -24,24 +24,7 @@ std::optional<int> Address::makeSocket() const
 	close(fd);
 	return std::nullopt;
 }
-MessageList::MessageList() : messages(), mutex()
-{
-}
-MessageList::~MessageList()
-{
-}
-void MessageList::append(const MessagePacket &packet)
-{
-	std::lock_guard<std::mutex> lock(mutex);
-	messages.push_back(packet);
-}
-void MessageList::flush(std::vector<MessagePacket> &packet)
-{
-	std::lock_guard<std::mutex> lock(mutex);
-	packet.insert(packet.end(), messages.begin(), messages.end());
-	messages.clear();
-}
-ClientPeer::ClientPeer(MessageList &list, const int fd) : Peer(fd), list(list)
+ClientPeer::ClientPeer(const Address &address, const int fd) : Peer(fd), address(address), messages()
 {
 }
 ClientPeer::~ClientPeer()
@@ -49,53 +32,29 @@ ClientPeer::~ClientPeer()
 }
 bool ClientPeer::handlePacket(const MessagePacket &packet)
 {
-	list.append(packet);
-	return true;
-}
-ClientPeerMap::ClientPeerMap() : map(), mutex()
-{
-}
-ClientPeerMap::~ClientPeerMap()
-{
-}
-bool ClientPeerMap::add(const Address &addr, MessageList &list, const int port)
-{
-	std::lock_guard<std::mutex> lock(mutex);
-	auto pair = map.try_emplace(addr, list, port);
-	return pair.second;
-}
-void ClientPeerMap::update()
-{
-	std::lock_guard<std::mutex> lock(mutex);
-	for (auto iter = map.begin(); iter != map.end();)
+	auto ptr = std::get_if<PeerInformation>(&packet.message);
+	if (ptr == nullptr)
 	{
-		if (iter->second.readData(0))
+		messages.emplace_back(packet);
+	}
+	else
+	{
+		if (ptr->isServer)
 		{
-			++iter;
+			info = *ptr;
 		}
 		else
 		{
-			iter = map.erase(iter);
+			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Connection error",
+									 "Must connect to a server. Connected to a client", NULL);
+			return false;
 		}
 	}
-}
-bool ClientPeerMap::forPeer(const Address &addr, const std::function<void(const ClientPeer &)> &f)
-{
-	std::lock_guard<std::mutex> lock(mutex);
-	auto iter = map.find(addr);
-	if (iter == map.end())
-	{
-		return false;
-	}
-	f(iter->second);
 	return true;
 }
-void ClientPeerMap::forAllPeers(const std::function<void(const std::pair<const Address, ClientPeer> &)> &f)
+void ClientPeer::flush(std::vector<MessagePacket> &list)
 {
-	std::lock_guard<std::mutex> lock(mutex);
-	for (const auto &pair : map)
-	{
-		f(pair);
-	}
+	list.insert(list.end(), messages.begin(), messages.end());
+	messages.clear();
 }
 } // namespace TemStream

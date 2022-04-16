@@ -29,45 +29,25 @@ template <> struct hash<TemStream::Address>
 } // namespace std
 namespace TemStream
 {
-class MessageList
-{
-  private:
-	std::vector<MessagePacket> messages;
-	std::mutex mutex;
-
-  public:
-	MessageList();
-	~MessageList();
-
-	void append(const MessagePacket &);
-	void flush(std::vector<MessagePacket> &);
-};
+using MessagePackets = std::vector<MessagePacket>;
 class ClientPeer : public Peer
 {
   private:
-	MessageList &list;
+	const Address address;
+	MessagePackets messages;
 
   public:
-	ClientPeer(MessageList &, int);
-	ClientPeer(ClientPeer &&);
+	ClientPeer(const Address &, int);
+	ClientPeer(const ClientPeer &) = delete;
+	ClientPeer(ClientPeer &&) = delete;
 	virtual ~ClientPeer();
 
 	bool handlePacket(const MessagePacket &) override;
-};
-class ClientPeerMap
-{
-  private:
-	std::unordered_map<Address, ClientPeer> map;
-	std::mutex mutex;
+	void flush(MessagePackets &);
 
-  public:
-	ClientPeerMap();
-	~ClientPeerMap();
-
-	bool add(const Address &, MessageList &, int);
-	void update();
-
-	bool forPeer(const Address &, const std::function<void(const ClientPeer &)> &);
-	void forAllPeers(const std::function<void(const std::pair<const Address, ClientPeer> &)> &);
+	const Address &getAddress() const
+	{
+		return address;
+	}
 };
 } // namespace TemStream

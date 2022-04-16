@@ -87,4 +87,7 @@ extern int DefaultPort;
 #include "clientPeer.hpp"
 #include "serverPeer.hpp"
 
+#include "gui.hpp"
 #include "streamDisplay.hpp"
+
+#include "colors.hpp"
