@@ -21,12 +21,10 @@ bool Peer::sendMessage(const MessagePacket &packet) const
 {
 	try
 	{
-		std::ostringstream ss(std::ios::binary);
-
-		cereal::PortableBinaryOutputArchive in(ss);
+		MemoryStream m;
+		cereal::PortableBinaryOutputArchive in(m);
 		in(packet);
-		const std::string str(ss.str());
-		return sendData(str.c_str(), str.size());
+		return sendData(m.getData(), m.getSize());
 	}
 	catch (const std::exception &e)
 	{
@@ -37,6 +35,15 @@ bool Peer::sendMessage(const MessagePacket &packet) const
 
 bool Peer::sendData(const void *data, const size_t size) const
 {
+	{
+		uint32_t u = static_cast<uint32_t>(size);
+		u = htonl(u);
+		if (send(fd, &u, sizeof(u), 0) != sizeof(u))
+		{
+			perror("send");
+			return false;
+		}
+	}
 	size_t written = 0;
 	while (written < size)
 	{
@@ -97,16 +104,16 @@ bool Peer::readData(const int timeout)
 			{
 				v.data[i] = data[i];
 			}
-			nextMessageSize = v.value;
+			nextMessageSize = ntohl(v.value);
 
 			data.erase(data.begin(), data.begin() + sizeof(uint32_t));
 		}
 
 		if (*nextMessageSize == data.size())
 		{
-			std::stringstream ss(std::ios::binary);
-			ss.write(data.data(), r);
-			cereal::PortableBinaryInputArchive ar(ss);
+			MemoryStream m;
+			m.write(data.data(), data.size());
+			cereal::PortableBinaryInputArchive ar(m);
 
 			MessagePacket packet;
 			ar(packet);
@@ -118,9 +125,9 @@ bool Peer::readData(const int timeout)
 		}
 		else if (*nextMessageSize < data.size())
 		{
-			std::stringstream ss(std::ios::binary);
-			ss.write(data.data(), r);
-			cereal::PortableBinaryInputArchive ar(ss);
+			MemoryStream m;
+			m.write(data.data(), *nextMessageSize);
+			cereal::PortableBinaryInputArchive ar(m);
 
 			MessagePacket packet;
 			ar(packet);

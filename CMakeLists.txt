@@ -32,7 +32,8 @@ set(SOURCES src/addrinfo.cpp
     src/clientPeer.cpp
     src/gui.cpp
     src/main.cpp
-    src/misc.cpp 
+    src/memoryStream.cpp 
+    src/misc.cpp
     src/peer.cpp 
     src/producer.cpp
     src/serverPeer.cpp
@@ -41,6 +42,7 @@ set(SOURCES src/addrinfo.cpp
 set(HEADERS include/addrinfo.hpp
     include/clientPeer.hpp
     include/main.hpp
+    include/memoryStream.hpp
     include/message.hpp
     include/peer.hpp
     include/producer.hpp

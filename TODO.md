@@ -185,7 +185,6 @@
     - [x] Add gitmodules for 3rd dependencies
 
 ### Apr 16, 2022
-- [ ] Base64 and null terminate
 - [ ] Add default font (Ubunutu font)
 - [ ] Allow font to be changed
 - [ ] Make displays movable

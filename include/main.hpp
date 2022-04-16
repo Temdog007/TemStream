@@ -7,7 +7,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -77,6 +76,7 @@ extern int DefaultPort;
 #include "TemStreamConfig.h"
 
 #include "addrinfo.hpp"
+#include "memoryStream.hpp"
 #include "peerInformation.hpp"
 
 #include "message.hpp"
