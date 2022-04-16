@@ -3,6 +3,7 @@
 using namespace TemStream;
 
 bool TemStream::appDone = false;
+std::atomic<int32_t> TemStream::runningThreads = 0;
 
 void signalHandler(int s)
 {

@@ -4,24 +4,14 @@
 
 namespace TemStream
 {
-
-enum PeerType : uint16_t
-{
-	Consumer,
-	Producer,
-	Server
-};
-
-extern const char *PeerTypeToString(PeerType);
-
 struct PeerInformation
 {
 	std::string name;
-	PeerType type;
+	bool isServer;
 
 	template <class Archive> void serialize(Archive &archive)
 	{
-		archive(name, type);
+		archive(name, isServer);
 	}
 };
 } // namespace TemStream

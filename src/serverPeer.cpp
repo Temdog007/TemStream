@@ -2,6 +2,7 @@
 
 namespace TemStream
 {
+PeerInformation peerInformation;
 bool getIpAndPort(const int fd, std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port)
 {
 	struct sockaddr_storage addr;
@@ -26,18 +27,25 @@ bool getIpAndPort(const int fd, std::array<char, INET6_ADDRSTRLEN> &str, uint16_
 	}
 	return true;
 }
-void runPeerConnection(int fd)
+void runPeerConnection(const int fd)
 {
+	ServerPeer peer(fd);
 	std::array<char, INET6_ADDRSTRLEN> str;
 	uint16_t port = 0;
 	if (!getIpAndPort(fd, str, port))
 	{
-		::close(fd);
-		return;
+		goto end;
 	}
 	printf("Handling connection: %s:%u\n", str.data(), port);
 
-	ServerPeer peer(fd);
+	{
+		MessagePacket packet;
+		packet.message = peerInformation;
+		if (!peer.sendMessage(packet))
+		{
+			goto end;
+		}
+	}
 	while (!appDone)
 	{
 		if (!peer.readData(1000))
@@ -46,7 +54,9 @@ void runPeerConnection(int fd)
 		}
 	}
 
+end:
 	printf("Ending connection: %s:%u\n", str.data(), port);
+	--runningThreads;
 }
 int runServer(const int argc, const char **argv)
 {
@@ -55,10 +65,11 @@ int runServer(const int argc, const char **argv)
 
 	const char *hostname = NULL;
 	const char *port = "10000";
+	peerInformation.name = "Server";
+	peerInformation.isServer = true;
 
 	for (int i = 1; i < argc - 1;)
 	{
-		puts(argv[i]);
 		if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--hostname") == 0)
 		{
 			hostname = argv[i + 1];
@@ -68,6 +79,12 @@ int runServer(const int argc, const char **argv)
 		if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--port") == 0)
 		{
 			port = argv[i + 1];
+			i += 2;
+			continue;
+		}
+		if (strcmp(argv[i], "-N") == 0 || strcmp(argv[i], "--name") == 0)
+		{
+			peerInformation.name = argv[i + 1];
 			i += 2;
 			continue;
 		}
@@ -111,10 +128,15 @@ int runServer(const int argc, const char **argv)
 		if (getIpAndPort(newfd, str, port))
 		{
 			printf("New connection: %s:%u\n", str.data(), port);
-		}
 
-		std::thread thread(runPeerConnection, newfd);
-		thread.detach();
+			++runningThreads;
+			std::thread thread(runPeerConnection, newfd);
+			thread.detach();
+		}
+		else
+		{
+			::close(newfd);
+		}
 	}
 
 	result = EXIT_SUCCESS;
@@ -122,6 +144,10 @@ int runServer(const int argc, const char **argv)
 end:
 	::close(fd);
 	puts("Ending server");
+	while (runningThreads > 0)
+	{
+		SDL_Delay(100);
+	}
 	return result;
 }
 ServerPeer::ServerPeer(int fd) : Peer(fd)

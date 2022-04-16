@@ -2,10 +2,12 @@
 
 namespace TemStream
 {
-StreamDisplay::StreamDisplay() : texture(nullptr), rect()
+StreamDisplay::StreamDisplay(SDL_Renderer *renderer, const MessageSource &source)
+	: renderer(renderer), texture(nullptr), rect(), source(source)
 {
 }
-StreamDisplay::StreamDisplay(StreamDisplay &&display) : texture(display.texture), rect(display.rect)
+StreamDisplay::StreamDisplay(StreamDisplay &&display)
+	: renderer(display.renderer), texture(display.texture), rect(display.rect), source(std::move(source))
 {
 	display.texture = nullptr;
 }
@@ -21,10 +23,11 @@ StreamDisplay &StreamDisplay::operator=(StreamDisplay &&display)
 {
 	texture = display.texture;
 	rect = display.rect;
+	source = std::move(display.source);
 	display.texture = nullptr;
 	return *this;
 }
-bool StreamDisplay::draw(SDL_Renderer *renderer)
+bool StreamDisplay::draw()
 {
 	if (SDL_RenderCopy(renderer, texture, NULL, &rect) == 0)
 	{

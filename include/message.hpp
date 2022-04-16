@@ -7,7 +7,11 @@ namespace TemStream
 struct VideoMessage
 {
 	Bytes bytes;
-	template <class Archive> void serialize(Archive &ar)
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(bytes);
+	}
+	template <class Archive> void load(Archive &ar)
 	{
 		ar(bytes);
 	}
@@ -15,13 +19,20 @@ struct VideoMessage
 struct AudioMessage
 {
 	Bytes bytes;
-	template <class Archive> void serialize(Archive &ar)
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(bytes);
+	}
+	template <class Archive> void load(Archive &ar)
 	{
 		ar(bytes);
 	}
 };
 struct RequestPeers
 {
+	template <class Archive> void save(Archive &ar) const
+	{
+	}
 	template <class Archive> void serialize(Archive &ar)
 	{
 	}
@@ -42,7 +53,12 @@ struct MessageSource
 		return author == s.author && destination == s.destination;
 	}
 
-	template <class Archive> void serialize(Archive &ar)
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(author, destination);
+	}
+
+	template <class Archive> void load(Archive &ar)
 	{
 		ar(author, destination);
 	}
@@ -54,7 +70,12 @@ struct MessagePacket
 	MessageSource source;
 	std::vector<std::string> trail;
 
-	template <class Archive> void serialize(Archive &ar)
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(message, source, trail);
+	}
+
+	template <class Archive> void load(Archive &ar)
 	{
 		ar(message, source, trail);
 	}

@@ -6,10 +6,13 @@ namespace TemStream
 {
 struct StreamDisplay : public MessagePacketHandler
 {
+	SDL_Renderer *renderer;
 	SDL_Texture *texture;
 	SDL_Rect rect;
+	MessageSource source;
 
-	StreamDisplay();
+	StreamDisplay() = delete;
+	StreamDisplay(SDL_Renderer *, const MessageSource &);
 	StreamDisplay(const StreamDisplay &) = delete;
 	StreamDisplay(StreamDisplay &&);
 	virtual ~StreamDisplay();
@@ -19,7 +22,7 @@ struct StreamDisplay : public MessagePacketHandler
 	StreamDisplay &operator=(const StreamDisplay &) = delete;
 	StreamDisplay &operator=(StreamDisplay &&);
 
-	bool draw(SDL_Renderer *renderer);
+	bool draw();
 
 	bool operator()(const TextMessage &);
 	bool operator()(const ImageMessage &);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -50,6 +51,7 @@
 
 namespace TemStream
 {
+extern std::atomic<int32_t> runningThreads;
 using Bytes = std::vector<char>;
 enum PollState
 {
@@ -70,15 +72,6 @@ extern int runGui();
 
 extern int DefaultPort;
 
-template <class T> bool sendMessage(const T &t, std::mutex &mutex, const int fd)
-{
-	std::istringstream is;
-	cereal::PortableBinaryInputArchive in(is);
-	in(t);
-	const std::string str(is.str());
-	std::lock_guard<std::mutex> guard(mutex);
-	return sendData(fd, str.c_str(), str.size());
-}
 } // namespace TemStream
 
 #include "TemStreamConfig.h"

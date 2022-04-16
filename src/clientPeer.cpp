@@ -69,7 +69,7 @@ void ClientPeerMap::update()
 	std::lock_guard<std::mutex> lock(mutex);
 	for (auto iter = map.begin(); iter != map.end();)
 	{
-		if (iter->second.readData())
+		if (iter->second.readData(0))
 		{
 			++iter;
 		}
@@ -79,7 +79,18 @@ void ClientPeerMap::update()
 		}
 	}
 }
-void ClientPeerMap::forPeer(const std::function<void(const std::pair<const Address, ClientPeer> &)> &f)
+bool ClientPeerMap::forPeer(const Address &addr, const std::function<void(const ClientPeer &)> &f)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	auto iter = map.find(addr);
+	if (iter == map.end())
+	{
+		return false;
+	}
+	f(iter->second);
+	return true;
+}
+void ClientPeerMap::forAllPeers(const std::function<void(const std::pair<const Address, ClientPeer> &)> &f)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	for (const auto &pair : map)

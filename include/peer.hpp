@@ -27,7 +27,9 @@ class Peer
 		return info;
 	}
 
-	bool readData(const int timeout = 1);
+	bool sendMessage(const MessagePacket &) const;
+	bool sendData(const void *, size_t) const;
+	bool readData(const int timeout);
 
 	virtual bool handlePacket(const MessagePacket &) = 0;
 };

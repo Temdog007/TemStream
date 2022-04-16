@@ -67,6 +67,7 @@ class ClientPeerMap
 	bool add(const Address &, MessageList &, int);
 	void update();
 
-	void forPeer(const std::function<void(const std::pair<const Address, ClientPeer> &)> &);
+	bool forPeer(const Address &, const std::function<void(const ClientPeer &)> &);
+	void forAllPeers(const std::function<void(const std::pair<const Address, ClientPeer> &)> &);
 };
 } // namespace TemStream
