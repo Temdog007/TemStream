@@ -24,7 +24,7 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 
 	if (isServer)
 	{
-		if (info.bind(fd) < 0)
+		if (!info.bind(fd))
 		{
 			perror("bind");
 			return false;
@@ -35,7 +35,7 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 			return false;
 		}
 	}
-	else if (info.connect(fd) < 0)
+	else if (!info.connect(fd))
 	{
 		perror("connect");
 		return false;
@@ -58,17 +58,7 @@ PollState pollSocket(const int fd, const int timeout)
 	case 0:
 		return PollState::NoData;
 	default:
-		return (inputfd.revents & POLLIN) != 0 ? PollState::GotData : PollState::NoData;
+		return (inputfd.revents & POLLIN) == 0 ? PollState::NoData : PollState::GotData;
 	}
-}
-
-void *get_in_addr(struct sockaddr *sa)
-{
-	if (sa->sa_family == AF_INET)
-	{
-		return &(((struct sockaddr_in *)sa)->sin_addr);
-	}
-
-	return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 } // namespace TemStream

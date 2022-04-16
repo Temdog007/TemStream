@@ -2,21 +2,59 @@
 
 namespace TemStream
 {
+bool getIpAndPort(const int fd, std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port)
+{
+	struct sockaddr_storage addr;
+	socklen_t size = sizeof(addr);
+	if (getpeername(fd, (struct sockaddr *)&addr, &size) < 0)
+	{
+		perror("getpeername");
+		return false;
+	}
+
+	if (addr.ss_family == AF_INET)
+	{
+		struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+		inet_ntop(addr.ss_family, &s->sin_addr, str.data(), str.size());
+		port = ntohs(s->sin_port);
+	}
+	else
+	{
+		struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+		inet_ntop(addr.ss_family, &s->sin6_addr, str.data(), str.size());
+		port = ntohs(s->sin6_port);
+	}
+	return true;
+}
 void runPeerConnection(int fd)
 {
+	std::array<char, INET6_ADDRSTRLEN> str;
+	uint16_t port = 0;
+	if (!getIpAndPort(fd, str, port))
+	{
+		::close(fd);
+		return;
+	}
+	printf("Handling connection: %s:%u\n", str.data(), port);
+
 	ServerPeer peer(fd);
 	while (!appDone)
 	{
-		appDone = !peer.readData(1000);
+		if (!peer.readData(1000))
+		{
+			break;
+		}
 	}
+
+	printf("Ending connection: %s:%u\n", str.data(), port);
 }
 int runServer(const int argc, const char **argv)
 {
 	int result = EXIT_FAILURE;
 	int fd = -1;
 
-	const char *hostname = nullptr;
-	const char *port = nullptr;
+	const char *hostname = NULL;
+	const char *port = "10000";
 
 	for (int i = 1; i < argc - 1;)
 	{
@@ -36,7 +74,7 @@ int runServer(const int argc, const char **argv)
 		++i;
 	}
 
-	printf("Connecting to %s:%s\n", hostname == nullptr ? "localhost" : hostname, port ? "any" : port);
+	printf("Connecting to %s:%s\n", hostname == nullptr ? "any" : hostname, port);
 	if (!openSocket(fd, hostname, port, true))
 	{
 		goto end;
@@ -68,9 +106,12 @@ int runServer(const int argc, const char **argv)
 			continue;
 		}
 
-		char str[INET6_ADDRSTRLEN];
-		inet_ntop(addr.ss_family, get_in_addr((struct sockaddr *)&addr), str, sizeof(str));
-		printf("New connection: %s\n", str);
+		std::array<char, INET6_ADDRSTRLEN> str;
+		uint16_t port;
+		if (getIpAndPort(newfd, str, port))
+		{
+			printf("New connection: %s:%u\n", str.data(), port);
+		}
 
 		std::thread thread(runPeerConnection, newfd);
 		thread.detach();
@@ -108,6 +149,11 @@ bool ServerPeer::operator()(const VideoMessage &)
 }
 bool ServerPeer::operator()(const AudioMessage &)
 {
+	return true;
+}
+bool ServerPeer::operator()(const PeerInformation &info)
+{
+	this->info = info;
 	return true;
 }
 bool ServerPeer::operator()(const PeerInformationList &)

@@ -3,24 +3,20 @@
 using namespace TemStream;
 
 MessageList messageList;
+ClientPeerMap peerMap;
+
+uint32_t updatePeerMap(uint32_t, void *)
+{
+	peerMap.update();
+	return 1;
+}
 
 int TemStream::DefaultPort = 10000;
-
-struct Address
-{
-	std::array<char, KB(1)> hostname;
-	int port;
-
-	Address() : hostname(), port(DefaultPort)
-	{
-		strcpy(hostname.data(), "localhost");
-	}
-};
 
 struct WindowSelector
 {
 	std::optional<Address> connectToServer;
-	bool currentConnectedServers;
+	std::optional<std::vector<PeerInformation>> connectedPeers;
 };
 
 struct SDLContext
@@ -88,6 +84,26 @@ struct TemStreamGui
 	}
 };
 
+void createClientPeer(TemStreamGui &gui, const Address &address)
+{
+	const auto fd = address.makeSocket();
+	std::cout << fd.has_value() << std::endl;
+	if (!fd.has_value())
+	{
+		char buffer[KB(1)];
+		snprintf(buffer, sizeof(buffer), "Failed to connect to server: %s:%d", address.hostname.c_str(), address.port);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Connection failed", buffer, gui.window);
+		return;
+	}
+	if (!peerMap.add(address, messageList, *fd))
+	{
+		char buffer[KB(1)];
+		snprintf(buffer, sizeof(buffer), "Already connected to server: %s:%d", address.hostname.c_str(), address.port);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Duplicate connection", buffer, gui.window);
+		return;
+	}
+}
+
 bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e)
 {
 	switch (e.type)
@@ -110,7 +126,7 @@ bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e)
 	}
 }
 
-void drawMenu(WindowSelector &ws)
+void drawMenu(TemStreamGui &gui, WindowSelector &ws)
 {
 	if (ImGui::BeginMainMenuBar())
 	{
@@ -130,23 +146,50 @@ void drawMenu(WindowSelector &ws)
 			{
 				ws.connectToServer = Address();
 			}
-			if (ImGui::MenuItem("Show current connections", "", &selected, !ws.currentConnectedServers))
+			if (ImGui::MenuItem("Show current connections", "", &selected, !ws.connectedPeers.has_value()))
 			{
-				ws.currentConnectedServers = true;
+				ws.connectedPeers = std::vector<PeerInformation>();
+				peerMap.forPeer([&ws](const auto &pair) { ws.connectedPeers->push_back(pair.second.getInfo()); });
 			}
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();
 	}
-	if (ws.connectToServer.has_value() && ImGui::Begin("Connect to server"))
+	bool closed = false;
+	if (ws.connectToServer.has_value())
 	{
-		ImGui::InputText("Hostname", ws.connectToServer->hostname.data(), ws.connectToServer->hostname.size());
-		ImGui::InputInt("Port", &ws.connectToServer->port);
-		if (ImGui::Button("Connect"))
+		if (ImGui::Begin("Connect to server", &closed))
 		{
-			ws.connectToServer = std::nullopt;
+			ImGui::InputText("Hostname", &ws.connectToServer->hostname);
+			ImGui::InputInt("Port", &ws.connectToServer->port);
+			if (ImGui::Button("Connect"))
+			{
+				createClientPeer(gui, *ws.connectToServer);
+				ws.connectToServer = std::nullopt;
+			}
 		}
 		ImGui::End();
+	}
+	if (closed)
+	{
+		ws.connectToServer = std::nullopt;
+	}
+
+	closed = false;
+	if (ws.connectedPeers.has_value())
+	{
+		if (ImGui::Begin("Connected peers", &closed))
+		{
+			for (const auto &info : *ws.connectedPeers)
+			{
+				ImGui::Text("Name: %s; Role: %s", info.name.c_str(), PeerTypeToString(info.type));
+			}
+		}
+		ImGui::End();
+	}
+	if (closed)
+	{
+		ws.connectedPeers = std::nullopt;
 	}
 }
 
@@ -164,6 +207,8 @@ int TemStream::runGui()
 		return EXIT_FAILURE;
 	}
 
+	SDL_AddTimer(1, (SDL_TimerCallback)updatePeerMap, NULL);
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
@@ -175,7 +220,8 @@ int TemStream::runGui()
 	ImGui_ImplSDL2_InitForSDLRenderer(gui.window, gui.renderer);
 	ImGui_ImplSDLRenderer_Init(gui.renderer);
 
-	std::unordered_map<std::string, StreamDisplay> displays;
+	std::unordered_map<MessageSource, StreamDisplay> displays;
+	std::vector<MessagePacket> messages;
 	WindowSelector ws;
 	while (!appDone)
 	{
@@ -203,12 +249,19 @@ int TemStream::runGui()
 			}
 		}
 
+		messages.clear();
+		messageList.flush(messages);
+		for (const auto &m : messages)
+		{
+			auto iter = displays.find(m.source);
+		}
+
 		// ImGui Rendering
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-		drawMenu(ws);
+		drawMenu(gui, ws);
 
 		ImGui::Render();
 

@@ -49,6 +49,12 @@ bool StreamDisplay::operator()(const AudioMessage &)
 {
 	return true;
 }
+bool StreamDisplay::operator()(const PeerInformation &)
+{
+	fprintf(stderr,
+			"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.\n");
+	return false;
+}
 bool StreamDisplay::operator()(const PeerInformationList &)
 {
 	fprintf(stderr,

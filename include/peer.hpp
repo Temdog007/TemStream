@@ -19,6 +19,7 @@ class Peer
 
   public:
 	Peer(int);
+	Peer(const Peer &) = delete;
 	virtual ~Peer();
 
 	const PeerInformation &getInfo() const

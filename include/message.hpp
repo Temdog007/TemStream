@@ -29,17 +29,34 @@ struct RequestPeers
 using TextMessage = std::string;
 using ImageMessage = std::variant<bool, Bytes>;
 using PeerInformationList = std::vector<PeerInformation>;
-using Message = std::variant<RequestPeers, TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformationList>;
+using Message = std::variant<RequestPeers, TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformation,
+							 PeerInformationList>;
+
+struct MessageSource
+{
+	std::string author;
+	std::string destination;
+
+	bool operator==(const MessageSource &s) const
+	{
+		return author == s.author && destination == s.destination;
+	}
+
+	template <class Archive> void serialize(Archive &ar)
+	{
+		ar(author, destination);
+	}
+};
 
 struct MessagePacket
 {
 	Message message;
-	std::string author;
+	MessageSource source;
 	std::vector<std::string> trail;
 
 	template <class Archive> void serialize(Archive &ar)
 	{
-		ar(message, author, trail);
+		ar(message, source, trail);
 	}
 };
 
@@ -51,7 +68,19 @@ struct MessagePacketHandler
 	virtual bool operator()(const ImageMessage &) = 0;
 	virtual bool operator()(const VideoMessage &) = 0;
 	virtual bool operator()(const AudioMessage &) = 0;
+	virtual bool operator()(const PeerInformation &) = 0;
 	virtual bool operator()(const PeerInformationList &) = 0;
 	virtual bool operator()(const RequestPeers &) = 0;
 };
 } // namespace TemStream
+
+namespace std
+{
+template <> struct hash<TemStream::MessageSource>
+{
+	std::size_t operator()(const TemStream::MessageSource &source) const
+	{
+		return hash<string>()(source.author) ^ hash<string>()(source.destination);
+	}
+};
+} // namespace std

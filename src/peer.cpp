@@ -2,6 +2,20 @@
 
 namespace TemStream
 {
+const char *PeerTypeToString(const PeerType t)
+{
+	switch (t)
+	{
+	case PeerType::Consumer:
+		return "Consumer";
+	case PeerType::Producer:
+		return "Producer";
+	case PeerType::Server:
+		return "Server";
+	default:
+		return "Invalid";
+	}
+}
 Peer::Peer(int fd) : data(), nextMessageSize(std::nullopt), info(), fd(fd)
 {
 }

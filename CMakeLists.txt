@@ -17,10 +17,12 @@ add_library(ImGui
     imgui/imgui_widgets.cpp
     imgui/imgui_impl_sdl.cpp
     imgui/imgui_impl_sdlrenderer.cpp
+    imgui/imgui_stdlib.cpp
     imgui/imgui.h
     imgui/imgui_internal.h
     imgui/imgui_impl_sdl.h
-    imgui/imgui_impl_sdlrenderer.h)
+    imgui/imgui_impl_sdlrenderer.h
+    imgui/imgui_stdlib.h)
 
 target_include_directories(ImGui PRIVATE "${SDL2_SOURCE_DIR}/include")
 

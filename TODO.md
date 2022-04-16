@@ -177,24 +177,30 @@
 - [x] Fix user input freezing app when run in background
 
 
-### Apr 14, 2022
-- [ ] Rewrite
-    - [ ] C++ (remove all references to TemLang code)
-    - [ ] Remove ENet; Just use TCP
-    - [ ] Remove UI; Just use ImGui
-    - [ ] Add gitmodules for 3rd dependencies
+### Apr 15, 2022
+- [x] Rewrite
+    - [x] C++ (remove all references to TemLang code)
+    - [x] Remove ENet; Just use TCP
+    - [x] Remove UI; Just use ImGui
+    - [x] Add gitmodules for 3rd dependencies
+
+### Apr 16, 2022
+- [ ] Add default font (Ubunutu font)
+- [ ] Allow font to be changed
+- [ ] Make displays movable
+- [ ] Make displays resizable
+- [ ] Make displays hideable
+- [ ] Render text stream
 
 ### Later
-- [ ] Create transcode stream (move OpenCL resize code to this stream)
-- [ ] Write websocket code for browser version
+- [ ] Remove chat stram
+- [ ] Make Socket interface (for websocket and SSL)
+- [ ] Remove OpenCL code
+- [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 - [ ] Make video replay streams work properly
-- [ ] Write example code for authentication
-- [ ] Make default background to display if no stream displays present
 - [ ] Test browser
-- [ ] Make push to talk not apply to window recordings
+- [ ] Make push to talk have a unique button for each each audio stream
 - [ ] Test android
-- [ ] Allow streams to show a default layout message that also connects to streams on startup and sets display rects
-- [ ] SSL encryption (dtls, use proxy)
 
 ### Bugs
 - [x] Connecting to multiple streams quickly causes some displays to not show
@@ -202,6 +208,4 @@
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
-- [ ] Add logging library (or make one)
 - [ ] Fix loading tga files
-- [ ] Update webcam streaming to allow for scaling (is this necessary?)

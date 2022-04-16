@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -28,6 +29,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl.h>
 #include <imgui_impl_sdlrenderer.h>
+#include <imgui_stdlib.h>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -58,11 +60,9 @@ enum PollState
 
 extern bool openSocket(int &, const char *hostname, const char *port, const bool isServer);
 
-extern bool sendData(int, const uint8_t *, size_t);
+extern bool sendData(int, const void *, size_t);
 
 extern PollState pollSocket(const int fd, const int timeout = 1);
-
-extern void *get_in_addr(struct sockaddr *sa);
 
 extern bool appDone;
 
@@ -77,7 +77,7 @@ template <class T> bool sendMessage(const T &t, std::mutex &mutex, const int fd)
 	in(t);
 	const std::string str(is.str());
 	std::lock_guard<std::mutex> guard(mutex);
-	return sendData(fd, reinterpret_cast<const uint8_t *>(str.data()), str.size());
+	return sendData(fd, str.c_str(), str.size());
 }
 } // namespace TemStream
 
