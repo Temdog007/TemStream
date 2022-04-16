@@ -27,19 +27,23 @@ target_include_directories(ImGui PRIVATE "${SDL2_SOURCE_DIR}/include")
 target_link_libraries(ImGui PRIVATE SDL2)
 
 set(SOURCES src/addrinfo.cpp 
+    src/clientPeer.cpp
     src/gui.cpp
     src/main.cpp
     src/misc.cpp 
     src/peer.cpp 
     src/producer.cpp
-    src/serverPeer.cpp)
+    src/serverPeer.cpp
+    src/streamDisplay.cpp)
 
 set(HEADERS include/addrinfo.hpp
+    include/clientPeer.hpp
     include/main.hpp
     include/message.hpp
     include/peer.hpp
     include/producer.hpp
     include/serverPeer.hpp
+    include/streamDisplay.hpp
     include/TemStreamConfig.h)
 
 add_executable(TemStream ${SOURCES} ${HEADERS})

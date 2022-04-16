@@ -20,10 +20,16 @@ struct AudioMessage
 		ar(bytes);
 	}
 };
+struct RequestPeers
+{
+	template <class Archive> void serialize(Archive &ar)
+	{
+	}
+};
 using TextMessage = std::string;
 using ImageMessage = std::variant<bool, Bytes>;
 using PeerInformationList = std::vector<PeerInformation>;
-using Message = std::variant<TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformationList>;
+using Message = std::variant<RequestPeers, TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformationList>;
 
 struct MessagePacket
 {
@@ -46,5 +52,6 @@ struct MessagePacketHandler
 	virtual bool operator()(const VideoMessage &) = 0;
 	virtual bool operator()(const AudioMessage &) = 0;
 	virtual bool operator()(const PeerInformationList &) = 0;
+	virtual bool operator()(const RequestPeers &) = 0;
 };
 } // namespace TemStream

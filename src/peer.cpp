@@ -89,10 +89,4 @@ bool Peer::readData(const int timeout)
 	}
 	return true;
 }
-
-bool Peer::handlePacket(const MessagePacket &packet)
-{
-	currentPacket = &packet;
-	return std::visit(*this, packet.message);
-}
 } // namespace TemStream

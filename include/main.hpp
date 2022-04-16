@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -31,6 +32,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,6 +68,8 @@ extern bool appDone;
 
 extern int runGui();
 
+extern int DefaultPort;
+
 template <class T> bool sendMessage(const T &t, std::mutex &mutex, const int fd)
 {
 	std::istringstream is;
@@ -86,4 +90,8 @@ template <class T> bool sendMessage(const T &t, std::mutex &mutex, const int fd)
 
 #include "peer.hpp"
 #include "producer.hpp"
+
+#include "clientPeer.hpp"
 #include "serverPeer.hpp"
+
+#include "streamDisplay.hpp"

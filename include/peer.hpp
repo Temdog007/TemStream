@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-class Peer : public MessagePacketHandler
+class Peer
 {
   private:
 	std::array<char, KB(8)> buffer;
@@ -28,7 +28,7 @@ class Peer : public MessagePacketHandler
 
 	bool readData(const int timeout = 1);
 
-	bool handlePacket(const MessagePacket &);
+	virtual bool handlePacket(const MessagePacket &) = 0;
 };
 
 } // namespace TemStream

@@ -15,23 +15,28 @@ int runServer(const int argc, const char **argv)
 	int result = EXIT_FAILURE;
 	int fd = -1;
 
-	const char *hostname = NULL;
-	const char *port = NULL;
+	const char *hostname = nullptr;
+	const char *port = nullptr;
 
-	for (int i = 1; i < argc - 1; i += 2)
+	for (int i = 1; i < argc - 1;)
 	{
+		puts(argv[i]);
 		if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--hostname") == 0)
 		{
 			hostname = argv[i + 1];
+			i += 2;
 			continue;
 		}
 		if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--port") == 0)
 		{
 			port = argv[i + 1];
+			i += 2;
 			continue;
 		}
+		++i;
 	}
 
+	printf("Connecting to %s:%s\n", hostname == nullptr ? "localhost" : hostname, port ? "any" : port);
 	if (!openSocket(fd, hostname, port, true))
 	{
 		goto end;
@@ -84,6 +89,11 @@ ServerPeer::ServerPeer(int fd) : Peer(fd)
 ServerPeer::~ServerPeer()
 {
 }
+bool ServerPeer::handlePacket(const MessagePacket &packet)
+{
+	currentPacket = &packet;
+	return std::visit(*this, packet.message);
+}
 bool ServerPeer::operator()(const TextMessage &)
 {
 	return true;
@@ -101,6 +111,10 @@ bool ServerPeer::operator()(const AudioMessage &)
 	return true;
 }
 bool ServerPeer::operator()(const PeerInformationList &)
+{
+	return true;
+}
+bool ServerPeer::operator()(const RequestPeers &)
 {
 	return true;
 }

@@ -1,5 +1,28 @@
 #include <main.hpp>
 
+using namespace TemStream;
+
+MessageList messageList;
+
+int TemStream::DefaultPort = 10000;
+
+struct Address
+{
+	std::array<char, KB(1)> hostname;
+	int port;
+
+	Address() : hostname(), port(DefaultPort)
+	{
+		strcpy(hostname.data(), "localhost");
+	}
+};
+
+struct WindowSelector
+{
+	std::optional<Address> connectToServer;
+	bool currentConnectedServers;
+};
+
 struct SDLContext
 {
 	bool loaded;
@@ -87,26 +110,47 @@ bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e)
 	}
 }
 
-void drawMenu()
+void drawMenu(WindowSelector &ws)
 {
 	if (ImGui::BeginMainMenuBar())
 	{
 		if (ImGui::BeginMenu("File"))
 		{
 			bool selected = false;
-			if (ImGui::MenuItem("Exit", "Alt+F4", &selected))
+			if (ImGui::MenuItem("Exit", "", &selected))
 			{
 				TemStream::appDone = true;
 			}
 			ImGui::EndMenu();
 		}
+		if (ImGui::BeginMenu("Connections"))
+		{
+			bool selected = false;
+			if (ImGui::MenuItem("Connect to a server", "", &selected, !ws.connectToServer.has_value()))
+			{
+				ws.connectToServer = Address();
+			}
+			if (ImGui::MenuItem("Show current connections", "", &selected, !ws.currentConnectedServers))
+			{
+				ws.currentConnectedServers = true;
+			}
+			ImGui::EndMenu();
+		}
 		ImGui::EndMainMenuBar();
+	}
+	if (ws.connectToServer.has_value() && ImGui::Begin("Connect to server"))
+	{
+		ImGui::InputText("Hostname", ws.connectToServer->hostname.data(), ws.connectToServer->hostname.size());
+		ImGui::InputInt("Port", &ws.connectToServer->port);
+		if (ImGui::Button("Connect"))
+		{
+			ws.connectToServer = std::nullopt;
+		}
+		ImGui::End();
 	}
 }
 
-namespace TemStream
-{
-int runGui()
+int TemStream::runGui()
 {
 	const SDLContext ctx;
 	if (!ctx.loaded)
@@ -131,6 +175,8 @@ int runGui()
 	ImGui_ImplSDL2_InitForSDLRenderer(gui.window, gui.renderer);
 	ImGui_ImplSDLRenderer_Init(gui.renderer);
 
+	std::unordered_map<std::string, StreamDisplay> displays;
+	WindowSelector ws;
 	while (!appDone)
 	{
 		SDL_Event event;
@@ -156,16 +202,24 @@ int runGui()
 				break;
 			}
 		}
+
+		// ImGui Rendering
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-		drawMenu();
+		drawMenu(ws);
 
 		ImGui::Render();
+
+		// App Rendering
 		SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
 		SDL_RenderClear(gui.renderer);
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
+		for (auto &pair : displays)
+		{
+			pair.second.draw(gui.renderer);
+		}
 		SDL_RenderPresent(gui.renderer);
 	}
 
@@ -174,4 +228,3 @@ int runGui()
 	ImGui::DestroyContext();
 	return EXIT_SUCCESS;
 }
-} // namespace TemStream

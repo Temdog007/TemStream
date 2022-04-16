@@ -1,6 +1,6 @@
 #include <main.hpp>
 
-AddrInfo::AddrInfo() : res(NULL)
+AddrInfo::AddrInfo() : res(nullptr)
 {
 }
 
@@ -11,10 +11,10 @@ AddrInfo::~AddrInfo()
 
 void AddrInfo::close()
 {
-	if (res != NULL)
+	if (res != nullptr)
 	{
 		freeaddrinfo(res);
-		res = NULL;
+		res = nullptr;
 	}
 }
 
@@ -23,7 +23,7 @@ bool AddrInfo::getInfo(const char *hostname, const char *port, const struct addr
 	close();
 
 	const int result = getaddrinfo(hostname, port, &hints, &res);
-	if (result != 0 || res == NULL)
+	if (result != 0 || res == nullptr)
 	{
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
 		return false;
@@ -33,7 +33,7 @@ bool AddrInfo::getInfo(const char *hostname, const char *port, const struct addr
 
 bool AddrInfo::makeSocket(int &sockfd) const
 {
-	if (res == NULL)
+	if (res == nullptr)
 	{
 		return false;
 	}
@@ -49,7 +49,7 @@ bool AddrInfo::makeSocket(int &sockfd) const
 
 bool AddrInfo::bind(const int sockfd) const
 {
-	if (res == NULL)
+	if (res == nullptr)
 	{
 		return false;
 	}
@@ -63,7 +63,7 @@ bool AddrInfo::bind(const int sockfd) const
 
 bool AddrInfo::connect(const int sockfd) const
 {
-	if (res == NULL)
+	if (res == nullptr)
 	{
 		return false;
 	}
