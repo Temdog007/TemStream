@@ -10,14 +10,16 @@ class TemStreamGui
   private:
 	std::optional<Address> connectToServer;
 	std::optional<String> pendingFile;
+	Map<MessageSource, StreamDisplay> displays;
 	PeerInformation peerInfo;
 	Mutex peerMutex;
 	MessagePackets outgoingPackets;
-	MessagePackets incomingPackets;
 	std::unique_ptr<ClientPeer> peer;
 	std::unique_ptr<IQuery> queryData;
 	ImGuiIO &io;
 	int fontIndex;
+
+	friend int runGui();
 
   public:
 	SDL_Window *window;
@@ -28,6 +30,11 @@ class TemStreamGui
 	TemStreamGui(TemStreamGui &&) = delete;
 
 	~TemStreamGui();
+
+	const PeerInformation &getInfo() const
+	{
+		return peerInfo;
+	}
 
 	bool init();
 	bool connect(const Address &);

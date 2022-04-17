@@ -22,7 +22,7 @@ namespace TemStream
 {
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), pendingFile(std::nullopt), peerInfo({"User", false}), peerMutex(), outgoingPackets(),
-	  incomingPackets(), peer(nullptr), queryData(nullptr), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
+	  peer(nullptr), queryData(nullptr), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -166,7 +166,7 @@ void TemStreamGui::draw()
 		}
 		ImGui::Separator();
 
-		if (ImGui::BeginMenu("Connection"))
+		if (ImGui::BeginMenu("Connect"))
 		{
 			const bool connectedToServer = isConnected();
 			if (ImGui::MenuItem("Connect to server", "", nullptr, !connectedToServer))
@@ -204,6 +204,20 @@ void TemStreamGui::draw()
 						}
 					}
 				}
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::Separator();
+
+		if (!displays.empty() && ImGui::BeginMenu("Displays"))
+		{
+			std::array<char, KB(1)> buffer;
+			for (auto &pair : displays)
+			{
+				auto &display = pair.second;
+				const auto &source = display.getSource();
+				source.print(buffer);
+				ImGui::Checkbox(buffer.data(), &display.visible);
 			}
 			ImGui::EndMenu();
 		}
@@ -374,10 +388,10 @@ bool TemStreamGui::handleText(const char *text)
 void TemStreamGui::sendPacket(const MessagePacket &packet, const bool handleLocally)
 {
 	LOCK(peerMutex);
-	outgoingPackets.emplace_back(packet);
-	if (handleLocally)
+	outgoingPackets.push_back(packet);
+	if (handleLocally && peer != nullptr)
 	{
-		incomingPackets.emplace_back(packet);
+		peer->addPacket(packet);
 	}
 }
 
@@ -385,9 +399,9 @@ void TemStreamGui::sendPackets(const MessagePackets &packets, const bool handleL
 {
 	LOCK(peerMutex);
 	outgoingPackets.insert(outgoingPackets.end(), packets.begin(), packets.end());
-	if (handleLocally)
+	if (handleLocally && peer != nullptr)
 	{
-		incomingPackets.insert(incomingPackets.end(), packets.begin(), packets.end());
+		peer->addPackets(packets);
 	}
 }
 
@@ -423,7 +437,6 @@ int runGui()
 		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize);
 	}
 
-	Map<MessageSource, StreamDisplay> displays;
 	MessagePackets messages;
 	while (!appDone)
 	{
@@ -435,7 +448,7 @@ int runGui()
 			{
 				continue;
 			}
-			for (auto &display : displays)
+			for (auto &display : gui.displays)
 			{
 				display.second.handleEvent(event);
 			}
@@ -476,11 +489,11 @@ int runGui()
 		gui.flush(messages);
 		for (const auto &m : messages)
 		{
-			auto iter = displays.find(m.source);
-			if (iter == displays.end())
+			auto iter = gui.displays.find(m.source);
+			if (iter == gui.displays.end())
 			{
 				StreamDisplay display(gui.renderer, m.source);
-				auto pair = displays.emplace(m.source, std::move(display));
+				auto pair = gui.displays.emplace(m.source, std::move(display));
 				if (!pair.second)
 				{
 					continue;
@@ -490,7 +503,7 @@ int runGui()
 
 			if (!std::visit(iter->second, m.message))
 			{
-				displays.erase(iter);
+				gui.displays.erase(iter);
 			}
 		}
 
@@ -503,9 +516,16 @@ int runGui()
 
 		gui.draw();
 
-		for (auto &pair : displays)
+		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 		{
-			pair.second.draw(true);
+			if (iter->second.draw(true))
+			{
+				++iter;
+			}
+			else
+			{
+				iter = gui.displays.erase(iter);
+			}
 		}
 
 		ImGui::PopFont();
@@ -516,9 +536,16 @@ int runGui()
 		SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
 		SDL_RenderClear(gui.renderer);
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
-		for (auto &pair : displays)
+		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 		{
-			pair.second.draw(false);
+			if (iter->second.draw(false))
+			{
+				++iter;
+			}
+			else
+			{
+				iter = gui.displays.erase(iter);
+			}
 		}
 		SDL_RenderPresent(gui.renderer);
 	}

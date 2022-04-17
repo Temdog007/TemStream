@@ -193,11 +193,11 @@
 
 ### Apr 17, 2022
 - [x] Custom allocator
-- [ ] Stream name not showing in window
+- [x] Stream name not showing in window
 - [ ] Images not loading
-- [ ] Make displays movable
-- [ ] Make displays resizable
-- [ ] Make displays hideable
+- [ ] Make non-imgui displays movable
+- [ ] Make non-imgui displays resizable
+- [x] Make displays hideable (menu bar)
 
 ### Later
 - [ ] Create logger interface (log to console for server; window for gui)
@@ -212,6 +212,7 @@
 ### Bugs
 - [x] Connecting to multiple streams quickly causes some displays to not show
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
+- [ ] Custom allocator deadlocks (memory issue most likely that messes up mutex)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

@@ -17,6 +17,8 @@ class ClientPeer : public Peer
 	virtual ~ClientPeer();
 
 	bool handlePacket(const MessagePacket &) override;
+	void addPacket(const MessagePacket &);
+	void addPackets(const MessagePackets &);
 	void flush(MessagePackets &);
 
 	const Address &getAddress() const

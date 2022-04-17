@@ -17,6 +17,12 @@ void ServerPeer::sendToAllPeers(const MessagePacket &packet)
 	{
 		if (std::shared_ptr<ServerPeer> ptr = iter->lock())
 		{
+			// Don't send packet to author
+			if ((*ptr).getInfo().name == packet.source.author)
+			{
+				++iter;
+				continue;
+			}
 			if ((*ptr)->send(m.getData(), m.getSize()))
 			{
 				++iter;
@@ -159,32 +165,27 @@ ServerPeer::~ServerPeer()
 
 bool ServerPeer::processCurrentMessage() const
 {
+	// All messages from another server should have an author and destination
+	if (currentPacket->source.empty())
+	{
+		return false;
+	}
+
+	// If connected to a client, author should match peer name
+	if (!info.isServer && currentPacket->source.author != info.name)
+	{
+		return false;
+	}
+
 	// Don't send packet if server has already received it
 	auto iter = std::find(currentPacket->trail.begin(), currentPacket->trail.end(), serverInformation.name);
 	if (iter != currentPacket->trail.end())
 	{
+		// Stay connected
 		return true;
 	}
 
 	MessagePacket newPacket(*currentPacket);
-	if (info.isServer)
-	{
-		// Messages from another server should have an author
-		if (currentPacket->source.author.empty())
-		{
-			return false;
-		}
-	}
-	else
-	{
-		// Messages from clients shouldn't write the author
-		if (!currentPacket->source.author.empty())
-		{
-			return false;
-		}
-		newPacket.source.author = info.name;
-	}
-
 	newPacket.trail.push_back(serverInformation.name);
 	sendToAllPeers(newPacket);
 	return true;
@@ -231,9 +232,14 @@ bool ServerPeer::operator()(const RequestPeers &)
 }
 bool ServerPeer::operator()(const PeerInformation &info)
 {
+	if (informationAcquired)
+	{
+		std::cerr << "Peer sent information more than once" << std::endl;
+		return false;
+	}
 	this->info = info;
 	informationAcquired = true;
-	std::cout << "Information for peer " << address << " -> " << info << std::endl;
+	std::cout << "Information from peer " << address << " -> " << info << std::endl;
 	return true;
 }
 } // namespace TemStream

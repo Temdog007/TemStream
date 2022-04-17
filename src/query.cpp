@@ -62,8 +62,9 @@ MessagePackets QueryText::getPackets() const
 
 	MessagePacket packet;
 	packet.message = TextMessage(text);
+	packet.source.author = gui.getInfo().name;
 	packet.source.destination = streamName;
-	packets.emplace_back(std::move(packet));
+	packets.push_back(std::move(packet));
 
 	return packets;
 }
@@ -98,16 +99,18 @@ MessagePackets QueryImage::getPackets() const
 	{
 		MessagePacket packet;
 		packet.message = ImageMessage(true);
+		packet.source.author = gui.getInfo().name;
 		packet.source.destination = streamName;
-		packets.emplace_back(std::move(packet));
+		packets.push_back(std::move(packet));
 	}
 	while (readChunkFromFile(file, packets))
 		;
 	{
 		MessagePacket packet;
 		packet.message = ImageMessage(false);
+		packet.source.author = gui.getInfo().name;
 		packet.source.destination = streamName;
-		packets.emplace_back(std::move(packet));
+		packets.push_back(std::move(packet));
 	}
 	fclose(file);
 end:
@@ -123,18 +126,20 @@ bool QueryImage::readChunkFromFile(FILE *file, MessagePackets &packets) const
 		if (bytes.size() > KB(64))
 		{
 			MessagePacket packet;
+			packet.source.author = gui.getInfo().name;
 			packet.source.destination = streamName;
 			packet.message = ImageMessage(std::move(bytes));
-			packets.emplace_back(std::move(packet));
+			packets.push_back(std::move(packet));
 			return true;
 		}
 	}
 	if (!bytes.empty())
 	{
 		MessagePacket packet;
+		packet.source.author = gui.getInfo().name;
 		packet.source.destination = streamName;
 		packet.message = ImageMessage(std::move(bytes));
-		packets.emplace_back(std::move(packet));
+		packets.push_back(std::move(packet));
 	}
 	return false;
 }

@@ -3,11 +3,12 @@
 namespace TemStream
 {
 StreamDisplay::StreamDisplay(SDL_Renderer *renderer, const MessageSource &source)
-	: source(source), data(std::monostate{}), renderer(renderer)
+	: source(source), data(std::monostate{}), renderer(renderer), visible(true)
 {
 }
 StreamDisplay::StreamDisplay(StreamDisplay &&display)
-	: source(std::move(source)), data(std::move(display.data)), renderer(display.renderer)
+	: source(std::move(display.source)), data(std::move(display.data)), renderer(display.renderer),
+	  visible(display.visible)
 {
 }
 StreamDisplay::~StreamDisplay()
@@ -19,6 +20,7 @@ StreamDisplay &StreamDisplay::operator=(StreamDisplay &&display)
 	display.renderer = nullptr;
 	data = std::move(display.data);
 	source = std::move(display.source);
+	visible = display.visible;
 	return *this;
 }
 void StreamDisplay::handleEvent(const SDL_Event &e)
@@ -28,6 +30,10 @@ void StreamDisplay::handleEvent(const SDL_Event &e)
 }
 bool StreamDisplay::draw(const bool usingUi)
 {
+	if (!visible)
+	{
+		return true;
+	}
 	StreamDisplayDraw d(*this, usingUi);
 	return std::visit(d, data);
 }
@@ -164,9 +170,9 @@ bool StreamDisplayDraw::operator()(const String &s)
 		return true;
 	}
 
-	char buffer[KB(1)];
-	snprintf(buffer, sizeof(buffer), "Text: %s", display.source.destination.c_str());
-	if (ImGui::Begin(buffer))
+	std::array<char, KB(1)> buffer;
+	display.source.print(buffer);
+	if (ImGui::Begin(buffer.data(), &display.visible))
 	{
 		ImGui::TextWrapped("%s", s.c_str());
 	}

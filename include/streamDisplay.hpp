@@ -42,7 +42,9 @@ class StreamDisplay : public MessagePacketHandler
 	MessageSource source;
 	DisplayData data;
 	SDL_Renderer *renderer;
+	bool visible;
 
+	friend class TemStreamGui;
 	friend class StreamDisplayDraw;
 
   public:
@@ -54,6 +56,11 @@ class StreamDisplay : public MessagePacketHandler
 
 	StreamDisplay &operator=(const StreamDisplay &) = delete;
 	StreamDisplay &operator=(StreamDisplay &&);
+
+	const MessageSource &getSource() const
+	{
+		return source;
+	}
 
 	void handleEvent(const SDL_Event &);
 	bool draw(bool usingUi);

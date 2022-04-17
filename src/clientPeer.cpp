@@ -13,7 +13,7 @@ bool ClientPeer::handlePacket(const MessagePacket &packet)
 	auto ptr = std::get_if<PeerInformation>(&packet.message);
 	if (ptr == nullptr)
 	{
-		messages.emplace_back(packet);
+		messages.push_back(packet);
 	}
 	else
 	{
@@ -34,5 +34,13 @@ void ClientPeer::flush(MessagePackets &list)
 {
 	list.insert(list.end(), messages.begin(), messages.end());
 	messages.clear();
+}
+void ClientPeer::addPacket(const MessagePacket &packet)
+{
+	messages.push_back(packet);
+}
+void ClientPeer::addPackets(const MessagePackets &packets)
+{
+	messages.insert(messages.end(), packets.begin(), packets.end());
 }
 } // namespace TemStream

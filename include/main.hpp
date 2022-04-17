@@ -129,9 +129,10 @@ extern size_t MaxPacketSize;
 #include "clientPeer.hpp"
 #include "serverPeer.hpp"
 
+#include "streamDisplay.hpp"
+
 #include "gui.hpp"
 #include "query.hpp"
-#include "streamDisplay.hpp"
 
 namespace TemStream
 {
