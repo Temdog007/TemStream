@@ -119,32 +119,8 @@ StreamDisplayUpdate::~StreamDisplayUpdate()
 void StreamDisplayUpdate::operator()(std::monostate)
 {
 }
-void StreamDisplayUpdate::operator()(String &s)
+void StreamDisplayUpdate::operator()(String &)
 {
-	switch (event.type)
-	{
-	case SDL_DROPFILE: {
-		FILE *file = fopen(event.drop.file, "r");
-		if (file == nullptr)
-		{
-			perror("fopen");
-			break;
-		}
-		s.clear();
-		char ch;
-		if ((ch = fgetc(file)) != EOF)
-		{
-			s += ch;
-		}
-		fclose(file);
-	}
-	break;
-	case SDL_DROPTEXT:
-		s = event.drop.file;
-		break;
-	default:
-		break;
-	}
 }
 void StreamDisplayUpdate::operator()(Texture &)
 {
