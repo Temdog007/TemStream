@@ -199,6 +199,7 @@
 - [ ] Make displays hideable
 
 ### Later
+- [ ] Create logger interface (log to console for server; window for gui)
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)

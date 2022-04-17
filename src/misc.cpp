@@ -2,6 +2,28 @@
 
 namespace TemStream
 {
+std::unordered_map<std::thread::id, size_t> LogMutex::threads;
+LogMutex::LogMutex(Mutex &m, const char *name) : m(m), name(name), id(0)
+{
+	const auto tid = std::this_thread::get_id();
+	auto iter = threads.find(tid);
+	if (iter == threads.end())
+	{
+		id = threads.size();
+		threads.emplace(tid, id);
+	}
+	else
+	{
+		id = iter->second;
+	}
+	std::cout << "-> " << id << ": " << name << std::endl;
+	m.lock();
+}
+LogMutex::~LogMutex()
+{
+	m.unlock();
+	std::cout << "<- " << id << ": " << name << std::endl;
+}
 bool openSocket(int &fd, const char *hostname, const char *port, const bool isServer)
 {
 	struct addrinfo hints;

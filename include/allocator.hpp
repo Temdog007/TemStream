@@ -214,7 +214,7 @@ template <class T> T *Allocator<T>::allocate(const size_t requestedSize)
 		return nullptr;
 	}
 
-	std::lock_guard<Mutex> guard(ad.mutex);
+	LOCK(ad.mutex);
 
 	size_t size = std::max(requestedSize, ALLOCATOR_ALIGNMENT);
 	size += ALLOCATOR_ALIGNMENT - (size % ALLOCATOR_ALIGNMENT);
@@ -255,7 +255,7 @@ template <class T> void Allocator<T>::deallocate(T *const ptr, const size_t)
 		return;
 	}
 
-	std::lock_guard<Mutex> guard(ad.mutex);
+	LOCK(ad.mutex);
 
 	const size_t currentAddress = reinterpret_cast<size_t>(ptr);
 	const size_t headerAddress = currentAddress - sizeof(FreeListNode);

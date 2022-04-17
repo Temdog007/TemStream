@@ -44,6 +44,7 @@ bool QueryText::handleDropFile(const char *c)
 	FILE *file = fopen(c, "r");
 	if (file == nullptr)
 	{
+		perror("fopen");
 		return false;
 	}
 	char ch;

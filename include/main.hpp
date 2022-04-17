@@ -55,6 +55,24 @@
 namespace TemStream
 {
 using Mutex = std::recursive_mutex;
+class LogMutex
+{
+  private:
+	static std::unordered_map<std::thread::id, size_t> threads;
+	Mutex &m;
+	const char *name;
+	size_t id;
+
+  public:
+	LogMutex(Mutex &, const char *);
+	~LogMutex();
+};
+#define DEBUG_MUTEX false
+#if DEBUG_MUTEX
+#define LOCK(M) LogMutex guard(M, #M)
+#else
+#define LOCK(M) std::lock_guard<Mutex> guard(M)
+#endif
 extern std::atomic<int32_t> runningThreads;
 enum PollState
 {
