@@ -9,6 +9,7 @@ configure_file(include/TemStreamConfig.h.in ../include/TemStreamConfig.h)
 
 add_subdirectory(cereal)
 add_subdirectory(SDL)
+add_subdirectory(SDL_image)
 
 add_library(ImGui 
     imgui/imgui.cpp
@@ -36,7 +37,6 @@ set(SOURCES src/addrinfo.cpp
     src/memoryStream.cpp 
     src/misc.cpp
     src/peer.cpp 
-    src/producer.cpp
     src/query.cpp
     src/serverPeer.cpp
     src/socket.cpp
@@ -49,7 +49,6 @@ set(HEADERS include/addrinfo.hpp
     include/memoryStream.hpp
     include/message.hpp
     include/peer.hpp
-    include/producer.hpp
     include/query.hpp
     include/serverPeer.hpp
     include/socket.hpp
@@ -69,7 +68,7 @@ target_include_directories(TemStream PRIVATE "${SDL2_SOURCE_DIR}/include")
 target_include_directories(TemStream PRIVATE "${CEREAL_SOURCE_DIR}/include")
 target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/imgui")
 
-target_link_libraries(TemStream PRIVATE SDL2 cereal ImGui)
+target_link_libraries(TemStream PRIVATE SDL2 SDL2_image cereal ImGui)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)

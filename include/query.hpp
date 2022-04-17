@@ -29,7 +29,11 @@ class QueryText : public IQuery
   public:
 	QueryText(TemStreamGui &);
 	~QueryText();
+
 	bool draw() override;
+	virtual bool handleDropFile(const char *) override;
+	virtual bool handleDropText(const char *) override;
+
 	MessagePackets getPackets() const override;
 };
 class QueryImage : public IQuery
@@ -40,7 +44,10 @@ class QueryImage : public IQuery
   public:
 	QueryImage(TemStreamGui &);
 	~QueryImage();
+
 	bool draw() override;
+	virtual bool handleDropFile(const char *) override;
+
 	MessagePackets getPackets() const override;
 
   private:
@@ -51,7 +58,9 @@ class QueryAudio : public IQuery
   public:
 	QueryAudio(TemStreamGui &);
 	~QueryAudio();
+
 	bool draw() override;
+
 	MessagePackets getPackets() const override;
 };
 class QueryVideo : public IQuery
@@ -59,7 +68,9 @@ class QueryVideo : public IQuery
   public:
 	QueryVideo(TemStreamGui &);
 	~QueryVideo();
+
 	bool draw() override;
+
 	MessagePackets getPackets() const override;
 };
 } // namespace TemStream

@@ -34,6 +34,27 @@ bool QueryText::draw()
 	ImGui::InputText("Text", &text);
 	return IQuery::draw();
 }
+bool QueryText::handleDropText(const char *c)
+{
+	text = c;
+	return false;
+}
+bool QueryText::handleDropFile(const char *c)
+{
+	FILE *file = fopen(c, "r");
+	if (file == nullptr)
+	{
+		return false;
+	}
+	char ch;
+	text.clear();
+	while ((ch = fgetc(file)) != EOF)
+	{
+		text += ch;
+	}
+	fclose(file);
+	return false;
+}
 MessagePackets QueryText::getPackets() const
 {
 	MessagePackets packets;
@@ -56,6 +77,11 @@ bool QueryImage::draw()
 {
 	ImGui::InputText("Image path", &image);
 	return IQuery::draw();
+}
+bool QueryImage::handleDropFile(const char *c)
+{
+	image = c;
+	return false;
 }
 MessagePackets QueryImage::getPackets() const
 {

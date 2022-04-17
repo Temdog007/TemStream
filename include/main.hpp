@@ -17,6 +17,8 @@
 #include <SDL.h>
 #include <SDL_main.h>
 
+#include <SDL_image.h>
+
 #include <cereal/cereal.hpp>
 #include <cereal/types/array.hpp>
 #include <cereal/types/optional.hpp>
@@ -90,7 +92,6 @@ extern size_t MaxPacketSize;
 #include "address.hpp"
 
 #include "peer.hpp"
-#include "producer.hpp"
 
 #include "clientPeer.hpp"
 #include "serverPeer.hpp"

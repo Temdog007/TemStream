@@ -176,7 +176,6 @@
 - [x] Make layout message
 - [x] Fix user input freezing app when run in background
 
-
 ### Apr 15, 2022
 - [x] Rewrite
     - [x] C++ (remove all references to TemLang code)
@@ -188,12 +187,17 @@
 - [x] Socket interface
 - [x] Add default font (Ubunutu font)
 - [x] Allow font to be changed
-- [ ] Send text to server
-- [ ] Process text from server
+- [x] Send text to server
+- [x] Process text from server
+- [x] Render text stream
+
+### Apr 17, 2022
+- [ ] Leave send data window open after send
+- [ ] Stream name not showing in window
+- [ ] Images not loading
 - [ ] Make displays movable
 - [ ] Make displays resizable
 - [ ] Make displays hideable
-- [ ] Render text stream
 
 ### Later
 - [ ] Add configuration for imgui style and fonts

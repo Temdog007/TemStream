@@ -32,6 +32,7 @@ TemStreamGui::~TemStreamGui()
 	renderer = nullptr;
 	SDL_DestroyWindow(window);
 	window = nullptr;
+	IMG_Quit();
 	SDL_Quit();
 }
 
@@ -88,6 +89,14 @@ bool TemStreamGui::init()
 		fprintf(stderr, "SDL error: %s\n", SDL_GetError());
 		return false;
 	}
+
+	const int flags = IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_WEBP;
+	if (IMG_Init(flags) != flags)
+	{
+		fprintf(stderr, "Image error: %s\n", IMG_GetError());
+		return false;
+	}
+
 	window = SDL_CreateWindow("TemStream", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 800, 600,
 							  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (window == nullptr)
@@ -380,6 +389,10 @@ int runGui()
 			{
 				continue;
 			}
+			for (auto &display : displays)
+			{
+				display.second.handleEvent(event);
+			}
 			switch (event.type)
 			{
 			case SDL_QUIT:
@@ -444,6 +457,11 @@ int runGui()
 
 		gui.draw();
 
+		for (auto &pair : displays)
+		{
+			pair.second.draw(true);
+		}
+
 		ImGui::PopFont();
 
 		ImGui::Render();
@@ -454,7 +472,7 @@ int runGui()
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 		for (auto &pair : displays)
 		{
-			pair.second.draw();
+			pair.second.draw(false);
 		}
 		SDL_RenderPresent(gui.renderer);
 	}
