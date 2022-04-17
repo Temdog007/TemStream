@@ -6,7 +6,7 @@ namespace TemStream
 {
 struct PeerInformation
 {
-	std::string name;
+	String name;
 	bool isServer;
 
 	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)

@@ -6,7 +6,7 @@ namespace TemStream
 {
 struct Address
 {
-	std::string hostname;
+	String hostname;
 	int port;
 
 	Address() : hostname("localhost"), port(DefaultPort)
@@ -52,7 +52,9 @@ template <> struct hash<TemStream::Address>
 {
 	std::size_t operator()(const TemStream::Address &addr) const
 	{
-		return hash<string>()(addr.hostname) ^ hash<int>()(addr.port);
+		std::size_t value = hash<TemStream::String>()(addr.hostname);
+		TemStream::hash_combine(value, addr.port);
+		return value;
 	}
 };
 } // namespace std

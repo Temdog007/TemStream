@@ -8,7 +8,7 @@ class TemStreamGui;
 class IQuery
 {
   protected:
-	std::string streamName;
+	String streamName;
 	TemStreamGui &gui;
 
   public:
@@ -24,7 +24,7 @@ class IQuery
 class QueryText : public IQuery
 {
   private:
-	std::string text;
+	String text;
 
   public:
 	QueryText(TemStreamGui &);
@@ -39,7 +39,7 @@ class QueryText : public IQuery
 class QueryImage : public IQuery
 {
   private:
-	std::string image;
+	String image;
 
   public:
 	QueryImage(TemStreamGui &);

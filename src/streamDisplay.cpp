@@ -113,7 +113,7 @@ StreamDisplayUpdate::~StreamDisplayUpdate()
 void StreamDisplayUpdate::operator()(std::monostate)
 {
 }
-void StreamDisplayUpdate::operator()(std::string &s)
+void StreamDisplayUpdate::operator()(String &s)
 {
 	switch (event.type)
 	{
@@ -121,6 +121,7 @@ void StreamDisplayUpdate::operator()(std::string &s)
 		FILE *file = fopen(event.drop.file, "r");
 		if (file == nullptr)
 		{
+			perror("fopen");
 			break;
 		}
 		s.clear();
@@ -156,7 +157,7 @@ bool StreamDisplayDraw::operator()(std::monostate)
 {
 	return true;
 }
-bool StreamDisplayDraw::operator()(const std::string &s)
+bool StreamDisplayDraw::operator()(const String &s)
 {
 	if (!usingUi)
 	{

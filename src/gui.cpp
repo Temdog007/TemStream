@@ -44,7 +44,7 @@ uint32_t updatePeer(uint32_t interval, TemStreamGui *gui)
 
 void TemStreamGui::update()
 {
-	std::lock_guard<std::mutex> guard(peerMutex);
+	std::lock_guard<Mutex> guard(peerMutex);
 
 	if (peer != nullptr)
 	{
@@ -66,7 +66,7 @@ void TemStreamGui::update()
 
 void TemStreamGui::flush(MessagePackets &packets)
 {
-	std::lock_guard<std::mutex> guard(peerMutex);
+	std::lock_guard<Mutex> guard(peerMutex);
 	if (peer != nullptr)
 	{
 		peer->flush(packets);
@@ -133,7 +133,7 @@ bool TemStreamGui::connect(const Address &address)
 		return false;
 	}
 
-	std::lock_guard<std::mutex> guard(peerMutex);
+	std::lock_guard<Mutex> guard(peerMutex);
 	peer = std::make_unique<ClientPeer>(address, std::move(s));
 	std::cout << "Connected to server: " << address << std::endl;
 	MessagePacket packet;
@@ -176,7 +176,7 @@ void TemStreamGui::draw()
 			if (ImGui::MenuItem("Disconnect from server", "", nullptr, connectedToServer))
 			{
 				connectToServer = std::nullopt;
-				std::lock_guard<std::mutex> guard(peerMutex);
+				std::lock_guard<Mutex> guard(peerMutex);
 				peer = nullptr;
 			}
 			else
@@ -187,7 +187,7 @@ void TemStreamGui::draw()
 					ImGui::TextColored(Colors::Lime, "Logged in as: %s\n", peerInfo.name.c_str());
 
 					{
-						std::lock_guard<std::mutex> guard(peerMutex);
+						std::lock_guard<Mutex> guard(peerMutex);
 						const auto &info = peer->getInfo();
 						ImGui::TextColored(Colors::Yellow, "Server: %s\n", info.name.c_str());
 
@@ -250,8 +250,9 @@ void TemStreamGui::draw()
 				e.drop.file = ptr;
 				e.drop.timestamp = SDL_GetTicks();
 				e.drop.windowID = SDL_GetWindowID(window);
-				if (SDL_PushEvent(&e) != 0)
+				if (SDL_PushEvent(&e) != 1)
 				{
+					fprintf(stderr, "Failed to push event: %s\n", SDL_GetError());
 					SDL_free(ptr);
 				}
 			}
@@ -372,7 +373,7 @@ bool TemStreamGui::handleText(const char *text)
 
 void TemStreamGui::sendPacket(const MessagePacket &packet, const bool handleLocally)
 {
-	std::lock_guard<std::mutex> guard(peerMutex);
+	std::lock_guard<Mutex> guard(peerMutex);
 	outgoingPackets.emplace_back(packet);
 	if (handleLocally)
 	{
@@ -382,7 +383,7 @@ void TemStreamGui::sendPacket(const MessagePacket &packet, const bool handleLoca
 
 void TemStreamGui::sendPackets(const MessagePackets &packets, const bool handleLocally)
 {
-	std::lock_guard<std::mutex> guard(peerMutex);
+	std::lock_guard<Mutex> guard(peerMutex);
 	outgoingPackets.insert(outgoingPackets.end(), packets.begin(), packets.end());
 	if (handleLocally)
 	{
@@ -392,7 +393,7 @@ void TemStreamGui::sendPackets(const MessagePackets &packets, const bool handleL
 
 bool TemStreamGui::isConnected()
 {
-	std::lock_guard<std::mutex> guard(peerMutex);
+	std::lock_guard<Mutex> guard(peerMutex);
 	return peer != nullptr;
 }
 

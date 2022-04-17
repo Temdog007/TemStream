@@ -3,7 +3,7 @@
 namespace TemStream
 {
 PeerInformation ServerPeer::serverInformation;
-std::mutex peersMutex;
+Mutex peersMutex;
 std::vector<std::weak_ptr<ServerPeer>> peers;
 
 void ServerPeer::sendToAllPeers(const MessagePacket &packet)
@@ -12,7 +12,7 @@ void ServerPeer::sendToAllPeers(const MessagePacket &packet)
 	cereal::PortableBinaryOutputArchive ar(m);
 	ar(packet);
 
-	std::lock_guard<std::mutex> guard(peersMutex);
+	std::lock_guard<Mutex> guard(peersMutex);
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
 		if (std::shared_ptr<ServerPeer> ptr = iter->lock())
@@ -37,7 +37,7 @@ void ServerPeer::runPeerConnection(std::shared_ptr<ServerPeer> peer)
 {
 	std::cout << "Handling connection: " << peer->getAddress() << std::endl;
 	{
-		std::lock_guard<std::mutex> guard(peersMutex);
+		std::lock_guard<Mutex> guard(peersMutex);
 		peers.emplace_back(peer);
 	}
 	{

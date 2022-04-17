@@ -35,7 +35,7 @@ struct Texture
 	}
 };
 
-using DisplayData = std::variant<std::monostate, Texture, std::string, Bytes>;
+using DisplayData = std::variant<std::monostate, Texture, String, Bytes>;
 class StreamDisplay : public MessagePacketHandler
 {
   private:
@@ -80,7 +80,7 @@ struct StreamDisplayUpdate
 	~StreamDisplayUpdate();
 
 	void operator()(std::monostate);
-	void operator()(std::string &);
+	void operator()(String &);
 	void operator()(Texture &);
 	void operator()(Bytes &);
 };
@@ -95,7 +95,7 @@ struct StreamDisplayDraw
 	~StreamDisplayDraw();
 
 	bool operator()(std::monostate);
-	bool operator()(const std::string &);
+	bool operator()(const String &);
 	bool operator()(Texture &);
 	bool operator()(const Bytes &);
 };

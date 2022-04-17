@@ -9,9 +9,9 @@ class TemStreamGui
 {
   private:
 	std::optional<Address> connectToServer;
-	std::optional<std::string> pendingFile;
+	std::optional<String> pendingFile;
 	PeerInformation peerInfo;
-	std::mutex peerMutex;
+	Mutex peerMutex;
 	MessagePackets outgoingPackets;
 	MessagePackets incomingPackets;
 	std::unique_ptr<ClientPeer> peer;

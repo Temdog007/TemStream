@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-using MessagePackets = std::vector<MessagePacket>;
+using MessagePackets = List<MessagePacket>;
 class ClientPeer : public Peer
 {
   private:

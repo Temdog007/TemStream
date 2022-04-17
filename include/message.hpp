@@ -39,20 +39,25 @@ struct RequestPeers
 		(void)ar;
 	}
 };
-using TextMessage = std::string;
+using TextMessage = String;
 using ImageMessage = std::variant<bool, Bytes>;
-using PeerInformationList = std::vector<PeerInformation>;
+using PeerInformationList = List<PeerInformation>;
 using Message = std::variant<RequestPeers, TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformation,
 							 PeerInformationList>;
 
 struct MessageSource
 {
-	std::string author;
-	std::string destination;
+	String author;
+	String destination;
 
 	bool operator==(const MessageSource &s) const
 	{
 		return author == s.author && destination == s.destination;
+	}
+
+	bool operator!=(const MessageSource &s) const
+	{
+		return !(*this == s);
 	}
 
 	template <class Archive> void save(Archive &ar) const
@@ -70,7 +75,7 @@ struct MessagePacket
 {
 	Message message;
 	MessageSource source;
-	std::vector<std::string> trail;
+	List<String> trail;
 
 	template <class Archive> void save(Archive &ar) const
 	{
@@ -103,7 +108,9 @@ template <> struct hash<TemStream::MessageSource>
 {
 	std::size_t operator()(const TemStream::MessageSource &source) const
 	{
-		return hash<string>()(source.author) ^ hash<string>()(source.destination);
+		std::size_t value = hash<TemStream::String>()(source.author);
+		TemStream::hash_combine(value, source.destination);
+		return value;
 	}
 };
 } // namespace std

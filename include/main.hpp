@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <string>
 #include <thread>
@@ -53,7 +54,7 @@
 
 namespace TemStream
 {
-using Bytes = std::vector<char>;
+using Mutex = std::recursive_mutex;
 extern std::atomic<int32_t> runningThreads;
 enum PollState
 {
@@ -61,6 +62,12 @@ enum PollState
 	GotData,
 	NoData
 };
+
+template <typename T> inline void hash_combine(std::size_t &seed, const T &v)
+{
+	std::hash<T> hasher;
+	seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 
 extern bool openSocket(int &, const char *hostname, const char *port, const bool isServer);
 
@@ -80,7 +87,14 @@ extern size_t MaxPacketSize;
 
 #include "TemStreamConfig.h"
 
+#include "allocator.hpp"
 #include "colors.hpp"
+
+namespace ImGui
+{
+IMGUI_API bool InputText(const char *label, TemStream::String *str, ImGuiInputTextFlags flags = 0,
+						 ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
+}
 
 #include "addrinfo.hpp"
 #include "memoryStream.hpp"
