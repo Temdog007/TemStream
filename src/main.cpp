@@ -14,6 +14,9 @@ void parseMemory(int, const char **, size_t);
 int main(const int argc, const char **argv)
 {
 	printf("TemStream v%d.%d.%d\n", TemStream_VERSION_MAJOR, TemStream_VERSION_MINOR, TemStream_VERSION_PATCH);
+#if _DEBUG
+	puts("Debug mode");
+#endif
 	{
 		struct sigaction action;
 		action.sa_handler = &signalHandler;

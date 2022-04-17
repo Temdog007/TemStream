@@ -52,24 +52,31 @@
 #define MB(X) (KB(X) * 1024)
 #define GB(X) (MB(X) * 1024)
 
+#define _DEBUG !NDEBUG
+#define USE_CUSTOM_ALLOCATOR false
+
 namespace TemStream
 {
-using Mutex = std::recursive_mutex;
-class LogMutex
+class SDL_MutexWrapper
 {
   private:
-	static std::unordered_map<std::thread::id, size_t> threads;
-	Mutex &m;
-	const char *name;
-	size_t id;
+	SDL_mutex *mutex;
 
   public:
-	LogMutex(Mutex &, const char *);
-	~LogMutex();
+	SDL_MutexWrapper();
+	SDL_MutexWrapper(const SDL_MutexWrapper &) = delete;
+	SDL_MutexWrapper(SDL_MutexWrapper &&) = delete;
+	~SDL_MutexWrapper();
+
+	void lock();
+	void unlock();
 };
+using Mutex = std::recursive_mutex;
+
+#define LOG_LOCK(M) LogMutex guard(M, #M)
 #define DEBUG_MUTEX false
 #if DEBUG_MUTEX
-#define LOCK(M) LogMutex guard(M, #M)
+#define LOCK(M) LOG_LOCK(M)
 #else
 #define LOCK(M) std::lock_guard<Mutex> guard(M)
 #endif
@@ -108,12 +115,6 @@ extern size_t MaxPacketSize;
 #include "allocator.hpp"
 #include "colors.hpp"
 
-namespace ImGui
-{
-IMGUI_API bool InputText(const char *label, TemStream::String *str, ImGuiInputTextFlags flags = 0,
-						 ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
-}
-
 #include "addrinfo.hpp"
 #include "memoryStream.hpp"
 #include "peerInformation.hpp"
@@ -131,3 +132,19 @@ IMGUI_API bool InputText(const char *label, TemStream::String *str, ImGuiInputTe
 #include "gui.hpp"
 #include "query.hpp"
 #include "streamDisplay.hpp"
+
+namespace TemStream
+{
+class LogMutex
+{
+  private:
+	static Map<std::thread::id, size_t> threads;
+	Mutex &m;
+	const char *name;
+	size_t id;
+
+  public:
+	LogMutex(Mutex &, const char *);
+	~LogMutex();
+};
+} // namespace TemStream

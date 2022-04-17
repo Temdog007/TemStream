@@ -71,6 +71,77 @@ class AllocatorData
 		}
 	}
 
+	void coalescence(FreeListNode *previousNode, FreeListNode *freeNode)
+	{
+		if (freeNode->next != nullptr &&
+			reinterpret_cast<size_t>(freeNode) + freeNode->blockSize == reinterpret_cast<size_t>(freeNode->next))
+		{
+			freeNode->blockSize += freeNode->next->blockSize;
+			FreeListNode::remove(list, freeNode, freeNode->next);
+		}
+		if (previousNode != nullptr &&
+			reinterpret_cast<size_t>(previousNode) + previousNode->blockSize == reinterpret_cast<size_t>(freeNode))
+		{
+			previousNode->blockSize += freeNode->blockSize;
+			FreeListNode::remove(list, previousNode, freeNode);
+		}
+	}
+
+	void find(const size_t size, FreeListNode *&previousNode, FreeListNode *&foundNode)
+	{
+		switch (policy)
+		{
+		case PlacementPolicy::First:
+			findFirst(size, previousNode, foundNode);
+			break;
+		case PlacementPolicy::Best:
+			findBest(size, previousNode, foundNode);
+			break;
+		default:
+			break;
+		}
+	}
+
+	void findFirst(const size_t size, FreeListNode *&previousNode, FreeListNode *&foundNode)
+	{
+		FreeListNode *it = list;
+		FreeListNode *prev = nullptr;
+		while (it != nullptr)
+		{
+			if (it->blockSize >= size)
+			{
+				break;
+			}
+			prev = it;
+			it = it->next;
+		}
+		previousNode = prev;
+		foundNode = it;
+	}
+
+	void findBest(const size_t size, FreeListNode *&previousNode, FreeListNode *&foundNode)
+	{
+		size_t smallestDiff = SIZE_MAX;
+		FreeListNode *bestBlock = nullptr;
+		FreeListNode *bestPrevBlock = nullptr;
+		FreeListNode *it = list;
+		FreeListNode *prev = nullptr;
+		while (it != nullptr)
+		{
+			const size_t currentDiff = it->blockSize - size;
+			if (it->blockSize >= size && currentDiff < smallestDiff)
+			{
+				bestBlock = it;
+				bestPrevBlock = prev;
+				smallestDiff = currentDiff;
+			}
+			prev = it;
+			it = it->next;
+		}
+		previousNode = bestPrevBlock;
+		foundNode = bestBlock;
+	}
+
   public:
 	AllocatorData() : mutex(), list(nullptr), data(nullptr), used(0), len(0), policy(PlacementPolicy::Best)
 	{
@@ -80,6 +151,9 @@ class AllocatorData
 
 	~AllocatorData()
 	{
+#if _DEBUG
+		puts("AllocatorData deleted");
+#endif
 		close();
 	}
 
@@ -101,79 +175,10 @@ template <class T> class Allocator
   public:
 	typedef T value_type;
 
+	template <class U> friend class Allocator;
+
   private:
 	AllocatorData &ad;
-
-	void coalescence(FreeListNode *previousNode, FreeListNode *freeNode)
-	{
-		if (freeNode->next != nullptr &&
-			reinterpret_cast<size_t>(freeNode) + freeNode->blockSize == reinterpret_cast<size_t>(freeNode->next))
-		{
-			freeNode->blockSize += freeNode->next->blockSize;
-			FreeListNode::remove(ad.list, freeNode, freeNode->next);
-		}
-		if (previousNode != nullptr &&
-			reinterpret_cast<size_t>(previousNode) + previousNode->blockSize == reinterpret_cast<size_t>(freeNode))
-		{
-			previousNode->blockSize += freeNode->blockSize;
-			FreeListNode::remove(ad.list, previousNode, freeNode);
-		}
-	}
-
-	void find(const size_t size, FreeListNode *&previousNode, FreeListNode *&foundNode)
-	{
-		switch (ad.policy)
-		{
-		case PlacementPolicy::First:
-			findFirst(size, previousNode, foundNode);
-			break;
-		case PlacementPolicy::Best:
-			findBest(size, previousNode, foundNode);
-			break;
-		default:
-			break;
-		}
-	}
-
-	void findFirst(const size_t size, FreeListNode *&previousNode, FreeListNode *&foundNode)
-	{
-		FreeListNode *it = ad.list;
-		FreeListNode *prev = nullptr;
-		while (it != nullptr)
-		{
-			if (it->blockSize >= size)
-			{
-				break;
-			}
-			prev = it;
-			it = it->next;
-		}
-		previousNode = prev;
-		foundNode = it;
-	}
-
-	void findBest(const size_t size, FreeListNode *&previousNode, FreeListNode *&foundNode)
-	{
-		size_t smallestDiff = SIZE_MAX;
-		FreeListNode *bestBlock = nullptr;
-		FreeListNode *bestPrevBlock = nullptr;
-		FreeListNode *it = ad.list;
-		FreeListNode *prev = nullptr;
-		while (it != nullptr)
-		{
-			const size_t currentDiff = it->blockSize - size;
-			if (it->blockSize >= size && currentDiff < smallestDiff)
-			{
-				bestBlock = it;
-				bestPrevBlock = prev;
-				smallestDiff = currentDiff;
-			}
-			prev = it;
-			it = it->next;
-		}
-		previousNode = bestPrevBlock;
-		foundNode = bestBlock;
-	}
 
   public:
 	Allocator() noexcept : ad(globalAllocatorData)
@@ -186,7 +191,7 @@ template <class T> class Allocator
 	{
 	}
 
-	template <class U> Allocator(const Allocator<U> &u) noexcept : ad(u.ad)
+	template <class U> Allocator(Allocator<U> &u) noexcept : ad(u.ad)
 	{
 	}
 	template <class U> bool operator==(const Allocator<U> &) const noexcept
@@ -222,7 +227,7 @@ template <class T> T *Allocator<T>::allocate(const size_t requestedSize)
 
 	FreeListNode *affectedNode = nullptr;
 	FreeListNode *previousNode = nullptr;
-	find(allocateSize, previousNode, affectedNode);
+	ad.find(allocateSize, previousNode, affectedNode);
 	if (affectedNode == nullptr)
 	{
 		throw std::bad_alloc();
@@ -277,26 +282,8 @@ template <class T> void Allocator<T>::deallocate(T *const ptr, const size_t)
 	}
 
 	ad.used -= freeNode->blockSize;
-	coalescence(prev, freeNode);
+	ad.coalescence(prev, freeNode);
 }
-using String = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
-
-template <typename T> using List = std::vector<T, Allocator<T>>;
-using Bytes = List<char>;
 } // namespace TemStream
 
-namespace std
-{
-template <> struct hash<TemStream::String>
-{
-	std::size_t operator()(const TemStream::String &s) const
-	{
-		std::size_t value = s.size();
-		for (auto c : s)
-		{
-			TemStream::hash_combine(value, c);
-		}
-		return value;
-	}
-};
-} // namespace std
+#include "allocator_defs.hpp"

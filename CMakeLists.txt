@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 configure_file(include/TemStreamConfig.h.in ../include/TemStreamConfig.h)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 add_subdirectory(cereal)
 add_subdirectory(SDL)
 add_subdirectory(SDL_image)

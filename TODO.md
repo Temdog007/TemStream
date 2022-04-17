@@ -192,6 +192,7 @@
 - [x] Render text stream
 
 ### Apr 17, 2022
+- [x] Custom allocator
 - [ ] Stream name not showing in window
 - [ ] Images not loading
 - [ ] Make displays movable

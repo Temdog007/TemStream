@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-std::unordered_map<std::thread::id, size_t> LogMutex::threads;
+Map<std::thread::id, size_t> LogMutex::threads;
 LogMutex::LogMutex(Mutex &m, const char *name) : m(m), name(name), id(0)
 {
 	const auto tid = std::this_thread::get_id();
@@ -82,6 +82,28 @@ PollState pollSocket(const int fd, const int timeout)
 	default:
 		return (inputfd.revents & POLLIN) == 0 ? PollState::NoData : PollState::GotData;
 	}
+}
+
+SDL_MutexWrapper::SDL_MutexWrapper() : mutex(SDL_CreateMutex())
+{
+	if (mutex == nullptr)
+	{
+		fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
+	}
+}
+SDL_MutexWrapper::~SDL_MutexWrapper()
+{
+	puts("Deleted mutex");
+	SDL_DestroyMutex(mutex);
+	mutex = nullptr;
+}
+void SDL_MutexWrapper::lock()
+{
+	SDL_LockMutex(mutex);
+}
+void SDL_MutexWrapper::unlock()
+{
+	SDL_UnlockMutex(mutex);
 }
 } // namespace TemStream
 

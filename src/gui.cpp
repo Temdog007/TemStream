@@ -423,7 +423,7 @@ int runGui()
 		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize);
 	}
 
-	std::unordered_map<MessageSource, StreamDisplay> displays;
+	Map<MessageSource, StreamDisplay> displays;
 	MessagePackets messages;
 	while (!appDone)
 	{
