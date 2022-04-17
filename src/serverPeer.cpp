@@ -2,49 +2,74 @@
 
 namespace TemStream
 {
-PeerInformation peerInformation;
+PeerInformation ServerPeer::serverInformation;
+std::mutex peersMutex;
+std::vector<std::weak_ptr<ServerPeer>> peers;
 
-void runPeerConnection(const Address address, std::unique_ptr<Socket> s)
+void ServerPeer::sendToAllPeers(const MessagePacket &packet)
 {
-	ServerPeer peer(address, std::move(s));
-	std::array<char, INET6_ADDRSTRLEN> str;
-	uint16_t port = 0;
-	Bytes bytes;
-	if (!peer->getIpAndPort(str, port))
-	{
-		goto end;
-	}
-	printf("Handling connection: %s:%u\n", str.data(), port);
+	MemoryStream m;
+	cereal::PortableBinaryOutputArchive ar(m);
+	ar(packet);
 
+	std::lock_guard<std::mutex> guard(peersMutex);
+	for (auto iter = peers.begin(); iter != peers.end();)
+	{
+		if (std::shared_ptr<ServerPeer> ptr = iter->lock())
+		{
+			if ((*ptr)->send(m.getData(), m.getSize()))
+			{
+				++iter;
+			}
+			else
+			{
+				iter = peers.erase(iter);
+			}
+		}
+		else
+		{
+			iter = peers.erase(iter);
+		}
+	}
+}
+
+void ServerPeer::runPeerConnection(std::shared_ptr<ServerPeer> peer)
+{
+	std::cout << "Handling connection: " << peer->getAddress() << std::endl;
+	{
+		std::lock_guard<std::mutex> guard(peersMutex);
+		peers.emplace_back(peer);
+	}
 	{
 		MessagePacket packet;
-		packet.message = peerInformation;
-		if (!peer->sendPacket(packet))
+		packet.message = serverInformation;
+		if (!(*peer)->sendPacket(packet))
 		{
 			goto end;
 		}
 	}
+
 	while (!appDone)
 	{
-		if (!peer.readAndHandle(1000))
+		if (!peer->readAndHandle(1000))
 		{
 			break;
 		}
 	}
 
 end:
-	printf("Ending connection: %s:%u\n", str.data(), port);
+	std::cout << "Ending connection: " << peer->getAddress() << std::endl;
 	--runningThreads;
 }
-int runServer(const int argc, const char **argv)
+int ServerPeer::runServer(const int argc, const char **argv)
 {
 	int result = EXIT_FAILURE;
 	int fd = -1;
 
 	const char *hostname = NULL;
 	const char *port = "10000";
-	peerInformation.name = "Server";
-	peerInformation.isServer = true;
+	serverInformation.name = "Server";
+	serverInformation.isServer = true;
 
 	for (int i = 1; i < argc - 1;)
 	{
@@ -62,7 +87,7 @@ int runServer(const int argc, const char **argv)
 		}
 		if (strcmp(argv[i], "-N") == 0 || strcmp(argv[i], "--name") == 0)
 		{
-			peerInformation.name = argv[i + 1];
+			serverInformation.name = argv[i + 1];
 			i += 2;
 			continue;
 		}
@@ -107,7 +132,8 @@ int runServer(const int argc, const char **argv)
 
 			++runningThreads;
 			Address address(str.data(), port);
-			std::thread thread(runPeerConnection, address, std::move(s));
+			auto peer = std::make_shared<ServerPeer>(address, std::move(s));
+			std::thread thread(runPeerConnection, std::move(peer));
 			thread.detach();
 		}
 	}
@@ -130,6 +156,39 @@ ServerPeer::ServerPeer(const Address &address, std::unique_ptr<Socket> s)
 ServerPeer::~ServerPeer()
 {
 }
+
+bool ServerPeer::processCurrentMessage() const
+{
+	// Don't send packet if server has already received it
+	auto iter = std::find(currentPacket->trail.begin(), currentPacket->trail.end(), serverInformation.name);
+	if (iter != currentPacket->trail.end())
+	{
+		return true;
+	}
+
+	MessagePacket newPacket(*currentPacket);
+	if (info.isServer)
+	{
+		// Messages from another server should have an author
+		if (currentPacket->source.author.empty())
+		{
+			return false;
+		}
+	}
+	else
+	{
+		// Messages from clients shouldn't write the author
+		if (!currentPacket->source.author.empty())
+		{
+			return false;
+		}
+		newPacket.source.author = info.name;
+	}
+
+	newPacket.trail.push_back(serverInformation.name);
+	sendToAllPeers(newPacket);
+	return true;
+}
 bool ServerPeer::handlePacket(const MessagePacket &packet)
 {
 	currentPacket = &packet;
@@ -144,22 +203,22 @@ bool ServerPeer::handlePacket(const MessagePacket &packet)
 bool ServerPeer::operator()(const TextMessage &)
 {
 	CHECK_INFO(TextMessage)
-	return true;
+	return processCurrentMessage();
 }
 bool ServerPeer::operator()(const ImageMessage &)
 {
 	CHECK_INFO(ImageMessage)
-	return true;
+	return processCurrentMessage();
 }
 bool ServerPeer::operator()(const VideoMessage &)
 {
 	CHECK_INFO(VideoMessage)
-	return true;
+	return processCurrentMessage();
 }
 bool ServerPeer::operator()(const AudioMessage &)
 {
 	CHECK_INFO(AudioMessage)
-	return true;
+	return processCurrentMessage();
 }
 bool ServerPeer::operator()(const PeerInformationList &)
 {

@@ -37,7 +37,7 @@ int main(int argc, const char **argv)
 	{
 		if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--server") == 0)
 		{
-			return runServer(argc, argv);
+			return ServerPeer::runServer(argc, argv);
 		}
 	}
 	return runGui();

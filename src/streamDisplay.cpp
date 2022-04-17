@@ -29,6 +29,10 @@ StreamDisplay &StreamDisplay::operator=(StreamDisplay &&display)
 }
 bool StreamDisplay::draw()
 {
+	if (texture == nullptr)
+	{
+		return true;
+	}
 	if (SDL_RenderCopy(renderer, texture, NULL, &rect) == 0)
 	{
 		return true;

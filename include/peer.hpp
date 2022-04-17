@@ -26,6 +26,11 @@ class Peer
 		return info;
 	}
 
+	const Address &getAddress() const
+	{
+		return address;
+	}
+
 	Socket *operator->()
 	{
 		return mSocket.get();
