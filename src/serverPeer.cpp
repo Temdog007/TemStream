@@ -4,9 +4,9 @@ namespace TemStream
 {
 PeerInformation peerInformation;
 
-void runPeerConnection(std::unique_ptr<Socket> &&s)
+void runPeerConnection(const Address address, std::unique_ptr<Socket> s)
 {
-	ServerPeer peer(std::move(s));
+	ServerPeer peer(address, std::move(s));
 	std::array<char, INET6_ADDRSTRLEN> str;
 	uint16_t port = 0;
 	Bytes bytes;
@@ -106,7 +106,8 @@ int runServer(const int argc, const char **argv)
 			printf("New connection: %s:%u\n", str.data(), port);
 
 			++runningThreads;
-			std::thread thread(runPeerConnection, std::move(s));
+			Address address(str.data(), port);
+			std::thread thread(runPeerConnection, address, std::move(s));
 			thread.detach();
 		}
 	}
@@ -122,7 +123,8 @@ end:
 	}
 	return result;
 }
-ServerPeer::ServerPeer(std::unique_ptr<Socket> &&s) : Peer(std::move(s))
+ServerPeer::ServerPeer(const Address &address, std::unique_ptr<Socket> s)
+	: Peer(address, std::move(s)), informationAcquired(false)
 {
 }
 ServerPeer::~ServerPeer()
@@ -133,25 +135,30 @@ bool ServerPeer::handlePacket(const MessagePacket &packet)
 	currentPacket = &packet;
 	return std::visit(*this, packet.message);
 }
+#define CHECK_INFO(X)                                                                                                  \
+	if (!gotInfo())                                                                                                    \
+	{                                                                                                                  \
+		std::cerr << "Got " << #X << " from peer before getting their information" << std::endl;                       \
+		return false;                                                                                                  \
+	}
 bool ServerPeer::operator()(const TextMessage &)
 {
+	CHECK_INFO(TextMessage)
 	return true;
 }
 bool ServerPeer::operator()(const ImageMessage &)
 {
+	CHECK_INFO(ImageMessage)
 	return true;
 }
 bool ServerPeer::operator()(const VideoMessage &)
 {
+	CHECK_INFO(VideoMessage)
 	return true;
 }
 bool ServerPeer::operator()(const AudioMessage &)
 {
-	return true;
-}
-bool ServerPeer::operator()(const PeerInformation &info)
-{
-	this->info = info;
+	CHECK_INFO(AudioMessage)
 	return true;
 }
 bool ServerPeer::operator()(const PeerInformationList &)
@@ -160,6 +167,14 @@ bool ServerPeer::operator()(const PeerInformationList &)
 }
 bool ServerPeer::operator()(const RequestPeers &)
 {
+	CHECK_INFO(RequestPeers)
+	return true;
+}
+bool ServerPeer::operator()(const PeerInformation &info)
+{
+	this->info = info;
+	informationAcquired = true;
+	std::cout << "Information for peer " << address << " -> " << info << std::endl;
 	return true;
 }
 } // namespace TemStream

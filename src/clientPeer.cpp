@@ -2,27 +2,7 @@
 
 namespace TemStream
 {
-Address::Address() : hostname("localhost"), port(DefaultPort)
-{
-}
-Address::~Address()
-{
-}
-bool Address::operator==(const Address &a) const
-{
-	return port == a.port && hostname == a.hostname;
-}
-std::unique_ptr<TcpSocket> Address::makeTcpSocket() const
-{
-	auto ptr = std::make_unique<TcpSocket>();
-	if (ptr->connectWithAddress(*this, false))
-	{
-		return ptr;
-	}
-	return nullptr;
-}
-ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s)
-	: Peer(std::move(s)), address(address), messages()
+ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s) : Peer(address, std::move(s)), messages()
 {
 }
 ClientPeer::~ClientPeer()
@@ -50,7 +30,7 @@ bool ClientPeer::handlePacket(const MessagePacket &packet)
 	}
 	return true;
 }
-void ClientPeer::flush(std::vector<MessagePacket> &list)
+void ClientPeer::flush(MessagePackets &list)
 {
 	list.insert(list.end(), messages.begin(), messages.end());
 	messages.clear();

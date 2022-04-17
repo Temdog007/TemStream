@@ -8,9 +8,17 @@ extern int runServer(int, const char **);
 
 class ServerPeer : public Peer, public MessagePacketHandler
 {
+  private:
+	bool informationAcquired;
+
   public:
-	ServerPeer(std::unique_ptr<Socket> &&);
+	ServerPeer(const Address &, std::unique_ptr<Socket>);
 	virtual ~ServerPeer();
+
+	bool gotInfo() const
+	{
+		return informationAcquired;
+	}
 
 	bool handlePacket(const MessagePacket &) override;
 	virtual bool operator()(const TextMessage &);

@@ -13,10 +13,9 @@ const float fontSize = 36.f;
 
 namespace TemStream
 {
-int DefaultPort = 10000;
-
 TemStreamGui::TemStreamGui(ImGuiIO &io)
-	: connectToServer(), peer(nullptr), peerMutex(), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
+	: connectToServer(), pendingFile(std::nullopt), peerInfo({"User", false}), peerMutex(), peer(nullptr),
+	  queryData(nullptr), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -38,13 +37,23 @@ uint32_t updatePeer(uint32_t interval, TemStreamGui *gui)
 void TemStreamGui::update()
 {
 	std::lock_guard<std::mutex> guard(peerMutex);
+
 	if (peer != nullptr)
 	{
+		for (const auto &packet : outgoingPackets)
+		{
+			if (!(*peer)->sendPacket(packet))
+			{
+				peer = nullptr;
+				break;
+			}
+		}
 		if (!peer->readAndHandle(0))
 		{
 			peer = nullptr;
 		}
 	}
+	outgoingPackets.clear();
 }
 
 void TemStreamGui::flush(MessagePackets &packets)
@@ -98,7 +107,7 @@ bool TemStreamGui::init()
 
 bool TemStreamGui::connect(const Address &address)
 {
-	printf("Connecting to server: %s:%d\n", address.hostname.c_str(), address.port);
+	std::cout << "Connecting to server: " << address << std::endl;
 	auto s = address.makeTcpSocket();
 	if (s == nullptr)
 	{
@@ -110,8 +119,10 @@ bool TemStreamGui::connect(const Address &address)
 
 	std::lock_guard<std::mutex> guard(peerMutex);
 	peer = std::make_unique<ClientPeer>(address, std::move(s));
-	printf("Connected to server: %s:%d\n", address.hostname.c_str(), address.port);
-	return true;
+	std::cout << "Connected to server: " << address << std::endl;
+	MessagePacket packet;
+	packet.message = peerInfo;
+	return (*peer)->sendPacket(packet);
 }
 
 void TemStreamGui::draw()
@@ -160,12 +171,37 @@ void TemStreamGui::draw()
 				ImGui::Separator();
 				if (connectedToServer)
 				{
-					std::lock_guard<std::mutex> guard(peerMutex);
-					const auto &info = peer->getInfo();
-					ImGui::TextColored(Colors::Yellow, "Name: %s\n", info.name.c_str());
+					ImGui::TextColored(Colors::Lime, "Logged in as: %s\n", peerInfo.name.c_str());
 
-					const auto &addr = peer->getAddress();
-					ImGui::TextColored(Colors::Yellow, "Address: %s:%d\n", addr.hostname.c_str(), addr.port);
+					{
+						std::lock_guard<std::mutex> guard(peerMutex);
+						const auto &info = peer->getInfo();
+						ImGui::TextColored(Colors::Yellow, "Server: %s\n", info.name.c_str());
+
+						const auto &addr = peer->getAddress();
+						ImGui::TextColored(Colors::Yellow, "Address: %s:%d\n", addr.hostname.c_str(), addr.port);
+					}
+
+					ImGui::Separator();
+					if (queryData != nullptr)
+					{
+						if (ImGui::MenuItem("Send Text", "", &selected))
+						{
+							queryData = std::make_unique<QueryText>(*this);
+						}
+						if (ImGui::MenuItem("Send Image", "", &selected))
+						{
+							queryData = std::make_unique<QueryImage>(*this);
+						}
+						if (ImGui::MenuItem("Send Video", "", &selected))
+						{
+							queryData = std::make_unique<QueryVideo>(*this);
+						}
+						if (ImGui::MenuItem("Send Audio", "", &selected))
+						{
+							queryData = std::make_unique<QueryAudio>(*this);
+						}
+					}
 				}
 			}
 			ImGui::EndMenu();
@@ -181,6 +217,7 @@ void TemStreamGui::draw()
 		{
 			ImGui::InputText("Hostname", &connectToServer->hostname);
 			ImGui::InputInt("Port", &connectToServer->port);
+			ImGui::InputText("Name", &peerInfo.name);
 			if (ImGui::Button("Connect"))
 			{
 				connect(*connectToServer);
@@ -220,6 +257,13 @@ void TemStreamGui::draw()
 		}
 		ImGui::End();
 	}
+
+	bool sendingData = queryData != nullptr;
+	if (ImGui::Begin("Send data to server", &sendingData, ImGuiWindowFlags_NoCollapse))
+	{
+		queryData->draw();
+	}
+	ImGui::End();
 }
 
 const char *getExtension(const char *filename)
@@ -238,14 +282,42 @@ const char *getExtension(const char *filename)
 
 bool TemStreamGui::handleFile(const char *filename)
 {
-	(void)filename;
+	if (queryData != nullptr)
+	{
+		if (queryData->handleDropFile(filename))
+		{
+			MessagePackets packets = queryData->getPackets();
+			sendPackets(packets);
+			queryData = nullptr;
+		}
+	}
 	return true;
 }
 
 bool TemStreamGui::handleText(const char *text)
 {
-	(void)text;
+	if (queryData != nullptr)
+	{
+		if (queryData->handleDropText(text))
+		{
+			MessagePackets packets = queryData->getPackets();
+			sendPackets(packets);
+			queryData = nullptr;
+		}
+	}
 	return true;
+}
+
+void TemStreamGui::sendPacket(const MessagePacket &packet)
+{
+	std::lock_guard<std::mutex> guard(peerMutex);
+	outgoingPackets.emplace_back(packet);
+}
+
+void TemStreamGui::sendPackets(const MessagePackets &packets)
+{
+	std::lock_guard<std::mutex> guard(peerMutex);
+	outgoingPackets.insert(outgoingPackets.end(), packets.begin(), packets.end());
 }
 
 bool TemStreamGui::isConnected()
@@ -268,7 +340,7 @@ int runGui()
 	TemStreamGui gui(io);
 	if (!gui.init())
 	{
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed", "Failed to start app", NULL);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed", "Failed to start app", gui.window);
 		return EXIT_FAILURE;
 	}
 
@@ -285,7 +357,7 @@ int runGui()
 	io.Fonts->AddFontFromMemoryCompressedTTF((void *)Ubuntuu_compressed_data, Ubuntuu_compressed_size, fontSize);
 
 	std::unordered_map<MessageSource, StreamDisplay> displays;
-	std::vector<MessagePacket> messages;
+	MessagePackets messages;
 	while (!appDone)
 	{
 		SDL_Event event;

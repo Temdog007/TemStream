@@ -2,7 +2,8 @@
 
 namespace TemStream
 {
-Peer::Peer(std::unique_ptr<Socket> &&s) : bytes(), nextMessageSize(std::nullopt), info(), mSocket(std::move(s))
+Peer::Peer(const Address &address, std::unique_ptr<Socket> s)
+	: bytes(), nextMessageSize(std::nullopt), info(), address(address), mSocket(std::move(s))
 {
 }
 
@@ -36,6 +37,10 @@ bool Peer::readAndHandle(const int timeout)
 				v.data[i] = bytes[i];
 			}
 			nextMessageSize = ntohl(v.value);
+			if (nextMessageSize > MaxPacketSize)
+			{
+				return false;
+			}
 
 			bytes.erase(bytes.begin(), bytes.begin() + sizeof(uint32_t));
 		}

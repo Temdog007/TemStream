@@ -4,13 +4,17 @@
 
 namespace TemStream
 {
+class IQuery;
 class TemStreamGui
 {
   private:
 	std::optional<Address> connectToServer;
-	std::unique_ptr<ClientPeer> peer;
 	std::optional<std::string> pendingFile;
+	PeerInformation peerInfo;
 	std::mutex peerMutex;
+	MessagePackets outgoingPackets;
+	std::unique_ptr<ClientPeer> peer;
+	std::unique_ptr<IQuery> queryData;
 	ImGuiIO &io;
 	int fontIndex;
 
@@ -38,5 +42,8 @@ class TemStreamGui
 	bool handleFile(const char *);
 
 	bool handleText(const char *);
+
+	void sendPacket(const MessagePacket &);
+	void sendPackets(const MessagePackets &);
 };
 } // namespace TemStream

@@ -9,6 +9,12 @@ struct PeerInformation
 	std::string name;
 	bool isServer;
 
+	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
+	{
+		os << "Name: " << info.name << '(' << (info.isServer ? "Server" : "Client") << ')';
+		return os;
+	}
+
 	template <class Archive> void serialize(Archive &archive)
 	{
 		archive(name, isServer);

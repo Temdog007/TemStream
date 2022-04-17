@@ -209,6 +209,5 @@
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 
 ### Maybe
-- [ ] Make custom allocator
 - [ ] Make plug in library for OBS to send video and audio to server
 - [ ] Fix loading tga files

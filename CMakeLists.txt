@@ -37,6 +37,7 @@ set(SOURCES src/addrinfo.cpp
     src/misc.cpp
     src/peer.cpp 
     src/producer.cpp
+    src/query.cpp
     src/serverPeer.cpp
     src/socket.cpp
     src/streamDisplay.cpp)
@@ -49,6 +50,7 @@ set(HEADERS include/addrinfo.hpp
     include/message.hpp
     include/peer.hpp
     include/producer.hpp
+    include/query.hpp
     include/serverPeer.hpp
     include/socket.hpp
     include/streamDisplay.hpp

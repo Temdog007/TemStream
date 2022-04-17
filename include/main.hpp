@@ -71,6 +71,8 @@ extern int runGui();
 
 extern int DefaultPort;
 
+extern size_t MaxPacketSize;
+
 } // namespace TemStream
 
 #include "TemStreamConfig.h"
@@ -84,6 +86,8 @@ extern int DefaultPort;
 #include "message.hpp"
 #include "socket.hpp"
 
+#include "address.hpp"
+
 #include "peer.hpp"
 #include "producer.hpp"
 
@@ -91,4 +95,5 @@ extern int DefaultPort;
 #include "serverPeer.hpp"
 
 #include "gui.hpp"
+#include "query.hpp"
 #include "streamDisplay.hpp"
