@@ -21,8 +21,8 @@ const float fontSize = 36.f;
 namespace TemStream
 {
 TemStreamGui::TemStreamGui(ImGuiIO &io)
-	: connectToServer(), pendingFile(std::nullopt), peerInfo({"User", false}), peerMutex(), peer(nullptr),
-	  queryData(nullptr), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
+	: connectToServer(), pendingFile(std::nullopt), peerInfo({"User", false}), peerMutex(), outgoingPackets(),
+	  incomingPackets(), peer(nullptr), queryData(nullptr), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -267,23 +267,29 @@ void TemStreamGui::draw()
 	{
 		bool opened = true;
 		if (ImGui::Begin("Send data to server", &opened,
-						 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_MenuBar))
+						 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			if (ImGui::BeginMenuBar())
+			static const char *options[]{"Text", "Image", "Audio", "Video"};
+			int selected = getSelectedQuery();
+			if (ImGui::Combo("Data Type", &selected, options, IM_ARRAYSIZE(options)))
 			{
-				if (ImGui::BeginMenu("Data Type"))
+				switch (selected)
 				{
-					if (ImGui::MenuItem("Text", "", nullptr, dynamic_cast<QueryText *>(queryData.get()) == nullptr))
-					{
-						queryData = std::make_unique<QueryText>(*this);
-					}
-					if (ImGui::MenuItem("Image", "", nullptr, dynamic_cast<QueryImage *>(queryData.get()) == nullptr))
-					{
-						queryData = std::make_unique<QueryImage>(*this);
-					}
-					ImGui::EndMenu();
+				case 0:
+					queryData = std::make_unique<QueryText>(*this);
+					break;
+				case 1:
+					queryData = std::make_unique<QueryImage>(*this);
+					break;
+				case 2:
+					queryData = std::make_unique<QueryAudio>(*this);
+					break;
+				case 3:
+					queryData = std::make_unique<QueryVideo>(*this);
+					break;
+				default:
+					break;
 				}
-				ImGui::EndMainMenuBar();
 			}
 			if (queryData->draw())
 			{
@@ -297,6 +303,31 @@ void TemStreamGui::draw()
 			queryData = nullptr;
 		}
 	}
+}
+
+int TemStreamGui::getSelectedQuery() const
+{
+	if (queryData == nullptr)
+	{
+		return -1;
+	}
+	if (dynamic_cast<QueryText *>(queryData.get()) != nullptr)
+	{
+		return 0;
+	}
+	if (dynamic_cast<QueryImage *>(queryData.get()) != nullptr)
+	{
+		return 1;
+	}
+	if (dynamic_cast<QueryAudio *>(queryData.get()) != nullptr)
+	{
+		return 2;
+	}
+	if (dynamic_cast<QueryVideo *>(queryData.get()) != nullptr)
+	{
+		return 3;
+	}
+	return -1;
 }
 
 const char *getExtension(const char *filename)
@@ -339,16 +370,24 @@ bool TemStreamGui::handleText(const char *text)
 	return true;
 }
 
-void TemStreamGui::sendPacket(const MessagePacket &packet)
+void TemStreamGui::sendPacket(const MessagePacket &packet, const bool handleLocally)
 {
 	std::lock_guard<std::mutex> guard(peerMutex);
 	outgoingPackets.emplace_back(packet);
+	if (handleLocally)
+	{
+		incomingPackets.emplace_back(packet);
+	}
 }
 
-void TemStreamGui::sendPackets(const MessagePackets &packets)
+void TemStreamGui::sendPackets(const MessagePackets &packets, const bool handleLocally)
 {
 	std::lock_guard<std::mutex> guard(peerMutex);
 	outgoingPackets.insert(outgoingPackets.end(), packets.begin(), packets.end());
+	if (handleLocally)
+	{
+		incomingPackets.insert(incomingPackets.end(), packets.begin(), packets.end());
+	}
 }
 
 bool TemStreamGui::isConnected()

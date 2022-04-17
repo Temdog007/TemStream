@@ -13,6 +13,7 @@ class TemStreamGui
 	PeerInformation peerInfo;
 	std::mutex peerMutex;
 	MessagePackets outgoingPackets;
+	MessagePackets incomingPackets;
 	std::unique_ptr<ClientPeer> peer;
 	std::unique_ptr<IQuery> queryData;
 	ImGuiIO &io;
@@ -43,7 +44,9 @@ class TemStreamGui
 
 	bool handleText(const char *);
 
-	void sendPacket(const MessagePacket &);
-	void sendPackets(const MessagePackets &);
+	int getSelectedQuery() const;
+
+	void sendPacket(const MessagePacket &, const bool handleLocally = true);
+	void sendPackets(const MessagePackets &, const bool handleLocally = true);
 };
 } // namespace TemStream
