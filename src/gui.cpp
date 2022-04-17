@@ -147,12 +147,11 @@ void TemStreamGui::draw()
 	{
 		if (ImGui::BeginMenu("File"))
 		{
-			bool selected = false;
-			if (!pendingFile.has_value() && ImGui::MenuItem("Open", "", &selected))
+			if (ImGui::MenuItem("Open", "", nullptr, !pendingFile.has_value()))
 			{
 				pendingFile = "";
 			}
-			if (ImGui::MenuItem("Exit", "", &selected))
+			if (ImGui::MenuItem("Exit", "", nullptr))
 			{
 				TemStream::appDone = true;
 			}
@@ -170,13 +169,11 @@ void TemStreamGui::draw()
 		if (ImGui::BeginMenu("Connection"))
 		{
 			const bool connectedToServer = isConnected();
-			bool selected = false;
-			if (ImGui::MenuItem("Connect to server", "", &selected, !connectedToServer))
+			if (ImGui::MenuItem("Connect to server", "", nullptr, !connectedToServer))
 			{
 				connectToServer = Address();
 			}
-			selected = false;
-			if (ImGui::MenuItem("Disconnect from server", "", &selected, connectedToServer))
+			if (ImGui::MenuItem("Disconnect from server", "", nullptr, connectedToServer))
 			{
 				connectToServer = std::nullopt;
 				std::lock_guard<std::mutex> guard(peerMutex);
@@ -201,21 +198,9 @@ void TemStreamGui::draw()
 					ImGui::Separator();
 					if (queryData == nullptr)
 					{
-						if (ImGui::MenuItem("Send Text", "", &selected))
+						if (ImGui::MenuItem("Send Data", "", nullptr))
 						{
 							queryData = std::make_unique<QueryText>(*this);
-						}
-						if (ImGui::MenuItem("Send Image", "", &selected))
-						{
-							queryData = std::make_unique<QueryImage>(*this);
-						}
-						if (ImGui::MenuItem("Send Video", "", &selected))
-						{
-							queryData = std::make_unique<QueryVideo>(*this);
-						}
-						if (ImGui::MenuItem("Send Audio", "", &selected))
-						{
-							queryData = std::make_unique<QueryAudio>(*this);
 						}
 					}
 				}
@@ -226,10 +211,11 @@ void TemStreamGui::draw()
 
 		ImGui::EndMainMenuBar();
 	}
-	bool opened = true;
+
 	if (connectToServer.has_value())
 	{
-		if (ImGui::Begin("Connect to server", &opened, ImGuiWindowFlags_NoCollapse))
+		bool opened = true;
+		if (ImGui::Begin("Connect to server", &opened, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			ImGui::InputText("Hostname", &connectToServer->hostname);
 			ImGui::InputInt("Port", &connectToServer->port);
@@ -237,28 +223,27 @@ void TemStreamGui::draw()
 			if (ImGui::Button("Connect"))
 			{
 				connect(*connectToServer);
-				connectToServer = std::nullopt;
+				opened = false;
 			}
 		}
 		ImGui::End();
-	}
-	if (!opened)
-	{
-		connectToServer = std::nullopt;
+		if (!opened)
+		{
+			connectToServer = std::nullopt;
+		}
 	}
 
 	if (pendingFile.has_value())
 	{
-		opened = true;
-		if (ImGui::Begin("Enter file path", &opened, ImGuiWindowFlags_NoCollapse))
+		bool opened = true;
+		if (ImGui::Begin("Enter file path", &opened, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			ImGui::InputText("File path", &*pendingFile);
-			ImGui::SameLine();
 			if (ImGui::Button("Load"))
 			{
 				char *ptr = reinterpret_cast<char *>(SDL_malloc(pendingFile->size() + 1));
 				strcpy(ptr, pendingFile->c_str());
-				pendingFile = std::nullopt;
+				opened = false;
 
 				SDL_Event e;
 				e.type = SDL_DROPFILE;
@@ -272,24 +257,45 @@ void TemStreamGui::draw()
 			}
 		}
 		ImGui::End();
+		if (!opened)
+		{
+			pendingFile = std::nullopt;
+		}
 	}
 
-	bool sendingData = queryData != nullptr;
-	if (sendingData)
+	if (queryData != nullptr)
 	{
-		if (ImGui::Begin("Send data to server", &sendingData, ImGuiWindowFlags_NoCollapse))
+		bool opened = true;
+		if (ImGui::Begin("Send data to server", &opened,
+						 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_MenuBar))
 		{
+			if (ImGui::BeginMenuBar())
+			{
+				if (ImGui::BeginMenu("Data Type"))
+				{
+					if (ImGui::MenuItem("Text", "", nullptr, dynamic_cast<QueryText *>(queryData.get()) == nullptr))
+					{
+						queryData = std::make_unique<QueryText>(*this);
+					}
+					if (ImGui::MenuItem("Image", "", nullptr, dynamic_cast<QueryImage *>(queryData.get()) == nullptr))
+					{
+						queryData = std::make_unique<QueryImage>(*this);
+					}
+					ImGui::EndMenu();
+				}
+				ImGui::EndMainMenuBar();
+			}
 			if (queryData->draw())
 			{
 				sendPackets(queryData->getPackets());
-				sendingData = false;
+				opened = false;
 			}
 		}
 		ImGui::End();
-	}
-	if (!sendingData)
-	{
-		queryData = nullptr;
+		if (!opened)
+		{
+			queryData = nullptr;
+		}
 	}
 }
 
