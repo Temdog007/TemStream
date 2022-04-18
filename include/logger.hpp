@@ -93,27 +93,6 @@ class Logger
 
 	void flush();
 };
-static inline std::ostream &operator<<(std::ostream &os, const Logger::Level lvl)
-{
-	switch (lvl)
-	{
-	case Logger::Level::Error:
-		os << "Error";
-		break;
-	case Logger::Level::Warning:
-		os << "Warning";
-		break;
-	case Logger::Level::Info:
-		os << "Info";
-		break;
-	case Logger::Level::Trace:
-		os << "Trace";
-		break;
-	default:
-		break;
-	}
-	return os;
-}
 class ConsoleLogger : public Logger
 {
   public:

@@ -16,7 +16,6 @@ const unsigned int FontSizes[]{Cousine_compressed_size,		DroidSans_compressed_si
 							   Ubuntuu_compressed_size};
 
 bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e);
-const float fontSize = 18.f;
 const ImWchar MinCharacters = 0x1;
 const ImWchar MaxCharacters = 0x1FFFF;
 
@@ -25,8 +24,8 @@ namespace TemStream
 String32 allUTF32;
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), peerInfo({"User", false}), peerMutex(), outgoingPackets(), peer(nullptr), queryData(nullptr),
-	  io(io), fontIndex(1), showLogs(false), showFont(false), streamDisplayFlags(ImGuiWindowFlags_None),
-	  window(nullptr), renderer(nullptr)
+	  fontFiles(), io(io), fontSize(24.f), fontIndex(1), showLogs(false), showFont(false),
+	  streamDisplayFlags(ImGuiWindowFlags_None), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -131,7 +130,7 @@ bool TemStreamGui::connect(const Address &address)
 	auto s = address.makeTcpSocket();
 	if (s == nullptr)
 	{
-		*logger << Logger::Error << "Failed to connect to server: " << address << std::endl;
+		(*logger)(Logger::Error) << "Failed to connect to server: " << address << std::endl;
 		return false;
 	}
 
@@ -486,6 +485,25 @@ bool TemStreamGui::isConnected()
 	return peer != nullptr;
 }
 
+void TemStreamGui::LoadFonts()
+{
+	io.Fonts->Clear();
+	static ImWchar ranges[] = {MinCharacters, MaxCharacters, 0};
+	static ImFontConfig cfg;
+	cfg.OversampleH = cfg.OversampleV = 1;
+	cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
+	for (size_t i = 0; i < IM_ARRAYSIZE(Fonts); ++i)
+	{
+		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize, &cfg, ranges);
+	}
+	for (const auto &file : fontFiles)
+	{
+		io.Fonts->AddFontFromFileTTF(file.c_str(), fontSize);
+	}
+	io.Fonts->Build();
+	ImGui_ImplSDLRenderer_DestroyFontsTexture();
+}
+
 int runGui()
 {
 	for (ImWchar c = MinCharacters; c < MaxCharacters; ++c)
@@ -519,14 +537,7 @@ int runGui()
 	ImGui_ImplSDL2_InitForSDLRenderer(gui.window, gui.renderer);
 	ImGui_ImplSDLRenderer_Init(gui.renderer);
 
-	static ImWchar ranges[] = {MinCharacters, MaxCharacters, 0};
-	static ImFontConfig cfg;
-	cfg.OversampleH = cfg.OversampleV = 1;
-	cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
-	for (size_t i = 0; i < IM_ARRAYSIZE(Fonts); ++i)
-	{
-		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize, &cfg, ranges);
-	}
+	gui.LoadFonts();
 
 	MessagePackets messages;
 	while (!appDone)
@@ -558,19 +569,24 @@ int runGui()
 			}
 			break;
 			case SDL_DROPFILE: {
-				SDL_Surface *surface = IMG_Load(event.drop.file);
-				if (surface == nullptr)
+				if (isTTF(event.drop.file))
+				{
+					*logger << "Adding new font: " << event.drop.file << std::endl;
+					gui.fontFiles.emplace_back(event.drop.file);
+					gui.fontIndex = IM_ARRAYSIZE(Fonts) + gui.fontFiles.size() - 1;
+					gui.LoadFonts();
+				}
+				else if (isImage(event.drop.file))
+				{
+					const size_t size = strlen(event.drop.file);
+					String s(event.drop.file, event.drop.file + size);
+					gui.queryData = std::make_unique<QueryImage>(gui, std::move(s));
+				}
+				else
 				{
 					std::ifstream file(event.drop.file);
 					String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 					gui.queryData = std::make_unique<QueryText>(gui, std::move(s));
-				}
-				else
-				{
-					SDL_FreeSurface(surface);
-					const size_t size = strlen(event.drop.file);
-					String s(event.drop.file, event.drop.file + size);
-					gui.queryData = std::make_unique<QueryImage>(gui, std::move(s));
 				}
 				SDL_free(event.drop.file);
 			}

@@ -15,13 +15,17 @@ class TemStreamGui
 	MessagePackets outgoingPackets;
 	std::unique_ptr<ClientPeer> peer;
 	std::unique_ptr<IQuery> queryData;
+	List<String> fontFiles;
 	ImGuiIO &io;
+	float fontSize;
 	int fontIndex;
 	bool showLogs;
 	bool showFont;
 	ImGuiWindowFlags streamDisplayFlags;
 
 	friend int runGui();
+
+	void LoadFonts();
 
 	ImVec2 drawMainMenuBar(bool);
 

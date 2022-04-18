@@ -105,6 +105,23 @@ void SDL_MutexWrapper::unlock()
 {
 	SDL_UnlockMutex(mutex);
 }
+bool isTTF(const char *filename)
+{
+	const size_t len = strlen(filename);
+	const char *c = filename + (len - 1);
+	while (c != filename && *c != '.')
+	{
+		--c;
+	}
+	return strcmp(c + 1, "ttf") == 0;
+}
+bool isImage(const char *filename)
+{
+	SDL_Surface *surface = IMG_Load(filename);
+	const bool isImage = surface != nullptr;
+	SDL_FreeSurface(surface);
+	return isImage;
+}
 } // namespace TemStream
 
 #if USE_CUSTOM_ALLOCATOR

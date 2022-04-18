@@ -116,6 +116,10 @@ extern int runGui();
 
 extern void initialLogs();
 
+extern bool isTTF(const char *);
+
+extern bool isImage(const char *);
+
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;
