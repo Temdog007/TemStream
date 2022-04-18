@@ -21,8 +21,9 @@ const float fontSize = 36.f;
 namespace TemStream
 {
 TemStreamGui::TemStreamGui(ImGuiIO &io)
-	: connectToServer(), pendingFile(std::nullopt), peerInfo({"User", false}), peerMutex(), outgoingPackets(),
-	  peer(nullptr), queryData(nullptr), io(io), fontIndex(1), showLogs(false), window(nullptr), renderer(nullptr)
+	: connectToServer(), peerInfo({"User", false}), peerMutex(), outgoingPackets(), peer(nullptr), queryData(nullptr),
+	  io(io), fontIndex(1), showLogs(false), streamDisplayFlags(ImGuiWindowFlags_None), window(nullptr),
+	  renderer(nullptr)
 {
 }
 
@@ -146,9 +147,8 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 	{
 		if (ImGui::BeginMenu("File"))
 		{
-			if (ImGui::MenuItem("Open", "", nullptr, !pendingFile.has_value()))
+			if (ImGui::MenuItem("Open", "", nullptr, false))
 			{
-				pendingFile = "";
 			}
 			if (ImGui::MenuItem("Exit", "", nullptr))
 			{
@@ -160,8 +160,48 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 
 		if (ImGui::BeginMenu("View"))
 		{
-			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
+			if (ImGui::BeginMenu("Stream Display Flags"))
+			{
+				bool showTitleBar = (streamDisplayFlags & ImGuiWindowFlags_NoTitleBar) == 0;
+				if (ImGui::Checkbox("Show Title Bar", &showTitleBar))
+				{
+					if (showTitleBar)
+					{
+						streamDisplayFlags &= ~ImGuiWindowFlags_NoTitleBar;
+					}
+					else
+					{
+						streamDisplayFlags |= ImGuiWindowFlags_NoTitleBar;
+					}
+				}
+				bool movable = (streamDisplayFlags & ImGuiWindowFlags_NoMove) == 0;
+				if (ImGui::Checkbox("Movable", &movable))
+				{
+					if (movable)
+					{
+						streamDisplayFlags &= ~ImGuiWindowFlags_NoMove;
+					}
+					else
+					{
+						streamDisplayFlags |= ImGuiWindowFlags_NoMove;
+					}
+				}
+				bool resizable = (streamDisplayFlags & ImGuiWindowFlags_NoResize) == 0;
+				if (ImGui::Checkbox("Resizable", &resizable))
+				{
+					if (resizable)
+					{
+						streamDisplayFlags &= ~ImGuiWindowFlags_NoResize;
+					}
+					else
+					{
+						streamDisplayFlags |= ImGuiWindowFlags_NoResize;
+					}
+				}
+				ImGui::EndMenu();
+			}
 			ImGui::Checkbox("Logs", &showLogs);
+			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
@@ -280,37 +320,6 @@ void TemStreamGui::draw()
 		if (!opened)
 		{
 			connectToServer = std::nullopt;
-		}
-	}
-
-	if (pendingFile.has_value())
-	{
-		bool opened = true;
-		if (ImGui::Begin("Enter file path", &opened, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			ImGui::InputText("File path", &*pendingFile);
-			if (ImGui::Button("Load"))
-			{
-				char *ptr = reinterpret_cast<char *>(SDL_malloc(pendingFile->size() + 1));
-				strcpy(ptr, pendingFile->c_str());
-				opened = false;
-
-				SDL_Event e;
-				e.type = SDL_DROPFILE;
-				e.drop.file = ptr;
-				e.drop.timestamp = SDL_GetTicks();
-				e.drop.windowID = SDL_GetWindowID(window);
-				if (SDL_PushEvent(&e) != 1)
-				{
-					fprintf(stderr, "Failed to push event: %s\n", SDL_GetError());
-					SDL_free(ptr);
-				}
-			}
-		}
-		ImGui::End();
-		if (!opened)
-		{
-			pendingFile = std::nullopt;
 		}
 	}
 

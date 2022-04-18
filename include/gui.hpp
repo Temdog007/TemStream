@@ -9,7 +9,6 @@ class TemStreamGui
 {
   private:
 	std::optional<Address> connectToServer;
-	std::optional<String> pendingFile;
 	Map<MessageSource, StreamDisplay> displays;
 	PeerInformation peerInfo;
 	Mutex peerMutex;
@@ -19,6 +18,7 @@ class TemStreamGui
 	ImGuiIO &io;
 	int fontIndex;
 	bool showLogs;
+	ImGuiWindowFlags streamDisplayFlags;
 
 	friend int runGui();
 
@@ -42,6 +42,11 @@ class TemStreamGui
 	ImGuiIO &getIO()
 	{
 		return io;
+	}
+
+	ImGuiWindowFlags getStreamDisplayFlags() const
+	{
+		return streamDisplayFlags;
 	}
 
 	bool init();

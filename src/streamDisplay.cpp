@@ -40,19 +40,17 @@ bool StreamDisplay::operator()(const bool imageState)
 	}
 	if (Bytes *bytes = std::get_if<Bytes>(&data))
 	{
-#ifndef NDEBUG
-		printf("Reading %zu image KB\n", bytes->size() / KB(1));
-#endif
+		logger->AddTrace("Reading %zu image KB\n", bytes->size() / KB(1));
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
 		if (src == nullptr)
 		{
-			fprintf(stderr, "Failed to load image data: %s\n", SDL_GetError());
+			logger->AddError("Failed to load image data: %s\n", SDL_GetError());
 			return false;
 		}
 		SDL_Surface *surface = IMG_Load_RW(src, 0);
 		if (surface == nullptr)
 		{
-			fprintf(stderr, "Surface load error: %s\n", IMG_GetError());
+			logger->AddError("Surface load error: %s\n", IMG_GetError());
 			return false;
 		}
 
@@ -61,7 +59,7 @@ bool StreamDisplay::operator()(const bool imageState)
 			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.renderer, surface);
 			if (texture == nullptr)
 			{
-				fprintf(stderr, "Texture creation error: %s\n", SDL_GetError());
+				logger->AddError("Texture creation error: %s\n", SDL_GetError());
 				success = false;
 			}
 			int w, h;
@@ -97,19 +95,19 @@ bool StreamDisplay::operator()(const AudioMessage &)
 }
 bool StreamDisplay::operator()(const PeerInformation &)
 {
-	fprintf(stderr,
-			"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.\n");
+	logger->AddError(
+		"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.\n");
 	return false;
 }
 bool StreamDisplay::operator()(const PeerInformationList &)
 {
-	fprintf(stderr,
-			"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.\n");
+	logger->AddError(
+		"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.\n");
 	return false;
 }
 bool StreamDisplay::operator()(const RequestPeers &)
 {
-	fprintf(stderr, "Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.\n");
+	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.\n");
 	return false;
 }
 StreamDisplayDraw::StreamDisplayDraw(StreamDisplay &d) : display(d)
@@ -126,7 +124,7 @@ bool StreamDisplayDraw::operator()(const String &s)
 {
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
-	if (ImGui::Begin(buffer.data(), &display.visible))
+	if (ImGui::Begin(buffer.data(), &display.visible, display.gui.getStreamDisplayFlags()))
 	{
 		const char *str = s.c_str();
 		for (size_t i = 0; i < s.size(); i += sizeof(buffer))
@@ -151,7 +149,7 @@ bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 	}
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
-	if (ImGui::Begin(buffer.data(), &display.visible))
+	if (ImGui::Begin(buffer.data(), &display.visible, display.gui.getStreamDisplayFlags()))
 	{
 		const auto max = ImGui::GetWindowContentRegionMax();
 		const auto min = ImGui::GetWindowContentRegionMin();
