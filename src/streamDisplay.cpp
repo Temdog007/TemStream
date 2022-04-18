@@ -13,23 +13,18 @@ StreamDisplay::StreamDisplay(StreamDisplay &&display)
 StreamDisplay::~StreamDisplay()
 {
 }
-void StreamDisplay::handleEvent(const SDL_Event &e)
-{
-	StreamDisplayUpdate u(*this, e);
-	std::visit(u, data);
-}
-bool StreamDisplay::draw(const bool usingUi)
+bool StreamDisplay::draw()
 {
 	if (!visible)
 	{
 		return true;
 	}
-	StreamDisplayDraw d(*this, usingUi);
+	StreamDisplayDraw d(*this);
 	return std::visit(d, data);
 }
 bool StreamDisplay::operator()(const TextMessage &message)
 {
-	data = message;
+	data.emplace<String>(message);
 	return true;
 }
 bool StreamDisplay::operator()(const ImageMessage &message)
@@ -71,7 +66,7 @@ bool StreamDisplay::operator()(const bool imageState)
 			}
 			int w, h;
 			SDL_GetWindowSize(gui.window, &w, &h);
-			data = Texture(texture, SDL_min(w, surface->w), SDL_min(surface->h, h));
+			data = texture;
 		}
 		SDL_FreeSurface(surface);
 		return success;
@@ -117,75 +112,7 @@ bool StreamDisplay::operator()(const RequestPeers &)
 	fprintf(stderr, "Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.\n");
 	return false;
 }
-StreamDisplayUpdate::StreamDisplayUpdate(StreamDisplay &d, const SDL_Event &e) : display(d), event(e)
-{
-}
-StreamDisplayUpdate::~StreamDisplayUpdate()
-{
-}
-void StreamDisplayUpdate::operator()(std::monostate)
-{
-}
-void StreamDisplayUpdate::operator()(String &)
-{
-}
-void StreamDisplayUpdate::operator()(Texture &t)
-{
-	switch (event.type)
-	{
-	case SDL_MOUSEBUTTONDOWN: {
-		SDL_Point point;
-		point.x = event.button.x;
-		point.y = event.button.y;
-		if (SDL_PointInRect(&point, &t.rect))
-		{
-			switch (event.button.button)
-			{
-			case SDL_BUTTON_LEFT:
-				t.mode = Texture::Mode::Move;
-				break;
-			case SDL_BUTTON_RIGHT:
-				t.mode = Texture::Mode::Resize;
-				break;
-			default:
-				break;
-			}
-		}
-	}
-	break;
-	case SDL_MOUSEMOTION: {
-		if (t.mode == Texture::Mode::None)
-		{
-			break;
-		}
-		int w, h;
-		SDL_GetWindowSize(display.gui.window, &w, &h);
-		switch (t.mode)
-		{
-		case Texture::Mode::Move:
-			t.rect.x = SDL_clamp(t.rect.x + event.motion.xrel, 0, w - t.rect.w);
-			t.rect.y = SDL_clamp(t.rect.y + event.motion.yrel, 0, h - t.rect.h);
-			break;
-		case Texture::Mode::Resize:
-			t.rect.w = SDL_clamp(t.rect.w + event.motion.xrel, 32, w);
-			t.rect.h = SDL_clamp(t.rect.h + event.motion.yrel, 32, h);
-			break;
-		default:
-			break;
-		}
-	}
-	break;
-	case SDL_MOUSEBUTTONUP:
-		t.mode = Texture::Mode::None;
-		break;
-	default:
-		break;
-	}
-}
-void StreamDisplayUpdate::operator()(Bytes &)
-{
-}
-StreamDisplayDraw::StreamDisplayDraw(StreamDisplay &d, const bool b) : display(d), usingUi(b)
+StreamDisplayDraw::StreamDisplayDraw(StreamDisplay &d) : display(d)
 {
 }
 StreamDisplayDraw::~StreamDisplayDraw()
@@ -197,11 +124,6 @@ bool StreamDisplayDraw::operator()(std::monostate)
 }
 bool StreamDisplayDraw::operator()(const String &s)
 {
-	if (!usingUi)
-	{
-		return true;
-	}
-
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
 	if (ImGui::Begin(buffer.data(), &display.visible))
@@ -220,25 +142,44 @@ bool StreamDisplayDraw::operator()(const String &s)
 	ImGui::End();
 	return true;
 }
-bool StreamDisplayDraw::operator()(Texture &t)
+bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 {
-	if (usingUi)
-	{
-		return true;
-	}
-	if (t.texture == nullptr)
+	SDL_Texture *texture = t.getTexture();
+	if (texture == nullptr)
 	{
 		return false;
 	}
-	if (SDL_RenderCopy(display.gui.renderer, t.texture, NULL, &t.rect) == 0)
+	std::array<char, KB(8)> buffer;
+	display.source.print(buffer);
+	if (ImGui::Begin(buffer.data(), &display.visible))
 	{
-		return true;
+		const auto max = ImGui::GetWindowContentRegionMax();
+		const auto min = ImGui::GetWindowContentRegionMin();
+		ImGui::Image(texture, ImVec2(max.x - min.x, max.y - min.y));
 	}
-	fprintf(stderr, "Failed to draw stream display: %s\n", SDL_GetError());
-	return false;
+	ImGui::End();
+	return true;
 }
 bool StreamDisplayDraw::operator()(const Bytes &)
 {
 	return true;
+}
+SDL_TextureWrapper::SDL_TextureWrapper(SDL_Texture *texture) : texture(texture)
+{
+}
+SDL_TextureWrapper::SDL_TextureWrapper(SDL_TextureWrapper &&w) : texture(w.texture)
+{
+	w.texture = nullptr;
+}
+SDL_TextureWrapper::~SDL_TextureWrapper()
+{
+	SDL_DestroyTexture(texture);
+	texture = nullptr;
+}
+SDL_TextureWrapper &SDL_TextureWrapper::operator=(SDL_TextureWrapper &&w)
+{
+	texture = w.texture;
+	w.texture = nullptr;
+	return *this;
 }
 } // namespace TemStream

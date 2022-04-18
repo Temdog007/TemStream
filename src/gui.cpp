@@ -520,10 +520,6 @@ int runGui()
 			{
 				continue;
 			}
-			for (auto &display : gui.displays)
-			{
-				display.second.handleEvent(event);
-			}
 			switch (event.type)
 			{
 			case SDL_QUIT:
@@ -596,7 +592,6 @@ int runGui()
 			}
 		}
 
-		// ImGui Rendering
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
@@ -607,7 +602,7 @@ int runGui()
 
 		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 		{
-			if (iter->second.draw(true))
+			if (iter->second.draw())
 			{
 				++iter;
 			}
@@ -621,20 +616,8 @@ int runGui()
 
 		ImGui::Render();
 
-		// App Rendering
 		SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
 		SDL_RenderClear(gui.renderer);
-		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
-		{
-			if (iter->second.draw(false))
-			{
-				++iter;
-			}
-			else
-			{
-				iter = gui.displays.erase(iter);
-			}
-		}
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 		SDL_RenderPresent(gui.renderer);
 	}
