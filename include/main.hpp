@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <codecvt>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <locale>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -33,6 +35,7 @@
 #include <cereal/archives/portable_binary.hpp>
 
 #include <imgui.h>
+#include <imgui_freetype.h>
 #include <imgui_impl_sdl.h>
 #include <imgui_impl_sdlrenderer.h>
 #include <imgui_stdlib.h>

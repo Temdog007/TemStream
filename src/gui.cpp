@@ -16,14 +16,17 @@ const unsigned int FontSizes[]{Cousine_compressed_size,		DroidSans_compressed_si
 							   Ubuntuu_compressed_size};
 
 bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e);
-const float fontSize = 36.f;
+const float fontSize = 18.f;
+const ImWchar MinCharacters = 0x1;
+const ImWchar MaxCharacters = 0x1FFFF;
 
 namespace TemStream
 {
+String32 allUTF32;
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), peerInfo({"User", false}), peerMutex(), outgoingPackets(), peer(nullptr), queryData(nullptr),
-	  io(io), fontIndex(1), showLogs(false), streamDisplayFlags(ImGuiWindowFlags_None), window(nullptr),
-	  renderer(nullptr)
+	  io(io), fontIndex(1), showLogs(false), showFont(false), streamDisplayFlags(ImGuiWindowFlags_None),
+	  window(nullptr), renderer(nullptr)
 {
 }
 
@@ -200,8 +203,13 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				}
 				ImGui::EndMenu();
 			}
+			if (ImGui::BeginMenu("Font"))
+			{
+				ImGui::Checkbox("Font Display", &showFont);
+				ImGui::SliderInt("Font Type", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
+				ImGui::EndMenu();
+			}
 			ImGui::Checkbox("Logs", &showLogs);
-			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
@@ -301,6 +309,26 @@ void TemStreamGui::draw()
 		draw->AddText(ImVec2(x, 0), color, text);
 	}
 	ImGui::End();
+
+	if (showFont)
+	{
+		if (ImGui::Begin("Font", &showFont))
+		{
+			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> cvt;
+			const String s = cvt.to_bytes(allUTF32);
+			const size_t size = 1000;
+			for (size_t i = 0; i < s.size(); i += size)
+			{
+				if (ImGui::BeginChild(1 + (i / size)))
+				{
+					const String k(s.begin() + i, (i + size > s.size()) ? s.end() : (s.begin() + i + size));
+					ImGui::TextWrapped("%s", k.c_str());
+				}
+				ImGui::EndChild();
+			}
+		}
+		ImGui::End();
+	}
 
 	if (connectToServer.has_value())
 	{
@@ -460,6 +488,10 @@ bool TemStreamGui::isConnected()
 
 int runGui()
 {
+	for (ImWchar c = MinCharacters; c < MaxCharacters; ++c)
+	{
+		allUTF32 += c;
+	}
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
@@ -487,9 +519,13 @@ int runGui()
 	ImGui_ImplSDL2_InitForSDLRenderer(gui.window, gui.renderer);
 	ImGui_ImplSDLRenderer_Init(gui.renderer);
 
+	static ImWchar ranges[] = {MinCharacters, MaxCharacters, 0};
+	static ImFontConfig cfg;
+	cfg.OversampleH = cfg.OversampleV = 1;
+	cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
 	for (size_t i = 0; i < IM_ARRAYSIZE(Fonts); ++i)
 	{
-		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize);
+		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize, &cfg, ranges);
 	}
 
 	MessagePackets messages;

@@ -18,6 +18,7 @@ class TemStreamGui
 	ImGuiIO &io;
 	int fontIndex;
 	bool showLogs;
+	bool showFont;
 	ImGuiWindowFlags streamDisplayFlags;
 
 	friend int runGui();

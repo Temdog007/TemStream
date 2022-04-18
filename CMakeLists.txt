@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 configure_file(include/TemStreamConfig.h.in ../include/TemStreamConfig.h)
 
+find_package(Freetype REQUIRED)
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
@@ -15,21 +17,28 @@ add_subdirectory(cereal)
 add_subdirectory(SDL)
 add_subdirectory(SDL_image)
 
-add_library(ImGui 
-    imgui/imgui.cpp
-    imgui/imgui_draw.cpp
-    imgui/imgui_tables.cpp
-    imgui/imgui_widgets.cpp
-    imgui/imgui_impl_sdl.cpp
-    imgui/imgui_impl_sdlrenderer.cpp
-    imgui/imgui_stdlib.cpp
-    imgui/imgui.h
-    imgui/imgui_internal.h
-    imgui/imgui_impl_sdl.h
-    imgui/imgui_impl_sdlrenderer.h
-    imgui/imgui_stdlib.h)
+set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+add_library(ImGui STATIC)
 
-target_include_directories(ImGui PRIVATE "${SDL2_SOURCE_DIR}/include")
+target_sources(ImGui PRIVATE
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdl.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer.cpp
+    ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
+    ${IMGUI_DIR}/misc/freetype/imgui_freetype.cpp)
+
+target_compile_definitions(ImGui PUBLIC -DIMGUI_USE_WCHAR32 -DIMGUI_ENABLE_FREETYPE)
+
+target_include_directories(ImGui PUBLIC 
+  "${SDL2_SOURCE_DIR}/include"
+  "${IMGUI_DIR}" 
+  "${IMGUI_DIR}/backends"
+  "${IMGUI_DIR}/misc/freetype"
+  "${IMGUI_DIR}/misc/cpp"
+  ${FREETYPE_INCLUDE_DIRS})
 
 target_link_libraries(ImGui PRIVATE SDL2)
 
@@ -70,12 +79,12 @@ else()
   target_compile_options(TemStream PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
-target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/include")
-target_include_directories(TemStream PRIVATE "${SDL2_SOURCE_DIR}/include")
-target_include_directories(TemStream PRIVATE "${CEREAL_SOURCE_DIR}/include")
-target_include_directories(TemStream PRIVATE "${PROJECT_SOURCE_DIR}/imgui")
+target_include_directories(TemStream PRIVATE 
+  "${PROJECT_SOURCE_DIR}/include"
+  "${CEREAL_SOURCE_DIR}/include"
+  "${PROJECT_SOURCE_DIR}/imgui")
 
-target_link_libraries(TemStream PRIVATE SDL2 SDL2_image cereal ImGui)
+target_link_libraries(TemStream PRIVATE SDL2 SDL2_image cereal ImGui ${FREETYPE_LIBRARIES})
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)

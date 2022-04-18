@@ -107,6 +107,7 @@ void SDL_MutexWrapper::unlock()
 }
 } // namespace TemStream
 
+#if USE_CUSTOM_ALLOCATOR
 struct InputTextCallback_UserData
 {
 	TemStream::String *Str;
@@ -147,3 +148,4 @@ bool ImGui::InputText(const char *label, TemStream::String *str, ImGuiInputTextF
 	cb_user_data.ChainCallbackUserData = user_data;
 	return ImGui::InputText(label, (char *)str->c_str(), str->capacity() + 1, flags, InputTextCallback, &cb_user_data);
 }
+#endif
