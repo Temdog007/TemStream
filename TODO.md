@@ -206,7 +206,6 @@
 - [x] Use image button (SDL_Texture should work)
 - [x] On dropped file, automatically create the appropriate query data
 - [x] Allow title bar and resize to be toggled for stream displays
-- [ ] Text drop may not be working
 - [ ] Handle audio streaming
 - [ ] Make push to talk have a unique button for each each audio stream
 

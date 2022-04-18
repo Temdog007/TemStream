@@ -634,6 +634,8 @@ void TemStreamGuiLogger::Add(const Level lvl, const char *fmt, va_list args)
 {
 	if (lvl == Level::Error)
 	{
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "An error has occurred. Check logs for more detail",
+								 gui.window);
 		gui.setShowLogs(true);
 	}
 	InMemoryLogger::Add(lvl, fmt, args);

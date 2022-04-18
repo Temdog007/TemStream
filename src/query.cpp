@@ -42,6 +42,7 @@ void QueryText::execute() const
 	e.user.data1 = reinterpret_cast<void *>(packet);
 	if (SDL_PushEvent(&e) != 1)
 	{
+		logger->AddError("Failed to push SDL event: %s\n", SDL_GetError());
 		delete packet;
 	}
 }
@@ -107,6 +108,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	e.user.data1 = reinterpret_cast<void *>(packets);
 	if (SDL_PushEvent(&e) != 1)
 	{
+		logger->AddError("Failed to push SDL event: %s\n", SDL_GetError());
 		delete packets;
 	}
 }
