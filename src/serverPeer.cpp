@@ -151,7 +151,7 @@ int ServerPeer::runServer(const int argc, const char **argv)
 
 end:
 	::close(fd);
-	logger->AddInfo("Ending server\n");
+	logger->AddInfo("Ending server");
 	while (runningThreads > 0)
 	{
 		SDL_Delay(100);
@@ -201,7 +201,7 @@ bool ServerPeer::handlePacket(const MessagePacket &packet)
 #define CHECK_INFO(X)                                                                                                  \
 	if (!gotInfo())                                                                                                    \
 	{                                                                                                                  \
-		logger->AddError("Got " #X " from peer before getting their information\n");                                   \
+		logger->AddError("Got " #X " from peer before getting their information");                                     \
 		return false;                                                                                                  \
 	} // namespace TemStream
 bool ServerPeer::operator()(const TextMessage &)

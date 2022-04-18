@@ -35,6 +35,7 @@ class Logger
 	Level streamLevel;
 
   protected:
+	virtual void Add(Level, const String &, bool) = 0;
 	const StringStream &getStream()
 	{
 		return os;
@@ -51,7 +52,7 @@ class Logger
 
 	virtual void Add(Level, const char *, va_list) = 0;
 	void Add(Level, const char *, ...);
-	virtual void Add(Level, const String &) = 0;
+	void Add(Level, const String &);
 	void Add(const Log &);
 
 	LOG_FUNC(Error);
@@ -116,11 +117,13 @@ static inline std::ostream &operator<<(std::ostream &os, const Logger::Level lvl
 }
 class ConsoleLogger : public Logger
 {
+  protected:
+	void Add(Level, const String &, bool) override;
+
   public:
 	ConsoleLogger();
 	~ConsoleLogger();
 	void Add(Level, const char *, va_list) override;
-	void Add(Level, const String &) override;
 };
 
 class InMemoryLogger : public Logger
@@ -129,12 +132,14 @@ class InMemoryLogger : public Logger
 	List<Log> logs;
 	Mutex mutex;
 
+  protected:
+	void Add(Level, const String &, bool) override;
+
   public:
 	InMemoryLogger();
 	virtual ~InMemoryLogger();
 
 	virtual void Add(Level, const char *, va_list) override;
-	void Add(Level, const String &) override;
 
 	void viewLogs(const std::function<void(const Log &)> &);
 };

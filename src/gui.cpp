@@ -89,14 +89,14 @@ bool TemStreamGui::init()
 {
 	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
 	{
-		logger->AddError("SDL error: %s\n", SDL_GetError());
+		logger->AddError("SDL error: %s", SDL_GetError());
 		return false;
 	}
 
 	const int flags = IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_WEBP;
 	if (IMG_Init(flags) != flags)
 	{
-		logger->AddError("Image error: %s\n", IMG_GetError());
+		logger->AddError("Image error: %s", IMG_GetError());
 		return false;
 	}
 
@@ -104,20 +104,20 @@ bool TemStreamGui::init()
 							  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (window == nullptr)
 	{
-		logger->AddError("Failed to create window: %s\n", SDL_GetError());
+		logger->AddError("Failed to create window: %s", SDL_GetError());
 		return false;
 	}
 
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (renderer == nullptr)
 	{
-		logger->AddError("Failed to create renderer: %s\n", SDL_GetError());
+		logger->AddError("Failed to create renderer: %s", SDL_GetError());
 		return false;
 	}
 
 	if (SDL_AddTimer(1, (SDL_TimerCallback)updatePeer, this) == 0)
 	{
-		logger->AddError("Failed to add timer: %s\n", SDL_GetError());
+		logger->AddError("Failed to add timer: %s", SDL_GetError());
 		return false;
 	}
 
@@ -537,7 +537,7 @@ int runGui()
 	TemStreamGui gui(io);
 	logger = std::make_unique<TemStreamGuiLogger>(gui);
 	initialLogs();
-	logger->AddInfo("ImGui v" IMGUI_VERSION "\n");
+	logger->AddInfo("ImGui v" IMGUI_VERSION);
 
 	if (!gui.init())
 	{

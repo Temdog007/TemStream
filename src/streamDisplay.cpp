@@ -40,17 +40,17 @@ bool StreamDisplay::operator()(const bool imageState)
 	}
 	if (Bytes *bytes = std::get_if<Bytes>(&data))
 	{
-		logger->AddTrace("Reading image: %zu KB\n", bytes->size() / KB(1));
+		logger->AddTrace("Reading image: %zu KB", bytes->size() / KB(1));
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
 		if (src == nullptr)
 		{
-			logger->AddError("Failed to load image data: %s\n", SDL_GetError());
+			logger->AddError("Failed to load image data: %s", SDL_GetError());
 			return false;
 		}
 		SDL_Surface *surface = IMG_Load_RW(src, 0);
 		if (surface == nullptr)
 		{
-			logger->AddError("Surface load error: %s\n", IMG_GetError());
+			logger->AddError("Surface load error: %s", IMG_GetError());
 			return false;
 		}
 
@@ -59,7 +59,7 @@ bool StreamDisplay::operator()(const bool imageState)
 			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.renderer, surface);
 			if (texture == nullptr)
 			{
-				logger->AddError("Texture creation error: %s\n", SDL_GetError());
+				logger->AddError("Texture creation error: %s", SDL_GetError());
 				success = false;
 			}
 			int w, h;
@@ -70,7 +70,7 @@ bool StreamDisplay::operator()(const bool imageState)
 		return success;
 	}
 
-	logger->AddError("Stream display is in an invalid state\n");
+	logger->AddError("Stream display is in an invalid state");
 	return false;
 }
 bool StreamDisplay::operator()(const Bytes &bytes)
@@ -78,7 +78,7 @@ bool StreamDisplay::operator()(const Bytes &bytes)
 	auto ptr = std::get_if<Bytes>(&data);
 	if (ptr == nullptr)
 	{
-		logger->AddError("Stream display is in an invalid state\n");
+		logger->AddError("Stream display is in an invalid state");
 		return false;
 	}
 
@@ -96,18 +96,18 @@ bool StreamDisplay::operator()(const AudioMessage &)
 bool StreamDisplay::operator()(const PeerInformation &)
 {
 	logger->AddError(
-		"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.\n");
+		"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
 bool StreamDisplay::operator()(const PeerInformationList &)
 {
 	logger->AddError(
-		"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.\n");
+		"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
 bool StreamDisplay::operator()(const RequestPeers &)
 {
-	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.\n");
+	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
 StreamDisplayDraw::StreamDisplayDraw(StreamDisplay &d) : display(d)

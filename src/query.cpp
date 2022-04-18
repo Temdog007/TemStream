@@ -42,7 +42,7 @@ void QueryText::execute() const
 	e.user.data1 = reinterpret_cast<void *>(packet);
 	if (SDL_PushEvent(&e) != 1)
 	{
-		logger->AddError("Failed to push SDL event: %s\n", SDL_GetError());
+		logger->AddError("Failed to push SDL event: %s", SDL_GetError());
 		delete packet;
 	}
 }
@@ -71,7 +71,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	std::ifstream file(filename, std::ios::in | std::ios::binary);
 	if (!file.is_open())
 	{
-		logger->AddError("Failed to open file: %s\n", filename.c_str());
+		logger->AddError("Failed to open file: %s", filename.c_str());
 		return;
 	}
 
@@ -108,7 +108,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	e.user.data1 = reinterpret_cast<void *>(packets);
 	if (SDL_PushEvent(&e) != 1)
 	{
-		logger->AddError("Failed to push SDL event: %s\n", SDL_GetError());
+		logger->AddError("Failed to push SDL event: %s", SDL_GetError());
 		delete packets;
 	}
 }

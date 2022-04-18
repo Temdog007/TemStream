@@ -11,10 +11,14 @@ Logger::~Logger()
 void Logger::flush()
 {
 	const auto s = os.str();
-	Add(streamLevel, s);
+	Add(streamLevel, s, false);
 	os.str("");
 	os.clear();
 	streamLevel = Level::Info;
+}
+void Logger::Add(const Level level, const String &s)
+{
+	Add(level, s, true);
 }
 void Logger::Add(const Log &log)
 {
@@ -27,16 +31,19 @@ void Logger::Add(const Level level, const char *fmt, ...)
 	Add(level, fmt, args);
 	va_end(args);
 }
-
 ConsoleLogger::ConsoleLogger() : Logger()
 {
 }
 ConsoleLogger::~ConsoleLogger()
 {
 }
-void ConsoleLogger::Add(const Level level, const String &s)
+void ConsoleLogger::Add(const Level level, const String &s, const bool newLine)
 {
-	std::cout << level << ": " << s << std::endl;
+	std::cout << level << ": " << s;
+	if (newLine)
+	{
+		std::cout << std::endl;
+	}
 }
 void ConsoleLogger::Add(const Level level, const char *fmt, va_list args)
 {
@@ -49,6 +56,7 @@ void ConsoleLogger::Add(const Level level, const char *fmt, va_list args)
 #endif
 	std::cout << level << ": ";
 	std::vprintf(fmt, args);
+	std::cout << std::endl;
 }
 
 InMemoryLogger::InMemoryLogger() : Logger(), logs(), mutex()
@@ -57,7 +65,7 @@ InMemoryLogger::InMemoryLogger() : Logger(), logs(), mutex()
 InMemoryLogger::~InMemoryLogger()
 {
 }
-void InMemoryLogger::Add(const Level level, const String &s)
+void InMemoryLogger::Add(const Level level, const String &s, const bool)
 {
 	logs.emplace_back(level, s);
 }

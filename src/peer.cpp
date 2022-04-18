@@ -77,7 +77,7 @@ bool Peer::readAndHandle(const int timeout)
 	}
 	catch (const std::exception &e)
 	{
-		logger->AddError("Peer::readData: %s\n", e.what());
+		logger->AddError("Peer::readData: %s", e.what());
 		return false;
 	}
 }

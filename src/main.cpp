@@ -38,10 +38,9 @@ int main(const int argc, const char **argv)
 
 void TemStream::initialLogs()
 {
-	logger->AddInfo("TemStream v%d.%d.%d\n", TemStream_VERSION_MAJOR, TemStream_VERSION_MINOR, TemStream_VERSION_PATCH);
-#if _DEBUG
-	logger->AddInfo("Debug mode\n");
-#endif
+	*logger << "TemStream v" << TemStream_VERSION_MAJOR << '.' << TemStream_VERSION_MINOR << '.'
+			<< TemStream_VERSION_PATCH << std::endl;
+	(*logger)(Logger::Trace) << "Debug mode" << std::endl;
 }
 
 void signalHandler(int s)
@@ -50,7 +49,7 @@ void signalHandler(int s)
 	{
 	case SIGINT:
 		TemStream::appDone = true;
-		logger->AddInfo("Received end signal\n");
+		logger->AddInfo("Received end signal");
 		break;
 	default:
 		break;

@@ -88,12 +88,12 @@ SDL_MutexWrapper::SDL_MutexWrapper() : mutex(SDL_CreateMutex())
 {
 	if (mutex == nullptr)
 	{
-		logger->AddError("Failed to create mutex: %s\n", SDL_GetError());
+		logger->AddError("Failed to create mutex: %s", SDL_GetError());
 	}
 }
 SDL_MutexWrapper::~SDL_MutexWrapper()
 {
-	logger->AddTrace("Deleted mutex\n");
+	logger->AddTrace("Deleted mutex");
 	SDL_DestroyMutex(mutex);
 	mutex = nullptr;
 }
