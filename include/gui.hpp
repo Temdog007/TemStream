@@ -55,10 +55,6 @@ class TemStreamGui
 
 	void pushFont();
 
-	bool handleFile(const char *);
-
-	bool handleText(const char *);
-
 	void setShowLogs(bool v)
 	{
 		showLogs = v;

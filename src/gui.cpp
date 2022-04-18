@@ -423,32 +423,6 @@ const char *getExtension(const char *filename)
 	return filename;
 }
 
-bool TemStreamGui::handleFile(const char *filename)
-{
-	if (queryData != nullptr)
-	{
-		if (queryData->handleDropFile(filename))
-		{
-			queryData->execute();
-			queryData = nullptr;
-		}
-	}
-	return true;
-}
-
-bool TemStreamGui::handleText(const char *text)
-{
-	if (queryData != nullptr)
-	{
-		if (queryData->handleDropText(text))
-		{
-			queryData->execute();
-			queryData = nullptr;
-		}
-	}
-	return true;
-}
-
 void TemStreamGui::sendPacket(const MessagePacket &packet, const bool handleLocally)
 {
 	LOCK(peerMutex);
@@ -531,21 +505,31 @@ int runGui()
 					appDone = true;
 				}
 				break;
-			case SDL_DROPTEXT:
-				if (!gui.handleText(event.drop.file))
+			case SDL_DROPTEXT: {
+				const size_t size = strlen(event.drop.file);
+				String s(event.drop.file, event.drop.file + size);
+				gui.queryData = std::make_unique<QueryText>(gui, std::move(s));
+				SDL_free(event.drop.file);
+			}
+			break;
+			case SDL_DROPFILE: {
+				SDL_Surface *surface = IMG_Load(event.drop.file);
+				if (surface == nullptr)
 				{
-					*logger << Logger::Error << "Failed to handle dropped text" << std::endl;
+					std::ifstream file(event.drop.file);
+					String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+					gui.queryData = std::make_unique<QueryText>(gui, std::move(s));
+				}
+				else
+				{
+					SDL_FreeSurface(surface);
+					const size_t size = strlen(event.drop.file);
+					String s(event.drop.file, event.drop.file + size);
+					gui.queryData = std::make_unique<QueryImage>(gui, std::move(s));
 				}
 				SDL_free(event.drop.file);
-				break;
-			case SDL_DROPFILE:
-				logger->AddInfo("Dropped file: %s\n", event.drop.file);
-				if (!gui.handleFile(event.drop.file))
-				{
-					*logger << Logger::Error << "Failed to handle dropped file: " << event.drop.file << std::endl;
-				}
-				SDL_free(event.drop.file);
-				break;
+			}
+			break;
 			case SDL_USEREVENT:
 				switch (event.user.code)
 				{

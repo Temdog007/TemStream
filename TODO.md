@@ -204,8 +204,8 @@
 ### Apr 18, 2022
 - [x] Show colored text to signal if connected to stream
 - [x] Use image button (SDL_Texture should work)
-- [ ] On dropped file, automatically create the appropriate query data
-- [ ] Fixed dropped file log
+- [x] On dropped file, automatically create the appropriate query data
+- [ ] Allow title bar and resize to be toggled for stream displays
 - [ ] Handle audio streaming
 - [ ] Make push to talk have a unique button for each each audio stream
 

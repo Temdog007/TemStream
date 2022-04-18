@@ -9,14 +9,6 @@ IQuery::IQuery(TemStreamGui &gui) : streamName(), gui(gui)
 IQuery::~IQuery()
 {
 }
-bool IQuery::handleDropFile(const char *)
-{
-	return false;
-}
-bool IQuery::handleDropText(const char *)
-{
-	return false;
-}
 bool IQuery::draw()
 {
 	ImGui::InputText("Stream Name", &streamName);
@@ -26,6 +18,9 @@ bool IQuery::draw()
 QueryText::QueryText(TemStreamGui &gui) : IQuery(gui), text()
 {
 }
+QueryText::QueryText(TemStreamGui &gui, String &&s) : IQuery(gui), text(std::move(s))
+{
+}
 QueryText::~QueryText()
 {
 }
@@ -33,31 +28,6 @@ bool QueryText::draw()
 {
 	ImGui::InputTextMultiline("Text", &text);
 	return IQuery::draw();
-}
-bool QueryText::handleDropText(const char *c)
-{
-	while (*c != '\0')
-	{
-		gui.getIO().AddInputCharacter(*c);
-		++c;
-	}
-	return false;
-}
-bool QueryText::handleDropFile(const char *c)
-{
-	FILE *file = fopen(c, "r");
-	if (file == nullptr)
-	{
-		perror("fopen");
-		return false;
-	}
-	char ch;
-	while ((ch = fgetc(file)) != EOF)
-	{
-		gui.getIO().AddInputCharacter(ch);
-	}
-	fclose(file);
-	return false;
 }
 void QueryText::execute() const
 {
@@ -79,6 +49,9 @@ void QueryText::execute() const
 QueryImage::QueryImage(TemStreamGui &gui) : IQuery(gui), image()
 {
 }
+QueryImage::QueryImage(TemStreamGui &gui, String &&s) : IQuery(gui), image(std::move(s))
+{
+}
 QueryImage::~QueryImage()
 {
 }
@@ -86,15 +59,6 @@ bool QueryImage::draw()
 {
 	ImGui::InputText("Image path", &image);
 	return IQuery::draw();
-}
-bool QueryImage::handleDropFile(const char *c)
-{
-	while (*c != '\0')
-	{
-		gui.getIO().AddInputCharacter(*c);
-		++c;
-	}
-	return false;
 }
 void QueryImage::execute() const
 {

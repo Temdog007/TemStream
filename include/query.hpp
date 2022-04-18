@@ -16,8 +16,6 @@ class IQuery
 	virtual ~IQuery();
 
 	virtual bool draw();
-	virtual bool handleDropFile(const char *);
-	virtual bool handleDropText(const char *);
 
 	virtual void execute() const = 0;
 };
@@ -28,11 +26,10 @@ class QueryText : public IQuery
 
   public:
 	QueryText(TemStreamGui &);
+	QueryText(TemStreamGui &, String &&);
 	~QueryText();
 
 	bool draw() override;
-	virtual bool handleDropFile(const char *) override;
-	virtual bool handleDropText(const char *) override;
 
 	void execute() const override;
 };
@@ -45,10 +42,10 @@ class QueryImage : public IQuery
 
   public:
 	QueryImage(TemStreamGui &);
+	QueryImage(TemStreamGui &, String &&);
 	~QueryImage();
 
 	bool draw() override;
-	virtual bool handleDropFile(const char *) override;
 
 	void execute() const override;
 };
