@@ -127,9 +127,7 @@ bool TemStreamGui::connect(const Address &address)
 	auto s = address.makeTcpSocket();
 	if (s == nullptr)
 	{
-		char buffer[KB(1)];
-		snprintf(buffer, sizeof(buffer), "Failed to connect to server: %s:%d", address.hostname.c_str(), address.port);
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Connection failed", buffer, window);
+		*logger << Logger::Error << "Failed to connect to server: " << address << std::endl;
 		return false;
 	}
 
@@ -141,8 +139,9 @@ bool TemStreamGui::connect(const Address &address)
 	return (*peer)->sendPacket(packet);
 }
 
-void TemStreamGui::draw()
+ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 {
+	ImVec2 size;
 	if (ImGui::BeginMainMenuBar())
 	{
 		if (ImGui::BeginMenu("File"))
@@ -161,15 +160,14 @@ void TemStreamGui::draw()
 
 		if (ImGui::BeginMenu("View"))
 		{
-			ImGui::Checkbox("Logs", &showLogs);
 			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
+			ImGui::Checkbox("Logs", &showLogs);
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
 
 		if (ImGui::BeginMenu("Connect"))
 		{
-			const bool connectedToServer = isConnected();
 			if (ImGui::MenuItem("Connect to server", "", nullptr, !connectedToServer))
 			{
 				connectToServer = Address();
@@ -208,24 +206,61 @@ void TemStreamGui::draw()
 			}
 			ImGui::EndMenu();
 		}
-		ImGui::Separator();
 
-		if (!displays.empty() && ImGui::BeginMenu("Displays"))
+		if (!displays.empty())
 		{
-			std::array<char, KB(1)> buffer;
-			for (auto &pair : displays)
+			ImGui::Separator();
+			if (ImGui::BeginMenu("Displays"))
 			{
-				auto &display = pair.second;
-				const auto &source = display.getSource();
-				source.print(buffer);
-				ImGui::Checkbox(buffer.data(), &display.visible);
+				std::array<char, KB(1)> buffer;
+				for (auto &pair : displays)
+				{
+					auto &display = pair.second;
+					const auto &source = display.getSource();
+					source.print(buffer);
+					ImGui::Checkbox(buffer.data(), &display.visible);
+				}
+				ImGui::EndMenu();
 			}
-			ImGui::EndMenu();
 		}
-		ImGui::Separator();
 
+		size = ImGui::GetWindowSize();
 		ImGui::EndMainMenuBar();
 	}
+	return size;
+}
+
+void TemStreamGui::draw()
+{
+	const bool connectedToServer = isConnected();
+
+	const auto size = drawMainMenuBar(connectedToServer);
+
+	if (ImGui::Begin("##afdasy4", nullptr,
+					 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoCollapse |
+						 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings |
+						 ImGuiWindowFlags_NoScrollbar))
+	{
+		ImColor color;
+		const char *text;
+		if (connectedToServer)
+		{
+			color = Colors::Lime;
+			text = "Connected";
+		}
+		else
+		{
+			color = Colors::Red;
+			text = "Disconnected";
+		}
+		const auto textSize = ImGui::CalcTextSize(text);
+		auto draw = ImGui::GetForegroundDrawList();
+		const float x = size.x - (textSize.x + size.x * 0.01f);
+		const float radius = size.y * 0.5f;
+		draw->AddCircleFilled(ImVec2(x - radius, radius), radius, color);
+		draw->AddText(ImVec2(x, 0), color, text);
+	}
+	ImGui::End();
 
 	if (connectToServer.has_value())
 	{
@@ -442,8 +477,6 @@ bool TemStreamGui::isConnected()
 
 int runGui()
 {
-	logger->AddInfo("ImGui v" IMGUI_VERSION "\n");
-
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
@@ -452,6 +485,10 @@ int runGui()
 	ImGui::StyleColorsDark();
 
 	TemStreamGui gui(io);
+	logger = std::make_unique<TemStreamGuiLogger>(gui);
+	initialLogs();
+	logger->AddInfo("ImGui v" IMGUI_VERSION "\n");
+
 	if (!gui.init())
 	{
 		String total;
@@ -501,8 +538,7 @@ int runGui()
 			case SDL_DROPTEXT:
 				if (!gui.handleText(event.drop.file))
 				{
-					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Dropped text error",
-											 "Failed to handle dropped text", gui.window);
+					*logger << Logger::Error << "Failed to handle dropped text" << std::endl;
 				}
 				SDL_free(event.drop.file);
 				break;
@@ -510,9 +546,7 @@ int runGui()
 				logger->AddInfo("Dropped file: %s\n", event.drop.file);
 				if (!gui.handleFile(event.drop.file))
 				{
-					char buffer[KB(2)];
-					snprintf(buffer, sizeof(buffer), "Failed to handle dropped file: %s", event.drop.file);
-					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Dropped text error", buffer, gui.window);
+					*logger << Logger::Error << "Failed to handle dropped file: " << event.drop.file << std::endl;
 				}
 				SDL_free(event.drop.file);
 				break;
@@ -613,6 +647,20 @@ int runGui()
 		SDL_Delay(100);
 	}
 	return EXIT_SUCCESS;
+}
+TemStreamGuiLogger::TemStreamGuiLogger(TemStreamGui &gui) : gui(gui)
+{
+}
+TemStreamGuiLogger::~TemStreamGuiLogger()
+{
+}
+void TemStreamGuiLogger::Add(const Level lvl, const char *fmt, va_list args)
+{
+	if (lvl == Level::Error)
+	{
+		gui.setShowLogs(true);
+	}
+	InMemoryLogger::Add(lvl, fmt, args);
 }
 } // namespace TemStream
 

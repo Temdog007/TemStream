@@ -130,9 +130,9 @@ class InMemoryLogger : public Logger
 
   public:
 	InMemoryLogger();
-	~InMemoryLogger();
+	virtual ~InMemoryLogger();
 
-	void Add(Level, const char *, va_list) override;
+	virtual void Add(Level, const char *, va_list) override;
 
 	void viewLogs(const std::function<void(const Log &)> &);
 };

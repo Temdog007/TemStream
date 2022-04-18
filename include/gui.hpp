@@ -22,6 +22,8 @@ class TemStreamGui
 
 	friend int runGui();
 
+	ImVec2 drawMainMenuBar(bool);
+
   public:
 	SDL_Window *window;
 	SDL_Renderer *renderer;
@@ -57,9 +59,25 @@ class TemStreamGui
 
 	bool handleText(const char *);
 
+	void setShowLogs(bool v)
+	{
+		showLogs = v;
+	}
+
 	int getSelectedQuery() const;
 
 	void sendPacket(const MessagePacket &, const bool handleLocally = true);
 	void sendPackets(const MessagePackets &, const bool handleLocally = true);
+};
+class TemStreamGuiLogger : public InMemoryLogger
+{
+  private:
+	TemStreamGui &gui;
+
+  public:
+	TemStreamGuiLogger(TemStreamGui &);
+	~TemStreamGuiLogger();
+
+	void Add(Level, const char *, va_list) override;
 };
 } // namespace TemStream

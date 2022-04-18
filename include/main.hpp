@@ -111,6 +111,8 @@ extern bool appDone;
 
 extern int runGui();
 
+extern void initialLogs();
+
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;

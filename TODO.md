@@ -202,11 +202,15 @@
 - [x] Create logger interface (log to console for server; window for gui; remove message boxes; show log window on error)
 
 ### Apr 18, 2022
-- [ ] Fixed dropped text log
+- [x] Show colored text to signal if connected to stream
+- [ ] Use image button (SDL_Texture should work)
+- [ ] Fixed dropped file log
+- [ ] On dropped file, automatically create the appropriate query data
 - [ ] Handle audio streaming
 - [ ] Make push to talk have a unique button for each each audio stream
 
 ### Later
+- [ ] Add file browser
 - [ ] Store image and text data for each stream (send to newly connected clients)
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code

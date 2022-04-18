@@ -69,6 +69,9 @@ end:
 }
 int ServerPeer::runServer(const int argc, const char **argv)
 {
+	logger = std::make_unique<ConsoleLogger>();
+	TemStream::initialLogs();
+
 	int result = EXIT_FAILURE;
 	int fd = -1;
 
