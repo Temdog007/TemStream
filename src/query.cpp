@@ -36,7 +36,11 @@ bool QueryText::draw()
 }
 bool QueryText::handleDropText(const char *c)
 {
-	text = c;
+	while (*c != '\0')
+	{
+		gui.getIO().AddInputCharacter(*c);
+		++c;
+	}
 	return false;
 }
 bool QueryText::handleDropFile(const char *c)
@@ -48,10 +52,9 @@ bool QueryText::handleDropFile(const char *c)
 		return false;
 	}
 	char ch;
-	text.clear();
 	while ((ch = fgetc(file)) != EOF)
 	{
-		text += ch;
+		gui.getIO().AddInputCharacter(ch);
 	}
 	fclose(file);
 	return false;
@@ -86,7 +89,11 @@ bool QueryImage::draw()
 }
 bool QueryImage::handleDropFile(const char *c)
 {
-	image = c;
+	while (*c != '\0')
+	{
+		gui.getIO().AddInputCharacter(*c);
+		++c;
+	}
 	return false;
 }
 void QueryImage::execute() const
@@ -96,6 +103,13 @@ void QueryImage::execute() const
 }
 void QueryImage::getPackets(const String filename, const MessageSource source)
 {
+	std::ifstream file(filename, std::ios::in | std::ios::binary);
+	if (!file.is_open())
+	{
+		fprintf(stderr, "Failed to open file: %s\n", filename.c_str());
+		return;
+	}
+
 	MessagePackets *packets = new MessagePackets();
 
 	{
@@ -105,7 +119,6 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 		packets->push_back(std::move(packet));
 	}
 	{
-		std::ifstream file(filename, std::ios::in | std::ios::binary);
 
 		const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 		for (size_t i = 0; i < bytes.size(); i += KB(64))

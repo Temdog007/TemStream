@@ -2,26 +2,16 @@
 
 namespace TemStream
 {
-StreamDisplay::StreamDisplay(SDL_Renderer *renderer, const MessageSource &source)
-	: source(source), data(std::monostate{}), renderer(renderer), visible(true)
+StreamDisplay::StreamDisplay(TemStreamGui &gui, const MessageSource &source)
+	: source(source), data(std::monostate{}), gui(gui), visible(true)
 {
 }
 StreamDisplay::StreamDisplay(StreamDisplay &&display)
-	: source(std::move(display.source)), data(std::move(display.data)), renderer(display.renderer),
-	  visible(display.visible)
+	: source(std::move(display.source)), data(std::move(display.data)), gui(display.gui), visible(display.visible)
 {
 }
 StreamDisplay::~StreamDisplay()
 {
-}
-StreamDisplay &StreamDisplay::operator=(StreamDisplay &&display)
-{
-	renderer = display.renderer;
-	display.renderer = nullptr;
-	data = std::move(display.data);
-	source = std::move(display.source);
-	visible = display.visible;
-	return *this;
 }
 void StreamDisplay::handleEvent(const SDL_Event &e)
 {
@@ -73,13 +63,15 @@ bool StreamDisplay::operator()(const bool imageState)
 
 		bool success = true;
 		{
-			SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.renderer, surface);
 			if (texture == nullptr)
 			{
 				fprintf(stderr, "Texture creation error: %s\n", SDL_GetError());
 				success = false;
 			}
-			data = Texture(texture, surface->w, surface->h);
+			int w, h;
+			SDL_GetWindowSize(gui.window, &w, &h);
+			data = Texture(texture, SDL_min(w, surface->w), SDL_min(surface->h, h));
 		}
 		SDL_FreeSurface(surface);
 		return success;
@@ -137,9 +129,58 @@ void StreamDisplayUpdate::operator()(std::monostate)
 void StreamDisplayUpdate::operator()(String &)
 {
 }
-void StreamDisplayUpdate::operator()(Texture &)
+void StreamDisplayUpdate::operator()(Texture &t)
 {
-	// TODO: Move rect
+	switch (event.type)
+	{
+	case SDL_MOUSEBUTTONDOWN: {
+		SDL_Point point;
+		point.x = event.button.x;
+		point.y = event.button.y;
+		if (SDL_PointInRect(&point, &t.rect))
+		{
+			switch (event.button.button)
+			{
+			case SDL_BUTTON_LEFT:
+				t.mode = Texture::Mode::Move;
+				break;
+			case SDL_BUTTON_RIGHT:
+				t.mode = Texture::Mode::Resize;
+				break;
+			default:
+				break;
+			}
+		}
+	}
+	break;
+	case SDL_MOUSEMOTION: {
+		if (t.mode == Texture::Mode::None)
+		{
+			break;
+		}
+		int w, h;
+		SDL_GetWindowSize(display.gui.window, &w, &h);
+		switch (t.mode)
+		{
+		case Texture::Mode::Move:
+			t.rect.x = SDL_clamp(t.rect.x + event.motion.xrel, 0, w - t.rect.w);
+			t.rect.y = SDL_clamp(t.rect.y + event.motion.yrel, 0, h - t.rect.h);
+			break;
+		case Texture::Mode::Resize:
+			t.rect.w = SDL_clamp(t.rect.w + event.motion.xrel, 32, w);
+			t.rect.h = SDL_clamp(t.rect.h + event.motion.yrel, 32, h);
+			break;
+		default:
+			break;
+		}
+	}
+	break;
+	case SDL_MOUSEBUTTONUP:
+		t.mode = Texture::Mode::None;
+		break;
+	default:
+		break;
+	}
 }
 void StreamDisplayUpdate::operator()(Bytes &)
 {
@@ -180,7 +221,7 @@ bool StreamDisplayDraw::operator()(Texture &t)
 	{
 		return false;
 	}
-	if (SDL_RenderCopy(display.renderer, t.texture, NULL, &t.rect) == 0)
+	if (SDL_RenderCopy(display.gui.renderer, t.texture, NULL, &t.rect) == 0)
 	{
 		return true;
 	}

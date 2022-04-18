@@ -36,6 +36,11 @@ class TemStreamGui
 		return peerInfo;
 	}
 
+	ImGuiIO &getIO()
+	{
+		return io;
+	}
+
 	bool init();
 	bool connect(const Address &);
 	void update();

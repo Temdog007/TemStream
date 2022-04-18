@@ -4,13 +4,20 @@
 
 namespace TemStream
 {
+class TemStreamGui;
 struct Texture
 {
+	enum Mode
+	{
+		None,
+		Move,
+		Resize
+	};
 	SDL_Rect rect;
 	SDL_Texture *texture;
-	bool moving;
+	Mode mode;
 
-	Texture(SDL_Texture *texture, const int w, const int h) : rect(), texture(texture), moving(false)
+	Texture(SDL_Texture *texture, const int w, const int h) : rect(), texture(texture), mode(Mode::None)
 	{
 		rect.x = 0;
 		rect.y = 0;
@@ -18,7 +25,7 @@ struct Texture
 		rect.h = h;
 	}
 	Texture(const Texture &) = delete;
-	Texture(Texture &&t) : rect(t.rect), texture(t.texture), moving(t.moving)
+	Texture(Texture &&t) : rect(t.rect), texture(t.texture), mode(Mode::None)
 	{
 		t.texture = nullptr;
 	}
@@ -33,7 +40,7 @@ struct Texture
 	{
 		rect = t.rect;
 		texture = t.texture;
-		moving = t.moving;
+		mode = t.mode;
 		t.texture = nullptr;
 		return *this;
 	}
@@ -45,21 +52,22 @@ class StreamDisplay : public MessagePacketHandler
   private:
 	MessageSource source;
 	DisplayData data;
-	SDL_Renderer *renderer;
+	TemStreamGui &gui;
 	bool visible;
 
 	friend class TemStreamGui;
+	friend class StreamDisplayUpdate;
 	friend class StreamDisplayDraw;
 
   public:
 	StreamDisplay() = delete;
-	StreamDisplay(SDL_Renderer *, const MessageSource &);
+	StreamDisplay(TemStreamGui &, const MessageSource &);
 	StreamDisplay(const StreamDisplay &) = delete;
 	StreamDisplay(StreamDisplay &&);
 	virtual ~StreamDisplay();
 
 	StreamDisplay &operator=(const StreamDisplay &) = delete;
-	StreamDisplay &operator=(StreamDisplay &&);
+	StreamDisplay &operator=(StreamDisplay &&) = delete;
 
 	const MessageSource &getSource() const
 	{

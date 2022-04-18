@@ -472,6 +472,7 @@ int runGui()
 				SDL_free(event.drop.file);
 				break;
 			case SDL_DROPFILE:
+				printf("Dropped file: %s\n", event.drop.file);
 				if (!gui.handleFile(event.drop.file))
 				{
 					char buffer[KB(2)];
@@ -511,7 +512,7 @@ int runGui()
 			auto iter = gui.displays.find(m.source);
 			if (iter == gui.displays.end())
 			{
-				StreamDisplay display(gui.renderer, m.source);
+				StreamDisplay display(gui, m.source);
 				auto pair = gui.displays.emplace(m.source, std::move(display));
 				if (!pair.second)
 				{
