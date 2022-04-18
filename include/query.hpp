@@ -49,9 +49,6 @@ class QueryImage : public IQuery
 	virtual bool handleDropFile(const char *) override;
 
 	MessagePackets getPackets() const override;
-
-  private:
-	bool readChunkFromFile(FILE *, MessagePackets &) const;
 };
 class QueryAudio : public IQuery
 {

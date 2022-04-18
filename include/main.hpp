@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <memory>

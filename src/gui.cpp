@@ -535,7 +535,6 @@ int runGui()
 		// App Rendering
 		SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
 		SDL_RenderClear(gui.renderer);
-		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 		{
 			if (iter->second.draw(false))
@@ -547,6 +546,7 @@ int runGui()
 				iter = gui.displays.erase(iter);
 			}
 		}
+		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 		SDL_RenderPresent(gui.renderer);
 	}
 

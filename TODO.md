@@ -194,13 +194,16 @@
 ### Apr 17, 2022
 - [x] Custom allocator
 - [x] Stream name not showing in window
-- [ ] Images not loading
+- [x] Images not loading
 - [ ] Make non-imgui displays movable
 - [ ] Make non-imgui displays resizable
 - [x] Make displays hideable (menu bar)
 
+### Apr 18, 2022
+- [ ] Create logger interface (log to console for server; window for gui; remove message boxes; show log window on error)
+- [ ] Handle audio streaming
+
 ### Later
-- [ ] Create logger interface (log to console for server; window for gui)
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)

@@ -10,8 +10,12 @@ struct Texture
 	SDL_Texture *texture;
 	bool moving;
 
-	Texture(SDL_Texture *texture) : rect(), texture(texture), moving(false)
+	Texture(SDL_Texture *texture, const int w, const int h) : rect(), texture(texture), moving(false)
 	{
+		rect.x = 0;
+		rect.y = 0;
+		rect.w = w;
+		rect.h = h;
 	}
 	Texture(const Texture &) = delete;
 	Texture(Texture &&t) : rect(t.rect), texture(t.texture), moving(t.moving)
@@ -73,6 +77,7 @@ class StreamDisplay : public MessagePacketHandler
 	bool operator()(const PeerInformationList &);
 	bool operator()(const RequestPeers &);
 
+	// For image message
 	bool operator()(bool);
 	bool operator()(const Bytes &);
 };

@@ -51,38 +51,53 @@ bool StreamDisplay::operator()(const bool imageState)
 	if (imageState)
 	{
 		data = Bytes();
+		return true;
 	}
-	else if (Bytes *bytes = std::get_if<Bytes>(&data))
+	if (Bytes *bytes = std::get_if<Bytes>(&data))
 	{
+#ifndef NDEBUG
+		printf("Reading %zu image KB\n", bytes->size() / KB(1));
+#endif
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
+		if (src == nullptr)
+		{
+			fprintf(stderr, "Failed to load image data: %s\n", SDL_GetError());
+			return false;
+		}
 		SDL_Surface *surface = IMG_Load_RW(src, 0);
 		if (surface == nullptr)
 		{
 			fprintf(stderr, "Surface load error: %s\n", IMG_GetError());
-			goto end;
+			return false;
 		}
 
+		bool success = true;
 		{
 			SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
 			if (texture == nullptr)
 			{
 				fprintf(stderr, "Texture creation error: %s\n", SDL_GetError());
-				goto end;
+				success = false;
 			}
-			data = Texture(texture);
+			data = Texture(texture, surface->w, surface->h);
 		}
-	end:
 		SDL_FreeSurface(surface);
+		return success;
 	}
-	return true;
+
+	fprintf(stderr, "Stream display is in an invalid state\n");
+	return false;
 }
 bool StreamDisplay::operator()(const Bytes &bytes)
 {
 	auto ptr = std::get_if<Bytes>(&data);
-	if (ptr != nullptr)
+	if (ptr == nullptr)
 	{
-		ptr->insert(ptr->end(), bytes.begin(), bytes.end());
+		fprintf(stderr, "Stream display is in an invalid state\n");
+		return false;
 	}
+
+	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
 	return true;
 }
 bool StreamDisplay::operator()(const VideoMessage &)
@@ -163,7 +178,7 @@ bool StreamDisplayDraw::operator()(Texture &t)
 	}
 	if (t.texture == nullptr)
 	{
-		return true;
+		return false;
 	}
 	if (SDL_RenderCopy(display.renderer, t.texture, NULL, &t.rect) == 0)
 	{

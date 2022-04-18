@@ -89,13 +89,6 @@ MessagePackets QueryImage::getPackets() const
 {
 	MessagePackets packets;
 
-	FILE *file = fopen(image.c_str(), "rb");
-	if (file == nullptr)
-	{
-		perror("fopen");
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "File not found", "File not found", gui.window);
-		goto end;
-	}
 	{
 		MessagePacket packet;
 		packet.message = ImageMessage(true);
@@ -103,8 +96,20 @@ MessagePackets QueryImage::getPackets() const
 		packet.source.destination = streamName;
 		packets.push_back(std::move(packet));
 	}
-	while (readChunkFromFile(file, packets))
-		;
+	{
+		std::ifstream file(image, std::ios::in | std::ios::binary);
+
+		const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		for (size_t i = 0; i < bytes.size(); i += KB(64))
+		{
+			MessagePacket packet;
+			packet.message =
+				Bytes(bytes.begin() + i, (i + KB(64)) > bytes.size() ? bytes.end() : (bytes.begin() + i + KB(64)));
+			packet.source.author = gui.getInfo().name;
+			packet.source.destination = streamName;
+			packets.push_back(std::move(packet));
+		}
+	}
 	{
 		MessagePacket packet;
 		packet.message = ImageMessage(false);
@@ -112,36 +117,7 @@ MessagePackets QueryImage::getPackets() const
 		packet.source.destination = streamName;
 		packets.push_back(std::move(packet));
 	}
-	fclose(file);
-end:
 	return packets;
-}
-bool QueryImage::readChunkFromFile(FILE *file, MessagePackets &packets) const
-{
-	Bytes bytes;
-	char ch;
-	while ((ch = fgetc(file)) != EOF)
-	{
-		bytes.push_back(ch);
-		if (bytes.size() > KB(64))
-		{
-			MessagePacket packet;
-			packet.source.author = gui.getInfo().name;
-			packet.source.destination = streamName;
-			packet.message = ImageMessage(std::move(bytes));
-			packets.push_back(std::move(packet));
-			return true;
-		}
-	}
-	if (!bytes.empty())
-	{
-		MessagePacket packet;
-		packet.source.author = gui.getInfo().name;
-		packet.source.destination = streamName;
-		packet.message = ImageMessage(std::move(bytes));
-		packets.push_back(std::move(packet));
-	}
-	return false;
 }
 QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui)
 {
