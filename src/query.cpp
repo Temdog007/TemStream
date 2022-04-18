@@ -31,7 +31,7 @@ QueryText::~QueryText()
 }
 bool QueryText::draw()
 {
-	ImGui::InputText("Text", &text);
+	ImGui::InputTextMultiline("Text", &text);
 	return IQuery::draw();
 }
 bool QueryText::handleDropText(const char *c)
@@ -106,7 +106,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	std::ifstream file(filename, std::ios::in | std::ios::binary);
 	if (!file.is_open())
 	{
-		fprintf(stderr, "Failed to open file: %s\n", filename.c_str());
+		logger->AddError("Failed to open file: %s\n", filename.c_str());
 		return;
 	}
 

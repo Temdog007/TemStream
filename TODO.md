@@ -199,18 +199,20 @@
 - [x] Make non-imgui displays movable
 - [x] Make non-imgui displays resizable
 - [x] Make displays hideable (menu bar)
+- [x] Create logger interface (log to console for server; window for gui; remove message boxes; show log window on error)
 
 ### Apr 18, 2022
-- [ ] Create logger interface (log to console for server; window for gui; remove message boxes; show log window on error)
+- [ ] Fixed dropped text log
 - [ ] Handle audio streaming
+- [ ] Make push to talk have a unique button for each each audio stream
 
 ### Later
+- [ ] Store image and text data for each stream (send to newly connected clients)
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 - [ ] Make video replay streams work properly
 - [ ] Test browser
-- [ ] Make push to talk have a unique button for each each audio stream
 - [ ] Test android
 
 ### Bugs

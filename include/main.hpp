@@ -10,6 +10,7 @@
 #include <mutex>
 #include <new>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -113,16 +114,18 @@ extern int runGui();
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;
-
 } // namespace TemStream
 
 #include "TemStreamConfig.h"
 
 #include "allocator.hpp"
+#include "memoryStream.hpp"
+
 #include "colors.hpp"
+#include "logger.hpp"
 
 #include "addrinfo.hpp"
-#include "memoryStream.hpp"
+
 #include "peerInformation.hpp"
 
 #include "message.hpp"

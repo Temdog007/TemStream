@@ -77,7 +77,7 @@ bool StreamDisplay::operator()(const bool imageState)
 		return success;
 	}
 
-	fprintf(stderr, "Stream display is in an invalid state\n");
+	logger->AddError("Stream display is in an invalid state\n");
 	return false;
 }
 bool StreamDisplay::operator()(const Bytes &bytes)
@@ -85,7 +85,7 @@ bool StreamDisplay::operator()(const Bytes &bytes)
 	auto ptr = std::get_if<Bytes>(&data);
 	if (ptr == nullptr)
 	{
-		fprintf(stderr, "Stream display is in an invalid state\n");
+		logger->AddError("Stream display is in an invalid state\n");
 		return false;
 	}
 
@@ -202,11 +202,20 @@ bool StreamDisplayDraw::operator()(const String &s)
 		return true;
 	}
 
-	std::array<char, KB(1)> buffer;
+	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
 	if (ImGui::Begin(buffer.data(), &display.visible))
 	{
-		ImGui::TextWrapped("%s", s.c_str());
+		const char *str = s.c_str();
+		for (size_t i = 0; i < s.size(); i += sizeof(buffer))
+		{
+			if (ImGui::BeginChild(1 + (i / sizeof(buffer))))
+			{
+				strncpy(buffer.data(), str + i, sizeof(buffer));
+				ImGui::TextWrapped("%s", buffer.data());
+			}
+			ImGui::EndChild();
+		}
 	}
 	ImGui::End();
 	return true;

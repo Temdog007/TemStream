@@ -2,6 +2,8 @@
 
 #include <main.hpp>
 
+namespace TemStream
+{
 class AddrInfo
 {
   private:
@@ -20,3 +22,4 @@ class AddrInfo
 	struct addrinfo *getRes();
 	const struct addrinfo *getRes() const;
 };
+} // namespace TemStream

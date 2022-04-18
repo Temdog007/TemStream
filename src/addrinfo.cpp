@@ -1,5 +1,7 @@
 #include <main.hpp>
 
+namespace TemStream
+{
 AddrInfo::AddrInfo() : res(nullptr)
 {
 }
@@ -25,7 +27,7 @@ bool AddrInfo::getInfo(const char *hostname, const char *port, const struct addr
 	const int result = getaddrinfo(hostname, port, &hints, &res);
 	if (result != 0 || res == nullptr)
 	{
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
+		logger->AddError("getaddrinfo: %s\n", gai_strerror(result));
 		return false;
 	}
 	return true;
@@ -74,3 +76,4 @@ bool AddrInfo::connect(const int sockfd) const
 	}
 	return true;
 }
+} // namespace TemStream

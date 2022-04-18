@@ -37,6 +37,7 @@ set(SOURCES src/addrinfo.cpp
     src/clientPeer.cpp
     src/colors.cpp
     src/gui.cpp
+    src/logger.cpp
     src/main.cpp
     src/memoryStream.cpp 
     src/misc.cpp
@@ -49,6 +50,8 @@ set(SOURCES src/addrinfo.cpp
 set(HEADERS include/addrinfo.hpp
     include/clientPeer.hpp
     include/colors.hpp
+    include/gui.hpp
+    include/logger.hpp
     include/main.hpp
     include/memoryStream.hpp
     include/message.hpp

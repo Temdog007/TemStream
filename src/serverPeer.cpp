@@ -41,7 +41,7 @@ void ServerPeer::sendToAllPeers(const MessagePacket &packet)
 
 void ServerPeer::runPeerConnection(std::shared_ptr<ServerPeer> peer)
 {
-	std::cout << "Handling connection: " << peer->getAddress() << std::endl;
+	*logger << "Handling connection: " << peer->getAddress() << std::endl;
 	{
 		LOCK(peersMutex);
 		peers.emplace_back(peer);
@@ -64,7 +64,7 @@ void ServerPeer::runPeerConnection(std::shared_ptr<ServerPeer> peer)
 	}
 
 end:
-	std::cout << "Ending connection: " << peer->getAddress() << std::endl;
+	*logger << "Ending connection: " << peer->getAddress() << std::endl;
 	--runningThreads;
 }
 int ServerPeer::runServer(const int argc, const char **argv)
@@ -148,7 +148,7 @@ int ServerPeer::runServer(const int argc, const char **argv)
 
 end:
 	::close(fd);
-	puts("Ending server");
+	logger->AddInfo("Ending server\n");
 	while (runningThreads > 0)
 	{
 		SDL_Delay(100);
@@ -198,9 +198,9 @@ bool ServerPeer::handlePacket(const MessagePacket &packet)
 #define CHECK_INFO(X)                                                                                                  \
 	if (!gotInfo())                                                                                                    \
 	{                                                                                                                  \
-		std::cerr << "Got " << #X << " from peer before getting their information" << std::endl;                       \
+		logger->AddError("Got " #X " from peer before getting their information");                                     \
 		return false;                                                                                                  \
-	}
+	} // namespace TemStream
 bool ServerPeer::operator()(const TextMessage &)
 {
 	CHECK_INFO(TextMessage)
@@ -234,12 +234,12 @@ bool ServerPeer::operator()(const PeerInformation &info)
 {
 	if (informationAcquired)
 	{
-		std::cerr << "Peer sent information more than once" << std::endl;
+		logger->AddError("Peer sent information more than once");
 		return false;
 	}
 	this->info = info;
 	informationAcquired = true;
-	std::cout << "Information from peer " << address << " -> " << info << std::endl;
+	*logger << "Information from peer " << address << " -> " << info << std::endl;
 	return true;
 }
 } // namespace TemStream

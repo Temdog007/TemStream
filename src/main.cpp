@@ -7,16 +7,14 @@ std::atomic<int32_t> TemStream::runningThreads = 0;
 int TemStream::DefaultPort = 10000;
 size_t TemStream::MaxPacketSize = MB(1);
 AllocatorData TemStream::globalAllocatorData;
+std::unique_ptr<Logger> TemStream::logger = nullptr;
 
 void signalHandler(int s);
 void parseMemory(int, const char **, size_t);
+void initialLogs();
 
 int main(const int argc, const char **argv)
 {
-	printf("TemStream v%d.%d.%d\n", TemStream_VERSION_MAJOR, TemStream_VERSION_MINOR, TemStream_VERSION_PATCH);
-#if _DEBUG
-	puts("Debug mode");
-#endif
 	{
 		struct sigaction action;
 		action.sa_handler = &signalHandler;
@@ -32,11 +30,23 @@ int main(const int argc, const char **argv)
 		if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--server") == 0)
 		{
 			parseMemory(argc, argv, 8);
+			logger = std::make_unique<ConsoleLogger>();
+			initialLogs();
 			return ServerPeer::runServer(argc, argv);
 		}
 	}
 	parseMemory(argc, argv, 256);
+	logger = std::make_unique<InMemoryLogger>();
+	initialLogs();
 	return runGui();
+}
+
+void initialLogs()
+{
+	logger->AddInfo("TemStream v%d.%d.%d\n", TemStream_VERSION_MAJOR, TemStream_VERSION_MINOR, TemStream_VERSION_PATCH);
+#if _DEBUG
+	logger->AddInfo("Debug mode\n");
+#endif
 }
 
 void signalHandler(int s)
@@ -45,7 +55,7 @@ void signalHandler(int s)
 	{
 	case SIGINT:
 		TemStream::appDone = true;
-		puts("Received end signal");
+		logger->AddInfo("Received end signal");
 		break;
 	default:
 		break;
@@ -63,6 +73,7 @@ void parseMemory(const int argc, const char **argv, size_t size)
 		}
 	}
 
+	// Logger not set yet
 	printf("Memory usage: %zu MB\n", size);
 	globalAllocatorData.init(size * MB(1));
 }

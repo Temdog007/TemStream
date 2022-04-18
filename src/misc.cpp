@@ -16,13 +16,13 @@ LogMutex::LogMutex(Mutex &m, const char *name) : m(m), name(name), id(0)
 	{
 		id = iter->second;
 	}
-	std::cout << "-> " << id << ": " << name << std::endl;
+	*logger << "-> " << id << ": " << name << std::endl;
 	m.lock();
 }
 LogMutex::~LogMutex()
 {
 	m.unlock();
-	std::cout << "<- " << id << ": " << name << std::endl;
+	*logger << "<- " << id << ": " << name << std::endl;
 }
 bool openSocket(int &fd, const char *hostname, const char *port, const bool isServer)
 {
@@ -88,12 +88,12 @@ SDL_MutexWrapper::SDL_MutexWrapper() : mutex(SDL_CreateMutex())
 {
 	if (mutex == nullptr)
 	{
-		fprintf(stderr, "Failed to create mutex: %s\n", SDL_GetError());
+		logger->AddError("Failed to create mutex: %s\n", SDL_GetError());
 	}
 }
 SDL_MutexWrapper::~SDL_MutexWrapper()
 {
-	puts("Deleted mutex");
+	logger->AddTrace("Deleted mutex");
 	SDL_DestroyMutex(mutex);
 	mutex = nullptr;
 }

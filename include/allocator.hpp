@@ -151,9 +151,6 @@ class AllocatorData
 
 	~AllocatorData()
 	{
-#if _DEBUG
-		puts("AllocatorData deleted");
-#endif
 		close();
 	}
 

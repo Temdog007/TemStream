@@ -22,7 +22,7 @@ namespace TemStream
 {
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), pendingFile(std::nullopt), peerInfo({"User", false}), peerMutex(), outgoingPackets(),
-	  peer(nullptr), queryData(nullptr), io(io), fontIndex(1), window(nullptr), renderer(nullptr)
+	  peer(nullptr), queryData(nullptr), io(io), fontIndex(1), showLogs(false), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -86,14 +86,14 @@ bool TemStreamGui::init()
 {
 	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
 	{
-		fprintf(stderr, "SDL error: %s\n", SDL_GetError());
+		logger->AddError("SDL error: %s\n", SDL_GetError());
 		return false;
 	}
 
 	const int flags = IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_WEBP;
 	if (IMG_Init(flags) != flags)
 	{
-		fprintf(stderr, "Image error: %s\n", IMG_GetError());
+		logger->AddError("Image error: %s\n", IMG_GetError());
 		return false;
 	}
 
@@ -101,20 +101,20 @@ bool TemStreamGui::init()
 							  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (window == nullptr)
 	{
-		fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
+		logger->AddError("Failed to create window: %s\n", SDL_GetError());
 		return false;
 	}
 
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (renderer == nullptr)
 	{
-		fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
+		logger->AddError("Failed to create renderer: %s\n", SDL_GetError());
 		return false;
 	}
 
 	if (SDL_AddTimer(1, (SDL_TimerCallback)updatePeer, this) == 0)
 	{
-		fprintf(stderr, "Failed to add timer: %s\n", SDL_GetError());
+		logger->AddError("Failed to add timer: %s\n", SDL_GetError());
 		return false;
 	}
 
@@ -123,7 +123,7 @@ bool TemStreamGui::init()
 
 bool TemStreamGui::connect(const Address &address)
 {
-	std::cout << "Connecting to server: " << address << std::endl;
+	*logger << "Connecting to server: " << address << std::endl;
 	auto s = address.makeTcpSocket();
 	if (s == nullptr)
 	{
@@ -135,7 +135,7 @@ bool TemStreamGui::connect(const Address &address)
 
 	LOCK(peerMutex);
 	peer = std::make_unique<ClientPeer>(address, std::move(s));
-	std::cout << "Connected to server: " << address << std::endl;
+	*logger << "Connected to server: " << address << std::endl;
 	MessagePacket packet;
 	packet.message = peerInfo;
 	return (*peer)->sendPacket(packet);
@@ -161,6 +161,7 @@ void TemStreamGui::draw()
 
 		if (ImGui::BeginMenu("View"))
 		{
+			ImGui::Checkbox("Logs", &showLogs);
 			ImGui::SliderInt("Font", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
 			ImGui::EndMenu();
 		}
@@ -318,6 +319,34 @@ void TemStreamGui::draw()
 			queryData = nullptr;
 		}
 	}
+
+	if (showLogs)
+	{
+		if (ImGui::Begin("Logs", &showLogs))
+		{
+			InMemoryLogger &mLogger = dynamic_cast<InMemoryLogger &>(*logger);
+			mLogger.viewLogs([](const Logger::Log &log) {
+				switch (log.first)
+				{
+				case Logger::Trace:
+					ImGui::TextColored(Colors::Cyan, "%s", log.second.c_str());
+					break;
+				case Logger::Info:
+					ImGui::TextColored(Colors::White, "%s", log.second.c_str());
+					break;
+				case Logger::Warning:
+					ImGui::TextColored(Colors::Yellow, "%s", log.second.c_str());
+					break;
+				case Logger::Error:
+					ImGui::TextColored(Colors::Red, "%s", log.second.c_str());
+					break;
+				default:
+					break;
+				}
+			});
+		}
+		ImGui::End();
+	}
 }
 
 int TemStreamGui::getSelectedQuery() const
@@ -413,7 +442,7 @@ bool TemStreamGui::isConnected()
 
 int runGui()
 {
-	puts("ImGui v" IMGUI_VERSION);
+	logger->AddInfo("ImGui v" IMGUI_VERSION "\n");
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -425,7 +454,13 @@ int runGui()
 	TemStreamGui gui(io);
 	if (!gui.init())
 	{
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed", "Failed to start app", gui.window);
+		String total;
+		InMemoryLogger &mLogger = dynamic_cast<InMemoryLogger &>(*logger);
+		mLogger.viewLogs([&total](const Logger::Log &log) {
+			total += log.second;
+			total += '\n';
+		});
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to start application", total.c_str(), gui.window);
 		return EXIT_FAILURE;
 	}
 
@@ -472,7 +507,7 @@ int runGui()
 				SDL_free(event.drop.file);
 				break;
 			case SDL_DROPFILE:
-				printf("Dropped file: %s\n", event.drop.file);
+				logger->AddInfo("Dropped file: %s\n", event.drop.file);
 				if (!gui.handleFile(event.drop.file))
 				{
 					char buffer[KB(2)];

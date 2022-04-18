@@ -18,6 +18,7 @@ class TemStreamGui
 	std::unique_ptr<IQuery> queryData;
 	ImGuiIO &io;
 	int fontIndex;
+	bool showLogs;
 
 	friend int runGui();
 

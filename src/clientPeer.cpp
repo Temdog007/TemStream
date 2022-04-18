@@ -23,8 +23,7 @@ bool ClientPeer::handlePacket(const MessagePacket &packet)
 		}
 		else
 		{
-			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Connection error",
-									 "Must connect to a server. Connected to a client", NULL);
+			logger->AddError("Connection error", "Must connect to a server. Connected to a client");
 			return false;
 		}
 	}

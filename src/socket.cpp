@@ -19,7 +19,7 @@ bool Socket::sendPacket(const MessagePacket &packet)
 	}
 	catch (const std::exception &e)
 	{
-		fprintf(stderr, "Socket::sendMessage %s\n", e.what());
+		logger->AddError("Socket::sendMessage %s\n", e.what());
 		return false;
 	}
 }

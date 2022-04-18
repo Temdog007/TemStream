@@ -6,6 +6,7 @@
 namespace TemStream
 {
 using String = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
+using StringStream = std::basic_ostringstream<char, std::char_traits<char>, Allocator<char>>;
 template <typename T> using List = std::vector<T, Allocator<T>>;
 template <typename K, typename V>
 using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<std::pair<const K, V>>>;
@@ -34,6 +35,7 @@ IMGUI_API bool InputText(const char *label, TemStream::String *str, ImGuiInputTe
 namespace TemStream
 {
 using String = std::string;
+using StringStream = std::ostringstream;
 template <typename T> using List = std::vector<T>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
 } // namespace TemStream
