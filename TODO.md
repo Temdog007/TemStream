@@ -195,6 +195,7 @@
 - [x] Custom allocator
 - [x] Stream name not showing in window
 - [x] Images not loading
+- [ ] Handle message sending in a separate thread
 - [ ] Make non-imgui displays movable
 - [ ] Make non-imgui displays resizable
 - [x] Make displays hideable (menu bar)

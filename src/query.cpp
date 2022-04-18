@@ -56,17 +56,21 @@ bool QueryText::handleDropFile(const char *c)
 	fclose(file);
 	return false;
 }
-MessagePackets QueryText::getPackets() const
+void QueryText::execute() const
 {
-	MessagePackets packets;
+	MessagePacket *packet = new MessagePacket();
+	packet->message = TextMessage(text);
+	packet->source.author = gui.getInfo().name;
+	packet->source.destination = streamName;
 
-	MessagePacket packet;
-	packet.message = TextMessage(text);
-	packet.source.author = gui.getInfo().name;
-	packet.source.destination = streamName;
-	packets.push_back(std::move(packet));
-
-	return packets;
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::SendSingleMessagePacket;
+	e.user.data1 = reinterpret_cast<void *>(packet);
+	if (SDL_PushEvent(&e) != 1)
+	{
+		delete packet;
+	}
 }
 // Query Image
 QueryImage::QueryImage(TemStreamGui &gui) : IQuery(gui), image()
@@ -85,19 +89,23 @@ bool QueryImage::handleDropFile(const char *c)
 	image = c;
 	return false;
 }
-MessagePackets QueryImage::getPackets() const
+void QueryImage::execute() const
 {
-	MessagePackets packets;
+	std::thread thread(QueryImage::getPackets, image, MessageSource{gui.getInfo().name, streamName});
+	thread.detach();
+}
+void QueryImage::getPackets(const String filename, const MessageSource source)
+{
+	MessagePackets *packets = new MessagePackets();
 
 	{
 		MessagePacket packet;
 		packet.message = ImageMessage(true);
-		packet.source.author = gui.getInfo().name;
-		packet.source.destination = streamName;
-		packets.push_back(std::move(packet));
+		packet.source = source;
+		packets->push_back(std::move(packet));
 	}
 	{
-		std::ifstream file(image, std::ios::in | std::ios::binary);
+		std::ifstream file(filename, std::ios::in | std::ios::binary);
 
 		const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 		for (size_t i = 0; i < bytes.size(); i += KB(64))
@@ -105,19 +113,25 @@ MessagePackets QueryImage::getPackets() const
 			MessagePacket packet;
 			packet.message =
 				Bytes(bytes.begin() + i, (i + KB(64)) > bytes.size() ? bytes.end() : (bytes.begin() + i + KB(64)));
-			packet.source.author = gui.getInfo().name;
-			packet.source.destination = streamName;
-			packets.push_back(std::move(packet));
+			packet.source = source;
+			packets->push_back(std::move(packet));
 		}
 	}
 	{
 		MessagePacket packet;
 		packet.message = ImageMessage(false);
-		packet.source.author = gui.getInfo().name;
-		packet.source.destination = streamName;
-		packets.push_back(std::move(packet));
+		packet.source = source;
+		packets->push_back(std::move(packet));
 	}
-	return packets;
+
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::SendMessagePackets;
+	e.user.data1 = reinterpret_cast<void *>(packets);
+	if (SDL_PushEvent(&e) != 1)
+	{
+		delete packets;
+	}
 }
 QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui)
 {
@@ -129,9 +143,8 @@ bool QueryAudio::draw()
 {
 	return IQuery::draw();
 }
-MessagePackets QueryAudio::getPackets() const
+void QueryAudio::execute() const
 {
-	return MessagePackets();
 }
 QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui)
 {
@@ -143,8 +156,7 @@ bool QueryVideo::draw()
 {
 	return IQuery::draw();
 }
-MessagePackets QueryVideo::getPackets() const
+void QueryVideo::execute() const
 {
-	return MessagePackets();
 }
 } // namespace TemStream

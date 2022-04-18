@@ -58,6 +58,11 @@
 
 namespace TemStream
 {
+enum TemStreamEvent : int32_t
+{
+	SendSingleMessagePacket = 0xabcd,
+	SendMessagePackets
+};
 class SDL_MutexWrapper
 {
   private:

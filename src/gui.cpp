@@ -308,7 +308,7 @@ void TemStreamGui::draw()
 			}
 			if (queryData->draw())
 			{
-				sendPackets(queryData->getPackets());
+				queryData->execute();
 				opened = false;
 			}
 		}
@@ -365,7 +365,7 @@ bool TemStreamGui::handleFile(const char *filename)
 	{
 		if (queryData->handleDropFile(filename))
 		{
-			sendPackets(queryData->getPackets());
+			queryData->execute();
 			queryData = nullptr;
 		}
 	}
@@ -378,7 +378,7 @@ bool TemStreamGui::handleText(const char *text)
 	{
 		if (queryData->handleDropText(text))
 		{
-			sendPackets(queryData->getPackets());
+			queryData->execute();
 			queryData = nullptr;
 		}
 	}
@@ -479,6 +479,25 @@ int runGui()
 					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Dropped text error", buffer, gui.window);
 				}
 				SDL_free(event.drop.file);
+				break;
+			case SDL_USEREVENT:
+				switch (event.user.code)
+				{
+				case TemStreamEvent::SendSingleMessagePacket: {
+					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
+					gui.sendPacket(*packet);
+					delete packet;
+				}
+				break;
+				case TemStreamEvent::SendMessagePackets: {
+					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
+					gui.sendPackets(*packets);
+					delete packets;
+				}
+				break;
+				default:
+					break;
+				}
 				break;
 			default:
 				break;
