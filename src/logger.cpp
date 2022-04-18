@@ -11,14 +11,10 @@ Logger::~Logger()
 void Logger::flush()
 {
 	const auto s = os.str();
-	Logger::Add(streamLevel, s);
+	Add(streamLevel, s);
 	os.str("");
 	os.clear();
 	streamLevel = Level::Info;
-}
-void Logger::Add(const Level level, const String &s)
-{
-	Add(level, "%s", s.c_str());
 }
 void Logger::Add(const Log &log)
 {
@@ -37,6 +33,10 @@ ConsoleLogger::ConsoleLogger() : Logger()
 }
 ConsoleLogger::~ConsoleLogger()
 {
+}
+void ConsoleLogger::Add(const Level level, const String &s)
+{
+	std::cout << level << ": " << s << std::endl;
 }
 void ConsoleLogger::Add(const Level level, const char *fmt, va_list args)
 {
@@ -57,6 +57,10 @@ InMemoryLogger::InMemoryLogger() : Logger(), logs(), mutex()
 InMemoryLogger::~InMemoryLogger()
 {
 }
+void InMemoryLogger::Add(const Level level, const String &s)
+{
+	logs.emplace_back(level, s);
+}
 void InMemoryLogger::Add(const Level level, const char *fmt, va_list args)
 {
 	LOCK(mutex);
@@ -70,11 +74,9 @@ void InMemoryLogger::Add(const Level level, const char *fmt, va_list args)
 	Log log;
 	log.first = level;
 
-	const int length = std::vsnprintf(nullptr, 0, fmt, args) + 1;
-	char *c = new char[length];
-	std::vsnprintf(c, length, fmt, args);
-	log.second = String(c, c + length);
-	delete[] c;
+	char buffer[KB(4)];
+	const int len = snprintf(buffer, sizeof(buffer), fmt, args);
+	log.second = String(buffer, buffer + len);
 
 	logs.push_back(std::move(log));
 }

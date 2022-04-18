@@ -201,7 +201,7 @@ bool ServerPeer::handlePacket(const MessagePacket &packet)
 #define CHECK_INFO(X)                                                                                                  \
 	if (!gotInfo())                                                                                                    \
 	{                                                                                                                  \
-		logger->AddError("Got " #X " from peer before getting their information");                                     \
+		logger->AddError("Got " #X " from peer before getting their information\n");                                   \
 		return false;                                                                                                  \
 	} // namespace TemStream
 bool ServerPeer::operator()(const TextMessage &)
@@ -237,7 +237,7 @@ bool ServerPeer::operator()(const PeerInformation &info)
 {
 	if (informationAcquired)
 	{
-		logger->AddError("Peer sent information more than once");
+		(*logger)(Logger::Error) << "Peer sent information more than once" << std::endl;
 		return false;
 	}
 	this->info = info;

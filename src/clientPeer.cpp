@@ -23,7 +23,7 @@ bool ClientPeer::handlePacket(const MessagePacket &packet)
 		}
 		else
 		{
-			logger->AddError("Connection error", "Must connect to a server. Connected to a client");
+			logger->AddError("Connection error. Must connect to a server. Connected to a client\n");
 			return false;
 		}
 	}

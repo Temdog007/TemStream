@@ -93,7 +93,7 @@ SDL_MutexWrapper::SDL_MutexWrapper() : mutex(SDL_CreateMutex())
 }
 SDL_MutexWrapper::~SDL_MutexWrapper()
 {
-	logger->AddTrace("Deleted mutex");
+	logger->AddTrace("Deleted mutex\n");
 	SDL_DestroyMutex(mutex);
 	mutex = nullptr;
 }

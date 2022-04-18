@@ -51,7 +51,7 @@ class Logger
 
 	virtual void Add(Level, const char *, va_list) = 0;
 	void Add(Level, const char *, ...);
-	void Add(Level, const String &);
+	virtual void Add(Level, const String &) = 0;
 	void Add(const Log &);
 
 	LOG_FUNC(Error);
@@ -93,12 +93,34 @@ class Logger
 
 	void flush();
 };
+static inline std::ostream &operator<<(std::ostream &os, const Logger::Level lvl)
+{
+	switch (lvl)
+	{
+	case Logger::Level::Error:
+		os << "Error";
+		break;
+	case Logger::Level::Warning:
+		os << "Warning";
+		break;
+	case Logger::Level::Info:
+		os << "Info";
+		break;
+	case Logger::Level::Trace:
+		os << "Trace";
+		break;
+	default:
+		break;
+	}
+	return os;
+}
 class ConsoleLogger : public Logger
 {
   public:
 	ConsoleLogger();
 	~ConsoleLogger();
 	void Add(Level, const char *, va_list) override;
+	void Add(Level, const String &) override;
 };
 
 class InMemoryLogger : public Logger
@@ -112,6 +134,7 @@ class InMemoryLogger : public Logger
 	virtual ~InMemoryLogger();
 
 	virtual void Add(Level, const char *, va_list) override;
+	void Add(Level, const String &) override;
 
 	void viewLogs(const std::function<void(const Log &)> &);
 };

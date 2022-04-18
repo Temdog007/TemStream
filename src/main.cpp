@@ -50,7 +50,7 @@ void signalHandler(int s)
 	{
 	case SIGINT:
 		TemStream::appDone = true;
-		logger->AddInfo("Received end signal");
+		logger->AddInfo("Received end signal\n");
 		break;
 	default:
 		break;

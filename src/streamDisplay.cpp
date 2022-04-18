@@ -40,7 +40,7 @@ bool StreamDisplay::operator()(const bool imageState)
 	}
 	if (Bytes *bytes = std::get_if<Bytes>(&data))
 	{
-		logger->AddTrace("Reading %zu image KB\n", bytes->size() / KB(1));
+		logger->AddTrace("Reading image: %zu KB\n", bytes->size() / KB(1));
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
 		if (src == nullptr)
 		{
