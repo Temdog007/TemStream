@@ -205,7 +205,24 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			if (ImGui::BeginMenu("Font"))
 			{
 				ImGui::Checkbox("Font Display", &showFont);
-				ImGui::SliderInt("Font Type", &fontIndex, 0, io.Fonts->Fonts.size() - 1);
+				int value = fontSize;
+				if (ImGui::SliderInt("Font Size", &value, 12, 96, "%d",
+									 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput))
+				{
+					fontSize = value;
+				}
+				if (ImGui::IsItemDeactivatedAfterEdit())
+				{
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::ReloadFont;
+					if (SDL_PushEvent(&e) != 1)
+					{
+						(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
+					}
+				}
+				ImGui::SliderInt("Font Type", &fontIndex, 0, io.Fonts->Fonts.size() - 1, "%d",
+								 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
 				ImGui::EndMenu();
 			}
 			ImGui::Checkbox("Logs", &showLogs);
@@ -606,6 +623,9 @@ int runGui()
 					delete packets;
 				}
 				break;
+				case TemStreamEvent::ReloadFont:
+					gui.LoadFonts();
+					break;
 				default:
 					break;
 				}
