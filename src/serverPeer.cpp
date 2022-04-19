@@ -6,6 +6,26 @@ PeerInformation ServerPeer::serverInformation;
 Mutex ServerPeer::peersMutex;
 std::vector<std::weak_ptr<ServerPeer>> ServerPeer::peers;
 
+bool ServerPeer::peerExists(const PeerInformation &info)
+{
+	LOCK(peersMutex);
+	for (auto iter = peers.begin(); iter != peers.end();)
+	{
+		if (std::shared_ptr<ServerPeer> ptr = iter->lock())
+		{
+			if ((*ptr).getInfo() == info)
+			{
+				return true;
+			}
+			++iter;
+		}
+		else
+		{
+			iter = peers.erase(iter);
+		}
+	}
+	return false;
+}
 void ServerPeer::sendToAllPeers(const MessagePacket &packet)
 {
 	MemoryStream m;
@@ -238,6 +258,11 @@ bool ServerPeer::operator()(const PeerInformation &info)
 	if (informationAcquired)
 	{
 		(*logger)(Logger::Error) << "Peer sent information more than once" << std::endl;
+		return false;
+	}
+	if (ServerPeer::peerExists(info))
+	{
+		(*logger)(Logger::Error) << "Duplicate peer " << info << " attempted to connect" << std::endl;
 		return false;
 	}
 	this->info = info;

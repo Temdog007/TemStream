@@ -300,9 +300,10 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 						const bool recording = iter->second->isRecording();
 
 						snprintf(buffer.data() + offset, buffer.size() - offset, " %s",
-								 recording ? "Recording" : "Playback");
+								 recording ? "(Recording)" : "(Playback)");
 						ImGui::Text("%s", buffer.data());
 						ImGui::SameLine();
+						ImGui::Separator();
 						if (!recording)
 						{
 							float v = iter->second->getVolume();
@@ -312,6 +313,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 							}
 						}
 						ImGui::SameLine();
+						ImGui::Separator();
 						if (ImGui::Button("Stop"))
 						{
 							iter = audio.erase(iter);

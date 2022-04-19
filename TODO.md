@@ -208,10 +208,16 @@
 - [x] Allow title bar and resize to be toggled for stream displays
 - [x] Display all font characters
 - [x] Handle audio streaming
+- [x] Ensure new stream displays have a minimum window size
 - [ ] Make push to talk have a unique button for each each audio stream
 
-### Later
+### Apr 19, 2022
+- [ ] Handle streaming audio from windows
+- [ ] Error when disconnected from server unexpectedly
+- [ ] Show error when connecting to server using in use name
 - [ ] Add file browser
+
+### Later
 - [ ] Store image and text data for each stream (send to newly connected clients)
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code

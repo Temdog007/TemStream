@@ -44,6 +44,7 @@
 #include <opus.h>
 
 #include <arpa/inet.h>
+#include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>

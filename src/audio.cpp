@@ -3,8 +3,8 @@
 namespace TemStream
 {
 Audio::Audio(const MessageSource &source, const bool recording)
-	: source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0), code(SDLK_UNKNOWN), volume(1.f),
-	  pushToTalk(false), recording(recording)
+	: buffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0), code(SDLK_UNKNOWN),
+	  volume(1.f), pushToTalk(false), recording(recording)
 {
 }
 Audio::~Audio()
@@ -21,16 +21,24 @@ Audio::~Audio()
 		decoder = nullptr;
 	}
 }
-void Audio::enqueueAudio(Bytes &bytes)
+void Audio::enqueueAudio(const Bytes &bytes)
 {
 	SDL_LockAudioDevice(id);
-	float *fdata = reinterpret_cast<float *>(bytes.data());
-	const size_t fsize = bytes.size() / sizeof(float);
-	for (size_t i = 0; i < fsize; ++i)
+	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
+										 buffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
+	if (result < 0)
 	{
-		fdata[i] *= volume;
+		(*logger)(Logger::Error) << "Failed to decode audio: " << opus_strerror(result) << std::endl;
 	}
-	storedAudio.insert(storedAudio.end(), bytes.begin(), bytes.end());
+	else
+	{
+		const size_t bytesRead = result * spec.channels * sizeof(float);
+		for (size_t i = 0; i < bytesRead; ++i)
+		{
+			buffer[i] *= volume;
+		}
+		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.end() + bytesRead);
+	}
 	SDL_UnlockAudioDevice(id);
 }
 void Audio::useCurrentAudio(const std::function<void(const Bytes &)> &f) const
@@ -112,6 +120,12 @@ void Audio::playbackCallback(Audio *a, uint8_t *data, const int count)
 }
 void Audio::playbackAudio(uint8_t *data, const int count)
 {
+	memset(data, 0, count);
+	if (storedAudio.size() > MB(1))
+	{
+		(*logger)(Logger::Warning) << "Audio delay is occurring. Audio packets will be dropped." << std::endl;
+		storedAudio.clear();
+	}
 	const size_t toCopy = SDL_min((size_t)count, storedAudio.size());
 	currentAudio.clear();
 	if (toCopy > 0)
@@ -125,14 +139,15 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 }
 void Audio::recordAudio(const uint8_t *data, const int count)
 {
-	currentAudio.clear();
-	currentAudio.insert(currentAudio.end(), data, data + count);
 	storedAudio.insert(storedAudio.end(), data, data + count);
 	if (storedAudio.size() > MB(1))
 	{
 		storedAudio.clear();
 		return;
 	}
+
+	currentAudio.clear();
+	currentAudio.insert(currentAudio.end(), data, data + count);
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 	int bytesRead = 0;

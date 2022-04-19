@@ -91,7 +91,10 @@ bool StreamDisplay::operator()(AudioMessage audio)
 {
 	if (auto a = gui.getAudio(source))
 	{
-		a->enqueueAudio(audio.bytes);
+		if (!a->isRecording())
+		{
+			a->enqueueAudio(audio.bytes);
+		}
 		if (!std::holds_alternative<CheckAudio>(data))
 		{
 			data.emplace<CheckAudio>(nullptr, a->isRecording());
@@ -134,10 +137,17 @@ bool StreamDisplayDraw::operator()(std::monostate)
 {
 	return true;
 }
+void SetWindowMinSize(SDL_Window *window)
+{
+	int w, h;
+	SDL_GetWindowSize(window, &w, &h);
+	ImGui::SetNextWindowSize(ImVec2(w / 4, w / 4), ImGuiCond_FirstUseEver);
+}
 bool StreamDisplayDraw::operator()(const String &s)
 {
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
+	SetWindowMinSize(display.gui.window);
 	if (ImGui::Begin(buffer.data(), &display.visible, display.gui.getStreamDisplayFlags()))
 	{
 		const char *str = s.c_str();
@@ -163,6 +173,7 @@ bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 	}
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
+	SetWindowMinSize(display.gui.window);
 	if (ImGui::Begin(buffer.data(), &display.visible, display.gui.getStreamDisplayFlags()))
 	{
 		const auto max = ImGui::GetWindowContentRegionMax();
@@ -209,21 +220,29 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 	SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
 	SDL_RenderDrawLineF(renderer, 0.f, audioHeight / 2, audioWidth, audioHeight / 2);
 
-	SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
-	const float *fdata = reinterpret_cast<const float *>(current.data());
-	const size_t fsize = current.size() / sizeof(float);
-
-	List<SDL_FPoint> points;
-	for (size_t i = 0; i < fsize; ++i)
+	if (!current.empty())
 	{
-		const float percent = (float)i / (float)fsize;
-		SDL_FPoint point;
-		point.x = audioWidth * percent;
-		point.y = ((fdata[i] + 1.f) / 2.f) * audioHeight;
-		points.push_back(point);
-	}
-	SDL_RenderDrawLinesF(renderer, points.data(), points.size());
+		SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
+		const float *fdata = reinterpret_cast<const float *>(current.data());
+		const size_t fsize = current.size() / sizeof(float);
 
+		List<SDL_FPoint> points;
+		points.reserve(fsize);
+		SDL_FPoint point;
+		for (size_t i = 0; i < fsize; ++i)
+		{
+			const float percent = (float)i / (float)fsize;
+			point.x = audioWidth * percent;
+			point.y = ((fdata[i] + 1.f) / 2.f) * audioHeight;
+			if (std::isinf(point.x) || std::isinf(point.y))
+			{
+				printf("%d %d %f %f %f\n", audioWidth, audioHeight, percent, point.x, point.y);
+				continue;
+			}
+			points.push_back(point);
+		}
+		SDL_RenderDrawLinesF(renderer, points.data(), static_cast<int>(points.size()));
+	}
 	SDL_SetRenderTarget(renderer, target);
 
 	return operator()(static_cast<SDL_TextureWrapper &>(t));

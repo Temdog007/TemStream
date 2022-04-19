@@ -7,6 +7,7 @@ namespace TemStream
 class Audio
 {
   private:
+	std::array<float, MB(1) / sizeof(float)> buffer;
 	const MessageSource source;
 	Bytes storedAudio;
 	Bytes currentAudio;
@@ -41,7 +42,7 @@ class Audio
 	Audio(Audio &&) = delete;
 	~Audio();
 
-	void enqueueAudio(Bytes &);
+	void enqueueAudio(const Bytes &);
 
 	bool isRecording() const
 	{

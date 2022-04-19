@@ -9,6 +9,15 @@ struct PeerInformation
 	String name;
 	bool isServer;
 
+	bool operator==(const PeerInformation &info) const
+	{
+		return isServer == info.isServer && name == info.name;
+	}
+	bool operator!=(const PeerInformation &info) const
+	{
+		return !(*this == info);
+	}
+
 	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
 	{
 		os << "Name: " << info.name << '(' << (info.isServer ? "Server" : "Client") << ')';

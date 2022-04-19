@@ -17,6 +17,8 @@ class ServerPeer : public Peer, public MessagePacketHandler
 
 	static void sendToAllPeers(const MessagePacket &);
 
+	static bool peerExists(const PeerInformation &);
+
 	static void runPeerConnection(std::shared_ptr<ServerPeer>);
 
   public:
