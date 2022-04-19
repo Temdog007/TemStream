@@ -8,7 +8,7 @@ using MessagePackets = List<MessagePacket>;
 class ClientPeer : public Peer
 {
   private:
-	bool gotInformation;
+	bool acquiredServerInformation;
 
   public:
 	ClientPeer(const Address &, std::unique_ptr<Socket>);
@@ -23,6 +23,11 @@ class ClientPeer : public Peer
 	const Address &getAddress() const
 	{
 		return address;
+	}
+
+	bool gotServerInformation() const
+	{
+		return acquiredServerInformation;
 	}
 };
 } // namespace TemStream

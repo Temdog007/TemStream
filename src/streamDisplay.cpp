@@ -3,11 +3,12 @@
 namespace TemStream
 {
 StreamDisplay::StreamDisplay(TemStreamGui &gui, const MessageSource &source)
-	: source(source), data(std::monostate{}), gui(gui), visible(true)
+	: source(source), data(std::monostate{}), gui(gui), flags(ImGuiWindowFlags_None), visible(true)
 {
 }
 StreamDisplay::StreamDisplay(StreamDisplay &&display)
-	: source(std::move(display.source)), data(std::move(display.data)), gui(display.gui), visible(display.visible)
+	: source(std::move(display.source)), data(std::move(display.data)), gui(display.gui), flags(display.flags),
+	  visible(display.visible)
 {
 }
 StreamDisplay::~StreamDisplay()
@@ -21,6 +22,54 @@ bool StreamDisplay::draw()
 	}
 	StreamDisplayDraw d(*this);
 	return std::visit(d, data);
+}
+void StreamDisplay::drawContextMenu()
+{
+	if (ImGui::BeginPopupContextWindow("Stream Display Flags"))
+	{
+		drawFlagCheckboxes();
+		ImGui::EndPopup();
+	}
+}
+void StreamDisplay::drawFlagCheckboxes()
+{
+	ImGui::Checkbox("Visible", &visible);
+	bool showTitleBar = (flags & ImGuiWindowFlags_NoTitleBar) == 0;
+	if (ImGui::Checkbox("Show Title Bar", &showTitleBar))
+	{
+		if (showTitleBar)
+		{
+			flags &= ~ImGuiWindowFlags_NoTitleBar;
+		}
+		else
+		{
+			flags |= ImGuiWindowFlags_NoTitleBar;
+		}
+	}
+	bool movable = (flags & ImGuiWindowFlags_NoMove) == 0;
+	if (ImGui::Checkbox("Movable", &movable))
+	{
+		if (movable)
+		{
+			flags &= ~ImGuiWindowFlags_NoMove;
+		}
+		else
+		{
+			flags |= ImGuiWindowFlags_NoMove;
+		}
+	}
+	bool resizable = (flags & ImGuiWindowFlags_NoResize) == 0;
+	if (ImGui::Checkbox("Resizable", &resizable))
+	{
+		if (resizable)
+		{
+			flags &= ~ImGuiWindowFlags_NoResize;
+		}
+		else
+		{
+			flags |= ImGuiWindowFlags_NoResize;
+		}
+	}
 }
 bool StreamDisplay::operator()(TextMessage &&message)
 {
@@ -143,8 +192,9 @@ bool StreamDisplayDraw::operator()(const String &s)
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
 	SetWindowMinSize(display.gui.window);
-	if (ImGui::Begin(buffer.data(), &display.visible, display.gui.getStreamDisplayFlags()))
+	if (ImGui::Begin(buffer.data(), &display.visible, display.flags))
 	{
+		display.drawContextMenu();
 		const char *str = s.c_str();
 		for (size_t i = 0; i < s.size(); i += sizeof(buffer))
 		{
@@ -169,8 +219,9 @@ bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
 	SetWindowMinSize(display.gui.window);
-	if (ImGui::Begin(buffer.data(), &display.visible, display.gui.getStreamDisplayFlags()))
+	if (ImGui::Begin(buffer.data(), &display.visible, display.flags))
 	{
+		display.drawContextMenu();
 		const auto max = ImGui::GetWindowContentRegionMax();
 		const auto min = ImGui::GetWindowContentRegionMin();
 		ImGui::Image(texture, ImVec2(max.x - min.x, max.y - min.y));

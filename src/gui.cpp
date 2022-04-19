@@ -23,8 +23,8 @@ namespace TemStream
 String32 allUTF32;
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr), fontFiles(), io(io),
-	  fontSize(24.f), fontIndex(1), showLogs(false), showAudio(false), showFont(false),
-	  streamDisplayFlags(ImGuiWindowFlags_None), window(nullptr), renderer(nullptr)
+	  fontSize(24.f), fontIndex(1), showLogs(false), showDisplays(false), showAudio(false), showFont(false),
+	  window(nullptr), renderer(nullptr)
 {
 }
 
@@ -55,24 +55,33 @@ void TemStreamGui::update()
 
 	if (!peer->readAndHandle(0))
 	{
-		peer = nullptr;
 		(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
-		onDisconnect();
+		onDisconnect(peer->gotServerInformation());
+		peer = nullptr;
 	}
 	for (const auto &a : audio)
 	{
 		if (!a.second->encodeAndSendAudio(*peer))
 		{
-			peer = nullptr;
 			(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
-			onDisconnect();
+			onDisconnect(peer->gotServerInformation());
+			peer = nullptr;
 		}
 	}
 }
 
-void TemStreamGui::onDisconnect()
+void TemStreamGui::onDisconnect(const bool gotInformation)
 {
-	(*logger)(Logger::Error) << "Lost connection to server" << std::endl;
+	const char *message = nullptr;
+	if (gotInformation)
+	{
+		message = "Lost connection to server";
+	}
+	else
+	{
+		message = "Failed to connect to server";
+	}
+	(*logger)(Logger::Error) << message << std::endl;
 }
 
 void TemStreamGui::pushFont()
@@ -161,46 +170,6 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 
 		if (ImGui::BeginMenu("View"))
 		{
-			if (ImGui::BeginMenu("Stream Display Flags"))
-			{
-				bool showTitleBar = (streamDisplayFlags & ImGuiWindowFlags_NoTitleBar) == 0;
-				if (ImGui::Checkbox("Show Title Bar", &showTitleBar))
-				{
-					if (showTitleBar)
-					{
-						streamDisplayFlags &= ~ImGuiWindowFlags_NoTitleBar;
-					}
-					else
-					{
-						streamDisplayFlags |= ImGuiWindowFlags_NoTitleBar;
-					}
-				}
-				bool movable = (streamDisplayFlags & ImGuiWindowFlags_NoMove) == 0;
-				if (ImGui::Checkbox("Movable", &movable))
-				{
-					if (movable)
-					{
-						streamDisplayFlags &= ~ImGuiWindowFlags_NoMove;
-					}
-					else
-					{
-						streamDisplayFlags |= ImGuiWindowFlags_NoMove;
-					}
-				}
-				bool resizable = (streamDisplayFlags & ImGuiWindowFlags_NoResize) == 0;
-				if (ImGui::Checkbox("Resizable", &resizable))
-				{
-					if (resizable)
-					{
-						streamDisplayFlags &= ~ImGuiWindowFlags_NoResize;
-					}
-					else
-					{
-						streamDisplayFlags |= ImGuiWindowFlags_NoResize;
-					}
-				}
-				ImGui::EndMenu();
-			}
 			if (ImGui::BeginMenu("Font"))
 			{
 				ImGui::Checkbox("Font Display", &showFont);
@@ -221,6 +190,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 								 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
 				ImGui::EndMenu();
 			}
+			ImGui::Checkbox("Displays", &showDisplays);
 			ImGui::Checkbox("Audio", &showAudio);
 			ImGui::Checkbox("Logs", &showLogs);
 			ImGui::EndMenu();
@@ -266,22 +236,6 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				}
 			}
 			ImGui::EndMenu();
-		}
-
-		if (!displays.empty())
-		{
-			ImGui::Separator();
-			if (ImGui::BeginMenu("Displays"))
-			{
-				for (auto &pair : displays)
-				{
-					auto &display = pair.second;
-					const auto &source = display.getSource();
-					source.print(strBuffer);
-					ImGui::Checkbox(strBuffer.data(), &display.visible);
-				}
-				ImGui::EndMenu();
-			}
 		}
 
 		size = ImGui::GetWindowSize();
@@ -490,6 +444,22 @@ void TemStreamGui::draw()
 		}
 	}
 
+	if (!displays.empty() && showDisplays)
+	{
+		if (ImGui::Begin("Displays", &showDisplays, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			for (auto &pair : displays)
+			{
+				ImGui::BeginGroup();
+				pair.first.print(strBuffer);
+				ImGui::Text("%s", strBuffer.data());
+				pair.second.drawFlagCheckboxes();
+				ImGui::EndGroup();
+			}
+		}
+		ImGui::End();
+	}
+
 	if (showLogs)
 	{
 		SetWindowMinSize(window);
@@ -627,9 +597,9 @@ void TemStreamGui::sendPacket(MessagePacket &&packet, const bool handleLocally)
 	}
 	if (!(*peer)->sendPacket(packet))
 	{
-		peer = nullptr;
 		(*logger)(Logger::Trace) << "TemStreamGui::sendPacket: error" << std::endl;
-		onDisconnect();
+		onDisconnect(peer->gotServerInformation());
+		peer = nullptr;
 		return;
 	}
 	if (handleLocally)
@@ -649,9 +619,9 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	{
 		if (!(*peer)->sendPacket(packet))
 		{
-			peer = nullptr;
 			(*logger)(Logger::Trace) << "TemStreamGui::sendPackets: error" << std::endl;
-			onDisconnect();
+			onDisconnect(peer->gotServerInformation());
+			peer = nullptr;
 			return;
 		}
 	}
@@ -713,9 +683,9 @@ void TemStreamGui::handleMessage(MessagePacket &&m)
 		if (!pair.second)
 		{
 			LOCK(peerMutex);
+			onDisconnect(peer->gotServerInformation());
 			(*logger)(Logger::Trace) << "TemStreamGui::handleMessage: error" << std::endl;
 			peer = nullptr;
-			onDisconnect();
 			return;
 		}
 		iter = pair.first;

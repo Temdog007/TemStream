@@ -22,15 +22,15 @@ class TemStreamGui
 	float fontSize;
 	int fontIndex;
 	bool showLogs;
+	bool showDisplays;
 	bool showAudio;
 	bool showFont;
-	ImGuiWindowFlags streamDisplayFlags;
 
 	void LoadFonts();
 
 	void handleMessage(MessagePacket &&);
 
-	void onDisconnect();
+	void onDisconnect(bool);
 
 	ImVec2 drawMainMenuBar(bool);
 
@@ -52,11 +52,6 @@ class TemStreamGui
 	ImGuiIO &getIO()
 	{
 		return io;
-	}
-
-	ImGuiWindowFlags getStreamDisplayFlags() const
-	{
-		return streamDisplayFlags;
 	}
 
 	bool init();

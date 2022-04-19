@@ -3,7 +3,7 @@
 namespace TemStream
 {
 ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s)
-	: Peer(address, std::move(s)), gotInformation(false)
+	: Peer(address, std::move(s)), acquiredServerInformation(false)
 {
 }
 ClientPeer::~ClientPeer()
@@ -16,7 +16,7 @@ bool ClientPeer::handlePacket(MessagePacket &&packet)
 	{
 		addPacket(std::move(packet));
 	}
-	else if (gotInformation)
+	else if (acquiredServerInformation)
 	{
 		logger->AddError("Got duplicate information from server");
 		return false;
@@ -26,7 +26,7 @@ bool ClientPeer::handlePacket(MessagePacket &&packet)
 		if (ptr->isServer)
 		{
 			info = *ptr;
-			gotInformation = true;
+			acquiredServerInformation = true;
 		}
 		else
 		{

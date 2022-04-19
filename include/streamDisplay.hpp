@@ -48,11 +48,15 @@ class StreamDisplay
 	MessageSource source;
 	DisplayData data;
 	TemStreamGui &gui;
+	ImGuiWindowFlags flags;
 	bool visible;
 
 	friend class TemStreamGui;
 	friend class StreamDisplayUpdate;
 	friend class StreamDisplayDraw;
+
+  protected:
+	void drawContextMenu();
 
   public:
 	StreamDisplay() = delete;
@@ -64,12 +68,23 @@ class StreamDisplay
 	StreamDisplay &operator=(const StreamDisplay &) = delete;
 	StreamDisplay &operator=(StreamDisplay &&) = delete;
 
+	ImGuiWindowFlags getFlags() const
+	{
+		return flags;
+	}
+
+	void setFlags(ImGuiWindowFlags flags)
+	{
+		this->flags = flags;
+	}
+
 	const MessageSource &getSource() const
 	{
 		return source;
 	}
 
 	bool draw();
+	void drawFlagCheckboxes();
 
 	bool operator()(TextMessage &&);
 	bool operator()(ImageMessage &&);
