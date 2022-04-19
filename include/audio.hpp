@@ -9,6 +9,7 @@ class Audio
   private:
 	std::array<float, MB(1) / sizeof(float)> buffer;
 	const MessageSource source;
+	String name;
 	Bytes storedAudio;
 	Bytes currentAudio;
 	SDL_AudioSpec spec;
@@ -62,6 +63,11 @@ class Audio
 	const MessageSource &getSource() const
 	{
 		return source;
+	}
+
+	const String &getName() const
+	{
+		return name;
 	}
 
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;

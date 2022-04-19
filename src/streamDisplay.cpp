@@ -137,12 +137,6 @@ bool StreamDisplayDraw::operator()(std::monostate)
 {
 	return true;
 }
-void SetWindowMinSize(SDL_Window *window)
-{
-	int w, h;
-	SDL_GetWindowSize(window, &w, &h);
-	ImGui::SetNextWindowSize(ImVec2(w / 4, w / 4), ImGuiCond_FirstUseEver);
-}
 bool StreamDisplayDraw::operator()(const String &s)
 {
 	std::array<char, KB(8)> buffer;
@@ -220,7 +214,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 	SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
 	SDL_RenderDrawLineF(renderer, 0.f, audioHeight / 2, audioWidth, audioHeight / 2);
 
-	if (!current.empty())
+	if (!current.empty() && current.size() < INT32_MAX)
 	{
 		SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
 		const float *fdata = reinterpret_cast<const float *>(current.data());
@@ -234,11 +228,6 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 			const float percent = (float)i / (float)fsize;
 			point.x = audioWidth * percent;
 			point.y = ((fdata[i] + 1.f) / 2.f) * audioHeight;
-			if (std::isinf(point.x) || std::isinf(point.y))
-			{
-				printf("%d %d %f %f %f\n", audioWidth, audioHeight, percent, point.x, point.y);
-				continue;
-			}
 			points.push_back(point);
 		}
 		SDL_RenderDrawLinesF(renderer, points.data(), static_cast<int>(points.size()));

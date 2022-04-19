@@ -21,6 +21,7 @@ class TemStreamGui
 	float fontSize;
 	int fontIndex;
 	bool showLogs;
+	bool showAudio;
 	bool showFont;
 	ImGuiWindowFlags streamDisplayFlags;
 

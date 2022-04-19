@@ -23,7 +23,6 @@ Audio::~Audio()
 }
 void Audio::enqueueAudio(const Bytes &bytes)
 {
-	SDL_LockAudioDevice(id);
 	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
 										 buffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
 	if (result < 0)
@@ -32,14 +31,15 @@ void Audio::enqueueAudio(const Bytes &bytes)
 	}
 	else
 	{
-		const size_t bytesRead = result * spec.channels * sizeof(float);
-		for (size_t i = 0; i < bytesRead; ++i)
+		const size_t framesRead = result * spec.channels;
+		for (size_t i = 0; i < framesRead; ++i)
 		{
-			buffer[i] *= volume;
+			buffer[i] = SDL_clamp(buffer[i] * volume, -1.f, 1.f);
 		}
-		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.end() + bytesRead);
+		SDL_LockAudioDevice(id);
+		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.end() + framesRead);
+		SDL_UnlockAudioDevice(id);
 	}
-	SDL_UnlockAudioDevice(id);
 }
 void Audio::useCurrentAudio(const std::function<void(const Bytes &)> &f) const
 {
@@ -79,7 +79,8 @@ std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const 
 	}
 
 	SDL_PauseAudioDevice(a->id, SDL_FALSE);
-	*logger << "Recording audio from device: " << (name == nullptr ? "(Default)" : name) << std::endl;
+	a->name = (name == nullptr ? "(Default audio device)" : name);
+	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }
 std::shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
@@ -107,7 +108,8 @@ std::shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const c
 	}
 
 	SDL_PauseAudioDevice(a->id, SDL_FALSE);
-	*logger << "Playing audio from device: " << (name == nullptr ? "(Default)" : name) << std::endl;
+	a->name = (name == nullptr ? "(Default audio device)" : name);
+	*logger << "Playing audio from device: " << a->name << std::endl;
 	return a;
 }
 void Audio::recordCallback(Audio *a, const uint8_t *data, const int count)

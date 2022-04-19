@@ -209,9 +209,10 @@
 - [x] Display all font characters
 - [x] Handle audio streaming
 - [x] Ensure new stream displays have a minimum window size
-- [ ] Make push to talk have a unique button for each each audio stream
+- [ ] Fix audio playback
 
 ### Apr 19, 2022
+- [ ] Make push to talk have a unique button for each each audio stream
 - [ ] Handle streaming audio from windows
 - [ ] Error when disconnected from server unexpectedly
 - [ ] Show error when connecting to server using in use name

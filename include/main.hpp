@@ -123,6 +123,8 @@ extern bool isTTF(const char *);
 
 extern bool isImage(const char *);
 
+extern void SetWindowMinSize(SDL_Window *window);
+
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;

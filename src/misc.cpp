@@ -122,6 +122,12 @@ bool isImage(const char *filename)
 	SDL_FreeSurface(surface);
 	return isImage;
 }
+void SetWindowMinSize(SDL_Window *window)
+{
+	int w, h;
+	SDL_GetWindowSize(window, &w, &h);
+	ImGui::SetNextWindowSize(ImVec2(w / 4, w / 4), ImGuiCond_FirstUseEver);
+}
 } // namespace TemStream
 
 #if USE_CUSTOM_ALLOCATOR

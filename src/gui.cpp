@@ -224,6 +224,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 								 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
 				ImGui::EndMenu();
 			}
+			ImGui::Checkbox("Audio", &showAudio);
 			ImGui::Checkbox("Logs", &showLogs);
 			ImGui::EndMenu();
 		}
@@ -270,64 +271,18 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			ImGui::EndMenu();
 		}
 
-		std::array<char, KB(1)> buffer;
 		if (!displays.empty())
 		{
 			ImGui::Separator();
 			if (ImGui::BeginMenu("Displays"))
 			{
+				std::array<char, KB(1)> buffer;
 				for (auto &pair : displays)
 				{
 					auto &display = pair.second;
 					const auto &source = display.getSource();
 					source.print(buffer);
 					ImGui::Checkbox(buffer.data(), &display.visible);
-				}
-				ImGui::EndMenu();
-			}
-		}
-
-		if (!audio.empty())
-		{
-			ImGui::Separator();
-			if (ImGui::BeginMenu("Audio"))
-			{
-				for (auto iter = audio.begin(); iter != audio.end();)
-				{
-					const int offset = iter->first.print(buffer);
-					if (ImGui::BeginMenu(buffer.data()))
-					{
-						const bool recording = iter->second->isRecording();
-
-						snprintf(buffer.data() + offset, buffer.size() - offset, " %s",
-								 recording ? "(Recording)" : "(Playback)");
-						ImGui::Text("%s", buffer.data());
-						ImGui::SameLine();
-						ImGui::Separator();
-						if (!recording)
-						{
-							float v = iter->second->getVolume();
-							if (ImGui::SliderFloat("Volume", &v, 0.f, 1.f))
-							{
-								iter->second->setVolume(v);
-							}
-						}
-						ImGui::SameLine();
-						ImGui::Separator();
-						if (ImGui::Button("Stop"))
-						{
-							iter = audio.erase(iter);
-						}
-						else
-						{
-							++iter;
-						}
-						ImGui::EndMenu();
-					}
-					else
-					{
-						++iter;
-					}
 				}
 				ImGui::EndMenu();
 			}
@@ -371,8 +326,69 @@ void TemStreamGui::draw()
 	}
 	ImGui::End();
 
+	if (!audio.empty() && showAudio)
+	{
+		if (ImGui::Begin("Audio", &showAudio, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			if (ImGui::BeginTable("Audio", 5, ImGuiTableFlags_Borders))
+			{
+				ImGui::TableSetupColumn("Device Name");
+				ImGui::TableSetupColumn("Source/Destination");
+				ImGui::TableSetupColumn("Recording");
+				ImGui::TableSetupColumn("Volume");
+				ImGui::TableSetupColumn("Stop");
+				ImGui::TableHeadersRow();
+
+				std::array<char, KB(1)> buffer;
+				for (auto iter = audio.begin(); iter != audio.end();)
+				{
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", iter->second->getName().c_str());
+
+					iter->first.print(buffer);
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", buffer.data());
+
+					const bool recording = iter->second->isRecording();
+					if (recording)
+					{
+						ImGui::TableNextColumn();
+						ImGui::Text("Yes");
+
+						ImGui::TableNextColumn();
+						ImGui::TextColored(Colors::Yellow, "N\\A");
+					}
+					else
+					{
+						ImGui::TableNextColumn();
+						ImGui::Text("No");
+
+						float v = iter->second->getVolume();
+						ImGui::TableNextColumn();
+						if (ImGui::SliderFloat("Volume", &v, 0.f, 1.f))
+						{
+							iter->second->setVolume(v);
+						}
+					}
+					ImGui::TableNextColumn();
+					if (ImGui::Button("Stop"))
+					{
+						iter = audio.erase(iter);
+					}
+					else
+					{
+						++iter;
+					}
+				}
+				ImGui::EndTable();
+			}
+		}
+		ImGui::End();
+	}
+
 	if (showFont)
 	{
+		SetWindowMinSize(window);
 		if (ImGui::Begin("Font", &showFont))
 		{
 			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> cvt;
@@ -455,6 +471,7 @@ void TemStreamGui::draw()
 
 	if (showLogs)
 	{
+		SetWindowMinSize(window);
 		if (ImGui::Begin("Logs", &showLogs))
 		{
 			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
