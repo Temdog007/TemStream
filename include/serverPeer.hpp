@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-class ServerPeer : public Peer, public MessagePacketHandler
+class ServerPeer : public Peer
 {
   private:
 	bool informationAcquired;
@@ -13,13 +13,13 @@ class ServerPeer : public Peer, public MessagePacketHandler
 	static Mutex peersMutex;
 	static std::vector<std::weak_ptr<ServerPeer>> peers;
 
-	bool processCurrentMessage() const;
-
-	static void sendToAllPeers(const MessagePacket &);
+	static void sendToAllPeers(MessagePacket &&);
 
 	static bool peerExists(const PeerInformation &);
 
 	static void runPeerConnection(std::shared_ptr<ServerPeer>);
+
+	friend class ServerMessageHandler;
 
   public:
 	ServerPeer(const Address &, std::unique_ptr<Socket>);
@@ -30,15 +30,29 @@ class ServerPeer : public Peer, public MessagePacketHandler
 		return informationAcquired;
 	}
 
-	bool handlePacket(const MessagePacket &) override;
-	virtual bool operator()(const TextMessage &);
-	virtual bool operator()(const ImageMessage &);
-	virtual bool operator()(const VideoMessage &);
-	virtual bool operator()(const AudioMessage &);
-	virtual bool operator()(const PeerInformation &);
-	virtual bool operator()(const PeerInformationList &);
-	virtual bool operator()(const RequestPeers &);
+	bool handlePacket(MessagePacket &&);
 
 	static int run(int, const char **);
+};
+class ServerMessageHandler
+{
+  private:
+	ServerPeer &server;
+	MessagePacket packet;
+
+	bool processCurrentMessage();
+
+  public:
+	ServerMessageHandler(ServerPeer &, MessagePacket &&);
+	~ServerMessageHandler();
+
+	bool operator()();
+	bool operator()(TextMessage &);
+	bool operator()(ImageMessage &);
+	bool operator()(VideoMessage &);
+	bool operator()(AudioMessage &);
+	bool operator()(PeerInformation &);
+	bool operator()(PeerInformationList &);
+	bool operator()(RequestPeers &);
 };
 } // namespace TemStream

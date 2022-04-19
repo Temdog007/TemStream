@@ -38,7 +38,7 @@ class Peer
 
 	bool readAndHandle(const int);
 
-	virtual bool handlePacket(const MessagePacket &) = 0;
+	virtual bool handlePacket(MessagePacket &&) = 0;
 };
 
 } // namespace TemStream

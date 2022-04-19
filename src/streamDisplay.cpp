@@ -22,12 +22,12 @@ bool StreamDisplay::draw()
 	StreamDisplayDraw d(*this);
 	return std::visit(d, data);
 }
-bool StreamDisplay::operator()(TextMessage message)
+bool StreamDisplay::operator()(TextMessage &&message)
 {
 	data = std::move(message);
 	return true;
 }
-bool StreamDisplay::operator()(ImageMessage message)
+bool StreamDisplay::operator()(ImageMessage &&message)
 {
 	return std::visit(*this, std::move(message));
 }
@@ -83,11 +83,11 @@ bool StreamDisplay::operator()(const Bytes &bytes)
 	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
 	return true;
 }
-bool StreamDisplay::operator()(VideoMessage)
+bool StreamDisplay::operator()(VideoMessage &&)
 {
 	return true;
 }
-bool StreamDisplay::operator()(AudioMessage audio)
+bool StreamDisplay::operator()(AudioMessage &&audio)
 {
 	if (auto a = gui.getAudio(source))
 	{
@@ -111,19 +111,19 @@ bool StreamDisplay::operator()(AudioMessage audio)
 	}
 	return true;
 }
-bool StreamDisplay::operator()(PeerInformation)
+bool StreamDisplay::operator()(PeerInformation &&)
 {
 	logger->AddError(
 		"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
-bool StreamDisplay::operator()(PeerInformationList)
+bool StreamDisplay::operator()(PeerInformationList &&)
 {
 	logger->AddError(
 		"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
-bool StreamDisplay::operator()(RequestPeers)
+bool StreamDisplay::operator()(RequestPeers &&)
 {
 	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
@@ -226,13 +226,14 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 		SDL_FPoint point;
 		for (size_t i = 0; i < fsize; ++i)
 		{
-			if (fdata[i] < -1.f || fdata[i] > 1.f)
+			const float f = fdata[i];
+			if (f < -1.f || f > 1.f || std::isinf(f) || std::isnan(f))
 			{
 				continue;
 			}
 			const float percent = (float)i / (float)fsize;
 			point.x = audioWidth * percent;
-			point.y = ((fdata[i] + 1.f) / 2.f) * audioHeight;
+			point.y = ((f + 1.f) / 2.f) * audioHeight;
 			points.push_back(point);
 		}
 		SDL_RenderDrawLinesF(renderer, points.data(), static_cast<int>(points.size()));

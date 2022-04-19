@@ -128,6 +128,15 @@ void SetWindowMinSize(SDL_Window *window)
 	SDL_GetWindowSize(window, &w, &h);
 	ImGui::SetNextWindowSize(ImVec2(w / 4, w / 4), ImGuiCond_FirstUseEver);
 }
+bool tryPushEvent(SDL_Event &e)
+{
+	if (SDL_PushEvent(&e) != 1)
+	{
+		(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
+		return false;
+	}
+	return true;
+}
 } // namespace TemStream
 
 #if USE_CUSTOM_ALLOCATOR

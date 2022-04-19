@@ -8,7 +8,7 @@ using MessagePackets = List<MessagePacket>;
 class ClientPeer : public Peer
 {
   private:
-	MessagePackets messages;
+	bool gotInformation;
 
   public:
 	ClientPeer(const Address &, std::unique_ptr<Socket>);
@@ -16,10 +16,9 @@ class ClientPeer : public Peer
 	ClientPeer(ClientPeer &&) = delete;
 	virtual ~ClientPeer();
 
-	bool handlePacket(const MessagePacket &) override;
-	void addPacket(const MessagePacket &);
-	void addPackets(const MessagePackets &);
-	void flush(MessagePackets &);
+	bool handlePacket(MessagePacket &&);
+	void addPacket(MessagePacket &&);
+	void addPackets(MessagePackets &&);
 
 	const Address &getAddress() const
 	{

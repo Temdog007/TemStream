@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-Logger::Logger() : os(), streamLevel(Level::Info)
+Logger::Logger() : os(), streamLevel(Level::Info), mutex()
 {
 }
 Logger::~Logger()
@@ -10,6 +10,7 @@ Logger::~Logger()
 }
 void Logger::flush()
 {
+	LOCK(mutex);
 	const auto s = os.str();
 	Add(streamLevel, s, false);
 	os.str("");
@@ -18,10 +19,12 @@ void Logger::flush()
 }
 void Logger::Add(const Level level, const String &s)
 {
+	LOCK(mutex);
 	Add(level, s, true);
 }
 void Logger::Add(const Log &log)
 {
+	LOCK(mutex);
 	Add(log.first, log.second);
 }
 ConsoleLogger::ConsoleLogger() : Logger()
@@ -38,7 +41,7 @@ void ConsoleLogger::Add(const Level level, const String &s, const bool newLine)
 		std::cout << std::endl;
 	}
 }
-InMemoryLogger::InMemoryLogger() : Logger(), logs(), mutex()
+InMemoryLogger::InMemoryLogger() : Logger(), logs()
 {
 }
 InMemoryLogger::~InMemoryLogger()
@@ -46,6 +49,7 @@ InMemoryLogger::~InMemoryLogger()
 }
 void InMemoryLogger::Add(const Level level, const String &s, const bool)
 {
+	LOCK(mutex);
 	logs.emplace_back(level, s);
 }
 void InMemoryLogger::viewLogs(const std::function<void(const Log &)> &f)

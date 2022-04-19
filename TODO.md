@@ -212,6 +212,8 @@
 - [x] Fix audio playback
 
 ### Apr 19, 2022
+- [x] Remove message flush; use sdl event to handle messages from server; send messages immediately
+- [x] Improve audio delay (didn't encode all audio on callback)
 - [ ] Make push to talk have a unique button for each each audio stream
 - [ ] Allow playback device to be changed
 - [ ] Handle streaming audio from windows
@@ -220,6 +222,8 @@
 - [ ] Add file browser
 
 ### Later
+
+- [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 - [ ] Store image and text data for each stream (send to newly connected clients)
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code

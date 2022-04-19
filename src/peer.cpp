@@ -54,7 +54,7 @@ bool Peer::readAndHandle(const int timeout)
 			MessagePacket packet;
 			ar(packet);
 
-			const bool result = handlePacket(packet);
+			const bool result = handlePacket(std::move(packet));
 			bytes.clear();
 			nextMessageSize = std::nullopt;
 			return result;
@@ -68,7 +68,7 @@ bool Peer::readAndHandle(const int timeout)
 			MessagePacket packet;
 			ar(packet);
 
-			const bool result = handlePacket(packet);
+			const bool result = handlePacket(std::move(packet));
 			bytes.erase(bytes.begin(), bytes.begin() + *nextMessageSize);
 			nextMessageSize = std::nullopt;
 			return result;

@@ -22,8 +22,8 @@ namespace TemStream
 {
 String32 allUTF32;
 TemStreamGui::TemStreamGui(ImGuiIO &io)
-	: connectToServer(), peerInfo({"User", false}), peerMutex(), outgoingPackets(), peer(nullptr), queryData(nullptr),
-	  fontFiles(), io(io), fontSize(24.f), fontIndex(1), showLogs(false), showFont(false),
+	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr), fontFiles(), io(io),
+	  fontSize(24.f), fontIndex(1), showLogs(false), showAudio(false), showFont(false),
 	  streamDisplayFlags(ImGuiWindowFlags_None), window(nullptr), renderer(nullptr)
 {
 }
@@ -48,31 +48,31 @@ void TemStreamGui::update()
 {
 	LOCK(peerMutex);
 
-	if (peer != nullptr)
+	if (peer == nullptr)
 	{
-		for (const auto &packet : outgoingPackets)
-		{
-			if (!(*peer)->sendPacket(packet))
-			{
-				peer = nullptr;
-				break;
-			}
-		}
-		if (!peer->readAndHandle(0))
+		return;
+	}
+
+	if (!peer->readAndHandle(0))
+	{
+		peer = nullptr;
+		(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
+		onDisconnect();
+	}
+	for (const auto &a : audio)
+	{
+		if (!a.second->encodeAndSendAudio(*peer))
 		{
 			peer = nullptr;
+			(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
+			onDisconnect();
 		}
 	}
-	outgoingPackets.clear();
 }
 
-void TemStreamGui::flush(MessagePackets &packets)
+void TemStreamGui::onDisconnect()
 {
-	LOCK(peerMutex);
-	if (peer != nullptr)
-	{
-		peer->flush(packets);
-	}
+	(*logger)(Logger::Error) << "Lost connection to server" << std::endl;
 }
 
 void TemStreamGui::pushFont()
@@ -215,10 +215,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					SDL_Event e;
 					e.type = SDL_USEREVENT;
 					e.user.code = TemStreamEvent::ReloadFont;
-					if (SDL_PushEvent(&e) != 1)
-					{
-						(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
-					}
+					tryPushEvent(e);
 				}
 				ImGui::SliderInt("Font Type", &fontIndex, 0, io.Fonts->Fonts.size() - 1, "%d",
 								 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
@@ -538,23 +535,46 @@ const char *getExtension(const char *filename)
 	return filename;
 }
 
-void TemStreamGui::sendPacket(const MessagePacket &packet, const bool handleLocally)
+void TemStreamGui::sendPacket(MessagePacket &&packet, const bool handleLocally)
 {
 	LOCK(peerMutex);
-	outgoingPackets.push_back(packet);
-	if (handleLocally && peer != nullptr)
+	if (peer == nullptr)
 	{
-		peer->addPacket(packet);
+		return;
+	}
+	if (!(*peer)->sendPacket(packet))
+	{
+		peer = nullptr;
+		(*logger)(Logger::Trace) << "TemStreamGui::sendPacket: error" << std::endl;
+		onDisconnect();
+		return;
+	}
+	if (handleLocally)
+	{
+		peer->addPacket(std::move(packet));
 	}
 }
 
-void TemStreamGui::sendPackets(const MessagePackets &packets, const bool handleLocally)
+void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocally)
 {
 	LOCK(peerMutex);
-	outgoingPackets.insert(outgoingPackets.end(), packets.begin(), packets.end());
-	if (handleLocally && peer != nullptr)
+	if (peer == nullptr)
 	{
-		peer->addPackets(packets);
+		return;
+	}
+	for (const auto &packet : packets)
+	{
+		if (!(*peer)->sendPacket(packet))
+		{
+			peer = nullptr;
+			(*logger)(Logger::Trace) << "TemStreamGui::sendPackets: error" << std::endl;
+			onDisconnect();
+			return;
+		}
+	}
+	if (handleLocally)
+	{
+		peer->addPackets(std::move(packets));
 	}
 }
 
@@ -600,30 +620,27 @@ void TemStreamGui::LoadFonts()
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
 }
 
-void TemStreamGui::handleMessages()
+void TemStreamGui::handleMessage(MessagePacket &&m)
 {
-	MessagePackets messages;
-	flush(messages);
-	for (auto mIter = std::make_move_iterator(messages.begin()), end = std::make_move_iterator(messages.end());
-		 mIter != end; ++mIter)
+	auto iter = displays.find(m.source);
+	if (iter == displays.end())
 	{
-		auto m = *mIter;
-		auto iter = displays.find(m.source);
-		if (iter == displays.end())
+		StreamDisplay display(*this, m.source);
+		auto pair = displays.emplace(m.source, std::move(display));
+		if (!pair.second)
 		{
-			StreamDisplay display(*this, m.source);
-			auto pair = displays.emplace(m.source, std::move(display));
-			if (!pair.second)
-			{
-				continue;
-			}
-			iter = pair.first;
+			LOCK(peerMutex);
+			(*logger)(Logger::Trace) << "TemStreamGui::handleMessage: error" << std::endl;
+			peer = nullptr;
+			onDisconnect();
+			return;
 		}
+		iter = pair.first;
+	}
 
-		if (!std::visit(iter->second, m.message))
-		{
-			displays.erase(iter);
-		}
+	if (!std::visit(iter->second, std::move(m.message)))
+	{
+		displays.erase(iter);
 	}
 }
 
@@ -707,13 +724,27 @@ int TemStreamGui::run()
 				{
 				case TemStreamEvent::SendSingleMessagePacket: {
 					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
-					gui.sendPacket(*packet);
+					gui.sendPacket(std::move(*packet));
+					delete packet;
+				}
+				break;
+				case TemStreamEvent::HandleMessagePacket: {
+					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
+					gui.handleMessage(std::move(*packet));
 					delete packet;
 				}
 				break;
 				case TemStreamEvent::SendMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
-					gui.sendPackets(*packets);
+					gui.sendPackets(std::move(*packets));
+					delete packets;
+				}
+				break;
+				case TemStreamEvent::HandleMessagePackets: {
+					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
+					const auto start = std::make_move_iterator(packets->begin());
+					const auto end = std::make_move_iterator(packets->end());
+					std::for_each(start, end, [&gui](MessagePacket &&packet) { gui.handleMessage(std::move(packet)); });
 					delete packets;
 				}
 				break;
@@ -727,10 +758,7 @@ int TemStreamGui::run()
 			default:
 				break;
 			}
-			gui.handleMessages();
 		}
-
-		gui.handleMessages();
 
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame();

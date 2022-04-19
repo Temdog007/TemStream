@@ -68,9 +68,11 @@ namespace TemStream
 {
 enum TemStreamEvent : int32_t
 {
-	SendSingleMessagePacket = 0xabcd,
+	ReloadFont = 0xabcd,
+	SendSingleMessagePacket,
 	SendMessagePackets,
-	ReloadFont
+	HandleMessagePacket,
+	HandleMessagePackets
 };
 class SDL_MutexWrapper
 {
@@ -124,6 +126,8 @@ extern bool isTTF(const char *);
 extern bool isImage(const char *);
 
 extern void SetWindowMinSize(SDL_Window *window);
+
+extern bool tryPushEvent(SDL_Event &);
 
 extern int DefaultPort;
 

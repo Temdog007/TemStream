@@ -4,6 +4,7 @@
 
 namespace TemStream
 {
+class ClientPeer;
 class Audio
 {
   private:
@@ -11,6 +12,7 @@ class Audio
 		std::array<float, MB(1) / sizeof(float)> fbuffer;
 		std::array<char, MB(1)> buffer;
 	};
+	List<char> recordBuffer;
 	const MessageSource source;
 	String name;
 	Deque<char> storedAudio;
@@ -47,6 +49,8 @@ class Audio
 	~Audio();
 
 	void enqueueAudio(const Bytes &);
+
+	bool encodeAndSendAudio(ClientPeer &);
 
 	bool isRecording() const
 	{

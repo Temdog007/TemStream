@@ -71,13 +71,13 @@ class StreamDisplay
 
 	bool draw();
 
-	bool operator()(TextMessage);
-	bool operator()(ImageMessage);
-	bool operator()(VideoMessage);
-	bool operator()(AudioMessage);
-	bool operator()(PeerInformation);
-	bool operator()(PeerInformationList);
-	bool operator()(RequestPeers);
+	bool operator()(TextMessage &&);
+	bool operator()(ImageMessage &&);
+	bool operator()(VideoMessage &&);
+	bool operator()(AudioMessage &&);
+	bool operator()(PeerInformation &&);
+	bool operator()(PeerInformationList &&);
+	bool operator()(RequestPeers &&);
 
 	// For image message
 	bool operator()(bool);

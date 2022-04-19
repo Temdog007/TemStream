@@ -13,7 +13,6 @@ class TemStreamGui
 	Map<MessageSource, std::shared_ptr<Audio>> audio;
 	PeerInformation peerInfo;
 	Mutex peerMutex;
-	MessagePackets outgoingPackets;
 	std::unique_ptr<ClientPeer> peer;
 	std::unique_ptr<IQuery> queryData;
 	List<String> fontFiles;
@@ -27,7 +26,9 @@ class TemStreamGui
 
 	void LoadFonts();
 
-	void handleMessages();
+	void handleMessage(MessagePacket &&);
+
+	void onDisconnect();
 
 	ImVec2 drawMainMenuBar(bool);
 
@@ -64,8 +65,6 @@ class TemStreamGui
 	bool addAudio(std::shared_ptr<Audio>);
 	std::shared_ptr<Audio> getAudio(const MessageSource &) const;
 
-	void flush(MessagePackets &);
-
 	bool isConnected();
 
 	void pushFont();
@@ -81,8 +80,8 @@ class TemStreamGui
 
 	int getSelectedQuery() const;
 
-	void sendPacket(const MessagePacket &, const bool handleLocally = true);
-	void sendPackets(const MessagePackets &, const bool handleLocally = true);
+	void sendPacket(MessagePacket &&, const bool handleLocally = true);
+	void sendPackets(MessagePackets &&, const bool handleLocally = true);
 
 	static int run();
 };

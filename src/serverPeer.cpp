@@ -26,7 +26,7 @@ bool ServerPeer::peerExists(const PeerInformation &info)
 	}
 	return false;
 }
-void ServerPeer::sendToAllPeers(const MessagePacket &packet)
+void ServerPeer::sendToAllPeers(MessagePacket &&packet)
 {
 	MemoryStream m;
 	cereal::PortableBinaryOutputArchive ar(m);
@@ -68,7 +68,7 @@ void ServerPeer::runPeerConnection(std::shared_ptr<ServerPeer> peer)
 	}
 	{
 		MessagePacket packet;
-		packet.message = serverInformation;
+		packet.message = ServerPeer::serverInformation;
 		if (!(*peer)->sendPacket(packet))
 		{
 			goto end;
@@ -97,8 +97,8 @@ int ServerPeer::run(const int argc, const char **argv)
 
 	const char *hostname = NULL;
 	const char *port = "10000";
-	serverInformation.name = "Server";
-	serverInformation.isServer = true;
+	ServerPeer::serverInformation.name = "Server";
+	ServerPeer::serverInformation.isServer = true;
 
 	for (int i = 1; i < argc - 1;)
 	{
@@ -116,7 +116,7 @@ int ServerPeer::run(const int argc, const char **argv)
 		}
 		if (strcmp(argv[i], "-N") == 0 || strcmp(argv[i], "--name") == 0)
 		{
-			serverInformation.name = argv[i + 1];
+			ServerPeer::serverInformation.name = argv[i + 1];
 			i += 2;
 			continue;
 		}
@@ -185,77 +185,85 @@ ServerPeer::ServerPeer(const Address &address, std::unique_ptr<Socket> s)
 ServerPeer::~ServerPeer()
 {
 }
-
-bool ServerPeer::processCurrentMessage() const
+bool ServerPeer::handlePacket(MessagePacket &&packet)
+{
+	return ServerMessageHandler(*this, std::move(packet))();
+}
+ServerMessageHandler::ServerMessageHandler(ServerPeer &server, MessagePacket &&packet)
+	: server(server), packet(std::move(packet))
+{
+}
+ServerMessageHandler::~ServerMessageHandler()
+{
+}
+bool ServerMessageHandler::operator()()
+{
+	return std::visit(*this, packet.message);
+}
+bool ServerMessageHandler::processCurrentMessage()
 {
 	// All messages from another server should have an author and destination
-	if (currentPacket->source.empty())
+	if (packet.source.empty())
 	{
 		return false;
 	}
 
 	// If connected to a client, author should match peer name
-	if (!info.isServer && currentPacket->source.author != info.name)
+	if (!server.info.isServer && packet.source.author != server.info.name)
 	{
 		return false;
 	}
 
 	// Don't send packet if server has already received it
-	auto iter = std::find(currentPacket->trail.begin(), currentPacket->trail.end(), serverInformation.name);
-	if (iter != currentPacket->trail.end())
+	auto iter = std::find(packet.trail.begin(), packet.trail.end(), ServerPeer::serverInformation.name);
+	if (iter != packet.trail.end())
 	{
 		// Stay connected
 		return true;
 	}
 
-	MessagePacket newPacket(*currentPacket);
-	newPacket.trail.push_back(serverInformation.name);
-	sendToAllPeers(newPacket);
+	packet.trail.push_back(ServerPeer::serverInformation.name);
+	server.sendToAllPeers(std::move(packet));
 	return true;
 }
-bool ServerPeer::handlePacket(const MessagePacket &packet)
-{
-	currentPacket = &packet;
-	return std::visit(*this, packet.message);
-}
 #define CHECK_INFO(X)                                                                                                  \
-	if (!gotInfo())                                                                                                    \
+	if (!server.gotInfo())                                                                                             \
 	{                                                                                                                  \
 		logger->AddError("Got " #X " from peer before getting their information");                                     \
 		return false;                                                                                                  \
 	} // namespace TemStream
-bool ServerPeer::operator()(const TextMessage &)
+bool ServerMessageHandler::operator()(TextMessage &)
 {
 	CHECK_INFO(TextMessage)
 	return processCurrentMessage();
 }
-bool ServerPeer::operator()(const ImageMessage &)
+bool ServerMessageHandler::operator()(ImageMessage &)
 {
 	CHECK_INFO(ImageMessage)
 	return processCurrentMessage();
 }
-bool ServerPeer::operator()(const VideoMessage &)
+bool ServerMessageHandler::operator()(VideoMessage &)
 {
 	CHECK_INFO(VideoMessage)
 	return processCurrentMessage();
 }
-bool ServerPeer::operator()(const AudioMessage &)
+bool ServerMessageHandler::operator()(AudioMessage &)
 {
 	CHECK_INFO(AudioMessage)
 	return processCurrentMessage();
 }
-bool ServerPeer::operator()(const PeerInformationList &)
+bool ServerMessageHandler::operator()(PeerInformationList &)
 {
 	return true;
 }
-bool ServerPeer::operator()(const RequestPeers &)
+bool ServerMessageHandler::operator()(RequestPeers &)
 {
 	CHECK_INFO(RequestPeers)
 	return true;
 }
-bool ServerPeer::operator()(const PeerInformation &info)
+bool ServerMessageHandler::operator()(PeerInformation &info)
 {
-	if (informationAcquired)
+	if (server.informationAcquired)
 	{
 		(*logger)(Logger::Error) << "Peer sent information more than once" << std::endl;
 		return false;
@@ -265,9 +273,9 @@ bool ServerPeer::operator()(const PeerInformation &info)
 		(*logger)(Logger::Error) << "Duplicate peer " << info << " attempted to connect" << std::endl;
 		return false;
 	}
-	this->info = info;
-	informationAcquired = true;
-	*logger << "Information from peer " << address << " -> " << info << std::endl;
+	server.info = info;
+	server.informationAcquired = true;
+	*logger << "Information from peer " << server.address << " -> " << info << std::endl;
 	return true;
 }
 } // namespace TemStream

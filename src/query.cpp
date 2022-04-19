@@ -44,9 +44,8 @@ void QueryText::execute() const
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendSingleMessagePacket;
 	e.user.data1 = reinterpret_cast<void *>(packet);
-	if (SDL_PushEvent(&e) != 1)
+	if (!tryPushEvent(e))
 	{
-		(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
 		delete packet;
 	}
 }
@@ -110,9 +109,8 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendMessagePackets;
 	e.user.data1 = reinterpret_cast<void *>(packets);
-	if (SDL_PushEvent(&e) != 1)
+	if (!tryPushEvent(e))
 	{
-		(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
 		delete packets;
 	}
 }

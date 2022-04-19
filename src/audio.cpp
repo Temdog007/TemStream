@@ -3,8 +3,8 @@
 namespace TemStream
 {
 Audio::Audio(const MessageSource &source, const bool recording)
-	: buffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0), code(SDLK_UNKNOWN),
-	  volume(1.f), pushToTalk(false), recording(recording)
+	: buffer(), recordBuffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
+	  code(SDLK_UNKNOWN), volume(1.f), pushToTalk(false), recording(recording)
 {
 }
 Audio::~Audio()
@@ -155,13 +155,18 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 
 	currentAudio.clear();
 	currentAudio.insert(currentAudio.end(), data, data + count);
+}
+bool Audio::encodeAndSendAudio(ClientPeer &peer)
+{
+	if (!isRecording())
+	{
+		return true;
+	}
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
-	int bytesRead = 0;
-	List<char> v;
-	while (bytesRead < count)
+	while (!storedAudio.empty())
 	{
-		int frameSize = (count - bytesRead) / (spec.channels * sizeof(float));
+		int frameSize = storedAudio.size() / (spec.channels * sizeof(float));
 		if (frameSize < minDuration)
 		{
 			break;
@@ -169,15 +174,14 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 
 		frameSize = closestValidFrameCount(spec.freq, frameSize);
 		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
-		bytesRead += bytesUsed;
 
 		const auto start = storedAudio.begin();
 		const auto end = storedAudio.begin() + bytesUsed;
-		v.clear();
-		v.insert(v.end(), start, end);
+		recordBuffer.clear();
+		recordBuffer.insert(recordBuffer.end(), start, end);
 		storedAudio.erase(start, end);
 
-		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(v.data()), frameSize,
+		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
 											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
 		if (result < 0)
 		{
@@ -186,19 +190,16 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 			break;
 		}
 
-		MessagePacket *packet = new MessagePacket();
-		packet->source = source;
-		packet->message = AudioMessage{Bytes(buffer.begin(), buffer.begin() + result)};
-		SDL_Event e;
-		e.type = SDL_USEREVENT;
-		e.user.code = TemStreamEvent::SendSingleMessagePacket;
-		e.user.data1 = packet;
-		if (SDL_PushEvent(&e) != 1)
+		MessagePacket packet;
+		packet.source = source;
+		packet.message = AudioMessage{Bytes(buffer.begin(), buffer.begin() + result)};
+		if (!peer->sendPacket(packet))
 		{
-			(*logger)(Logger::Error) << "Failed to add SDL event: " << SDL_GetError() << std::endl;
-			delete packet;
+			return false;
 		}
+		peer.addPacket(std::move(packet));
 	}
+	return true;
 }
 int Audio::closestValidFrameCount(const int frequency, const int frames)
 {

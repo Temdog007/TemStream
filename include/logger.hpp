@@ -28,6 +28,8 @@ class Logger
 	Level streamLevel;
 
   protected:
+	Mutex mutex;
+
 	virtual void Add(Level, const String &, bool) = 0;
 	const StringStream &getStream()
 	{
@@ -53,6 +55,7 @@ class Logger
 
 	template <typename T> Logger &operator<<(const T &data)
 	{
+		LOCK(mutex);
 		os << data;
 		return *this;
 	}
@@ -61,6 +64,7 @@ class Logger
 	// https://stackoverflow.com/questions/40273809/how-to-write-iostream-like-interface-to-logging-library/40424272#40424272
 	Logger &operator<<(ManipFn manip) /// endl, flush, setw, setfill, etc.
 	{
+		LOCK(mutex);
 		manip(os);
 
 		if (manip == static_cast<ManipFn>(std::flush) || manip == static_cast<ManipFn>(std::endl))
@@ -73,12 +77,14 @@ class Logger
 
 	Logger &operator<<(FlagsFn manip) /// setiosflags, resetiosflags
 	{
+		LOCK(mutex);
 		manip(os);
 		return *this;
 	}
 
 	Logger &operator()(const Level level)
 	{
+		LOCK(mutex);
 		streamLevel = level;
 		return *this;
 	}
@@ -120,7 +126,6 @@ class InMemoryLogger : public Logger
 {
   private:
 	List<Log> logs;
-	Mutex mutex;
 
   protected:
 	virtual void Add(Level, const String &, bool) override;

@@ -112,19 +112,6 @@ struct MessagePacket
 		ar(message, source, trail);
 	}
 };
-
-struct MessagePacketHandler
-{
-	const MessagePacket *currentPacket;
-
-	virtual bool operator()(const TextMessage &) = 0;
-	virtual bool operator()(const ImageMessage &) = 0;
-	virtual bool operator()(const VideoMessage &) = 0;
-	virtual bool operator()(const AudioMessage &) = 0;
-	virtual bool operator()(const PeerInformation &) = 0;
-	virtual bool operator()(const PeerInformationList &) = 0;
-	virtual bool operator()(const RequestPeers &) = 0;
-};
 } // namespace TemStream
 
 namespace std

@@ -2,24 +2,31 @@
 
 namespace TemStream
 {
-ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s) : Peer(address, std::move(s)), messages()
+ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s)
+	: Peer(address, std::move(s)), gotInformation(false)
 {
 }
 ClientPeer::~ClientPeer()
 {
 }
-bool ClientPeer::handlePacket(const MessagePacket &packet)
+bool ClientPeer::handlePacket(MessagePacket &&packet)
 {
 	auto ptr = std::get_if<PeerInformation>(&packet.message);
 	if (ptr == nullptr)
 	{
-		messages.push_back(packet);
+		addPacket(std::move(packet));
+	}
+	else if (gotInformation)
+	{
+		logger->AddError("Got duplicate information from server");
+		return false;
 	}
 	else
 	{
 		if (ptr->isServer)
 		{
 			info = *ptr;
+			gotInformation = true;
 		}
 		else
 		{
@@ -29,17 +36,28 @@ bool ClientPeer::handlePacket(const MessagePacket &packet)
 	}
 	return true;
 }
-void ClientPeer::flush(MessagePackets &list)
+void ClientPeer::addPacket(MessagePacket &&m)
 {
-	list.insert(list.end(), messages.begin(), messages.end());
-	messages.clear();
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::HandleMessagePacket;
+	auto packet = new MessagePacket(std::move(m));
+	e.user.data1 = packet;
+	if (!tryPushEvent(e))
+	{
+		delete packet;
+	}
 }
-void ClientPeer::addPacket(const MessagePacket &packet)
+void ClientPeer::addPackets(MessagePackets &&m)
 {
-	messages.push_back(packet);
-}
-void ClientPeer::addPackets(const MessagePackets &packets)
-{
-	messages.insert(messages.end(), packets.begin(), packets.end());
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::HandleMessagePackets;
+	auto packets = new MessagePackets(std::move(m));
+	e.user.data1 = packets;
+	if (!tryPushEvent(e))
+	{
+		delete packets;
+	}
 }
 } // namespace TemStream
