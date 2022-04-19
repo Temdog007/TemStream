@@ -209,7 +209,7 @@
 - [x] Display all font characters
 - [x] Handle audio streaming
 - [x] Ensure new stream displays have a minimum window size
-- [ ] Fix audio playback
+- [x] Fix audio playback
 
 ### Apr 19, 2022
 - [ ] Make push to talk have a unique button for each each audio stream

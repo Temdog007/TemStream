@@ -600,6 +600,33 @@ void TemStreamGui::LoadFonts()
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
 }
 
+void TemStreamGui::handleMessages()
+{
+	MessagePackets messages;
+	flush(messages);
+	for (auto mIter = std::make_move_iterator(messages.begin()), end = std::make_move_iterator(messages.end());
+		 mIter != end; ++mIter)
+	{
+		auto m = *mIter;
+		auto iter = displays.find(m.source);
+		if (iter == displays.end())
+		{
+			StreamDisplay display(*this, m.source);
+			auto pair = displays.emplace(m.source, std::move(display));
+			if (!pair.second)
+			{
+				continue;
+			}
+			iter = pair.first;
+		}
+
+		if (!std::visit(iter->second, m.message))
+		{
+			displays.erase(iter);
+		}
+	}
+}
+
 int TemStreamGui::run()
 {
 	for (ImWchar c = MinCharacters; c < MaxCharacters; ++c)
@@ -616,17 +643,10 @@ int TemStreamGui::run()
 	TemStreamGui gui(io);
 	logger = std::make_unique<TemStreamGuiLogger>(gui);
 	initialLogs();
-	logger->AddInfo("ImGui v" IMGUI_VERSION);
+	(*logger)(Logger::Info) << "ImGui v" IMGUI_VERSION << std::endl;
 
 	if (!gui.init())
 	{
-		String total;
-		InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
-		mLogger.viewLogs([&total](const Logger::Log &log) {
-			total += log.second;
-			total += '\n';
-		});
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to start application", total.c_str(), gui.window);
 		return EXIT_FAILURE;
 	}
 
@@ -635,7 +655,6 @@ int TemStreamGui::run()
 
 	gui.LoadFonts();
 
-	MessagePackets messages;
 	while (!appDone)
 	{
 		SDL_Event event;
@@ -708,31 +727,10 @@ int TemStreamGui::run()
 			default:
 				break;
 			}
+			gui.handleMessages();
 		}
 
-		messages.clear();
-		gui.flush(messages);
-		for (auto mIter = std::make_move_iterator(messages.begin()), end = std::make_move_iterator(messages.end());
-			 mIter != end; ++mIter)
-		{
-			auto m = *mIter;
-			auto iter = gui.displays.find(m.source);
-			if (iter == gui.displays.end())
-			{
-				StreamDisplay display(gui, m.source);
-				auto pair = gui.displays.emplace(m.source, std::move(display));
-				if (!pair.second)
-				{
-					continue;
-				}
-				iter = pair.first;
-			}
-
-			if (!std::visit(iter->second, m.message))
-			{
-				gui.displays.erase(iter);
-			}
-		}
+		gui.handleMessages();
 
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame();

@@ -91,13 +91,14 @@ bool StreamDisplay::operator()(AudioMessage audio)
 {
 	if (auto a = gui.getAudio(source))
 	{
-		if (!a->isRecording())
+		const bool isRecording = a->isRecording();
+		if (!isRecording)
 		{
 			a->enqueueAudio(audio.bytes);
 		}
 		if (!std::holds_alternative<CheckAudio>(data))
 		{
-			data.emplace<CheckAudio>(nullptr, a->isRecording());
+			data.emplace<CheckAudio>(nullptr, isRecording);
 		}
 	}
 	else
@@ -149,7 +150,7 @@ bool StreamDisplayDraw::operator()(const String &s)
 		{
 			if (ImGui::BeginChild(1 + (i / sizeof(buffer))))
 			{
-				strncpy(buffer.data(), str + i, sizeof(buffer));
+				strncpy(buffer.data(), str + i, sizeof(buffer) - 1);
 				ImGui::TextWrapped("%s", buffer.data());
 			}
 			ImGui::EndChild();
@@ -225,6 +226,10 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 		SDL_FPoint point;
 		for (size_t i = 0; i < fsize; ++i)
 		{
+			if (fdata[i] < -1.f || fdata[i] > 1.f)
+			{
+				continue;
+			}
 			const float percent = (float)i / (float)fsize;
 			point.x = audioWidth * percent;
 			point.y = ((fdata[i] + 1.f) / 2.f) * audioHeight;

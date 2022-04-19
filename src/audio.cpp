@@ -24,7 +24,7 @@ Audio::~Audio()
 void Audio::enqueueAudio(const Bytes &bytes)
 {
 	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
-										 buffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
+										 fbuffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
 	if (result < 0)
 	{
 		(*logger)(Logger::Error) << "Failed to decode audio: " << opus_strerror(result) << std::endl;
@@ -32,12 +32,14 @@ void Audio::enqueueAudio(const Bytes &bytes)
 	else
 	{
 		const size_t framesRead = result * spec.channels;
+		const size_t bytesRead = framesRead * sizeof(float);
+		(*logger)(Logger::Trace) << "Decoded bytes " << bytesRead << std::endl;
 		for (size_t i = 0; i < framesRead; ++i)
 		{
-			buffer[i] = SDL_clamp(buffer[i] * volume, -1.f, 1.f);
+			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
 		}
 		SDL_LockAudioDevice(id);
-		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.end() + framesRead);
+		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.begin() + bytesRead);
 		SDL_UnlockAudioDevice(id);
 	}
 }
@@ -122,19 +124,20 @@ void Audio::playbackCallback(Audio *a, uint8_t *data, const int count)
 }
 void Audio::playbackAudio(uint8_t *data, const int count)
 {
-	memset(data, 0, count);
+	memset(data, spec.silence, count);
 	if (storedAudio.size() > MB(1))
 	{
-		(*logger)(Logger::Warning) << "Audio delay is occurring. Audio packets will be dropped." << std::endl;
+		(*logger)(Logger::Warning) << "Audio delay is occurring for playback. Audio packets will be dropped."
+								   << std::endl;
 		storedAudio.clear();
 	}
 	const size_t toCopy = SDL_min((size_t)count, storedAudio.size());
 	currentAudio.clear();
 	if (toCopy > 0)
 	{
-		memcpy(data, storedAudio.data(), toCopy);
 		const auto start = storedAudio.begin();
 		const auto end = storedAudio.begin() + toCopy;
+		std::copy(start, end, data);
 		currentAudio.insert(currentAudio.end(), start, end);
 		storedAudio.erase(start, end);
 	}
@@ -144,6 +147,8 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 	storedAudio.insert(storedAudio.end(), data, data + count);
 	if (storedAudio.size() > MB(1))
 	{
+		(*logger)(Logger::Warning) << "Audio delay is occurring for recording. Audio packets will be dropped."
+								   << std::endl;
 		storedAudio.clear();
 		return;
 	}
@@ -153,7 +158,7 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 	int bytesRead = 0;
-	uint8_t buffer[KB(4)];
+	List<char> v;
 	while (bytesRead < count)
 	{
 		int frameSize = (count - bytesRead) / (spec.channels * sizeof(float));
@@ -163,9 +168,17 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 		}
 
 		frameSize = closestValidFrameCount(spec.freq, frameSize);
+		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
+		bytesRead += bytesUsed;
 
-		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(storedAudio.data() + bytesRead),
-											 frameSize, buffer, sizeof(buffer));
+		const auto start = storedAudio.begin();
+		const auto end = storedAudio.begin() + bytesUsed;
+		v.clear();
+		v.insert(v.end(), start, end);
+		storedAudio.erase(start, end);
+
+		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(v.data()), frameSize,
+											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
 		if (result < 0)
 		{
 			(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
@@ -173,12 +186,9 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 			break;
 		}
 
-		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
-		bytesRead += bytesUsed;
-
 		MessagePacket *packet = new MessagePacket();
 		packet->source = source;
-		packet->message = AudioMessage{Bytes(buffer, buffer + result)};
+		packet->message = AudioMessage{Bytes(buffer.begin(), buffer.begin() + result)};
 		SDL_Event e;
 		e.type = SDL_USEREVENT;
 		e.user.code = TemStreamEvent::SendSingleMessagePacket;
@@ -189,7 +199,6 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 			delete packet;
 		}
 	}
-	storedAudio.erase(storedAudio.begin(), storedAudio.begin() + bytesRead);
 }
 int Audio::closestValidFrameCount(const int frequency, const int frames)
 {

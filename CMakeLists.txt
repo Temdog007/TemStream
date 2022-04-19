@@ -5,6 +5,12 @@ project(TemStream VERSION 0.1.1)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(BUILD_SANDBOX OFF)
+set(SUPPORT_JPG ON)
+set(SUPPORT_PNG ON)
+set(SUPPORT_WEBP ON)
+set(BUILD_SHARED_LIBS OFF)
+
 configure_file(include/TemStreamConfig.h.in ../include/TemStreamConfig.h)
 
 find_package(Freetype REQUIRED)

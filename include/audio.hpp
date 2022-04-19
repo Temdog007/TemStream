@@ -7,10 +7,13 @@ namespace TemStream
 class Audio
 {
   private:
-	std::array<float, MB(1) / sizeof(float)> buffer;
+	union {
+		std::array<float, MB(1) / sizeof(float)> fbuffer;
+		std::array<char, MB(1)> buffer;
+	};
 	const MessageSource source;
 	String name;
-	Bytes storedAudio;
+	Deque<char> storedAudio;
 	Bytes currentAudio;
 	SDL_AudioSpec spec;
 	union {

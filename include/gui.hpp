@@ -27,6 +27,8 @@ class TemStreamGui
 
 	void LoadFonts();
 
+	void handleMessages();
+
 	ImVec2 drawMainMenuBar(bool);
 
   public:
