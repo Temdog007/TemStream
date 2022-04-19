@@ -10,6 +10,8 @@ class ServerPeer : public Peer, public MessagePacketHandler
 	bool informationAcquired;
 
 	static PeerInformation serverInformation;
+	static Mutex peersMutex;
+	static std::vector<std::weak_ptr<ServerPeer>> peers;
 
 	bool processCurrentMessage() const;
 
@@ -35,6 +37,6 @@ class ServerPeer : public Peer, public MessagePacketHandler
 	virtual bool operator()(const PeerInformationList &);
 	virtual bool operator()(const RequestPeers &);
 
-	static int runServer(int, const char **);
+	static int run(int, const char **);
 };
 } // namespace TemStream

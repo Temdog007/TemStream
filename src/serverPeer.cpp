@@ -3,8 +3,8 @@
 namespace TemStream
 {
 PeerInformation ServerPeer::serverInformation;
-Mutex peersMutex;
-std::vector<std::weak_ptr<ServerPeer>> peers;
+Mutex ServerPeer::peersMutex;
+std::vector<std::weak_ptr<ServerPeer>> ServerPeer::peers;
 
 void ServerPeer::sendToAllPeers(const MessagePacket &packet)
 {
@@ -67,7 +67,7 @@ end:
 	*logger << "Ending connection: " << peer->getAddress() << std::endl;
 	--runningThreads;
 }
-int ServerPeer::runServer(const int argc, const char **argv)
+int ServerPeer::run(const int argc, const char **argv)
 {
 	logger = std::make_unique<ConsoleLogger>();
 	TemStream::initialLogs();

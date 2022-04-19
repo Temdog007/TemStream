@@ -18,6 +18,8 @@ class IQuery
 	virtual bool draw();
 
 	virtual void execute() const = 0;
+
+	MessageSource getSource() const;
 };
 class QueryText : public IQuery
 {
@@ -51,6 +53,9 @@ class QueryImage : public IQuery
 };
 class QueryAudio : public IQuery
 {
+  private:
+	int selected;
+
   public:
 	QueryAudio(TemStreamGui &);
 	~QueryAudio();

@@ -16,6 +16,7 @@ endif()
 add_subdirectory(cereal)
 add_subdirectory(SDL)
 add_subdirectory(SDL_image)
+add_subdirectory(opus)
 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 add_library(ImGui STATIC)
@@ -42,7 +43,9 @@ target_include_directories(ImGui PUBLIC
 
 target_link_libraries(ImGui PRIVATE SDL2)
 
-set(SOURCES src/addrinfo.cpp 
+set(SOURCES 
+    src/addrinfo.cpp 
+    src/audio.cpp
     src/clientPeer.cpp
     src/colors.cpp
     src/gui.cpp
@@ -84,7 +87,13 @@ target_include_directories(TemStream PRIVATE
   "${CEREAL_SOURCE_DIR}/include"
   "${PROJECT_SOURCE_DIR}/imgui")
 
-target_link_libraries(TemStream PRIVATE SDL2 SDL2_image cereal ImGui ${FREETYPE_LIBRARIES})
+target_link_libraries(TemStream PRIVATE 
+  SDL2 
+  SDL2_image 
+  cereal 
+  opus
+  ImGui 
+  ${FREETYPE_LIBRARIES})
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)

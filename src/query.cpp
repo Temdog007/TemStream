@@ -14,6 +14,10 @@ bool IQuery::draw()
 	ImGui::InputText("Stream Name", &streamName);
 	return ImGui::Button("Send");
 }
+MessageSource IQuery::getSource() const
+{
+	return MessageSource{gui.getInfo().name, streamName};
+}
 // QueryText
 QueryText::QueryText(TemStreamGui &gui) : IQuery(gui), text()
 {
@@ -42,7 +46,7 @@ void QueryText::execute() const
 	e.user.data1 = reinterpret_cast<void *>(packet);
 	if (SDL_PushEvent(&e) != 1)
 	{
-		logger->AddError("Failed to push SDL event: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
 		delete packet;
 	}
 }
@@ -63,7 +67,7 @@ bool QueryImage::draw()
 }
 void QueryImage::execute() const
 {
-	std::thread thread(QueryImage::getPackets, image, MessageSource{gui.getInfo().name, streamName});
+	std::thread thread(QueryImage::getPackets, image, getSource());
 	thread.detach();
 }
 void QueryImage::getPackets(const String filename, const MessageSource source)
@@ -71,7 +75,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	std::ifstream file(filename, std::ios::in | std::ios::binary);
 	if (!file.is_open())
 	{
-		logger->AddError("Failed to open file: %s", filename.c_str());
+		(*logger)(Logger::Error) << "Failed to open file: " << filename << std::endl;
 		return;
 	}
 
@@ -108,11 +112,11 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	e.user.data1 = reinterpret_cast<void *>(packets);
 	if (SDL_PushEvent(&e) != 1)
 	{
-		logger->AddError("Failed to push SDL event: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
 		delete packets;
 	}
 }
-QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui)
+QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), selected(-1)
 {
 }
 QueryAudio::~QueryAudio()
@@ -120,10 +124,31 @@ QueryAudio::~QueryAudio()
 }
 bool QueryAudio::draw()
 {
+	const int count = SDL_GetNumAudioDevices(SDL_TRUE);
+	char buffer[KB(1)];
+	for (int i = 0; i < count; ++i)
+	{
+		snprintf(buffer, sizeof(buffer), "%s", SDL_GetAudioDeviceName(i, SDL_TRUE));
+		ImGui::RadioButton(buffer, &selected, i);
+	}
+
 	return IQuery::draw();
 }
 void QueryAudio::execute() const
 {
+	const int count = SDL_GetNumAudioDevices(SDL_TRUE);
+	if (selected < 0 || selected >= count)
+	{
+		(*logger)(Logger::Error) << "Invalid audio device selected" << std::endl;
+		return;
+	}
+	const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
+	*logger << "Recording audio from device: " << name << std::endl;
+	auto ptr = Audio::startRecording(getSource(), name);
+	if (ptr)
+	{
+		gui.addAudio(ptr);
+	}
 }
 QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui)
 {

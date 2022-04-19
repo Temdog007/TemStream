@@ -5,13 +5,6 @@
 namespace TemStream
 {
 #define LOG_FUNC(X)                                                                                                    \
-	void Add##X(const char *fmt, ...)                                                                                  \
-	{                                                                                                                  \
-		va_list args;                                                                                                  \
-		va_start(args, fmt);                                                                                           \
-		Add(Level::X, fmt, args);                                                                                      \
-		va_end(args);                                                                                                  \
-	}                                                                                                                  \
 	void Add##X(const String &s)                                                                                       \
 	{                                                                                                                  \
 		Add(Level::X, s);                                                                                              \
@@ -50,8 +43,6 @@ class Logger
 	Logger();
 	virtual ~Logger();
 
-	virtual void Add(Level, const char *, va_list) = 0;
-	void Add(Level, const char *, ...);
 	void Add(Level, const String &);
 	void Add(const Log &);
 
@@ -123,7 +114,6 @@ class ConsoleLogger : public Logger
   public:
 	ConsoleLogger();
 	~ConsoleLogger();
-	void Add(Level, const char *, va_list) override;
 };
 
 class InMemoryLogger : public Logger
@@ -133,13 +123,11 @@ class InMemoryLogger : public Logger
 	Mutex mutex;
 
   protected:
-	void Add(Level, const String &, bool) override;
+	virtual void Add(Level, const String &, bool) override;
 
   public:
 	InMemoryLogger();
 	virtual ~InMemoryLogger();
-
-	virtual void Add(Level, const char *, va_list) override;
 
 	void viewLogs(const std::function<void(const Log &)> &);
 };

@@ -22,14 +22,14 @@ bool StreamDisplay::draw()
 	StreamDisplayDraw d(*this);
 	return std::visit(d, data);
 }
-bool StreamDisplay::operator()(const TextMessage &message)
+bool StreamDisplay::operator()(TextMessage message)
 {
-	data.emplace<String>(message);
+	data = std::move(message);
 	return true;
 }
-bool StreamDisplay::operator()(const ImageMessage &message)
+bool StreamDisplay::operator()(ImageMessage message)
 {
-	return std::visit(*this, message);
+	return std::visit(*this, std::move(message));
 }
 bool StreamDisplay::operator()(const bool imageState)
 {
@@ -40,17 +40,17 @@ bool StreamDisplay::operator()(const bool imageState)
 	}
 	if (Bytes *bytes = std::get_if<Bytes>(&data))
 	{
-		logger->AddTrace("Reading image: %zu KB", bytes->size() / KB(1));
+		(*logger)(Logger::Error) << "Reading image: " << bytes->size() / KB(1) << "KB" << std::endl;
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
 		if (src == nullptr)
 		{
-			logger->AddError("Failed to load image data: %s", SDL_GetError());
+			(*logger)(Logger::Error) << "Failed to load image data: " << SDL_GetError() << std::endl;
 			return false;
 		}
 		SDL_Surface *surface = IMG_Load_RW(src, 0);
 		if (surface == nullptr)
 		{
-			logger->AddError("Surface load error: %s", IMG_GetError());
+			(*logger)(Logger::Error) << "Surface load error: " << IMG_GetError() << std::endl;
 			return false;
 		}
 
@@ -59,12 +59,10 @@ bool StreamDisplay::operator()(const bool imageState)
 			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.renderer, surface);
 			if (texture == nullptr)
 			{
-				logger->AddError("Texture creation error: %s", SDL_GetError());
+				(*logger)(Logger::Error) << "Texture creation error: " << SDL_GetError() << std::endl;
 				success = false;
 			}
-			int w, h;
-			SDL_GetWindowSize(gui.window, &w, &h);
-			data = texture;
+			data = SDL_TextureWrapper(texture);
 		}
 		SDL_FreeSurface(surface);
 		return success;
@@ -85,27 +83,43 @@ bool StreamDisplay::operator()(const Bytes &bytes)
 	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
 	return true;
 }
-bool StreamDisplay::operator()(const VideoMessage &)
+bool StreamDisplay::operator()(VideoMessage)
 {
 	return true;
 }
-bool StreamDisplay::operator()(const AudioMessage &)
+bool StreamDisplay::operator()(AudioMessage audio)
 {
+	if (auto a = gui.getAudio(source))
+	{
+		a->enqueueAudio(audio.bytes);
+		if (!std::holds_alternative<CheckAudio>(data))
+		{
+			data.emplace<CheckAudio>(nullptr);
+		}
+	}
+	else
+	{
+		auto ptr = Audio::startPlayback(source, NULL);
+		if (ptr)
+		{
+			return gui.addAudio(ptr);
+		}
+	}
 	return true;
 }
-bool StreamDisplay::operator()(const PeerInformation &)
+bool StreamDisplay::operator()(PeerInformation)
 {
 	logger->AddError(
 		"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
-bool StreamDisplay::operator()(const PeerInformationList &)
+bool StreamDisplay::operator()(PeerInformationList)
 {
 	logger->AddError(
 		"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
-bool StreamDisplay::operator()(const RequestPeers &)
+bool StreamDisplay::operator()(RequestPeers)
 {
 	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
@@ -142,7 +156,7 @@ bool StreamDisplayDraw::operator()(const String &s)
 }
 bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 {
-	SDL_Texture *texture = t.getTexture();
+	auto &texture = t.getTexture();
 	if (texture == nullptr)
 	{
 		return false;
@@ -156,6 +170,60 @@ bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 		ImGui::Image(texture, ImVec2(max.x - min.x, max.y - min.y));
 	}
 	ImGui::End();
+	return true;
+}
+bool StreamDisplayDraw::operator()(CheckAudio &t)
+{
+	auto ptr = display.gui.getAudio(display.getSource());
+	if (ptr == nullptr)
+	{
+		return false;
+	}
+
+	SDL_Renderer *renderer = display.gui.renderer;
+
+	Bytes current;
+	ptr->useCurrentAudio([&current](const Bytes &b) { current.insert(current.end(), b.begin(), b.end()); });
+
+	const int audioWidth = 2048;
+	const int audioHeight = 512;
+	auto &texture = t.getTexture();
+	if (texture == nullptr)
+	{
+		SDL_DestroyTexture(texture);
+		texture =
+			SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, audioWidth, audioHeight);
+		if (texture == nullptr)
+		{
+			(*logger)(Logger::Error) << "Failed to create texture: " << SDL_GetError() << std::endl;
+			return false;
+		}
+	}
+
+	auto target = SDL_GetRenderTarget(renderer);
+	SDL_SetRenderTarget(renderer, texture);
+	SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
+	SDL_RenderClear(renderer);
+	SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
+	SDL_RenderDrawLineF(renderer, 0.f, audioHeight / 2, audioWidth, audioHeight / 2);
+
+	SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
+	const float *fdata = reinterpret_cast<const float *>(current.data());
+	const size_t fsize = current.size() / sizeof(float);
+
+	List<SDL_FPoint> points;
+	for (size_t i = 0; i < fsize; ++i)
+	{
+		const float percent = (float)i / (float)fsize;
+		SDL_FPoint point;
+		point.x = audioWidth * percent;
+		point.y = ((fdata[i] + 1.f) / 2.f) * audioHeight;
+		points.push_back(point);
+	}
+	SDL_RenderDrawLinesF(renderer, points.data(), points.size());
+
+	SDL_SetRenderTarget(renderer, target);
+
 	return true;
 }
 bool StreamDisplayDraw::operator()(const Bytes &)

@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <codecvt>
+#include <deque>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -39,6 +40,8 @@
 #include <imgui_impl_sdl.h>
 #include <imgui_impl_sdlrenderer.h>
 #include <imgui_stdlib.h>
+
+#include <opus.h>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -113,8 +116,6 @@ extern PollState pollSocket(const int fd, const int timeout = 1);
 
 extern bool appDone;
 
-extern int runGui();
-
 extern void initialLogs();
 
 extern bool isTTF(const char *);
@@ -144,6 +145,8 @@ extern size_t MaxPacketSize;
 #include "address.hpp"
 
 #include "peer.hpp"
+
+#include "audio.hpp"
 
 #include "clientPeer.hpp"
 #include "serverPeer.hpp"

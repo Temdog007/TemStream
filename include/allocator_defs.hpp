@@ -39,6 +39,7 @@ using String = std::string;
 using String32 = std::u32string;
 using StringStream = std::ostringstream;
 template <typename T> using List = std::vector<T>;
+template <typename T> using Deque = std::deque<T>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
 } // namespace TemStream
 #endif

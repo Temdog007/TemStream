@@ -7,25 +7,39 @@ namespace TemStream
 class TemStreamGui;
 class SDL_TextureWrapper
 {
-  private:
+  protected:
 	SDL_Texture *texture;
 
   public:
 	SDL_TextureWrapper(SDL_Texture *);
 	SDL_TextureWrapper(const SDL_TextureWrapper &) = delete;
 	SDL_TextureWrapper(SDL_TextureWrapper &&);
-	~SDL_TextureWrapper();
+	virtual ~SDL_TextureWrapper();
 
 	SDL_TextureWrapper &operator=(const SDL_TextureWrapper &) = delete;
 	SDL_TextureWrapper &operator=(SDL_TextureWrapper &&);
 
-	SDL_Texture *getTexture()
+	SDL_Texture *&getTexture()
 	{
 		return texture;
 	}
 };
-using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Bytes>;
-class StreamDisplay : public MessagePacketHandler
+class CheckAudio : public SDL_TextureWrapper
+{
+  public:
+	CheckAudio(SDL_Texture *t) : SDL_TextureWrapper(t)
+	{
+	}
+	CheckAudio(CheckAudio &&a) : SDL_TextureWrapper(a.texture)
+	{
+		a.texture = nullptr;
+	}
+	~CheckAudio()
+	{
+	}
+};
+using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Bytes, CheckAudio>;
+class StreamDisplay
 {
   private:
 	MessageSource source;
@@ -54,13 +68,13 @@ class StreamDisplay : public MessagePacketHandler
 
 	bool draw();
 
-	bool operator()(const TextMessage &);
-	bool operator()(const ImageMessage &);
-	bool operator()(const VideoMessage &);
-	bool operator()(const AudioMessage &);
-	bool operator()(const PeerInformation &);
-	bool operator()(const PeerInformationList &);
-	bool operator()(const RequestPeers &);
+	bool operator()(TextMessage);
+	bool operator()(ImageMessage);
+	bool operator()(VideoMessage);
+	bool operator()(AudioMessage);
+	bool operator()(PeerInformation);
+	bool operator()(PeerInformationList);
+	bool operator()(RequestPeers);
 
 	// For image message
 	bool operator()(bool);
@@ -78,6 +92,7 @@ struct StreamDisplayDraw
 	bool operator()(std::monostate);
 	bool operator()(const String &);
 	bool operator()(SDL_TextureWrapper &);
+	bool operator()(CheckAudio &);
 	bool operator()(const Bytes &);
 };
 } // namespace TemStream

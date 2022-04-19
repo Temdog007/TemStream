@@ -88,7 +88,7 @@ SDL_MutexWrapper::SDL_MutexWrapper() : mutex(SDL_CreateMutex())
 {
 	if (mutex == nullptr)
 	{
-		logger->AddError("Failed to create mutex: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "Failed to create mutex: " << SDL_GetError() << std::endl;
 	}
 }
 SDL_MutexWrapper::~SDL_MutexWrapper()

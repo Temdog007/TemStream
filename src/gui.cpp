@@ -15,7 +15,6 @@ const unsigned int FontSizes[]{Cousine_compressed_size,		DroidSans_compressed_si
 							   ProggyClean_compressed_size, ProggyTiny_compressed_size, Roboto_compressed_size,
 							   Ubuntuu_compressed_size};
 
-bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e);
 const ImWchar MinCharacters = 0x1;
 const ImWchar MaxCharacters = 0x1FFFF;
 
@@ -89,14 +88,14 @@ bool TemStreamGui::init()
 {
 	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
 	{
-		logger->AddError("SDL error: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "SDL error: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
 	const int flags = IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_WEBP;
 	if (IMG_Init(flags) != flags)
 	{
-		logger->AddError("Image error: %s", IMG_GetError());
+		(*logger)(Logger::Error) << "Image error: " << IMG_GetError() << std::endl;
 		return false;
 	}
 
@@ -104,20 +103,20 @@ bool TemStreamGui::init()
 							  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (window == nullptr)
 	{
-		logger->AddError("Failed to create window: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "Failed to create window: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (renderer == nullptr)
 	{
-		logger->AddError("Failed to create renderer: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "Failed to create renderer: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
 	if (SDL_AddTimer(1, (SDL_TimerCallback)updatePeer, this) == 0)
 	{
-		logger->AddError("Failed to add timer: %s", SDL_GetError());
+		(*logger)(Logger::Error) << "Failed to add timer: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
@@ -496,6 +495,23 @@ void TemStreamGui::sendPackets(const MessagePackets &packets, const bool handleL
 	}
 }
 
+bool TemStreamGui::addAudio(std::shared_ptr<Audio> ptr)
+{
+	auto pair = audio.emplace(ptr->getSource(), std::move(ptr));
+	return pair.second;
+}
+
+std::shared_ptr<Audio> TemStreamGui::getAudio(const MessageSource &source) const
+{
+	auto iter = audio.find(source);
+	if (iter == audio.end())
+	{
+		return nullptr;
+	}
+
+	return iter->second;
+}
+
 bool TemStreamGui::isConnected()
 {
 	LOCK(peerMutex);
@@ -521,7 +537,7 @@ void TemStreamGui::LoadFonts()
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
 }
 
-int runGui()
+int TemStreamGui::run()
 {
 	for (ImWchar c = MinCharacters; c < MaxCharacters; ++c)
 	{
@@ -563,10 +579,6 @@ int runGui()
 		while (SDL_PollEvent(&event))
 		{
 			ImGui_ImplSDL2_ProcessEvent(&event);
-			if (!CanHandleEvent(io, event))
-			{
-				continue;
-			}
 			switch (event.type)
 			{
 			case SDL_QUIT:
@@ -637,8 +649,10 @@ int runGui()
 
 		messages.clear();
 		gui.flush(messages);
-		for (const auto &m : messages)
+		for (auto mIter = std::make_move_iterator(messages.begin()), end = std::make_move_iterator(messages.end());
+			 mIter != end; ++mIter)
 		{
+			auto m = *mIter;
 			auto iter = gui.displays.find(m.source);
 			if (iter == gui.displays.end())
 			{
@@ -701,37 +715,23 @@ TemStreamGuiLogger::TemStreamGuiLogger(TemStreamGui &gui) : gui(gui)
 }
 TemStreamGuiLogger::~TemStreamGuiLogger()
 {
+	char buffer[KB(1)];
+	snprintf(buffer, sizeof(buffer), "TemStream_log_%zu.txt", time(NULL));
+	std::ofstream file(buffer);
+	this->viewLogs([&file](const Log &log) { file << log.first << ": " << log.second << std::endl; });
 }
-void TemStreamGuiLogger::Add(const Level lvl, const char *fmt, va_list args)
+void TemStreamGuiLogger::Add(const Level level, const String &s, const bool b)
 {
-	if (lvl == Level::Error)
+	checkError(level);
+	InMemoryLogger::Add(level, s, b);
+}
+void TemStreamGuiLogger::checkError(const Level level)
+{
+	if (level == Level::Error && !gui.isShowingLogs())
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "An error has occurred. Check logs for more detail",
 								 gui.window);
 		gui.setShowLogs(true);
 	}
-	InMemoryLogger::Add(lvl, fmt, args);
 }
 } // namespace TemStream
-
-bool CanHandleEvent(ImGuiIO &io, const SDL_Event &e)
-{
-	switch (e.type)
-	{
-	case SDL_KEYDOWN:
-	case SDL_KEYUP:
-	case SDL_TEXTINPUT:
-	case SDL_TEXTEDITING:
-		return !io.WantCaptureKeyboard;
-	case SDL_MOUSEBUTTONDOWN:
-	case SDL_MOUSEBUTTONUP:
-	case SDL_MOUSEWHEEL:
-	case SDL_MOUSEMOTION:
-	case SDL_FINGERDOWN:
-	case SDL_FINGERUP:
-	case SDL_FINGERMOTION:
-		return !io.WantCaptureMouse;
-	default:
-		return true;
-	}
-}

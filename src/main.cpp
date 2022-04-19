@@ -29,11 +29,11 @@ int main(const int argc, const char **argv)
 		if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--server") == 0)
 		{
 			parseMemory(argc, argv, 8);
-			return ServerPeer::runServer(argc, argv);
+			return ServerPeer::run(argc, argv);
 		}
 	}
 	parseMemory(argc, argv, 256);
-	return runGui();
+	return TemStreamGui::run();
 }
 
 void TemStream::initialLogs()
