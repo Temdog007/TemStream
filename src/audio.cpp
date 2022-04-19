@@ -71,6 +71,7 @@ std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const 
 	}
 
 	SDL_PauseAudioDevice(a->id, SDL_FALSE);
+	*logger << "Recording audio from device: " << (name == nullptr ? "(Default)" : name) << std::endl;
 	return a;
 }
 std::shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
@@ -98,6 +99,7 @@ std::shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const c
 	}
 
 	SDL_PauseAudioDevice(a->id, SDL_FALSE);
+	*logger << "Playing audio from device: " << (name == nullptr ? "(Default)" : name) << std::endl;
 	return a;
 }
 void Audio::recordCallback(Audio *a, const uint8_t *data, const int count)
@@ -126,6 +128,11 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 	currentAudio.clear();
 	currentAudio.insert(currentAudio.end(), data, data + count);
 	storedAudio.insert(storedAudio.end(), data, data + count);
+	if (storedAudio.size() > MB(1))
+	{
+		storedAudio.clear();
+		return;
+	}
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 	int bytesRead = 0;

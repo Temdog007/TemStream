@@ -718,7 +718,7 @@ TemStreamGuiLogger::~TemStreamGuiLogger()
 	char buffer[KB(1)];
 	snprintf(buffer, sizeof(buffer), "TemStream_log_%zu.txt", time(NULL));
 	std::ofstream file(buffer);
-	this->viewLogs([&file](const Log &log) { file << log.first << ": " << log.second << std::endl; });
+	this->viewLogs([&file](const Log &log) { file << log.first << ": " << log.second; });
 }
 void TemStreamGuiLogger::Add(const Level level, const String &s, const bool b)
 {

@@ -143,7 +143,6 @@ void QueryAudio::execute() const
 		return;
 	}
 	const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
-	*logger << "Recording audio from device: " << name << std::endl;
 	auto ptr = Audio::startRecording(getSource(), name);
 	if (ptr)
 	{

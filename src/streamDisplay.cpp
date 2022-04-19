@@ -40,7 +40,7 @@ bool StreamDisplay::operator()(const bool imageState)
 	}
 	if (Bytes *bytes = std::get_if<Bytes>(&data))
 	{
-		(*logger)(Logger::Error) << "Reading image: " << bytes->size() / KB(1) << "KB" << std::endl;
+		(*logger)(Logger::Trace) << "Reading image: " << bytes->size() / KB(1) << "KB" << std::endl;
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
 		if (src == nullptr)
 		{
@@ -177,6 +177,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 	auto ptr = display.gui.getAudio(display.getSource());
 	if (ptr == nullptr)
 	{
+		(*logger)(Logger::Error) << "Audio is missing for stream: " << display.getSource() << std::endl;
 		return false;
 	}
 
@@ -200,7 +201,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 		}
 	}
 
-	auto target = SDL_GetRenderTarget(renderer);
+	SDL_Texture *const target = SDL_GetRenderTarget(renderer);
 	SDL_SetRenderTarget(renderer, texture);
 	SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
 	SDL_RenderClear(renderer);
@@ -224,7 +225,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 
 	SDL_SetRenderTarget(renderer, target);
 
-	return true;
+	return operator()(dynamic_cast<SDL_TextureWrapper &>(t));
 }
 bool StreamDisplayDraw::operator()(const Bytes &)
 {
