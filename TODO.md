@@ -213,8 +213,9 @@
 
 ### Apr 19, 2022
 - [ ] Make push to talk have a unique button for each each audio stream
+- [ ] Allow playback device to be changed
 - [ ] Handle streaming audio from windows
-- [ ] Error when disconnected from server unexpectedly
+- [ ] Show error when disconnected from server unexpectedly
 - [ ] Show error when connecting to server using in use name
 - [ ] Add file browser
 

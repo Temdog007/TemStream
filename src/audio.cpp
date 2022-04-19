@@ -33,7 +33,7 @@ void Audio::enqueueAudio(const Bytes &bytes)
 	{
 		const size_t framesRead = result * spec.channels;
 		const size_t bytesRead = framesRead * sizeof(float);
-		(*logger)(Logger::Trace) << "Decoded bytes " << bytesRead << std::endl;
+		// (*logger)(Logger::Trace) << "Decoded bytes " << bytesRead << std::endl;
 		for (size_t i = 0; i < framesRead; ++i)
 		{
 			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
