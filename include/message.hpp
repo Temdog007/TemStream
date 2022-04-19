@@ -75,9 +75,9 @@ struct MessageSource
 		ar(author, destination);
 	}
 
-	template <const size_t N> int print(std::array<char, N> &arr) const
+	template <const size_t N> int print(std::array<char, N> &arr, const size_t offset = 0) const
 	{
-		return snprintf(arr.data(), sizeof(arr), "%s (%s)", destination.c_str(), author.c_str());
+		return snprintf(arr.data() + offset, sizeof(arr) - offset, "%s (%s)", destination.c_str(), author.c_str());
 	}
 
 	explicit operator String() const

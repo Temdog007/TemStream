@@ -273,13 +273,12 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			ImGui::Separator();
 			if (ImGui::BeginMenu("Displays"))
 			{
-				std::array<char, KB(1)> buffer;
 				for (auto &pair : displays)
 				{
 					auto &display = pair.second;
 					const auto &source = display.getSource();
-					source.print(buffer);
-					ImGui::Checkbox(buffer.data(), &display.visible);
+					source.print(strBuffer);
+					ImGui::Checkbox(strBuffer.data(), &display.visible);
 				}
 				ImGui::EndMenu();
 			}
@@ -337,23 +336,25 @@ void TemStreamGui::draw()
 				ImGui::TableSetupColumn("Stop");
 				ImGui::TableHeadersRow();
 
-				std::array<char, KB(1)> buffer;
 				for (auto iter = audio.begin(); iter != audio.end();)
 				{
 					auto &a = iter->second;
-
-					ImGui::TableNextColumn();
-					ImGui::Text("%s", a->getName().c_str());
-
-					iter->first.print(buffer);
-					ImGui::TableNextColumn();
-					ImGui::Text("%s", buffer.data());
-
 					const bool recording = a->isRecording();
+
+					ImGui::TableNextColumn();
+					if (ImGui::Button(a->getName().c_str()))
+					{
+						audioTarget = iter->first;
+					}
+
+					iter->first.print(strBuffer);
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", strBuffer.data());
+
 					if (recording)
 					{
 						ImGui::TableNextColumn();
-						ImGui::Text("Yes");
+						ImGui::TextColored(Colors::Lime, "Yes");
 
 						ImGui::TableNextColumn();
 						ImGui::TextColored(Colors::Yellow, "N\\A");
@@ -361,7 +362,7 @@ void TemStreamGui::draw()
 					else
 					{
 						ImGui::TableNextColumn();
-						ImGui::Text("No");
+						ImGui::TextColored(Colors::Red, "No");
 
 						float v = a->getVolume();
 						ImGui::TableNextColumn();
@@ -375,7 +376,7 @@ void TemStreamGui::draw()
 					const bool isMuted = a->isMuted();
 					if (isMuted)
 					{
-						if (ImGui::Button("Yes"))
+						if (ImGui::SmallButton("Yes"))
 						{
 							a->setMuted(false);
 							a->clearAudio();
@@ -383,7 +384,7 @@ void TemStreamGui::draw()
 					}
 					else
 					{
-						if (ImGui::Button("No"))
+						if (ImGui::SmallButton("No"))
 						{
 							a->setMuted(true);
 							a->clearAudio();
@@ -516,6 +517,65 @@ void TemStreamGui::draw()
 			});
 		}
 		ImGui::End();
+	}
+
+	if (audioTarget.has_value())
+	{
+		auto iter = audio.find(*audioTarget);
+		if (iter != audio.end())
+		{
+			auto &a = iter->second;
+			const bool recording = a->isRecording();
+			std::optional<const char *> opt = std::nullopt;
+			bool opened = true;
+			const int offset = snprintf(strBuffer.data(), strBuffer.size(), "Select audio device for ");
+			audioTarget->print(strBuffer, offset);
+			if (ImGui::Begin(strBuffer.data(), &opened, ImGuiWindowFlags_AlwaysAutoResize))
+			{
+				if (ImGui::Button("Default audio device"))
+				{
+					audioTarget = std::nullopt;
+					opt = std::make_optional<const char *>(nullptr);
+					goto checkResult;
+				}
+				{
+					const int count = SDL_GetNumAudioDevices(recording);
+					for (int i = 0; i < count; ++i)
+					{
+						auto name = SDL_GetAudioDeviceName(i, recording);
+						if (ImGui::Button(name))
+						{
+							audioTarget = std::nullopt;
+							opt = name;
+							goto checkResult;
+						}
+					}
+				}
+			}
+		checkResult:
+			ImGui::End();
+			if (!opened)
+			{
+				audioTarget = std::nullopt;
+			}
+			if (opt.has_value())
+			{
+				const char *name = *opt;
+				std::shared_ptr<Audio> newAudio = nullptr;
+				if (recording)
+				{
+					newAudio = Audio::startRecording(a->getSource(), name);
+				}
+				else
+				{
+					newAudio = Audio::startPlayback(a->getSource(), name);
+				}
+				if (newAudio != nullptr)
+				{
+					a = std::move(newAudio);
+				}
+			}
+		}
 	}
 }
 

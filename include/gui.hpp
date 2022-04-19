@@ -8,6 +8,7 @@ class IQuery;
 class TemStreamGui
 {
   private:
+	std::array<char, KB(1)> strBuffer;
 	std::optional<Address> connectToServer;
 	Map<MessageSource, StreamDisplay> displays;
 	Map<MessageSource, std::shared_ptr<Audio>> audio;
@@ -15,6 +16,7 @@ class TemStreamGui
 	Mutex peerMutex;
 	std::unique_ptr<ClientPeer> peer;
 	std::unique_ptr<IQuery> queryData;
+	std::optional<MessageSource> audioTarget;
 	List<String> fontFiles;
 	ImGuiIO &io;
 	float fontSize;

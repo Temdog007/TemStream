@@ -214,9 +214,9 @@
 ### Apr 19, 2022
 - [x] Remove message flush; use sdl event to handle messages from server; send messages immediately
 - [x] Improve audio delay (didn't encode all audio on callback)
-- [ ] Allow playback device to be changed
+- [x] Allow playback device to be changed
 - [ ] Handle streaming audio from windows
-- [ ] Show error when disconnected from server unexpectedly
+- [x] Show error when disconnected from server unexpectedly
 - [ ] Show error when connecting to server using in use name
 - [ ] Add file browser
 
