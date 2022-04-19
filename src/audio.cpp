@@ -4,7 +4,7 @@ namespace TemStream
 {
 Audio::Audio(const MessageSource &source, const bool recording)
 	: buffer(), recordBuffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
-	  code(SDLK_UNKNOWN), volume(1.f), pushToTalk(false), recording(recording)
+	  code(SDLK_UNKNOWN), volume(1.f), recording(recording)
 {
 }
 Audio::~Audio()
@@ -38,10 +38,14 @@ void Audio::enqueueAudio(const Bytes &bytes)
 		{
 			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
 		}
-		SDL_LockAudioDevice(id);
+		Lock lock(id);
 		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.begin() + bytesRead);
-		SDL_UnlockAudioDevice(id);
 	}
+}
+void Audio::clearAudio()
+{
+	Lock lock(id);
+	storedAudio.clear();
 }
 void Audio::useCurrentAudio(const std::function<void(const Bytes &)> &f) const
 {
@@ -164,6 +168,7 @@ bool Audio::encodeAndSendAudio(ClientPeer &peer)
 	}
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
+	Lock lock(id);
 	while (!storedAudio.empty())
 	{
 		int frameSize = storedAudio.size() / (spec.channels * sizeof(float));
@@ -251,5 +256,13 @@ int Audio::audioLengthToFrames(const int frequency, const int duration)
 	default:
 		return 0;
 	}
+}
+Audio::Lock::Lock(const SDL_AudioDeviceID id) : id(id)
+{
+	SDL_LockAudioDevice(id);
+}
+Audio::Lock::~Lock()
+{
+	SDL_UnlockAudioDevice(id);
 }
 } // namespace TemStream

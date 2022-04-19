@@ -327,26 +327,29 @@ void TemStreamGui::draw()
 	{
 		if (ImGui::Begin("Audio", &showAudio, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			if (ImGui::BeginTable("Audio", 5, ImGuiTableFlags_Borders))
+			if (ImGui::BeginTable("Audio", 6, ImGuiTableFlags_Borders))
 			{
 				ImGui::TableSetupColumn("Device Name");
 				ImGui::TableSetupColumn("Source/Destination");
 				ImGui::TableSetupColumn("Recording");
 				ImGui::TableSetupColumn("Volume");
+				ImGui::TableSetupColumn("Muted");
 				ImGui::TableSetupColumn("Stop");
 				ImGui::TableHeadersRow();
 
 				std::array<char, KB(1)> buffer;
 				for (auto iter = audio.begin(); iter != audio.end();)
 				{
+					auto &a = iter->second;
+
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", iter->second->getName().c_str());
+					ImGui::Text("%s", a->getName().c_str());
 
 					iter->first.print(buffer);
 					ImGui::TableNextColumn();
 					ImGui::Text("%s", buffer.data());
 
-					const bool recording = iter->second->isRecording();
+					const bool recording = a->isRecording();
 					if (recording)
 					{
 						ImGui::TableNextColumn();
@@ -360,13 +363,33 @@ void TemStreamGui::draw()
 						ImGui::TableNextColumn();
 						ImGui::Text("No");
 
-						float v = iter->second->getVolume();
+						float v = a->getVolume();
 						ImGui::TableNextColumn();
 						if (ImGui::SliderFloat("Volume", &v, 0.f, 1.f))
 						{
-							iter->second->setVolume(v);
+							a->setVolume(v);
 						}
 					}
+
+					ImGui::TableNextColumn();
+					const bool isMuted = a->isMuted();
+					if (isMuted)
+					{
+						if (ImGui::Button("Yes"))
+						{
+							a->setMuted(false);
+							a->clearAudio();
+						}
+					}
+					else
+					{
+						if (ImGui::Button("No"))
+						{
+							a->setMuted(true);
+							a->clearAudio();
+						}
+					}
+
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Stop"))
 					{

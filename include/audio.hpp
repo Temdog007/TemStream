@@ -25,7 +25,6 @@ class Audio
 	SDL_AudioDeviceID id;
 	SDL_KeyCode code;
 	float volume;
-	bool pushToTalk;
 	const bool recording;
 
 	Audio(const MessageSource &, bool);
@@ -67,6 +66,19 @@ class Audio
 		this->volume = volume;
 	}
 
+	bool isMuted() const
+	{
+		const auto status = SDL_GetAudioDeviceStatus(id);
+		return status == SDL_AUDIO_PAUSED;
+	}
+
+	void setMuted(bool b)
+	{
+		SDL_PauseAudioDevice(id, b);
+	}
+
+	void clearAudio();
+
 	const MessageSource &getSource() const
 	{
 		return source;
@@ -81,5 +93,15 @@ class Audio
 
 	static std::shared_ptr<Audio> startRecording(const MessageSource &, const char *);
 	static std::shared_ptr<Audio> startPlayback(const MessageSource &, const char *);
+
+	class Lock
+	{
+	  private:
+		const SDL_AudioDeviceID id;
+
+	  public:
+		Lock(SDL_AudioDeviceID);
+		~Lock();
+	};
 };
 } // namespace TemStream
