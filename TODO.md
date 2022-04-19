@@ -207,7 +207,7 @@
 - [x] On dropped file, automatically create the appropriate query data
 - [x] Allow title bar and resize to be toggled for stream displays
 - [x] Display all font characters
-- [ ] Handle audio streaming
+- [x] Handle audio streaming
 - [ ] Make push to talk have a unique button for each each audio stream
 
 ### Later

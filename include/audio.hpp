@@ -48,6 +48,16 @@ class Audio
 		return recording;
 	}
 
+	float getVolume() const
+	{
+		return volume;
+	}
+
+	void setVolume(float volume)
+	{
+		this->volume = volume;
+	}
+
 	const MessageSource &getSource() const
 	{
 		return source;

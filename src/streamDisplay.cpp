@@ -94,7 +94,7 @@ bool StreamDisplay::operator()(AudioMessage audio)
 		a->enqueueAudio(audio.bytes);
 		if (!std::holds_alternative<CheckAudio>(data))
 		{
-			data.emplace<CheckAudio>(nullptr);
+			data.emplace<CheckAudio>(nullptr, a->isRecording());
 		}
 	}
 	else
@@ -177,7 +177,8 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 	auto ptr = display.gui.getAudio(display.getSource());
 	if (ptr == nullptr)
 	{
-		(*logger)(Logger::Error) << "Audio is missing for stream: " << display.getSource() << std::endl;
+		// Maybe determine when this is an error and when the user removed the audio
+		// (*logger)(Logger::Error) << "Audio is missing for stream: " << display.getSource() << std::endl;
 		return false;
 	}
 
@@ -225,7 +226,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 
 	SDL_SetRenderTarget(renderer, target);
 
-	return operator()(dynamic_cast<SDL_TextureWrapper &>(t));
+	return operator()(static_cast<SDL_TextureWrapper &>(t));
 }
 bool StreamDisplayDraw::operator()(const Bytes &)
 {

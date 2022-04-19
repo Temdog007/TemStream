@@ -270,18 +270,62 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			ImGui::EndMenu();
 		}
 
+		std::array<char, KB(1)> buffer;
 		if (!displays.empty())
 		{
 			ImGui::Separator();
 			if (ImGui::BeginMenu("Displays"))
 			{
-				std::array<char, KB(1)> buffer;
 				for (auto &pair : displays)
 				{
 					auto &display = pair.second;
 					const auto &source = display.getSource();
 					source.print(buffer);
 					ImGui::Checkbox(buffer.data(), &display.visible);
+				}
+				ImGui::EndMenu();
+			}
+		}
+
+		if (!audio.empty())
+		{
+			ImGui::Separator();
+			if (ImGui::BeginMenu("Audio"))
+			{
+				for (auto iter = audio.begin(); iter != audio.end();)
+				{
+					const int offset = iter->first.print(buffer);
+					if (ImGui::BeginMenu(buffer.data()))
+					{
+						const bool recording = iter->second->isRecording();
+
+						snprintf(buffer.data() + offset, buffer.size() - offset, " %s",
+								 recording ? "Recording" : "Playback");
+						ImGui::Text("%s", buffer.data());
+						ImGui::SameLine();
+						if (!recording)
+						{
+							float v = iter->second->getVolume();
+							if (ImGui::SliderFloat("Volume", &v, 0.f, 1.f))
+							{
+								iter->second->setVolume(v);
+							}
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Stop"))
+						{
+							iter = audio.erase(iter);
+						}
+						else
+						{
+							++iter;
+						}
+						ImGui::EndMenu();
+					}
+					else
+					{
+						++iter;
+					}
 				}
 				ImGui::EndMenu();
 			}
@@ -411,7 +455,7 @@ void TemStreamGui::draw()
 	{
 		if (ImGui::Begin("Logs", &showLogs))
 		{
-			InMemoryLogger &mLogger = dynamic_cast<InMemoryLogger &>(*logger);
+			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
 			mLogger.viewLogs([](const Logger::Log &log) {
 				switch (log.first)
 				{
@@ -558,7 +602,7 @@ int TemStreamGui::run()
 	if (!gui.init())
 	{
 		String total;
-		InMemoryLogger &mLogger = dynamic_cast<InMemoryLogger &>(*logger);
+		InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
 		mLogger.viewLogs([&total](const Logger::Log &log) {
 			total += log.second;
 			total += '\n';

@@ -26,11 +26,14 @@ class SDL_TextureWrapper
 };
 class CheckAudio : public SDL_TextureWrapper
 {
+  private:
+	bool isRecording;
+
   public:
-	CheckAudio(SDL_Texture *t) : SDL_TextureWrapper(t)
+	CheckAudio(SDL_Texture *t, const bool b) : SDL_TextureWrapper(t), isRecording(b)
 	{
 	}
-	CheckAudio(CheckAudio &&a) : SDL_TextureWrapper(a.texture)
+	CheckAudio(CheckAudio &&a) : SDL_TextureWrapper(a.texture), isRecording(a.isRecording)
 	{
 		a.texture = nullptr;
 	}
