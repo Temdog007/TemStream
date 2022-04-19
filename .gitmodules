@@ -1,12 +1,15 @@
 [submodule "cereal"]
-	path = cereal
-	url = https://github.com/USCiLab/cereal
+path = cereal
+url = https://github.com/USCiLab/cereal
 [submodule "SDL"]
-	path = SDL
-	url = https://github.com/libsdl-org/SDL.git
+path = SDL
+url = https://github.com/libsdl-org/SDL.git
 [submodule "imgui"]
-	path = imgui
-	url = https://github.com/ocornut/imgui.git
+path = imgui
+url = https://github.com/ocornut/imgui.git
 [submodule "SDL_image"]
-	path = SDL_image
-	url = https://github.com/libsdl-org/SDL_image.git
+path = SDL_image
+url = https://github.com/libsdl-org/SDL_image.git
+[submodule "opus"]
+	path = opus
+	url = https://gitlab.xiph.org/xiph/opus.git
