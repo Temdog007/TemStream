@@ -5,6 +5,7 @@
 #include <atomic>
 #include <codecvt>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -19,6 +20,8 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+namespace fs = std::filesystem;
 
 #include <SDL.h>
 #include <SDL_main.h>

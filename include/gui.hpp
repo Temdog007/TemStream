@@ -5,6 +5,29 @@
 namespace TemStream
 {
 class IQuery;
+class FileDisplay
+{
+  private:
+	String directory;
+	List<String> files;
+
+	void loadFiles();
+
+  public:
+	FileDisplay();
+	FileDisplay(const String &);
+	~FileDisplay();
+
+	const String &getDirectory() const
+	{
+		return directory;
+	}
+
+	const List<String> &getFiles() const
+	{
+		return files;
+	}
+};
 class TemStreamGui
 {
   private:
@@ -17,6 +40,7 @@ class TemStreamGui
 	std::unique_ptr<ClientPeer> peer;
 	std::unique_ptr<IQuery> queryData;
 	std::optional<MessageSource> audioTarget;
+	std::optional<FileDisplay> fileDirectory;
 	List<String> fontFiles;
 	ImGuiIO &io;
 	float fontSize;

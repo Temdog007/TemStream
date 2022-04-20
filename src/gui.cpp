@@ -157,8 +157,12 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 	{
 		if (ImGui::BeginMenu("File"))
 		{
-			if (ImGui::MenuItem("Open", "", nullptr, false))
+			if (ImGui::MenuItem("Open", "Ctrl+O", nullptr))
 			{
+				if (!fileDirectory.has_value())
+				{
+					fileDirectory.emplace();
+				}
 			}
 			if (ImGui::MenuItem("Exit", "", nullptr))
 			{
@@ -228,7 +232,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					ImGui::Separator();
 					if (queryData == nullptr)
 					{
-						if (ImGui::MenuItem("Send Data", "", nullptr))
+						if (ImGui::MenuItem("Send Data", "Ctrl+P", nullptr))
 						{
 							queryData = std::make_unique<QueryText>(*this);
 						}
@@ -487,6 +491,76 @@ void TemStreamGui::draw()
 			});
 		}
 		ImGui::End();
+	}
+
+	if (fileDirectory.has_value())
+	{
+		bool opened = true;
+		SetWindowMinSize(window);
+		if (ImGui::Begin("Open a file", &opened))
+		{
+			String dir = fileDirectory->getDirectory();
+			if (ImGui::Button("^"))
+			{
+				fs::path path(dir);
+				fileDirectory.emplace(path.parent_path());
+			}
+			ImGui::SameLine();
+			if (ImGui::InputText("Directory", &dir))
+			{
+				if (fs::is_directory(dir))
+				{
+					fileDirectory.emplace(dir);
+				}
+			}
+			if (ImGui::BeginTable("", 2, ImGuiTableFlags_Borders))
+			{
+				ImGui::TableSetupColumn("Name");
+				ImGui::TableSetupColumn("Type");
+				ImGui::TableHeadersRow();
+
+				const List<String> files = fileDirectory->getFiles();
+				for (const auto &file : files)
+				{
+					if (fs::is_directory(file))
+					{
+						ImGui::TableNextColumn();
+						if (ImGui::Button(file.c_str()))
+						{
+							fileDirectory.emplace(file);
+						}
+						ImGui::TableNextColumn();
+						ImGui::TextColored(Colors::Yellow, "Directory");
+					}
+					else if (fs::is_regular_file(file))
+					{
+						ImGui::TableNextColumn();
+						if (ImGui::Button(file.c_str()))
+						{
+							SDL_Event e;
+							e.type = SDL_DROPFILE;
+							e.drop.timestamp = SDL_GetTicks();
+							e.drop.windowID = SDL_GetWindowID(window);
+							e.drop.file = reinterpret_cast<char *>(SDL_malloc(file.size() + 1));
+							strcpy(e.drop.file, file.c_str());
+							if (!tryPushEvent(e))
+							{
+								SDL_free(e.drop.file);
+							}
+							opened = false;
+						}
+						ImGui::TableNextColumn();
+						ImGui::Text("Text");
+					}
+				}
+				ImGui::EndTable();
+			}
+		}
+		ImGui::End();
+		if (!opened)
+		{
+			fileDirectory = std::nullopt;
+		}
 	}
 
 	if (audioTarget.has_value())
@@ -874,6 +948,32 @@ void TemStreamGuiLogger::checkError(const Level level)
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "An error has occurred. Check logs for more detail",
 								 gui.window);
 		gui.setShowLogs(true);
+	}
+}
+FileDisplay::FileDisplay() : directory(fs::current_path()), files()
+{
+	loadFiles();
+}
+FileDisplay::FileDisplay(const String &s) : directory(s), files()
+{
+	loadFiles();
+}
+FileDisplay::~FileDisplay()
+{
+}
+void FileDisplay::loadFiles()
+{
+	try
+	{
+		for (auto file : fs::directory_iterator(directory))
+		{
+			files.emplace_back(file.path());
+		}
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << e.what() << std::endl;
+		files.clear();
 	}
 }
 } // namespace TemStream

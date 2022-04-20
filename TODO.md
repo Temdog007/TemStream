@@ -219,14 +219,27 @@
 - [x] Add context menu to stream displays
 - [x] Show specfic error when connecting to server fails before getting information
 - [x] Handle streaming audio from windows
-- [ ] Add file browser
+- [x] Add file browser
+- [ ] Add keyboard shortcuts
+- [ ] Make client explicitly create a stream
+- [ ] Make server store list of streams
+- [ ] Make client subscribe to stream before sending data to it
+- [ ] Limit how many streams a client and create (default 10)
+
+### Apr 20, 2022
+- [ ] Window streaming
+- [ ] Webcam streaming
+- [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 
 ### Later
+- [ ] Make credientials for server to authenticate clients and servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 - [ ] Store image and text data for each stream (send to newly connected clients)
+- [ ] Make server write all messages to hard disk
+- [ ] Create layout message that applies to user's streams
+- [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code
-- [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 - [ ] Test browser
 - [ ] Test android
 
