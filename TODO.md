@@ -221,11 +221,13 @@
 - [x] Handle streaming audio from windows
 - [x] Add file browser
 - [x] Add keyboard shortcuts
+- [ ] Implement screenshot
 
 ### Apr 20, 2022
 - [ ] Make client explicitly create a stream
 - [ ] Make server store list of streams
 - [ ] Make client subscribe to stream before sending data to it
+- [ ] StreamModificationMessage (MessageSource + enum{Create, Delete, Subscribe, Unsubscribe})
 - [ ] Limit how many streams a client and create (default 10)
 - [ ] Window streaming
 - [ ] Webcam streaming

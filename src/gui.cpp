@@ -502,13 +502,14 @@ void TemStreamGui::draw()
 		SetWindowMinSize(window);
 		if (ImGui::Begin("Open a file", &opened))
 		{
-			String dir = fileDirectory->getDirectory();
 			if (ImGui::Button("^"))
 			{
-				fs::path path(dir);
+				fs::path path(fileDirectory->getDirectory());
 				fileDirectory.emplace(path.parent_path());
 			}
 			ImGui::SameLine();
+
+			String dir = fileDirectory->getDirectory();
 			if (ImGui::InputText("Directory", &dir))
 			{
 				if (fs::is_directory(dir))
@@ -516,21 +517,23 @@ void TemStreamGui::draw()
 					fileDirectory.emplace(dir);
 				}
 			}
+
+			std::optional<String> newDir;
 			if (ImGui::BeginTable("", 2, ImGuiTableFlags_Borders))
 			{
 				ImGui::TableSetupColumn("Name");
 				ImGui::TableSetupColumn("Type");
 				ImGui::TableHeadersRow();
 
-				const List<String> files = fileDirectory->getFiles();
-				for (const auto &file : files)
+				for (const auto &file : fileDirectory->getFiles())
 				{
 					if (fs::is_directory(file))
 					{
 						ImGui::TableNextColumn();
-						if (ImGui::Button(file.c_str()))
+						if (ImGui::Selectable(file.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
+							ImGui::IsMouseDoubleClicked(0))
 						{
-							fileDirectory.emplace(file);
+							newDir.emplace(file);
 						}
 						ImGui::TableNextColumn();
 						ImGui::TextColored(Colors::Yellow, "Directory");
@@ -538,7 +541,8 @@ void TemStreamGui::draw()
 					else if (fs::is_regular_file(file))
 					{
 						ImGui::TableNextColumn();
-						if (ImGui::Button(file.c_str()))
+						if (ImGui::Selectable(file.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
+							ImGui::IsMouseDoubleClicked(0))
 						{
 							SDL_Event e;
 							e.type = SDL_DROPFILE;
@@ -557,6 +561,10 @@ void TemStreamGui::draw()
 					}
 				}
 				ImGui::EndTable();
+			}
+			if (newDir.has_value())
+			{
+				fileDirectory.emplace(*newDir);
 			}
 		}
 		ImGui::End();
