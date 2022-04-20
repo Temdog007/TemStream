@@ -59,15 +59,24 @@ uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
 
 namespace TemStream
 {
+void handleWorkThread(TemStreamGui *gui);
+
 TemStreamGui::TemStreamGui(ImGuiIO &io)
-	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr), fontFiles(), io(io),
-	  window(nullptr), renderer(nullptr), allUTF32(getAllUTF32()), fontSize(24.f), fontIndex(1), showLogs(false),
-	  showDisplays(false), showAudio(false), showFont(false), showStats(false)
+	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr),
+#if THREADS_AVAILABLE
+	  workThread(handleWorkThread, this),
+#endif
+	  fontFiles(), io(io), window(nullptr), renderer(nullptr), allUTF32(getAllUTF32()), fontSize(24.f), fontIndex(1),
+	  showLogs(false), showDisplays(false), showAudio(false), showFont(false), showStats(false)
 {
 }
 
 TemStreamGui::~TemStreamGui()
 {
+#if THREADS_AVAILABLE
+	appDone = true;
+	workThread.join();
+#endif
 	SDL_DestroyRenderer(renderer);
 	renderer = nullptr;
 	SDL_DestroyWindow(window);
@@ -106,6 +115,33 @@ void TemStreamGui::update()
 			peer = nullptr;
 		}
 	}
+}
+
+uint32_t handleWork(uint32_t interval, TemStreamGui *gui)
+{
+	gui->doWork();
+	return interval;
+}
+
+void handleWorkThread(TemStreamGui *gui)
+{
+	using namespace std::chrono_literals;
+	while (!appDone)
+	{
+		gui->doWork();
+		std::this_thread::sleep_for(100ms);
+	}
+}
+
+void TemStreamGui::doWork()
+{
+	auto task = workQueue.getWork();
+	if (!task.has_value())
+	{
+		return;
+	}
+
+	std::visit(workQueue, *task);
 }
 
 void TemStreamGui::onDisconnect(const bool gotInformation)
@@ -173,6 +209,14 @@ bool TemStreamGui::init()
 		logSDLError("Failed to add timer");
 		return false;
 	}
+
+#if !THREADS_AVAILABLE
+	if (SDL_AddTimer(100, (SDL_TimerCallback)handleWork, this) == 0)
+	{
+		logSDLError("Failed to add timer");
+		return false;
+	}
+#endif
 
 	return true;
 }
@@ -936,17 +980,10 @@ int TemStreamGui::run()
 					gui.fontIndex = IM_ARRAYSIZE(Fonts) + gui.fontFiles.size() - 1;
 					gui.LoadFonts();
 				}
-				else if (isImage(event.drop.file))
-				{
-					const size_t size = strlen(event.drop.file);
-					String s(event.drop.file, event.drop.file + size);
-					gui.queryData = tem_unique<QueryImage>(gui, std::move(s));
-				}
 				else
 				{
-					std::ifstream file(event.drop.file);
-					String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-					gui.queryData = tem_unique<QueryText>(gui, std::move(s));
+					Work::CheckFile cf(String(event.drop.file), gui);
+					(*gui).addWork(std::move(cf));
 				}
 				SDL_free(event.drop.file);
 			}
@@ -983,6 +1020,25 @@ int TemStreamGui::run()
 				case TemStreamEvent::ReloadFont:
 					gui.LoadFonts();
 					break;
+				case TemStreamEvent::SetQueryData: {
+					IQuery *query = reinterpret_cast<IQuery *>(event.user.data1);
+					auto ptr = unique_ptr<IQuery>(query);
+					gui.queryData.swap(ptr);
+				}
+				break;
+				case TemStreamEvent::SetSurfaceToStreamDisplay: {
+					SDL_Surface *surface = reinterpret_cast<SDL_Surface *>(event.user.data1);
+					MessageSource *source = reinterpret_cast<MessageSource *>(event.user.data2);
+
+					auto iter = gui.displays.find(*source);
+					if (iter != gui.displays.end())
+					{
+						iter->second.setSurface(surface);
+					}
+					SDL_FreeSurface(surface);
+					deallocate(source);
+				}
+				break;
 				default:
 					break;
 				}
@@ -1066,7 +1122,8 @@ int TemStreamGui::run()
 	ImGui::DestroyContext();
 	while (runningThreads > 0)
 	{
-		SDL_Delay(100);
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(100ms);
 	}
 	logger = nullptr;
 	return EXIT_SUCCESS;

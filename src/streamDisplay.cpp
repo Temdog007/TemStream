@@ -71,6 +71,17 @@ void StreamDisplay::drawFlagCheckboxes()
 		}
 	}
 }
+bool StreamDisplay::setSurface(SDL_Surface *surface)
+{
+	SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.getRenderer(), surface);
+	if (texture == nullptr)
+	{
+		logSDLError("Texture creation error");
+		return false;
+	}
+	data.emplace<SDL_TextureWrapper>(texture);
+	return true;
+}
 bool StreamDisplay::operator()(TextMessage &&message)
 {
 	data = std::move(message);
@@ -97,32 +108,10 @@ bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
 {
 	if (Bytes *bytes = std::get_if<Bytes>(&display.data))
 	{
-		(*logger)(Logger::Trace) << "Reading image: " << bytes->size() / KB(1) << "KB" << std::endl;
-		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
-		if (src == nullptr)
-		{
-			logSDLError("Failed to load image data");
-			return false;
-		}
-		SDL_Surface *surface = IMG_Load_RW(src, 0);
-		if (surface == nullptr)
-		{
-			(*logger)(Logger::Error) << "Surface load error: " << IMG_GetError() << std::endl;
-			return false;
-		}
-
-		bool success = true;
-		{
-			SDL_Texture *texture = SDL_CreateTextureFromSurface(display.gui.getRenderer(), surface);
-			if (texture == nullptr)
-			{
-				logSDLError("Texture creation error");
-				success = false;
-			}
-			display.data.emplace<SDL_TextureWrapper>(texture);
-		}
-		SDL_FreeSurface(surface);
-		return success;
+		Work::Task task(Work::LoadSurface(display.getSource(), std::move(*bytes)));
+		(*display.gui).addWork(std::move(task));
+		display.data.emplace<std::monostate>();
+		return true;
 	}
 
 	logger->AddError("Stream display is in an invalid state");

@@ -124,6 +124,8 @@ class StreamDisplay
 		return source;
 	}
 
+	bool setSurface(SDL_Surface *);
+
 	bool draw();
 	void drawFlagCheckboxes();
 

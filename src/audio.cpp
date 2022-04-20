@@ -96,7 +96,7 @@ shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 }
 shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
 {
-	auto a = shared_ptr<Audio>(new Audio(source, false));
+	auto a = shared_ptr<Audio>(allocate<Audio>(source, false), Deleter<Audio>());
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::playbackCallback;

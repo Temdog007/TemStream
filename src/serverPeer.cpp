@@ -174,7 +174,8 @@ end:
 	logger->AddInfo("Ending server");
 	while (runningThreads > 0)
 	{
-		SDL_Delay(100);
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(100ms);
 	}
 	logger = nullptr;
 	return result;

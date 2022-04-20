@@ -40,11 +40,9 @@ class QueryImage : public IQuery
   private:
 	String image;
 
-	static void getPackets(String, MessageSource);
-
   public:
 	QueryImage(TemStreamGui &);
-	QueryImage(TemStreamGui &, String &&);
+	QueryImage(TemStreamGui &, const String &);
 	~QueryImage();
 
 	bool draw() override;

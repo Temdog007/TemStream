@@ -46,6 +46,7 @@ class TemStreamGui
 {
   private:
 	std::array<char, KB(1)> strBuffer;
+	WorkQueue workQueue;
 	std::optional<Address> connectToServer;
 	Map<MessageSource, StreamDisplay> displays;
 	Map<MessageSource, shared_ptr<Audio>> audio;
@@ -53,6 +54,9 @@ class TemStreamGui
 	Mutex peerMutex;
 	unique_ptr<ClientPeer> peer;
 	unique_ptr<IQuery> queryData;
+#if THREADS_AVAILABLE
+	std::thread workThread;
+#endif
 	std::optional<MessageSource> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
 	List<String> fontFiles;
@@ -106,9 +110,15 @@ class TemStreamGui
 		return window;
 	}
 
+	WorkQueue &operator*()
+	{
+		return workQueue;
+	}
+
 	bool init();
 	bool connect(const Address &);
 	void update();
+	void doWork();
 	void draw();
 
 	bool addAudio(shared_ptr<Audio> &&);

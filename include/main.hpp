@@ -67,6 +67,8 @@ namespace fs = std::filesystem;
 #define _DEBUG !NDEBUG
 #define USE_CUSTOM_ALLOCATOR true
 
+#define THREADS_AVAILABLE (!__EMSCRIPTEN__ || !SDL_THREADS_DISABLED)
+
 namespace TemStream
 {
 enum TemStreamEvent : int32_t
@@ -75,7 +77,9 @@ enum TemStreamEvent : int32_t
 	SendSingleMessagePacket,
 	SendMessagePackets,
 	HandleMessagePacket,
-	HandleMessagePackets
+	HandleMessagePackets,
+	SetQueryData,
+	SetSurfaceToStreamDisplay
 };
 class SDL_MutexWrapper
 {
@@ -170,6 +174,8 @@ extern size_t MaxPacketSize;
 #include "serverPeer.hpp"
 
 #include "streamDisplay.hpp"
+
+#include "workQueue.hpp"
 
 #include "gui.hpp"
 #include "query.hpp"

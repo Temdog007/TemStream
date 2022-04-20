@@ -65,7 +65,8 @@ set(SOURCES
     src/query.cpp
     src/serverPeer.cpp
     src/socket.cpp
-    src/streamDisplay.cpp)
+    src/streamDisplay.cpp
+    src/workQueue.cpp)
 
 set(HEADERS include/addrinfo.hpp
     include/clientPeer.hpp

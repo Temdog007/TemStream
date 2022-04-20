@@ -53,7 +53,7 @@ void QueryText::execute() const
 QueryImage::QueryImage(TemStreamGui &gui) : IQuery(gui), image()
 {
 }
-QueryImage::QueryImage(TemStreamGui &gui, String &&s) : IQuery(gui), image(std::move(s))
+QueryImage::QueryImage(TemStreamGui &gui, const String &s) : IQuery(gui), image(s)
 {
 }
 QueryImage::~QueryImage()
@@ -66,52 +66,8 @@ bool QueryImage::draw()
 }
 void QueryImage::execute() const
 {
-	std::thread thread(QueryImage::getPackets, image, getSource());
-	thread.detach();
-}
-void QueryImage::getPackets(const String filename, const MessageSource source)
-{
-	std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
-	if (!file.is_open())
-	{
-		(*logger)(Logger::Error) << "Failed to open file: " << filename << std::endl;
-		return;
-	}
-
-	MessagePackets *packets = allocate<MessagePackets>();
-	const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-	{
-		MessagePacket packet;
-		packet.message = ImageMessage(static_cast<uint64_t>(bytes.size()));
-		packet.source = source;
-		packets->push_back(std::move(packet));
-	}
-	{
-
-		for (size_t i = 0; i < bytes.size(); i += KB(64))
-		{
-			MessagePacket packet;
-			packet.message =
-				Bytes(bytes.begin() + i, (i + KB(64)) > bytes.size() ? bytes.end() : (bytes.begin() + i + KB(64)));
-			packet.source = source;
-			packets->push_back(std::move(packet));
-		}
-	}
-	{
-		MessagePacket packet;
-		packet.message = ImageMessage(std::monostate{});
-		packet.source = source;
-		packets->push_back(std::move(packet));
-	}
-
-	SDL_Event e;
-	e.type = SDL_USEREVENT;
-	e.user.code = TemStreamEvent::SendMessagePackets;
-	e.user.data1 = reinterpret_cast<void *>(packets);
-	if (!tryPushEvent(e))
-	{
-		deallocate(packets);
-	}
+	Work::Task task(Work::SendImage(image, getSource()));
+	(*gui).addWork(std::move(task));
 }
 QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), windowNames(), source(Source::Device), selected(-1)
 {

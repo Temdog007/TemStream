@@ -262,6 +262,8 @@ std::optional<List<WindowProcess>> Audio::getListOfWindowsWithAudio()
 }
 shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const WindowProcess &wp)
 {
+	using namespace std::chrono_literals;
+
 	const auto sinks = SinkInput::getSinks();
 	if (!sinks.has_value())
 	{
@@ -330,7 +332,7 @@ shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const
 	// Wait for Pulse Audio or SDL to update. SDL will fail to find the device if this is done too soon
 	// (Is there a better way to do this?)
 	(*logger)(Logger::Trace) << "Waiting 1 second for audio server to update" << std::endl;
-	SDL_Delay(1000u);
+	std::this_thread::sleep_for(1s);
 
 	snprintf(commandBuffer, sizeof(commandBuffer), "%s_remapped", sinkName);
 	SinkInputAudio *audio =
