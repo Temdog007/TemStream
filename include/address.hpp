@@ -28,9 +28,9 @@ struct Address
 		return !(*this == a);
 	}
 
-	std::unique_ptr<TcpSocket> makeTcpSocket() const
+	unique_ptr<TcpSocket> makeTcpSocket() const
 	{
-		auto ptr = std::make_unique<TcpSocket>();
+		auto ptr = tem_unique<TcpSocket>();
 		if (ptr->connectWithAddress(*this, false))
 		{
 			return ptr;

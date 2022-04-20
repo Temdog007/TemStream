@@ -137,5 +137,5 @@ class InMemoryLogger : public Logger
 	void viewLogs(const std::function<void(const Log &)> &);
 };
 
-extern std::unique_ptr<Logger> logger;
+extern unique_ptr<Logger> logger;
 } // namespace TemStream

@@ -34,7 +34,7 @@ class SinkInput
 	static bool runCommand(const char *, Deque<String> &);
 
 	friend std::optional<List<WindowProcess>> Audio::getListOfWindowsWithAudio();
-	friend std::shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &, const WindowProcess &s);
+	friend shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &, const WindowProcess &s);
 
 	friend std::ostream &operator<<(std::ostream &os, const SinkInput &si)
 	{
@@ -261,7 +261,7 @@ std::optional<List<WindowProcess>> Audio::getListOfWindowsWithAudio()
 	}
 	return std::nullopt;
 }
-std::shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const WindowProcess &wp)
+shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const WindowProcess &wp)
 {
 	const auto sinks = SinkInput::getSinks();
 	if (!sinks.has_value())

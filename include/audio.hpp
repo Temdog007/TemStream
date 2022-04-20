@@ -49,7 +49,7 @@ class Audio
   protected:
 	Audio(const MessageSource &, bool);
 
-	static std::shared_ptr<Audio> startRecording(Audio *, int);
+	static shared_ptr<Audio> startRecording(Audio *, int);
 
   public:
 	Audio() = delete;
@@ -102,10 +102,10 @@ class Audio
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
 
 	static std::optional<List<WindowProcess>> getListOfWindowsWithAudio();
-	static std::shared_ptr<Audio> startRecordingWindow(const MessageSource &, const WindowProcess &);
+	static shared_ptr<Audio> startRecordingWindow(const MessageSource &, const WindowProcess &);
 
-	static std::shared_ptr<Audio> startRecording(const MessageSource &, const char *);
-	static std::shared_ptr<Audio> startPlayback(const MessageSource &, const char *);
+	static shared_ptr<Audio> startRecording(const MessageSource &, const char *);
+	static shared_ptr<Audio> startPlayback(const MessageSource &, const char *);
 
 	class Lock
 	{

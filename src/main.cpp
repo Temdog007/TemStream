@@ -7,7 +7,7 @@ std::atomic<int32_t> TemStream::runningThreads = 0;
 int TemStream::DefaultPort = 10000;
 size_t TemStream::MaxPacketSize = MB(1);
 AllocatorData TemStream::globalAllocatorData;
-std::unique_ptr<Logger> TemStream::logger = nullptr;
+unique_ptr<Logger> TemStream::logger = nullptr;
 
 void signalHandler(int s);
 void parseMemory(int, const char **, size_t);

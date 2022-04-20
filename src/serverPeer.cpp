@@ -4,14 +4,14 @@ namespace TemStream
 {
 PeerInformation ServerPeer::serverInformation;
 Mutex ServerPeer::peersMutex;
-std::vector<std::weak_ptr<ServerPeer>> ServerPeer::peers;
+List<std::weak_ptr<ServerPeer>> ServerPeer::peers;
 
 bool ServerPeer::peerExists(const PeerInformation &info)
 {
 	LOCK(peersMutex);
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
-		if (std::shared_ptr<ServerPeer> ptr = iter->lock())
+		if (shared_ptr<ServerPeer> ptr = iter->lock())
 		{
 			if ((*ptr).getInfo() == info)
 			{
@@ -35,7 +35,7 @@ void ServerPeer::sendToAllPeers(MessagePacket &&packet)
 	LOCK(peersMutex);
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
-		if (std::shared_ptr<ServerPeer> ptr = iter->lock())
+		if (shared_ptr<ServerPeer> ptr = iter->lock())
 		{
 			// Don't send packet to author
 			if ((*ptr).getInfo().name == packet.source.author)
@@ -59,7 +59,7 @@ void ServerPeer::sendToAllPeers(MessagePacket &&packet)
 	}
 }
 
-void ServerPeer::runPeerConnection(std::shared_ptr<ServerPeer> peer)
+void ServerPeer::runPeerConnection(shared_ptr<ServerPeer> &&peer)
 {
 	*logger << "Handling connection: " << peer->getAddress() << std::endl;
 	{
@@ -89,7 +89,7 @@ end:
 }
 int ServerPeer::run(const int argc, const char **argv)
 {
-	logger = std::make_unique<ConsoleLogger>();
+	logger = tem_unique<ConsoleLogger>();
 	TemStream::initialLogs();
 
 	int result = EXIT_FAILURE;
@@ -151,7 +151,7 @@ int ServerPeer::run(const int argc, const char **argv)
 			continue;
 		}
 
-		auto s = std::make_unique<TcpSocket>(newfd);
+		auto s = tem_unique<TcpSocket>(newfd);
 
 		std::array<char, INET6_ADDRSTRLEN> str;
 		uint16_t port;
@@ -161,7 +161,7 @@ int ServerPeer::run(const int argc, const char **argv)
 
 			++runningThreads;
 			Address address(str.data(), port);
-			auto peer = std::make_shared<ServerPeer>(address, std::move(s));
+			auto peer = tem_shared<ServerPeer>(address, std::move(s));
 			std::thread thread(runPeerConnection, std::move(peer));
 			thread.detach();
 		}
@@ -178,7 +178,7 @@ end:
 	}
 	return result;
 }
-ServerPeer::ServerPeer(const Address &address, std::unique_ptr<Socket> s)
+ServerPeer::ServerPeer(const Address &address, unique_ptr<Socket> s)
 	: Peer(address, std::move(s)), informationAcquired(false)
 {
 }

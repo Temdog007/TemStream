@@ -143,7 +143,7 @@ bool TemStreamGui::connect(const Address &address)
 	}
 
 	LOCK(peerMutex);
-	peer = std::make_unique<ClientPeer>(address, std::move(s));
+	peer = tem_unique<ClientPeer>(address, std::move(s));
 	*logger << "Connected to server: " << address << std::endl;
 	MessagePacket packet;
 	packet.message = peerInfo;
@@ -238,7 +238,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					ImGui::Separator();
 					if (ImGui::MenuItem("Send Data", "Ctrl+P", nullptr, queryData == nullptr))
 					{
-						queryData = std::make_unique<QueryText>(*this);
+						queryData = tem_unique<QueryText>(*this);
 					}
 				}
 			}
@@ -423,16 +423,16 @@ void TemStreamGui::draw()
 				switch (selected)
 				{
 				case 0:
-					queryData = std::make_unique<QueryText>(*this);
+					queryData = tem_unique<QueryText>(*this);
 					break;
 				case 1:
-					queryData = std::make_unique<QueryImage>(*this);
+					queryData = tem_unique<QueryImage>(*this);
 					break;
 				case 2:
-					queryData = std::make_unique<QueryAudio>(*this);
+					queryData = tem_unique<QueryAudio>(*this);
 					break;
 				case 3:
-					queryData = std::make_unique<QueryVideo>(*this);
+					queryData = tem_unique<QueryVideo>(*this);
 					break;
 				default:
 					break;
@@ -616,7 +616,7 @@ void TemStreamGui::draw()
 			if (opt.has_value())
 			{
 				const char *name = *opt;
-				std::shared_ptr<Audio> newAudio = nullptr;
+				shared_ptr<Audio> newAudio = nullptr;
 				if (recording)
 				{
 					newAudio = Audio::startRecording(a->getSource(), name);
@@ -716,13 +716,13 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 }
 
-bool TemStreamGui::addAudio(std::shared_ptr<Audio> &&ptr)
+bool TemStreamGui::addAudio(shared_ptr<Audio> &&ptr)
 {
 	auto pair = audio.emplace(ptr->getSource(), std::move(ptr));
 	return pair.second;
 }
 
-std::shared_ptr<Audio> TemStreamGui::getAudio(const MessageSource &source) const
+shared_ptr<Audio> TemStreamGui::getAudio(const MessageSource &source) const
 {
 	auto iter = audio.find(source);
 	if (iter == audio.end())
@@ -796,7 +796,7 @@ int TemStreamGui::run()
 	ImGui::StyleColorsDark();
 
 	TemStreamGui gui(io);
-	logger = std::make_unique<TemStreamGuiLogger>(gui);
+	logger = tem_unique<TemStreamGuiLogger>(gui);
 	initialLogs();
 	(*logger)(Logger::Info) << "ImGui v" IMGUI_VERSION << std::endl;
 
@@ -830,7 +830,7 @@ int TemStreamGui::run()
 			case SDL_DROPTEXT: {
 				const size_t size = strlen(event.drop.file);
 				String s(event.drop.file, event.drop.file + size);
-				gui.queryData = std::make_unique<QueryText>(gui, std::move(s));
+				gui.queryData = tem_unique<QueryText>(gui, std::move(s));
 				SDL_free(event.drop.file);
 			}
 			break;
@@ -846,13 +846,13 @@ int TemStreamGui::run()
 				{
 					const size_t size = strlen(event.drop.file);
 					String s(event.drop.file, event.drop.file + size);
-					gui.queryData = std::make_unique<QueryImage>(gui, std::move(s));
+					gui.queryData = tem_unique<QueryImage>(gui, std::move(s));
 				}
 				else
 				{
 					std::ifstream file(event.drop.file);
 					String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-					gui.queryData = std::make_unique<QueryText>(gui, std::move(s));
+					gui.queryData = tem_unique<QueryText>(gui, std::move(s));
 				}
 				SDL_free(event.drop.file);
 			}
@@ -922,7 +922,7 @@ int TemStreamGui::run()
 				case SDLK_p:
 					if (gui.queryData == nullptr)
 					{
-						gui.queryData = std::make_unique<QueryText>(gui);
+						gui.queryData = tem_unique<QueryText>(gui);
 					}
 					break;
 				default:

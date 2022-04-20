@@ -60,15 +60,15 @@ SDL_AudioSpec Audio::getAudioSpec()
 	desired.samples = 4096;
 	return desired;
 }
-std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
+shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
 {
 	Audio *a = allocate<Audio>(source, true);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return startRecording(a, OPUS_APPLICATION_VOIP);
 }
-std::shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
+shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 {
-	auto a = std::shared_ptr<Audio>(audioPtr);
+	auto a = shared_ptr<Audio>(audioPtr);
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::recordCallback;
@@ -94,9 +94,9 @@ std::shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int applicat
 	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }
-std::shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
+shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
 {
-	auto a = std::shared_ptr<Audio>(new Audio(source, false));
+	auto a = shared_ptr<Audio>(new Audio(source, false));
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::playbackCallback;

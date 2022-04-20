@@ -13,10 +13,10 @@ class Peer
   protected:
 	PeerInformation info;
 	const Address address;
-	std::unique_ptr<Socket> mSocket;
+	unique_ptr<Socket> mSocket;
 
   public:
-	Peer(const Address &, std::unique_ptr<Socket>);
+	Peer(const Address &, unique_ptr<Socket>);
 	Peer(const Peer &) = delete;
 	Peer(Peer &&) = delete;
 	virtual ~Peer();

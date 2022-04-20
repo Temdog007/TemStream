@@ -11,18 +11,18 @@ class ServerPeer : public Peer
 
 	static PeerInformation serverInformation;
 	static Mutex peersMutex;
-	static std::vector<std::weak_ptr<ServerPeer>> peers;
+	static List<std::weak_ptr<ServerPeer>> peers;
 
 	static void sendToAllPeers(MessagePacket &&);
 
 	static bool peerExists(const PeerInformation &);
 
-	static void runPeerConnection(std::shared_ptr<ServerPeer>);
+	static void runPeerConnection(shared_ptr<ServerPeer> &&);
 
 	friend class ServerMessageHandler;
 
   public:
-	ServerPeer(const Address &, std::unique_ptr<Socket>);
+	ServerPeer(const Address &, unique_ptr<Socket>);
 	virtual ~ServerPeer();
 
 	bool gotInfo() const

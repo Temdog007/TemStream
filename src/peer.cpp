@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-Peer::Peer(const Address &address, std::unique_ptr<Socket> s)
+Peer::Peer(const Address &address, unique_ptr<Socket> s)
 	: bytes(), nextMessageSize(std::nullopt), info(), address(address), mSocket(std::move(s))
 {
 }

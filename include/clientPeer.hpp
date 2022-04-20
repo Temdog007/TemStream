@@ -11,7 +11,7 @@ class ClientPeer : public Peer
 	bool acquiredServerInformation;
 
   public:
-	ClientPeer(const Address &, std::unique_ptr<Socket>);
+	ClientPeer(const Address &, unique_ptr<Socket>);
 	ClientPeer(const ClientPeer &) = delete;
 	ClientPeer(ClientPeer &&) = delete;
 	virtual ~ClientPeer();

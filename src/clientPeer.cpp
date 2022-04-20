@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-ClientPeer::ClientPeer(const Address &address, std::unique_ptr<Socket> s)
+ClientPeer::ClientPeer(const Address &address, unique_ptr<Socket> s)
 	: Peer(address, std::move(s)), acquiredServerInformation(false)
 {
 }

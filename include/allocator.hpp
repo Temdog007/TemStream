@@ -209,12 +209,14 @@ template <class T> class Allocator
 #else
 #define ALLOCATOR_ALIGNMENT (2 * sizeof(void *))
 #endif
-template <class T> T *Allocator<T>::allocate(const size_t requestedSize)
+template <class T> T *Allocator<T>::allocate(const size_t requestedCount)
 {
-	if (requestedSize == 0)
+	if (requestedCount == 0)
 	{
 		return nullptr;
 	}
+
+	const size_t requestedSize = sizeof(T) * requestedCount;
 
 	LOCK(ad.mutex);
 

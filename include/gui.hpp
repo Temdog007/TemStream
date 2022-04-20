@@ -34,11 +34,11 @@ class TemStreamGui
 	std::array<char, KB(1)> strBuffer;
 	std::optional<Address> connectToServer;
 	Map<MessageSource, StreamDisplay> displays;
-	Map<MessageSource, std::shared_ptr<Audio>> audio;
+	Map<MessageSource, shared_ptr<Audio>> audio;
 	PeerInformation peerInfo;
 	Mutex peerMutex;
-	std::unique_ptr<ClientPeer> peer;
-	std::unique_ptr<IQuery> queryData;
+	unique_ptr<ClientPeer> peer;
+	unique_ptr<IQuery> queryData;
 	std::optional<MessageSource> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
 	List<String> fontFiles;
@@ -83,8 +83,8 @@ class TemStreamGui
 	void update();
 	void draw();
 
-	bool addAudio(std::shared_ptr<Audio> &&);
-	std::shared_ptr<Audio> getAudio(const MessageSource &) const;
+	bool addAudio(shared_ptr<Audio> &&);
+	shared_ptr<Audio> getAudio(const MessageSource &) const;
 
 	bool isConnected();
 
