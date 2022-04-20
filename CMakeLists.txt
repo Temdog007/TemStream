@@ -5,6 +5,8 @@ project(TemStream VERSION 0.1.1)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+option(RECORD_PULSE_AUDIO "Record windows with pulse audio" ON)
+
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)
 set(SUPPORT_PNG ON)
@@ -80,7 +82,11 @@ set(HEADERS include/addrinfo.hpp
     include/streamDisplay.hpp
     include/TemStreamConfig.h)
 
-add_executable(TemStream ${SOURCES} ${HEADERS})
+if(RECORD_PULSE_AUDIO)
+  set(AUDIO_SOURCE src/audioPulse.cpp)
+endif()
+
+add_executable(TemStream ${SOURCES} ${HEADERS} ${AUDIO_SOURCE})
 
 if(MSVC)
   target_compile_options(TemStream PRIVATE /W4 /WX)

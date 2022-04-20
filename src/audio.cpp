@@ -62,13 +62,19 @@ SDL_AudioSpec Audio::getAudioSpec()
 }
 std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
 {
-	auto a = std::shared_ptr<Audio>(new Audio(source, true));
+	Audio *a = new Audio(source, true);
+	a->name = (name == nullptr ? "(Default audio device)" : name);
+	return startRecording(a, OPUS_APPLICATION_VOIP);
+}
+std::shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
+{
+	auto a = std::shared_ptr<Audio>(audioPtr);
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::recordCallback;
 	desired.userdata = a.get();
 
-	a->id = SDL_OpenAudioDevice(name, SDL_TRUE, &desired, &a->spec, 0);
+	a->id = SDL_OpenAudioDevice(a->name.c_str(), SDL_TRUE, &desired, &a->spec, 0);
 	if (a->id == 0)
 	{
 		(*logger)(Logger::Error) << "Failed to open audio device: " << SDL_GetError() << std::endl;
@@ -77,7 +83,7 @@ std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const 
 
 	const int size = opus_encoder_get_size(a->spec.channels);
 	a->encoder = reinterpret_cast<OpusEncoder *>(malloc(size));
-	const int error = opus_encoder_init(a->encoder, a->spec.freq, a->spec.channels, OPUS_APPLICATION_VOIP);
+	const int error = opus_encoder_init(a->encoder, a->spec.freq, a->spec.channels, application);
 	if (error < 0)
 	{
 		(*logger)(Logger::Error) << "Failed to create audio encoder: " << opus_strerror(error) << std::endl;
@@ -85,7 +91,6 @@ std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const 
 	}
 
 	SDL_PauseAudioDevice(a->id, SDL_FALSE);
-	a->name = (name == nullptr ? "(Default audio device)" : name);
 	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }

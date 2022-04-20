@@ -129,6 +129,8 @@ extern void SetWindowMinSize(SDL_Window *window);
 
 extern bool tryPushEvent(SDL_Event &);
 
+extern bool isSpace(char);
+
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;

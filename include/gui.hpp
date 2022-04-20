@@ -59,7 +59,7 @@ class TemStreamGui
 	void update();
 	void draw();
 
-	bool addAudio(std::shared_ptr<Audio>);
+	bool addAudio(std::shared_ptr<Audio> &&);
 	std::shared_ptr<Audio> getAudio(const MessageSource &) const;
 
 	bool isConnected();

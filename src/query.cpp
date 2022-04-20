@@ -114,7 +114,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 		delete packets;
 	}
 }
-QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), selected(-1)
+QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), windowNames(), source(Source::Device), selected(-1)
 {
 }
 QueryAudio::~QueryAudio()
@@ -122,29 +122,80 @@ QueryAudio::~QueryAudio()
 }
 bool QueryAudio::draw()
 {
-	const int count = SDL_GetNumAudioDevices(SDL_TRUE);
-	char buffer[KB(1)];
-	for (int i = 0; i < count; ++i)
+	static const char *selection[]{"Device", "Window"};
+	int s = static_cast<int>(source);
+	if (ImGui::Combo("Source", &s, selection, IM_ARRAYSIZE(selection)))
 	{
-		snprintf(buffer, sizeof(buffer), "%s", SDL_GetAudioDeviceName(i, SDL_TRUE));
-		ImGui::RadioButton(buffer, &selected, i);
+		source = static_cast<Source>(s);
+		if (source == Source::Window)
+		{
+			auto opt = Audio::getListOfWindowsWithAudio();
+			if (opt.has_value())
+			{
+				windowNames = std::move(*opt);
+			}
+		}
+	}
+	char buffer[KB(1)];
+	switch (source)
+	{
+	case Source::Device: {
+		const int count = SDL_GetNumAudioDevices(SDL_TRUE);
+		for (int i = 0; i < count; ++i)
+		{
+			snprintf(buffer, sizeof(buffer), "%s", SDL_GetAudioDeviceName(i, SDL_TRUE));
+			ImGui::RadioButton(buffer, &selected, i);
+		}
+	}
+	break;
+	case Source::Window:
+		for (size_t i = 0; i < windowNames.size(); ++i)
+		{
+			const auto &wp = windowNames[i];
+			snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.id);
+			ImGui::RadioButton(buffer, &selected, i);
+		}
+		break;
+	default:
+		return false;
 	}
 
 	return IQuery::draw();
 }
 void QueryAudio::execute() const
 {
-	const int count = SDL_GetNumAudioDevices(SDL_TRUE);
-	if (selected < 0 || selected >= count)
+	switch (source)
 	{
-		(*logger)(Logger::Error) << "Invalid audio device selected" << std::endl;
-		return;
+	case Source::Device: {
+		const int count = SDL_GetNumAudioDevices(SDL_TRUE);
+		if (selected < 0 || selected >= count)
+		{
+			(*logger)(Logger::Error) << "Invalid audio device selected" << std::endl;
+			return;
+		}
+		const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
+		auto ptr = Audio::startRecording(getSource(), name);
+		if (ptr)
+		{
+			gui.addAudio(std::move(ptr));
+		}
 	}
-	const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
-	auto ptr = Audio::startRecording(getSource(), name);
-	if (ptr)
-	{
-		gui.addAudio(ptr);
+	break;
+	case Source::Window: {
+		const size_t index = static_cast<size_t>(selected);
+		if (index >= windowNames.size())
+		{
+			break;
+		}
+		auto ptr = Audio::startRecordingWindow(getSource(), windowNames[index]);
+		if (ptr)
+		{
+			gui.addAudio(std::move(ptr));
+		}
+	}
+	break;
+	default:
+		break;
 	}
 }
 QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui)

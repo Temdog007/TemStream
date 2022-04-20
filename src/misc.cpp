@@ -137,6 +137,22 @@ bool tryPushEvent(SDL_Event &e)
 	}
 	return true;
 }
+String &trim(String &s)
+{
+	return ltrim(rtrim(s));
+}
+String &ltrim(String &s)
+{
+	auto end = std::find_if(s.begin(), s.end(), [](char c) { return !std::isspace(c); });
+	s.erase(s.begin(), end);
+	return s;
+}
+String &rtrim(String &s)
+{
+	auto start = std::find_if(s.rbegin(), s.rend(), [](char c) { return !std::isspace(c); });
+	s.erase(start.base(), s.end());
+	return s;
+}
 } // namespace TemStream
 
 #if USE_CUSTOM_ALLOCATOR

@@ -5,6 +5,11 @@
 namespace TemStream
 {
 class ClientPeer;
+struct WindowProcess
+{
+	String name;
+	int32_t id;
+};
 class Audio
 {
   private:
@@ -27,8 +32,6 @@ class Audio
 	float volume;
 	const bool recording;
 
-	Audio(const MessageSource &, bool);
-
 	void recordAudio(const uint8_t *, int);
 	void playbackAudio(uint8_t *, int);
 
@@ -41,11 +44,16 @@ class Audio
 
 	static int closestValidFrameCount(const int frequency, const int frames);
 
+  protected:
+	Audio(const MessageSource &, bool);
+
+	static std::shared_ptr<Audio> startRecording(Audio *, int);
+
   public:
 	Audio() = delete;
 	Audio(const Audio &) = delete;
 	Audio(Audio &&) = delete;
-	~Audio();
+	virtual ~Audio();
 
 	void enqueueAudio(const Bytes &);
 
@@ -90,6 +98,9 @@ class Audio
 	}
 
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
+
+	static std::optional<List<WindowProcess>> getListOfWindowsWithAudio();
+	static std::shared_ptr<Audio> startRecordingWindow(const MessageSource &, const WindowProcess &);
 
 	static std::shared_ptr<Audio> startRecording(const MessageSource &, const char *);
 	static std::shared_ptr<Audio> startPlayback(const MessageSource &, const char *);

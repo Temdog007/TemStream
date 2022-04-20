@@ -216,9 +216,9 @@
 - [x] Improve audio delay (didn't encode all audio on callback)
 - [x] Allow playback device to be changed
 - [x] Show error when disconnected from server unexpectedly
-- [ ] Handle streaming audio from windows
 - [x] Add context menu to stream displays
 - [x] Show specfic error when connecting to server fails before getting information
+- [x] Handle streaming audio from windows
 - [ ] Add file browser
 
 ### Later
@@ -227,7 +227,6 @@
 - [ ] Add configuration for imgui style and fonts
 - [ ] Remove OpenCL code
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
-- [ ] Make video replay streams work properly
 - [ ] Test browser
 - [ ] Test android
 

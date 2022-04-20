@@ -155,7 +155,7 @@ bool StreamDisplay::operator()(AudioMessage &&audio)
 		auto ptr = Audio::startPlayback(source, NULL);
 		if (ptr)
 		{
-			return gui.addAudio(ptr);
+			return gui.addAudio(std::move(ptr));
 		}
 	}
 	return true;

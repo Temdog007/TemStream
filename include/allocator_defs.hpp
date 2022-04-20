@@ -41,6 +41,10 @@ using StringStream = std::ostringstream;
 template <typename T> using List = std::vector<T>;
 template <typename T> using Deque = std::deque<T>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
+
+extern String &trim(String &);
+extern String &ltrim(String &);
+extern String &rtrim(String &);
 } // namespace TemStream
 #endif
 

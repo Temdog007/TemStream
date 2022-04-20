@@ -54,6 +54,14 @@ class QueryImage : public IQuery
 class QueryAudio : public IQuery
 {
   private:
+	List<WindowProcess> windowNames;
+	enum Source
+	{
+		Device,
+		Window
+	};
+	Source source;
+
 	int selected;
 
   public:

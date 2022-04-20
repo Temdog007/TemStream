@@ -631,7 +631,7 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 }
 
-bool TemStreamGui::addAudio(std::shared_ptr<Audio> ptr)
+bool TemStreamGui::addAudio(std::shared_ptr<Audio> &&ptr)
 {
 	auto pair = audio.emplace(ptr->getSource(), std::move(ptr));
 	return pair.second;
