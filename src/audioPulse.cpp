@@ -243,7 +243,8 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 	{
 		list.emplace_back(deque);
 	}
-	std::remove_if(list.begin(), list.end(), [](const SinkInput &si) { return !si.valid(); });
+	auto iter = std::remove_if(list.begin(), list.end(), [](const SinkInput &si) { return !si.valid(); });
+	list.erase(iter, list.end());
 	return list;
 }
 std::optional<List<WindowProcess>> Audio::getListOfWindowsWithAudio()
