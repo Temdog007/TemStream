@@ -212,6 +212,8 @@ template <class T> class Allocator
 
 	T *allocate(const size_t n);
 	void deallocate(T *const p, size_t);
+
+	size_t getBlockSize(const T *const p) const;
 };
 
 #if __ANDROID__
@@ -292,6 +294,19 @@ template <class T> void Allocator<T>::deallocate(T *const ptr, const size_t)
 
 	ad.used -= freeNode->blockSize;
 	ad.coalescence(prev, freeNode);
+}
+template <class T> size_t Allocator<T>::getBlockSize(const T *const ptr) const
+{
+	if (ptr == nullptr)
+	{
+		return 0;
+	}
+	LOCK(ad.mutex);
+
+	const size_t currentAddress = reinterpret_cast<size_t>(ptr);
+	const size_t headerAddress = currentAddress - sizeof(FreeListNode);
+	const FreeListNode *freeNode = reinterpret_cast<const FreeListNode *>(headerAddress);
+	return freeNode->blockSize;
 }
 } // namespace TemStream
 

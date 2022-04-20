@@ -28,6 +28,20 @@ class FileDisplay
 		return files;
 	}
 };
+class SDL_MemoryFunctions
+{
+  private:
+	SDL_malloc_func mallocFunc;
+	SDL_calloc_func callocFunc;
+	SDL_realloc_func reallocFunc;
+	SDL_free_func freeFunc;
+
+  public:
+	SDL_MemoryFunctions();
+
+	void SetToSDL() const;
+	void GetFromSDL();
+};
 class TemStreamGui
 {
   private:
@@ -45,6 +59,7 @@ class TemStreamGui
 	ImGuiIO &io;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
+	const String32 allUTF32;
 	float fontSize;
 	int fontIndex;
 	bool showLogs;
@@ -60,6 +75,8 @@ class TemStreamGui
 	void onDisconnect(bool);
 
 	ImVec2 drawMainMenuBar(bool);
+
+	static String32 getAllUTF32();
 
 	friend class TemStreamGuiLogger;
 

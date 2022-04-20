@@ -61,7 +61,6 @@ class Sink
 	{
 		if (id > 0)
 		{
-			(*logger)(Logger::Trace) << "Closing sink " << id << std::endl;
 			unloadSink(id);
 			id = -1;
 		}

@@ -176,6 +176,7 @@ end:
 	{
 		SDL_Delay(100);
 	}
+	logger = nullptr;
 	return result;
 }
 ServerPeer::ServerPeer(const Address &address, unique_ptr<Socket> s)

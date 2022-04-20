@@ -18,13 +18,51 @@ const unsigned int FontSizes[]{Cousine_compressed_size,		DroidSans_compressed_si
 const ImWchar MinCharacters = 0x1;
 const ImWchar MaxCharacters = 0x1FFFF;
 
+uint8_t *allocatorMalloc(const size_t size)
+{
+	TemStream::Allocator<uint8_t> a;
+	return a.allocate(size);
+}
+
+void allocatorFree(uint8_t *old)
+{
+	TemStream::Allocator<uint8_t> a;
+	a.deallocate(old, 1);
+}
+
+uint8_t *allocatorCalloc(const size_t num, const size_t size)
+{
+	uint8_t *data = allocatorMalloc(size * num);
+	memset(data, 0, size);
+	return data;
+}
+
+uint8_t *allocatorImGuiAlloc(const size_t size, void *)
+{
+	return allocatorMalloc(size);
+}
+
+void allocatorImGuiFree(uint8_t *ptr, void *)
+{
+	return allocatorFree(ptr);
+}
+
+uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
+{
+	TemStream::Allocator<uint8_t> a;
+	const size_t oldSize = a.getBlockSize(old);
+	uint8_t *data = allocatorMalloc(newSize);
+	memcpy(data, old, oldSize);
+	a.deallocate(old, 1);
+	return data;
+}
+
 namespace TemStream
 {
-String32 allUTF32;
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr), fontFiles(), io(io),
-	  window(nullptr), renderer(nullptr), fontSize(24.f), fontIndex(1), showLogs(false), showDisplays(false),
-	  showAudio(false), showFont(false), showStats(false)
+	  window(nullptr), renderer(nullptr), allUTF32(getAllUTF32()), fontSize(24.f), fontIndex(1), showLogs(false),
+	  showDisplays(false), showAudio(false), showFont(false), showStats(false)
 {
 }
 
@@ -95,6 +133,13 @@ void TemStreamGui::pushFont()
 
 bool TemStreamGui::init()
 {
+#if USE_CUSTOM_ALLOCATOR
+	SDL_MemoryFunctions memFuncs;
+	memFuncs.GetFromSDL();
+	SDL_SetMemoryFunctions((SDL_malloc_func)allocatorMalloc, (SDL_calloc_func)allocatorCalloc,
+						   (SDL_realloc_func)allocatorReallocate, (SDL_free_func)allocatorFree);
+#endif
+
 	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
 	{
 		logSDLError("SDL error");
@@ -821,13 +866,23 @@ void TemStreamGui::handleMessage(MessagePacket &&m)
 	}
 }
 
-int TemStreamGui::run()
+String32 TemStreamGui::getAllUTF32()
 {
+	String32 s;
 	for (ImWchar c = MinCharacters; c < MaxCharacters; ++c)
 	{
-		allUTF32 += c;
+		s += c;
 	}
+	return s;
+}
+
+int TemStreamGui::run()
+{
 	IMGUI_CHECKVERSION();
+#if USE_CUSTOM_ALLOCATOR
+	ImGui::SetAllocatorFunctions((ImGuiMemAllocFunc)allocatorImGuiAlloc, (ImGuiMemFreeFunc)allocatorImGuiFree, nullptr);
+#endif
+
 	ImGui::CreateContext();
 
 	ImGuiIO &io = ImGui::GetIO();
@@ -1013,6 +1068,7 @@ int TemStreamGui::run()
 	{
 		SDL_Delay(100);
 	}
+	logger = nullptr;
 	return EXIT_SUCCESS;
 }
 TemStreamGuiLogger::TemStreamGuiLogger(TemStreamGui &gui) : gui(gui)
@@ -1064,5 +1120,17 @@ void FileDisplay::loadFiles()
 		(*logger)(Logger::Error) << e.what() << std::endl;
 		files.clear();
 	}
+}
+SDL_MemoryFunctions::SDL_MemoryFunctions()
+	: mallocFunc(nullptr), callocFunc(nullptr), reallocFunc(nullptr), freeFunc(nullptr)
+{
+}
+void SDL_MemoryFunctions::GetFromSDL()
+{
+	SDL_GetMemoryFunctions(&mallocFunc, &callocFunc, &reallocFunc, &freeFunc);
+}
+void SDL_MemoryFunctions::SetToSDL() const
+{
+	SDL_SetMemoryFunctions(mallocFunc, callocFunc, reallocFunc, freeFunc);
 }
 } // namespace TemStream
