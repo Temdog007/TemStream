@@ -52,7 +52,7 @@ class QueryImage : public IQuery
 class QueryAudio : public IQuery
 {
   private:
-	List<WindowProcess> windowNames;
+	Set<WindowProcess> windowNames;
 	enum Source
 	{
 		Device,

@@ -10,6 +10,7 @@ using String32 = std::basic_string<char32_t, std::char_traits<char32_t>, Allocat
 using StringStream = std::basic_ostringstream<char, std::char_traits<char>, Allocator<char>>;
 template <typename T> using List = std::vector<T, Allocator<T>>;
 template <typename T> using Deque = std::deque<T, Allocator<T>>;
+template <typename K> using Set = std::set<K, std::less<K>, Allocator<K>>;
 template <typename K, typename V>
 using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<std::pair<const K, V>>>;
 } // namespace TemStream
@@ -45,6 +46,7 @@ using String32 = std::u32string;
 using StringStream = std::ostringstream;
 template <typename T> using List = std::vector<T>;
 template <typename T> using Deque = std::deque<T>;
+template <typename K, typename V> using Set = std::set<K, V>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
 #endif
 

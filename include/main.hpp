@@ -14,6 +14,7 @@
 #include <mutex>
 #include <new>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -79,7 +80,8 @@ enum TemStreamEvent : int32_t
 	HandleMessagePacket,
 	HandleMessagePackets,
 	SetQueryData,
-	SetSurfaceToStreamDisplay
+	SetSurfaceToStreamDisplay,
+	AddAudio
 };
 class SDL_MutexWrapper
 {

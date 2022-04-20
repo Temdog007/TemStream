@@ -533,7 +533,14 @@ void TemStreamGui::draw()
 			}
 			if (queryData->draw())
 			{
-				queryData->execute();
+				if (isConnected())
+				{
+					queryData->execute();
+				}
+				else
+				{
+					(*logger)(Logger::Error) << "Cannot send data if not connected to a server" << std::endl;
+				}
 				opened = false;
 			}
 		}
@@ -806,6 +813,7 @@ void TemStreamGui::sendPacket(MessagePacket &&packet, const bool handleLocally)
 	LOCK(peerMutex);
 	if (peer == nullptr)
 	{
+		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
 		return;
 	}
 	if (!(*peer)->sendPacket(packet))
@@ -826,6 +834,7 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	LOCK(peerMutex);
 	if (peer == nullptr)
 	{
+		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
 		return;
 	}
 	for (const auto &packet : packets)
@@ -1037,6 +1046,12 @@ int TemStreamGui::run()
 					}
 					SDL_FreeSurface(surface);
 					deallocate(source);
+				}
+				break;
+				case TemStreamEvent::AddAudio: {
+					Audio *audio = reinterpret_cast<Audio *>(event.user.data1);
+					auto ptr = shared_ptr<Audio>(audio, Deleter<Audio>());
+					gui.addAudio(std::move(ptr));
 				}
 				break;
 				default:

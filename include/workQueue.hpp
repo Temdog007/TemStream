@@ -43,7 +43,43 @@ class LoadSurface
 
 	void run() const;
 };
-using Task = std::variant<CheckFile, SendImage, LoadSurface>;
+class StartPlayback
+{
+  private:
+	MessageSource source;
+	std::optional<String> name;
+
+  public:
+	StartPlayback(const MessageSource &, const std::optional<String> &);
+	~StartPlayback();
+
+	void run() const;
+};
+class StartRecording
+{
+  private:
+	MessageSource source;
+	std::optional<String> name;
+
+  public:
+	StartRecording(const MessageSource &, const std::optional<String> &);
+	~StartRecording();
+
+	void run() const;
+};
+class StartWindowRecording
+{
+  private:
+	MessageSource source;
+	WindowProcess windowProcess;
+
+  public:
+	StartWindowRecording(const MessageSource &, const WindowProcess &);
+	~StartWindowRecording();
+
+	void run() const;
+};
+using Task = std::variant<CheckFile, SendImage, LoadSurface, StartPlayback, StartRecording, StartWindowRecording>;
 } // namespace Work
 
 class WorkQueue

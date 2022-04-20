@@ -116,6 +116,84 @@ void LoadSurface::run() const
 		deallocate(ptr);
 	}
 }
+StartPlayback::StartPlayback(const MessageSource &source, const std::optional<String> &name)
+	: source(source), name(name)
+{
+}
+StartPlayback::~StartPlayback()
+{
+}
+void StartPlayback::run() const
+{
+	auto ptr = Audio::startPlayback(source, name.has_value() ? name->c_str() : nullptr);
+	if (ptr == nullptr)
+	{
+		return;
+	}
+
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::AddAudio;
+	e.user.data1 = ptr.get();
+	if (tryPushEvent(e))
+	{
+		ptr.release();
+	}
+
+	// Pointer will deleted if not released
+}
+StartRecording::StartRecording(const MessageSource &source, const std::optional<String> &name)
+	: source(source), name(name)
+{
+}
+StartRecording::~StartRecording()
+{
+}
+void StartRecording::run() const
+{
+	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr);
+	if (ptr == nullptr)
+	{
+		return;
+	}
+
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::AddAudio;
+	e.user.data1 = ptr.get();
+	if (tryPushEvent(e))
+	{
+		ptr.release();
+	}
+
+	// Pointer will deleted if not released
+}
+StartWindowRecording::StartWindowRecording(const MessageSource &source, const WindowProcess &wp)
+	: source(source), windowProcess(wp)
+{
+}
+StartWindowRecording::~StartWindowRecording()
+{
+}
+void StartWindowRecording::run() const
+{
+	auto ptr = Audio::startRecordingWindow(source, windowProcess);
+	if (ptr == nullptr)
+	{
+		return;
+	}
+
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::AddAudio;
+	e.user.data1 = ptr.get();
+	if (tryPushEvent(e))
+	{
+		ptr.release();
+	}
+
+	// Pointer will deleted if not released
+}
 } // namespace Work
 WorkQueue::WorkQueue() : tasks(), mutex()
 {

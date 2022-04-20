@@ -2,6 +2,11 @@
 
 namespace TemStream
 {
+bool WindowProcess::operator<(const WindowProcess &p) const
+{
+	return std::hash<WindowProcess>()(*this) < std::hash<WindowProcess>()(p);
+}
+
 Audio::Audio(const MessageSource &source, const bool recording)
 	: buffer(), recordBuffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
 	  code(SDLK_UNKNOWN), volume(1.f), recording(recording)
@@ -60,15 +65,15 @@ SDL_AudioSpec Audio::getAudioSpec()
 	desired.samples = 4096;
 	return desired;
 }
-shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
+unique_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
 {
 	Audio *a = allocate<Audio>(source, true);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return startRecording(a, OPUS_APPLICATION_VOIP);
 }
-shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
+unique_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 {
-	auto a = shared_ptr<Audio>(audioPtr);
+	auto a = unique_ptr<Audio>(audioPtr);
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::recordCallback;
@@ -94,9 +99,9 @@ shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }
-shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
+unique_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
 {
-	auto a = shared_ptr<Audio>(allocate<Audio>(source, false), Deleter<Audio>());
+	auto a = unique_ptr<Audio>(allocate<Audio>(source, false), Deleter<Audio>());
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::playbackCallback;

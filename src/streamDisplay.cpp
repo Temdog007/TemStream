@@ -149,11 +149,8 @@ bool StreamDisplay::operator()(AudioMessage &&audio)
 	}
 	else
 	{
-		auto ptr = Audio::startPlayback(source, NULL);
-		if (ptr)
-		{
-			return gui.addAudio(std::move(ptr));
-		}
+		Work::Task task(Work::StartPlayback(source, std::nullopt));
+		(*gui).addWork(std::move(task));
 	}
 	return true;
 }

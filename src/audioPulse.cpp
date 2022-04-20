@@ -33,8 +33,8 @@ class SinkInput
 	static std::optional<String> runCommand(const char *);
 	static bool runCommand(const char *, Deque<String> &);
 
-	friend std::optional<List<WindowProcess>> Audio::getListOfWindowsWithAudio();
-	friend shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &, const WindowProcess &s);
+	friend std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio();
+	friend unique_ptr<Audio> Audio::startRecordingWindow(const MessageSource &, const WindowProcess &s);
 
 	friend std::ostream &operator<<(std::ostream &os, const SinkInput &si)
 	{
@@ -246,21 +246,21 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 	list.erase(iter, list.end());
 	return list;
 }
-std::optional<List<WindowProcess>> Audio::getListOfWindowsWithAudio()
+std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio()
 {
 	const auto sinks = SinkInput::getSinks();
 	if (sinks.has_value())
 	{
-		List<WindowProcess> list;
+		Set<WindowProcess> list;
 		for (const auto &sink : *sinks)
 		{
-			list.push_back(WindowProcess{sink.processName, sink.processId});
+			list.insert(WindowProcess{sink.processName, sink.processId});
 		}
 		return list;
 	}
 	return std::nullopt;
 }
-shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const WindowProcess &wp)
+unique_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const WindowProcess &wp)
 {
 	using namespace std::chrono_literals;
 

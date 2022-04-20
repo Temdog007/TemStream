@@ -9,6 +9,8 @@ struct WindowProcess
 {
 	String name;
 	int32_t id;
+
+	bool operator<(const WindowProcess &p) const;
 };
 class Audio
 {
@@ -49,7 +51,7 @@ class Audio
   protected:
 	Audio(const MessageSource &, bool);
 
-	static shared_ptr<Audio> startRecording(Audio *, int);
+	static unique_ptr<Audio> startRecording(Audio *, int);
 
   public:
 	Audio() = delete;
@@ -101,11 +103,11 @@ class Audio
 
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
 
-	static std::optional<List<WindowProcess>> getListOfWindowsWithAudio();
-	static shared_ptr<Audio> startRecordingWindow(const MessageSource &, const WindowProcess &);
+	static std::optional<Set<WindowProcess>> getWindowsWithAudio();
+	static unique_ptr<Audio> startRecordingWindow(const MessageSource &, const WindowProcess &);
 
-	static shared_ptr<Audio> startRecording(const MessageSource &, const char *);
-	static shared_ptr<Audio> startPlayback(const MessageSource &, const char *);
+	static unique_ptr<Audio> startRecording(const MessageSource &, const char *);
+	static unique_ptr<Audio> startPlayback(const MessageSource &, const char *);
 
 	class Lock
 	{
@@ -118,3 +120,15 @@ class Audio
 	};
 };
 } // namespace TemStream
+namespace std
+{
+template <> struct hash<TemStream::WindowProcess>
+{
+	size_t operator()(const TemStream::WindowProcess &s) const
+	{
+		size_t value = hash<TemStream::String>()(s.name);
+		TemStream::hash_combine(value, hash<int32_t>()(s.id));
+		return value;
+	}
+};
+} // namespace std

@@ -84,7 +84,7 @@ bool QueryAudio::draw()
 		source = static_cast<Source>(s);
 		if (source == Source::Window)
 		{
-			auto opt = Audio::getListOfWindowsWithAudio();
+			auto opt = Audio::getWindowsWithAudio();
 			if (opt.has_value())
 			{
 				windowNames = std::move(*opt);
@@ -103,14 +103,15 @@ bool QueryAudio::draw()
 		}
 	}
 	break;
-	case Source::Window:
-		for (size_t i = 0; i < windowNames.size(); ++i)
+	case Source::Window: {
+		size_t i = 0;
+		for (const auto &wp : windowNames)
 		{
-			const auto &wp = windowNames[i];
 			snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.id);
-			ImGui::RadioButton(buffer, &selected, i);
+			ImGui::RadioButton(buffer, &selected, i++);
 		}
-		break;
+	}
+	break;
 	default:
 		return false;
 	}
@@ -129,23 +130,23 @@ void QueryAudio::execute() const
 			return;
 		}
 		const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
-		auto ptr = Audio::startRecording(getSource(), name);
-		if (ptr)
-		{
-			gui.addAudio(std::move(ptr));
-		}
+		const auto s = name == nullptr ? std::nullopt : std::make_optional<String>(name);
+		Work::Task task(Work::StartRecording(getSource(), s));
+		(*gui).addWork(std::move(task));
 	}
 	break;
 	case Source::Window: {
 		const size_t index = static_cast<size_t>(selected);
-		if (index >= windowNames.size())
+		size_t i = 0;
+		for (const auto &wp : windowNames)
 		{
-			break;
-		}
-		auto ptr = Audio::startRecordingWindow(getSource(), windowNames[index]);
-		if (ptr)
-		{
-			gui.addAudio(std::move(ptr));
+			if (i == index)
+			{
+				Work::Task task(Work::StartWindowRecording(getSource(), wp));
+				(*gui).addWork(std::move(task));
+				break;
+			}
+			++i;
 		}
 	}
 	break;
