@@ -88,7 +88,7 @@ SDL_MutexWrapper::SDL_MutexWrapper() : mutex(SDL_CreateMutex())
 {
 	if (mutex == nullptr)
 	{
-		(*logger)(Logger::Error) << "Failed to create mutex: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to create mutex");
 	}
 }
 SDL_MutexWrapper::~SDL_MutexWrapper()
@@ -132,10 +132,14 @@ bool tryPushEvent(SDL_Event &e)
 {
 	if (SDL_PushEvent(&e) != 1)
 	{
-		(*logger)(Logger::Error) << "Failed to push SDL event: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to push SDL event");
 		return false;
 	}
 	return true;
+}
+void logSDLError(const char *str)
+{
+	(*logger)(Logger::Error) << str << ": " << SDL_GetError() << std::endl;
 }
 String &trim(String &s)
 {

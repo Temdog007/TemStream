@@ -97,7 +97,7 @@ bool TemStreamGui::init()
 {
 	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
 	{
-		(*logger)(Logger::Error) << "SDL error: " << SDL_GetError() << std::endl;
+		logSDLError("SDL error");
 		return false;
 	}
 
@@ -112,20 +112,20 @@ bool TemStreamGui::init()
 							  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (window == nullptr)
 	{
-		(*logger)(Logger::Error) << "Failed to create window: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to create window");
 		return false;
 	}
 
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (renderer == nullptr)
 	{
-		(*logger)(Logger::Error) << "Failed to create renderer: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to create renderer");
 		return false;
 	}
 
 	if (SDL_AddTimer(1, (SDL_TimerCallback)updatePeer, this) == 0)
 	{
-		(*logger)(Logger::Error) << "Failed to add timer: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to add timer");
 		return false;
 	}
 

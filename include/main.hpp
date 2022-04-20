@@ -134,6 +134,8 @@ extern bool tryPushEvent(SDL_Event &);
 
 extern bool isSpace(char);
 
+extern void logSDLError(const char *);
+
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;

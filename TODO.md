@@ -221,7 +221,7 @@
 - [x] Handle streaming audio from windows
 - [x] Add file browser
 - [x] Add keyboard shortcuts
-- [ ] Implement screenshot
+- [x] Implement screenshot (and text copy)
 
 ### Apr 20, 2022
 - [ ] Make client explicitly create a stream

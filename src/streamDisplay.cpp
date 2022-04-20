@@ -20,14 +20,14 @@ bool StreamDisplay::draw()
 	{
 		return true;
 	}
-	StreamDisplayDraw d(*this);
-	return std::visit(d, data);
+	return std::visit(StreamDisplayDraw(*this), data);
 }
 void StreamDisplay::drawContextMenu()
 {
 	if (ImGui::BeginPopupContextWindow("Stream Display Flags"))
 	{
 		drawFlagCheckboxes();
+		std::visit(StreamDisplayContextMenu(*this), data);
 		ImGui::EndPopup();
 	}
 }
@@ -93,7 +93,7 @@ bool StreamDisplay::operator()(const bool imageState)
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
 		if (src == nullptr)
 		{
-			(*logger)(Logger::Error) << "Failed to load image data: " << SDL_GetError() << std::endl;
+			logSDLError("Failed to load image data");
 			return false;
 		}
 		SDL_Surface *surface = IMG_Load_RW(src, 0);
@@ -108,7 +108,7 @@ bool StreamDisplay::operator()(const bool imageState)
 			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.renderer, surface);
 			if (texture == nullptr)
 			{
-				(*logger)(Logger::Error) << "Texture creation error: " << SDL_GetError() << std::endl;
+				logSDLError("Texture creation error");
 				success = false;
 			}
 			data = SDL_TextureWrapper(texture);
@@ -254,7 +254,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 			SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, audioWidth, audioHeight);
 		if (texture == nullptr)
 		{
-			(*logger)(Logger::Error) << "Failed to create texture: " << SDL_GetError() << std::endl;
+			logSDLError("Failed to create texture");
 			return false;
 		}
 	}
@@ -314,5 +314,78 @@ SDL_TextureWrapper &SDL_TextureWrapper::operator=(SDL_TextureWrapper &&w)
 	texture = w.texture;
 	w.texture = nullptr;
 	return *this;
+}
+StreamDisplayContextMenu::StreamDisplayContextMenu(StreamDisplay &d) : display(d)
+{
+}
+StreamDisplayContextMenu::~StreamDisplayContextMenu()
+{
+}
+void StreamDisplayContextMenu::operator()(std::monostate)
+{
+}
+void StreamDisplayContextMenu::operator()(const Bytes &)
+{
+}
+void StreamDisplayContextMenu::operator()(const String &s)
+{
+	if (ImGui::Button("Copy"))
+	{
+		if (SDL_SetClipboardText(s.c_str()) == 0)
+		{
+			(*logger)(Logger::Info) << "Copied text to clipboard" << std::endl;
+		}
+		else
+		{
+			logSDLError("Failed to copy to clipboard");
+		}
+	}
+}
+void StreamDisplayContextMenu::operator()(SDL_TextureWrapper &w)
+{
+	auto texture = w.getTexture();
+	if (texture != nullptr && ImGui::Button("Screenshot"))
+	{
+		int w, h;
+		if (SDL_QueryTexture(texture, nullptr, nullptr, &w, &h) != 0)
+		{
+			logSDLError("Failed to query texture");
+			return;
+		}
+
+		auto renderer = display.gui.renderer;
+		auto surface = SDL_CreateRGBSurface(0, w, h, 32, 0, 0, 0, 0);
+		auto t = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
+		if (t == nullptr || surface == nullptr)
+		{
+			logSDLError("Failed to create screenshot");
+			goto end;
+		}
+
+		if (SDL_SetRenderTarget(renderer, t) != 0 || SDL_RenderCopy(renderer, texture, nullptr, nullptr) != 0 ||
+			SDL_RenderReadPixels(renderer, nullptr, surface->format->format, surface->pixels, surface->pitch) != 0)
+		{
+			logSDLError("Error taking screenshot");
+			goto end;
+		}
+
+		{
+			char buffer[1024];
+			const time_t t = time(NULL);
+			strftime(buffer, sizeof(buffer), "screenshot_%y_%m_%d_%H_%M_%S.png", localtime(&t));
+			if (IMG_SavePNG(surface, buffer) == 0)
+			{
+				*logger << "Saved screenshot to " << buffer << std::endl;
+			}
+			else
+			{
+				(*logger)(Logger::Error) << "Failed to save screenshot: " << IMG_GetError() << std::endl;
+			}
+		}
+
+	end:
+		SDL_DestroyTexture(t);
+		SDL_FreeSurface(surface);
+	}
 }
 } // namespace TemStream

@@ -53,6 +53,7 @@ class StreamDisplay
 
 	friend class TemStreamGui;
 	friend class StreamDisplayUpdate;
+	friend class StreamDisplayContextMenu;
 	friend class StreamDisplayDraw;
 
   protected:
@@ -97,6 +98,20 @@ class StreamDisplay
 	// For image message
 	bool operator()(bool);
 	bool operator()(const Bytes &);
+};
+struct StreamDisplayContextMenu
+{
+  private:
+	StreamDisplay &display;
+
+  public:
+	StreamDisplayContextMenu(StreamDisplay &);
+	~StreamDisplayContextMenu();
+
+	void operator()(std::monostate);
+	void operator()(const String &);
+	void operator()(SDL_TextureWrapper &);
+	void operator()(const Bytes &);
 };
 struct StreamDisplayDraw
 {

@@ -77,7 +77,7 @@ std::shared_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int applicat
 	a->id = SDL_OpenAudioDevice(a->name.c_str(), SDL_TRUE, &desired, &a->spec, 0);
 	if (a->id == 0)
 	{
-		(*logger)(Logger::Error) << "Failed to open audio device: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to open audio device");
 		return nullptr;
 	}
 
@@ -105,7 +105,7 @@ std::shared_ptr<Audio> Audio::startPlayback(const MessageSource &source, const c
 	a->id = SDL_OpenAudioDevice(name, SDL_FALSE, &desired, &a->spec, 0);
 	if (a->id == 0)
 	{
-		(*logger)(Logger::Error) << "Failed to open audio device: " << SDL_GetError() << std::endl;
+		logSDLError("Failed to open audio device");
 		return nullptr;
 	}
 
