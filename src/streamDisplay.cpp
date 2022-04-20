@@ -20,14 +20,14 @@ bool StreamDisplay::draw()
 	{
 		return true;
 	}
-	return std::visit(StreamDisplayDraw(*this), data);
+	return std::visit(StreamDisplay::Draw(*this), data);
 }
 void StreamDisplay::drawContextMenu()
 {
 	if (ImGui::BeginPopupContextWindow("Stream Display Flags"))
 	{
 		drawFlagCheckboxes();
-		std::visit(StreamDisplayContextMenu(*this), data);
+		std::visit(StreamDisplay::ContextMenu(*this), data);
 		ImGui::EndPopup();
 	}
 }
@@ -78,16 +78,24 @@ bool StreamDisplay::operator()(TextMessage &&message)
 }
 bool StreamDisplay::operator()(ImageMessage &&message)
 {
-	return std::visit(*this, std::move(message));
+	return std::visit(ImageMessageHandler(*this), std::move(message));
 }
-bool StreamDisplay::operator()(const bool imageState)
+StreamDisplay::ImageMessageHandler::ImageMessageHandler(StreamDisplay &display) : display(display)
 {
-	if (imageState)
-	{
-		data = Bytes();
-		return true;
-	}
-	if (Bytes *bytes = std::get_if<Bytes>(&data))
+}
+StreamDisplay::ImageMessageHandler::~ImageMessageHandler()
+{
+}
+bool StreamDisplay::ImageMessageHandler::operator()(const uint64_t size)
+{
+	Bytes bytes;
+	bytes.reserve(size);
+	display.data.emplace<Bytes>(std::move(bytes));
+	return true;
+}
+bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
+{
+	if (Bytes *bytes = std::get_if<Bytes>(&display.data))
 	{
 		(*logger)(Logger::Trace) << "Reading image: " << bytes->size() / KB(1) << "KB" << std::endl;
 		SDL_RWops *src = SDL_RWFromConstMem(bytes->data(), bytes->size());
@@ -105,13 +113,13 @@ bool StreamDisplay::operator()(const bool imageState)
 
 		bool success = true;
 		{
-			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.getRenderer(), surface);
+			SDL_Texture *texture = SDL_CreateTextureFromSurface(display.gui.getRenderer(), surface);
 			if (texture == nullptr)
 			{
 				logSDLError("Texture creation error");
 				success = false;
 			}
-			data = SDL_TextureWrapper(texture);
+			display.data.emplace<SDL_TextureWrapper>(texture);
 		}
 		SDL_FreeSurface(surface);
 		return success;
@@ -120,9 +128,9 @@ bool StreamDisplay::operator()(const bool imageState)
 	logger->AddError("Stream display is in an invalid state");
 	return false;
 }
-bool StreamDisplay::operator()(const Bytes &bytes)
+bool StreamDisplay::ImageMessageHandler::operator()(Bytes &&bytes)
 {
-	auto ptr = std::get_if<Bytes>(&data);
+	auto ptr = std::get_if<Bytes>(&display.data);
 	if (ptr == nullptr)
 	{
 		logger->AddError("Stream display is in an invalid state");
@@ -177,17 +185,17 @@ bool StreamDisplay::operator()(RequestPeers &&)
 	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.");
 	return false;
 }
-StreamDisplayDraw::StreamDisplayDraw(StreamDisplay &d) : display(d)
+StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)
 {
 }
-StreamDisplayDraw::~StreamDisplayDraw()
+StreamDisplay::Draw::~Draw()
 {
 }
-bool StreamDisplayDraw::operator()(std::monostate)
+bool StreamDisplay::Draw::operator()(std::monostate)
 {
 	return true;
 }
-bool StreamDisplayDraw::operator()(const String &s)
+bool StreamDisplay::Draw::operator()(const String &s)
 {
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
@@ -209,7 +217,7 @@ bool StreamDisplayDraw::operator()(const String &s)
 	ImGui::End();
 	return true;
 }
-bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
+bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 {
 	auto &texture = t.getTexture();
 	if (texture == nullptr)
@@ -229,7 +237,7 @@ bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 	ImGui::End();
 	return true;
 }
-bool StreamDisplayDraw::operator()(CheckAudio &t)
+bool StreamDisplay::Draw::operator()(CheckAudio &t)
 {
 	auto ptr = display.gui.getAudio(display.getSource());
 	if (ptr == nullptr)
@@ -293,7 +301,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 
 	return operator()(static_cast<SDL_TextureWrapper &>(t));
 }
-bool StreamDisplayDraw::operator()(const Bytes &)
+bool StreamDisplay::Draw::operator()(const Bytes &)
 {
 	return true;
 }
@@ -309,25 +317,19 @@ SDL_TextureWrapper::~SDL_TextureWrapper()
 	SDL_DestroyTexture(texture);
 	texture = nullptr;
 }
-SDL_TextureWrapper &SDL_TextureWrapper::operator=(SDL_TextureWrapper &&w)
-{
-	texture = w.texture;
-	w.texture = nullptr;
-	return *this;
-}
-StreamDisplayContextMenu::StreamDisplayContextMenu(StreamDisplay &d) : display(d)
+StreamDisplay::ContextMenu::ContextMenu(StreamDisplay &d) : display(d)
 {
 }
-StreamDisplayContextMenu::~StreamDisplayContextMenu()
+StreamDisplay::ContextMenu::~ContextMenu()
 {
 }
-void StreamDisplayContextMenu::operator()(std::monostate)
+void StreamDisplay::ContextMenu::operator()(std::monostate)
 {
 }
-void StreamDisplayContextMenu::operator()(const Bytes &)
+void StreamDisplay::ContextMenu::operator()(const Bytes &)
 {
 }
-void StreamDisplayContextMenu::operator()(const String &s)
+void StreamDisplay::ContextMenu::operator()(const String &s)
 {
 	if (ImGui::Button("Copy"))
 	{
@@ -341,7 +343,7 @@ void StreamDisplayContextMenu::operator()(const String &s)
 		}
 	}
 }
-void StreamDisplayContextMenu::operator()(SDL_TextureWrapper &w)
+void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 {
 	auto texture = w.getTexture();
 	if (texture != nullptr && ImGui::Button("Screenshot"))

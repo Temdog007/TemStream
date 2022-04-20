@@ -17,7 +17,7 @@ class SDL_TextureWrapper
 	virtual ~SDL_TextureWrapper();
 
 	SDL_TextureWrapper &operator=(const SDL_TextureWrapper &) = delete;
-	SDL_TextureWrapper &operator=(SDL_TextureWrapper &&);
+	SDL_TextureWrapper &operator=(SDL_TextureWrapper &&) = delete;
 
 	SDL_Texture *&getTexture()
 	{
@@ -52,9 +52,49 @@ class StreamDisplay
 	bool visible;
 
 	friend class TemStreamGui;
-	friend class StreamDisplayUpdate;
-	friend class StreamDisplayContextMenu;
-	friend class StreamDisplayDraw;
+
+	struct ContextMenu
+	{
+	  private:
+		StreamDisplay &display;
+
+	  public:
+		ContextMenu(StreamDisplay &);
+		~ContextMenu();
+
+		void operator()(std::monostate);
+		void operator()(const String &);
+		void operator()(SDL_TextureWrapper &);
+		void operator()(const Bytes &);
+	};
+	struct ImageMessageHandler
+	{
+	  private:
+		StreamDisplay &display;
+
+	  public:
+		ImageMessageHandler(StreamDisplay &);
+		~ImageMessageHandler();
+
+		bool operator()(uint64_t);
+		bool operator()(std::monostate);
+		bool operator()(Bytes &&);
+	};
+	struct Draw
+	{
+	  private:
+		StreamDisplay &display;
+
+	  public:
+		Draw(StreamDisplay &);
+		~Draw();
+
+		bool operator()(std::monostate);
+		bool operator()(const String &);
+		bool operator()(SDL_TextureWrapper &);
+		bool operator()(CheckAudio &);
+		bool operator()(const Bytes &);
+	};
 
   protected:
 	void drawContextMenu();
@@ -94,38 +134,5 @@ class StreamDisplay
 	bool operator()(PeerInformation &&);
 	bool operator()(PeerInformationList &&);
 	bool operator()(RequestPeers &&);
-
-	// For image message
-	bool operator()(bool);
-	bool operator()(const Bytes &);
-};
-struct StreamDisplayContextMenu
-{
-  private:
-	StreamDisplay &display;
-
-  public:
-	StreamDisplayContextMenu(StreamDisplay &);
-	~StreamDisplayContextMenu();
-
-	void operator()(std::monostate);
-	void operator()(const String &);
-	void operator()(SDL_TextureWrapper &);
-	void operator()(const Bytes &);
-};
-struct StreamDisplayDraw
-{
-  private:
-	StreamDisplay &display;
-
-  public:
-	StreamDisplayDraw(StreamDisplay &);
-	~StreamDisplayDraw();
-
-	bool operator()(std::monostate);
-	bool operator()(const String &);
-	bool operator()(SDL_TextureWrapper &);
-	bool operator()(CheckAudio &);
-	bool operator()(const Bytes &);
 };
 } // namespace TemStream

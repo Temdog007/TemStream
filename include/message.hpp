@@ -40,9 +40,9 @@ struct RequestPeers
 	}
 };
 using TextMessage = String;
-using ImageMessage = std::variant<bool, Bytes>;
+using ImageMessage = std::variant<std::monostate, uint64_t, Bytes>;
 using PeerInformationList = List<PeerInformation>;
-using Message = std::variant<RequestPeers, TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformation,
+using Message = std::variant<TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformation, RequestPeers,
 							 PeerInformationList>;
 
 struct MessageSource

@@ -79,16 +79,15 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	}
 
 	MessagePackets *packets = allocate<MessagePackets>();
-
+	const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 	{
 		MessagePacket packet;
-		packet.message = ImageMessage(true);
+		packet.message = ImageMessage(static_cast<uint64_t>(bytes.size()));
 		packet.source = source;
 		packets->push_back(std::move(packet));
 	}
 	{
 
-		const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 		for (size_t i = 0; i < bytes.size(); i += KB(64))
 		{
 			MessagePacket packet;
@@ -100,7 +99,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	}
 	{
 		MessagePacket packet;
-		packet.message = ImageMessage(false);
+		packet.message = ImageMessage(std::monostate{});
 		packet.source = source;
 		packets->push_back(std::move(packet));
 	}
