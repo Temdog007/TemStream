@@ -157,12 +157,9 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 	{
 		if (ImGui::BeginMenu("File"))
 		{
-			if (ImGui::MenuItem("Open", "Ctrl+O", nullptr))
+			if (ImGui::MenuItem("Open", "Ctrl+O", nullptr, !fileDirectory.has_value()))
 			{
-				if (!fileDirectory.has_value())
-				{
-					fileDirectory.emplace();
-				}
+				fileDirectory.emplace();
 			}
 			if (ImGui::MenuItem("Exit", "", nullptr))
 			{
@@ -191,12 +188,21 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					tryPushEvent(e);
 				}
 				ImGui::SliderInt("Font Type", &fontIndex, 0, io.Fonts->Fonts.size() - 1, "%d",
-								 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+								 ImGuiSliderFlags_NoInput);
 				ImGui::EndMenu();
 			}
-			ImGui::Checkbox("Displays", &showDisplays);
-			ImGui::Checkbox("Audio", &showAudio);
-			ImGui::Checkbox("Logs", &showLogs);
+			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !showDisplays))
+			{
+				showDisplays = true;
+			}
+			if (ImGui::MenuItem("Audio", "Ctrl+A", nullptr, !showAudio))
+			{
+				showAudio = true;
+			}
+			if (ImGui::MenuItem("Logs", "Ctrl+L", nullptr, !showLogs))
+			{
+				showLogs = true;
+			}
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
@@ -230,12 +236,9 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					}
 
 					ImGui::Separator();
-					if (queryData == nullptr)
+					if (ImGui::MenuItem("Send Data", "Ctrl+P", nullptr, queryData == nullptr))
 					{
-						if (ImGui::MenuItem("Send Data", "Ctrl+P", nullptr))
-						{
-							queryData = std::make_unique<QueryText>(*this);
-						}
+						queryData = std::make_unique<QueryText>(*this);
 					}
 				}
 			}
@@ -305,8 +308,8 @@ void TemStreamGui::draw()
 						audioTarget = iter->first;
 					}
 
-					iter->first.print(strBuffer);
 					ImGui::TableNextColumn();
+					iter->first.print(strBuffer);
 					ImGui::Text("%s", strBuffer.data());
 
 					if (recording)
@@ -454,11 +457,11 @@ void TemStreamGui::draw()
 		{
 			for (auto &pair : displays)
 			{
-				ImGui::BeginGroup();
 				pair.first.print(strBuffer);
+				ImGui::PushID(strBuffer.data());
 				ImGui::Text("%s", strBuffer.data());
 				pair.second.drawFlagCheckboxes();
-				ImGui::EndGroup();
+				ImGui::PopID();
 			}
 		}
 		ImGui::End();
@@ -877,6 +880,42 @@ int TemStreamGui::run()
 				break;
 				case TemStreamEvent::ReloadFont:
 					gui.LoadFonts();
+					break;
+				default:
+					break;
+				}
+				break;
+			case SDL_KEYDOWN:
+				if (io.WantCaptureKeyboard)
+				{
+					break;
+				}
+				if ((event.key.keysym.mod & KMOD_CTRL) == 0)
+				{
+					break;
+				}
+				switch (event.key.keysym.sym)
+				{
+				case SDLK_o:
+					if (!gui.fileDirectory.has_value())
+					{
+						gui.fileDirectory.emplace();
+					}
+					break;
+				case SDLK_a:
+					gui.showAudio = !gui.showAudio;
+					break;
+				case SDLK_d:
+					gui.showDisplays = !gui.showDisplays;
+					break;
+				case SDLK_l:
+					gui.showLogs = !gui.showLogs;
+					break;
+				case SDLK_p:
+					if (gui.queryData == nullptr)
+					{
+						gui.queryData = std::make_unique<QueryText>(gui);
+					}
 					break;
 				default:
 					break;
