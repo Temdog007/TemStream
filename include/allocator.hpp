@@ -154,6 +154,16 @@ class AllocatorData
 		close();
 	}
 
+	size_t getTotal() const
+	{
+		return len;
+	}
+
+	size_t getUsed() const
+	{
+		return used;
+	}
+
 	void init(const size_t len, PlacementPolicy policy = PlacementPolicy::Best)
 	{
 		close();
@@ -181,14 +191,14 @@ template <class T> class Allocator
 	Allocator() noexcept : ad(globalAllocatorData)
 	{
 	}
-	Allocator(AllocatorData &ad) noexcept : ad(ad)
+	Allocator(const AllocatorData &ad) noexcept : ad(ad)
 	{
 	}
 	~Allocator()
 	{
 	}
 
-	template <class U> Allocator(Allocator<U> &u) noexcept : ad(u.ad)
+	template <class U> Allocator(const Allocator<U> &u) noexcept : ad(u.ad)
 	{
 	}
 	template <class U> bool operator==(const Allocator<U> &) const noexcept

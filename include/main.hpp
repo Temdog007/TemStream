@@ -65,7 +65,7 @@ namespace fs = std::filesystem;
 #define GB(X) (MB(X) * 1024)
 
 #define _DEBUG !NDEBUG
-#define USE_CUSTOM_ALLOCATOR false
+#define USE_CUSTOM_ALLOCATOR true
 
 namespace TemStream
 {

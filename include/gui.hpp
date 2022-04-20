@@ -43,12 +43,15 @@ class TemStreamGui
 	std::optional<FileDisplay> fileDirectory;
 	List<String> fontFiles;
 	ImGuiIO &io;
+	SDL_Window *window;
+	SDL_Renderer *renderer;
 	float fontSize;
 	int fontIndex;
 	bool showLogs;
 	bool showDisplays;
 	bool showAudio;
 	bool showFont;
+	bool showStats;
 
 	void LoadFonts();
 
@@ -58,10 +61,9 @@ class TemStreamGui
 
 	ImVec2 drawMainMenuBar(bool);
 
-  public:
-	SDL_Window *window;
-	SDL_Renderer *renderer;
+	friend class TemStreamGuiLogger;
 
+  public:
 	TemStreamGui(ImGuiIO &);
 	TemStreamGui(const TemStreamGui &) = delete;
 	TemStreamGui(TemStreamGui &&) = delete;
@@ -76,6 +78,15 @@ class TemStreamGui
 	ImGuiIO &getIO()
 	{
 		return io;
+	}
+
+	SDL_Renderer *getRenderer()
+	{
+		return renderer;
+	}
+	SDL_Window *getWindow()
+	{
+		return window;
 	}
 
 	bool init();

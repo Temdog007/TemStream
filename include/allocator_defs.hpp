@@ -9,6 +9,7 @@ using String = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
 using String32 = std::basic_string<char32_t, std::char_traits<char32_t>, Allocator<char32_t>>;
 using StringStream = std::basic_ostringstream<char, std::char_traits<char>, Allocator<char>>;
 template <typename T> using List = std::vector<T, Allocator<T>>;
+template <typename T> using Deque = std::deque<T, Allocator<T>>;
 template <typename K, typename V>
 using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<std::pair<const K, V>>>;
 } // namespace TemStream
@@ -29,9 +30,12 @@ template <> struct hash<TemStream::String>
 } // namespace std
 namespace ImGui
 {
-IMGUI_API bool InputText(const char *label, TemStream::String *str, ImGuiInputTextFlags flags = 0,
+IMGUI_API bool InputText(const char *, TemStream::String *, ImGuiInputTextFlags flags = 0,
 						 ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
-}
+IMGUI_API bool InputTextMultiline(const char *, TemStream::String *, const ImVec2 &size = ImVec2(0, 0),
+								  ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr,
+								  void *user_data = nullptr);
+} // namespace ImGui
 namespace TemStream
 {
 #else
@@ -42,12 +46,11 @@ using StringStream = std::ostringstream;
 template <typename T> using List = std::vector<T>;
 template <typename T> using Deque = std::deque<T>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
+#endif
 
 extern String &trim(String &);
 extern String &ltrim(String &);
 extern String &rtrim(String &);
-
-#endif
 
 using Bytes = List<char>;
 

@@ -224,7 +224,8 @@
 - [x] Implement screenshot (and text copy)
 
 ### Apr 20, 2022
-- [ ] Ensure smart pointers use custom allocator if enabled
+- [x] Ensure smart pointers use custom allocator if enabled
+- [ ] Change image message to tell client how be image will be
 - [ ] Make client explicitly create a stream
 - [ ] Make server store list of streams
 - [ ] Make client subscribe to stream before sending data to it
@@ -250,7 +251,7 @@
 ### Bugs
 - [x] Connecting to multiple streams quickly causes some displays to not show
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
-- [ ] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
+- [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

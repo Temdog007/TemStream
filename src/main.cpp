@@ -41,6 +41,10 @@ void TemStream::initialLogs()
 	*logger << "TemStream v" << TemStream_VERSION_MAJOR << '.' << TemStream_VERSION_MINOR << '.'
 			<< TemStream_VERSION_PATCH << std::endl;
 	(*logger)(Logger::Trace) << "Debug mode" << std::endl;
+	(*logger) << "Using " << globalAllocatorData.getTotal() / MB(1) << " MB" << std::endl;
+#if USE_CUSTOM_ALLOCATOR
+	(*logger)(Logger::Trace) << "Using custom allocator" << std::endl;
+#endif
 }
 
 void signalHandler(int s)
@@ -67,7 +71,5 @@ void parseMemory(const int argc, const char **argv, size_t size)
 		}
 	}
 
-	// Logger not set yet
-	printf("Memory usage: %zu MB\n", size);
 	globalAllocatorData.init(size * MB(1));
 }

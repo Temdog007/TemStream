@@ -71,7 +71,7 @@ void QueryImage::execute() const
 }
 void QueryImage::getPackets(const String filename, const MessageSource source)
 {
-	std::ifstream file(filename, std::ios::in | std::ios::binary);
+	std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open())
 	{
 		(*logger)(Logger::Error) << "Failed to open file: " << filename << std::endl;

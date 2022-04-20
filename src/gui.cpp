@@ -23,8 +23,8 @@ namespace TemStream
 String32 allUTF32;
 TemStreamGui::TemStreamGui(ImGuiIO &io)
 	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr), fontFiles(), io(io),
-	  fontSize(24.f), fontIndex(1), showLogs(false), showDisplays(false), showAudio(false), showFont(false),
-	  window(nullptr), renderer(nullptr)
+	  window(nullptr), renderer(nullptr), fontSize(24.f), fontIndex(1), showLogs(false), showDisplays(false),
+	  showAudio(false), showFont(false), showStats(false)
 {
 }
 
@@ -203,6 +203,10 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			{
 				showLogs = true;
 			}
+			if (ImGui::MenuItem("Stats", "Ctrl+I", nullptr, !showStats))
+			{
+				showStats = true;
+			}
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
@@ -373,7 +377,7 @@ void TemStreamGui::draw()
 		SetWindowMinSize(window);
 		if (ImGui::Begin("Font", &showFont))
 		{
-			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> cvt;
+			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t, Allocator<char32_t>, Allocator<char>> cvt;
 			const String s = cvt.to_bytes(allUTF32);
 			const size_t size = 1000;
 			for (size_t i = 0; i < s.size(); i += size)
@@ -496,6 +500,41 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
+	if (showStats)
+	{
+		if (ImGui::Begin("Stats", &showStats, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			SDL_version v;
+			SDL_GetVersion(&v);
+			ImGui::Text("TemStream %u.%u.%u", TemStream_VERSION_MAJOR, TemStream_VERSION_MINOR,
+						TemStream_VERSION_PATCH);
+			ImGui::Text("SDL %u.%u.%u", v.major, v.minor, v.patch);
+			ImGui::Text("Dear ImGui %s", ImGui::GetVersion());
+			if (ImGui::CollapsingHeader("Memory"))
+			{
+				auto total = globalAllocatorData.getTotal();
+				auto used = globalAllocatorData.getUsed();
+				const char *type = "bytes";
+				if (used >= MB(1))
+				{
+					total /= MB(1);
+					used /= MB(1);
+					type = "MB";
+				}
+				else if (used >= KB(1))
+				{
+					total /= KB(1);
+					used /= KB(1);
+					type = "KB";
+				}
+				const float percent = (float)used / (float)total;
+				ImGui::ProgressBar(percent);
+				ImGui::Text("%zu / %zu %s", used, total, type);
+			}
+		}
+		ImGui::End();
+	}
+
 	if (fileDirectory.has_value())
 	{
 		bool opened = true;
@@ -505,7 +544,7 @@ void TemStreamGui::draw()
 			if (ImGui::Button("^"))
 			{
 				fs::path path(fileDirectory->getDirectory());
-				fileDirectory.emplace(path.parent_path());
+				fileDirectory.emplace(path.parent_path().c_str());
 			}
 			ImGui::SameLine();
 
@@ -798,7 +837,7 @@ int TemStreamGui::run()
 	TemStreamGui gui(io);
 	logger = tem_unique<TemStreamGuiLogger>(gui);
 	initialLogs();
-	(*logger)(Logger::Info) << "ImGui v" IMGUI_VERSION << std::endl;
+	(*logger)(Logger::Info) << "Dear ImGui v" << ImGui::GetVersion() << std::endl;
 
 	if (!gui.init())
 	{
@@ -919,6 +958,9 @@ int TemStreamGui::run()
 				case SDLK_l:
 					gui.showLogs = !gui.showLogs;
 					break;
+				case SDLK_i:
+					gui.showStats = !gui.showStats;
+					break;
 				case SDLK_p:
 					if (gui.queryData == nullptr)
 					{
@@ -997,7 +1039,7 @@ void TemStreamGuiLogger::checkError(const Level level)
 		gui.setShowLogs(true);
 	}
 }
-FileDisplay::FileDisplay() : directory(fs::current_path()), files()
+FileDisplay::FileDisplay() : directory(fs::current_path().c_str()), files()
 {
 	loadFiles();
 }
@@ -1014,7 +1056,7 @@ void FileDisplay::loadFiles()
 	{
 		for (auto file : fs::directory_iterator(directory))
 		{
-			files.emplace_back(file.path());
+			files.emplace_back(file.path().c_str());
 		}
 	}
 	catch (const std::exception &e)

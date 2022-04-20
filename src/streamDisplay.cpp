@@ -105,7 +105,7 @@ bool StreamDisplay::operator()(const bool imageState)
 
 		bool success = true;
 		{
-			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.renderer, surface);
+			SDL_Texture *texture = SDL_CreateTextureFromSurface(gui.getRenderer(), surface);
 			if (texture == nullptr)
 			{
 				logSDLError("Texture creation error");
@@ -191,7 +191,7 @@ bool StreamDisplayDraw::operator()(const String &s)
 {
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
-	SetWindowMinSize(display.gui.window);
+	SetWindowMinSize(display.gui.getWindow());
 	if (ImGui::Begin(buffer.data(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
@@ -218,7 +218,7 @@ bool StreamDisplayDraw::operator()(SDL_TextureWrapper &t)
 	}
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
-	SetWindowMinSize(display.gui.window);
+	SetWindowMinSize(display.gui.getWindow());
 	if (ImGui::Begin(buffer.data(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
@@ -239,7 +239,7 @@ bool StreamDisplayDraw::operator()(CheckAudio &t)
 		return false;
 	}
 
-	SDL_Renderer *renderer = display.gui.renderer;
+	SDL_Renderer *renderer = display.gui.getRenderer();
 
 	Bytes current;
 	ptr->useCurrentAudio([&current](const Bytes &b) { current.insert(current.end(), b.begin(), b.end()); });
@@ -353,7 +353,7 @@ void StreamDisplayContextMenu::operator()(SDL_TextureWrapper &w)
 			return;
 		}
 
-		auto renderer = display.gui.renderer;
+		auto renderer = display.gui.getRenderer();
 		auto surface = SDL_CreateRGBSurface(0, w, h, 32, 0, 0, 0, 0);
 		auto t = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
 		if (t == nullptr || surface == nullptr)
