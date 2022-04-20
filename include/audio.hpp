@@ -44,6 +44,8 @@ class Audio
 
 	static int closestValidFrameCount(const int frequency, const int frames);
 
+	template <class T, class... Args> friend T *allocate(Args &&...);
+
   protected:
 	Audio(const MessageSource &, bool);
 

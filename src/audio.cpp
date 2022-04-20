@@ -62,7 +62,7 @@ SDL_AudioSpec Audio::getAudioSpec()
 }
 std::shared_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
 {
-	Audio *a = new Audio(source, true);
+	Audio *a = allocate<Audio>(source, true);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return startRecording(a, OPUS_APPLICATION_VOIP);
 }

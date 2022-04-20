@@ -863,19 +863,19 @@ int TemStreamGui::run()
 				case TemStreamEvent::SendSingleMessagePacket: {
 					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
 					gui.sendPacket(std::move(*packet));
-					delete packet;
+					deallocate(packet);
 				}
 				break;
 				case TemStreamEvent::HandleMessagePacket: {
 					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
 					gui.handleMessage(std::move(*packet));
-					delete packet;
+					deallocate(packet);
 				}
 				break;
 				case TemStreamEvent::SendMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
 					gui.sendPackets(std::move(*packets));
-					delete packets;
+					deallocate(packets);
 				}
 				break;
 				case TemStreamEvent::HandleMessagePackets: {
@@ -883,7 +883,7 @@ int TemStreamGui::run()
 					const auto start = std::make_move_iterator(packets->begin());
 					const auto end = std::make_move_iterator(packets->end());
 					std::for_each(start, end, [&gui](MessagePacket &&packet) { gui.handleMessage(std::move(packet)); });
-					delete packets;
+					deallocate(packets);
 				}
 				break;
 				case TemStreamEvent::ReloadFont:

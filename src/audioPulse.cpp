@@ -334,7 +334,8 @@ std::shared_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, 
 	SDL_Delay(1000u);
 
 	snprintf(commandBuffer, sizeof(commandBuffer), "%s_remapped", sinkName);
-	SinkInputAudio *audio = new SinkInputAudio(source, std::move(nullSink), std::move(comboSink), std::move(remapSink));
+	SinkInputAudio *audio =
+		allocate<SinkInputAudio>(source, std::move(nullSink), std::move(comboSink), std::move(remapSink));
 	audio->name = commandBuffer;
 	return Audio::startRecording(audio, OPUS_APPLICATION_AUDIO);
 }

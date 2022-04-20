@@ -41,11 +41,11 @@ void ClientPeer::addPacket(MessagePacket &&m)
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::HandleMessagePacket;
-	auto packet = new MessagePacket(std::move(m));
+	auto packet = allocate<MessagePacket>(std::move(m));
 	e.user.data1 = packet;
 	if (!tryPushEvent(e))
 	{
-		delete packet;
+		deallocate(packet);
 	}
 }
 void ClientPeer::addPackets(MessagePackets &&m)
@@ -53,11 +53,11 @@ void ClientPeer::addPackets(MessagePackets &&m)
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::HandleMessagePackets;
-	auto packets = new MessagePackets(std::move(m));
+	auto packets = allocate<MessagePackets>(std::move(m));
 	e.user.data1 = packets;
 	if (!tryPushEvent(e))
 	{
-		delete packets;
+		deallocate(packets);
 	}
 }
 } // namespace TemStream

@@ -224,16 +224,18 @@
 - [x] Implement screenshot (and text copy)
 
 ### Apr 20, 2022
+- [ ] Ensure smart pointers use custom allocator if enabled
 - [ ] Make client explicitly create a stream
 - [ ] Make server store list of streams
 - [ ] Make client subscribe to stream before sending data to it
-- [ ] StreamModificationMessage (MessageSource + enum{Create, Delete, Subscribe, Unsubscribe})
+- [ ] StreamModificationMessage(MessageSource + enum{Create, Delete, Subscribe, Unsubscribe})
 - [ ] Limit how many streams a client and create (default 10)
 - [ ] Window streaming
 - [ ] Webcam streaming
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 
 ### Later
+- [ ] Update build for server to not include imgui and sdl
 - [ ] Make credientials for server to authenticate clients and servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 - [ ] Store image and text data for each stream (send to newly connected clients)
@@ -248,7 +250,7 @@
 ### Bugs
 - [x] Connecting to multiple streams quickly causes some displays to not show
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
-- [ ] Custom allocator deadlocks (memory issue most likely that messes up mutex)
+- [ ] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

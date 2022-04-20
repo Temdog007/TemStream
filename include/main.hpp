@@ -136,6 +136,10 @@ extern bool isSpace(char);
 
 extern void logSDLError(const char *);
 
+template <typename T, typename... Args> static inline T *allocate(Args &&...);
+
+template <typename T> static inline void deallocate(T *const);
+
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;

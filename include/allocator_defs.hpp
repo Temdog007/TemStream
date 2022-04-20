@@ -45,6 +45,15 @@ template <typename K, typename V> using Map = std::unordered_map<K, V>;
 extern String &trim(String &);
 extern String &ltrim(String &);
 extern String &rtrim(String &);
+
+template <typename T, typename... Args> T *allocate(Args &&...args)
+{
+	return new T(std::forward<Args>(args)...);
+}
+template <typename T> void deallocate(T *const t)
+{
+	delete t;
+}
 } // namespace TemStream
 #endif
 

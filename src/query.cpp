@@ -35,7 +35,7 @@ bool QueryText::draw()
 }
 void QueryText::execute() const
 {
-	MessagePacket *packet = new MessagePacket();
+	MessagePacket *packet = allocate<MessagePacket>();
 	packet->message = TextMessage(text);
 	packet->source.author = gui.getInfo().name;
 	packet->source.destination = streamName;
@@ -46,7 +46,7 @@ void QueryText::execute() const
 	e.user.data1 = reinterpret_cast<void *>(packet);
 	if (!tryPushEvent(e))
 	{
-		delete packet;
+		deallocate(packet);
 	}
 }
 // Query Image
@@ -78,7 +78,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 		return;
 	}
 
-	MessagePackets *packets = new MessagePackets();
+	MessagePackets *packets = allocate<MessagePackets>();
 
 	{
 		MessagePacket packet;
@@ -111,7 +111,7 @@ void QueryImage::getPackets(const String filename, const MessageSource source)
 	e.user.data1 = reinterpret_cast<void *>(packets);
 	if (!tryPushEvent(e))
 	{
-		delete packets;
+		deallocate(packets);
 	}
 }
 QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), windowNames(), source(Source::Device), selected(-1)
