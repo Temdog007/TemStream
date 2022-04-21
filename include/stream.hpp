@@ -34,6 +34,7 @@ class Stream
   private:
 	Access access;
 	Message::Source source;
+	int64_t creationTime;
 	uint32_t type;
 
   public:
@@ -78,6 +79,22 @@ class Stream
 	void setAccess(Access &&a)
 	{
 		access = std::move(a);
+	}
+
+	int64_t getCreationTime() const
+	{
+		return creationTime;
+	}
+
+	template <const size_t N> int getFileName(std::array<char, N> &buffer) const
+	{
+		return snprintf(buffer.data(), buffer.size(), "%s_%" PRId64 ".tsd", source.destination.c_str(), creationTime);
+	}
+
+	friend std::ostream &operator<<(std::ostream &os, const Stream &stream)
+	{
+		os << stream.source << " (" << stream.getType() << ')';
+		return os;
 	}
 };
 } // namespace TemStream

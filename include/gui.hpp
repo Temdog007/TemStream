@@ -146,24 +146,17 @@ class TemStreamGui
 	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);
 
-	template <typename T> bool operator()(T &)
+	bool operator()(const Message::Streams &s);
+	bool operator()(const Message::Subscriptions &s);
+	template <typename T> bool operator()(const T &)
 	{
+#if LOG_MESSAGE_TYPE
+		int status;
+		char *realname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
+		std::cout << "Ignoring -> " << realname << ':' << status << std::endl;
+		free(realname);
+#endif
 		return false;
-	}
-
-	bool operator()(Message::Streams &s)
-	{
-		streams = std::move(s);
-		*logger << "Got " << streams.size() << " streams from server" << std::endl;
-		streamDirty = true;
-		return true;
-	}
-
-	bool operator()(Message::Subscriptions &s)
-	{
-		subscriptions = std::move(s);
-		*logger << "Got " << subscriptions.size() << " streams from server" << std::endl;
-		return true;
 	}
 
 	void disconnect();

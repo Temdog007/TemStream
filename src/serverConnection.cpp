@@ -41,6 +41,16 @@ bool ServerConnection::peerExists(const PeerInformation &info)
 	}
 	return false;
 }
+std::optional<Stream> ServerConnection::getStream(const Message::Source &source)
+{
+	LOCK(peersMutex);
+	auto iter = ServerConnection::streams.find(source);
+	if (iter == ServerConnection::streams.end())
+	{
+		return std::nullopt;
+	}
+	return iter->second;
+}
 bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
 {
 	const bool toServers = (target & Target::Server) != 0;
@@ -55,16 +65,15 @@ bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target
 	bool validPayload = true;
 	if (checkSubscription && toClients)
 	{
-		auto streamIter = ServerConnection::streams.find(packet.source);
-		// Stream doesn't exist. So, don't send packet
-		if (streamIter == ServerConnection::streams.end())
+		auto stream = ServerConnection::getStream(packet.source);
+		if (!stream.has_value())
 		{
 			(*logger)(Logger::Warning) << "Stream " << packet.source << " doesn't exist" << std::endl;
 			// Don't disconnect
 			return true;
 		}
 		// If type doesn't match, don't send packet.
-		validPayload = streamIter->second.getType() == packet.payload.index();
+		validPayload = stream->getType() == packet.payload.index();
 	}
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
@@ -310,14 +319,20 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	packet.trail.push_back(ServerConnection::serverInformation.name);
 	return ServerConnection::sendToPeers(std::move(packet), target, checkSubscription);
 }
+bool ServerConnection::MessageHandler::operator()(std::monostate)
+{
+	return false;
+}
 bool ServerConnection::MessageHandler::operator()(Message::Text &)
 {
 	CHECK_INFO(Message::Text)
+	savePayloadIfNedded();
 	return processCurrentMessage();
 }
 bool ServerConnection::MessageHandler::operator()(Message::Image &)
 {
 	CHECK_INFO(Message::Image)
+	savePayloadIfNedded();
 	return processCurrentMessage();
 }
 bool ServerConnection::MessageHandler::operator()(Message::Video &)
@@ -425,8 +440,27 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 		{
 			break;
 		}
+		// Ensure stream exists
+		if (!ServerConnection::getStream(su.source).has_value())
+		{
+			*logger << info << " tried to subscribe to non-existing stream " << su.source << std::endl;
+			break;
+		}
 		connection.subscriptions.emplace(su.source);
 		*logger << info << " subscribed stream " << su.source << std::endl;
+
+		// Send any potential stored data the stream might have
+		auto payload = loadPayloadForStream(su.source);
+		if (payload.has_value())
+		{
+			Message::Packet packet;
+			packet.source = su.source;
+			packet.payload = std::move(*payload);
+			if (!connection->sendPacket(packet))
+			{
+				return false;
+			}
+		}
 		// Don't send message to other servers
 		return sendSubscriptionsToClient();
 	}
@@ -476,13 +510,14 @@ bool ServerConnection::MessageHandler::operator()(Message::Streams &streams)
 	ServerConnection::streams.insert(streams.begin(), streams.end());
 	return sendStreamsToClients();
 }
-bool ServerConnection::MessageHandler::sendStreamsToClients()
+bool ServerConnection::MessageHandler::sendStreamsToClients() const
 {
 	LOCK(peersMutex);
 	Message::Packet packet;
 	packet.source.author = serverInformation.name;
 	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
-	(*logger)(Logger::Trace) << "Sending streams to peers: " << ServerConnection::streams.size() << std::endl;
+	(*logger)(Logger::Trace) << "Sending " << ServerConnection::streams.size()
+							 << " streams to peers: " << connection.getInfo() << std::endl;
 	return ServerConnection::sendToPeers(std::move(packet), Target::Client, false);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)
@@ -506,12 +541,76 @@ bool ServerConnection::MessageHandler::operator()(Message::Subscriptions &subs)
 	connection.subscriptions.insert(subs.begin(), subs.end());
 	return sendSubscriptionsToClient();
 }
-bool ServerConnection::MessageHandler::sendSubscriptionsToClient()
+bool ServerConnection::MessageHandler::sendSubscriptionsToClient() const
 {
-	(*logger)(Logger::Trace) << "Sending subscriptions to peers: " << connection.subscriptions.size() << std::endl;
+	(*logger)(Logger::Trace) << "Sending " << connection.subscriptions.size()
+							 << " subscriptions to peer: " << connection.getInfo() << std::endl;
 	Message::Packet packet;
 	packet.source.author = serverInformation.name;
 	packet.payload.emplace<Message::Subscriptions>(connection.subscriptions);
 	return connection->sendPacket(packet);
+}
+bool ServerConnection::MessageHandler::savePayloadIfNedded() const
+{
+	if (!packet.trail.empty() || packet.source.author != connection.info.name)
+	{
+		return false;
+	}
+
+	auto stream = ServerConnection::getStream(packet.source);
+	if (!stream.has_value())
+	{
+		return false;
+	}
+
+	std::array<char, KB(1)> buffer;
+	stream->getFileName(buffer);
+	std::ofstream file(buffer.data(), std::ios::trunc | std::ios::out);
+	if (!file.is_open())
+	{
+		return false;
+	}
+
+	try
+	{
+		cereal::PortableBinaryOutputArchive ar(file);
+		ar(packet.payload);
+
+		return true;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Failed to save payload for stream " << *stream << ": " << e.what() << std::endl;
+		return false;
+	}
+}
+std::optional<Message::Payload> ServerConnection::MessageHandler::loadPayloadForStream(const Message::Source &source)
+{
+	auto stream = ServerConnection::getStream(source);
+	if (!stream.has_value())
+	{
+		return std::nullopt;
+	}
+
+	std::array<char, KB(1)> buffer;
+	stream->getFileName(buffer);
+	std::ifstream file(buffer.data());
+	if (!file.is_open())
+	{
+		return std::nullopt;
+	}
+
+	try
+	{
+		Message::Payload payload;
+		cereal::PortableBinaryInputArchive ar(file);
+		ar(payload);
+		return payload;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Failed to load payload for stream " << *stream << ": " << e.what() << std::endl;
+		return false;
+	}
 }
 } // namespace TemStream

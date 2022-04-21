@@ -75,10 +75,11 @@ EMPTY_MESSAGE(RequestPeers);
 using PeerInformationList = List<PeerInformation>;
 EMPTY_MESSAGE(GetStreams);
 using Streams = Map<Message::Source, Stream>;
-using Payload = std::variant<Text, Image, Video, Audio, PeerInformation, RequestPeers, PeerInformationList,
-							 StreamUpdate, GetStreams, Streams, GetSubscriptions, Subscriptions>;
+using Payload = std::variant<std::monostate, Text, Image, Video, Audio, PeerInformation, RequestPeers,
+							 PeerInformationList, StreamUpdate, GetStreams, Streams, GetSubscriptions, Subscriptions>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
+	RVAL operator()(std::monostate);                                                                                   \
 	RVAL operator()(Message::Text &);                                                                                  \
 	RVAL operator()(Message::Image &);                                                                                 \
 	RVAL operator()(Message::Audio &);                                                                                 \

@@ -158,6 +158,10 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 	logger->AddError("Got unexpected '" #X "' message from the server. Disconnecting from server.");                   \
 	gui.disconnect();                                                                                                  \
 	return false
+bool StreamDisplay::operator()(std::monostate)
+{
+	BAD_MESSAGE(Empty);
+}
 bool StreamDisplay::operator()(PeerInformation &)
 {
 	BAD_MESSAGE(PeerInformation);

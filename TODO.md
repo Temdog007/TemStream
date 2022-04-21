@@ -235,18 +235,25 @@
 - [x] Make displays that don't match to a stream disappear
 
 ### Apr 21, 2022
-- [ ] Store image and text data (to hard disk) for each stream (send to newly connected clients)
-- [ ] Limit how many streams a client can create (default 10)
+- [x] Store image and text data to hard disk (send to newly subscribed clients)
+- [ ] Make configuration structs/files
+    Limit how many streams a client can create (default 10)
+    Limit max message size
+    Optional stream recording
 - [ ] Window streaming
 - [ ] Webcam streaming
-- [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
+- [ ] Allow multiple transcodes for each video stream
+
+### Apr 22, 2022
+- [ ] Update build for server to not include imgui and sdl
+- [ ] Replace peer information with credentials
+- [ ] Test with multiple servers
+- [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
 ### Later
+- [ ] Add message to get stream time range
+- [ ] Add message to get recorded messages at time stamp
 - [ ] Validate stream names/client names
-- [ ] Replace peer information with credentials
-- [ ] Update build for server to not include imgui and sdl
-- [ ] Make credientials for server to authenticate clients and servers
-- [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 - [ ] Make server write all messages to hard disk
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded

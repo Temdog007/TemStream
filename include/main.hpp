@@ -49,6 +49,7 @@ namespace fs = std::filesystem;
 #include <opus.h>
 
 #include <arpa/inet.h>
+#include <inttypes.h>
 #include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -67,6 +68,13 @@ namespace fs = std::filesystem;
 #define GB(X) (MB(X) * 1024)
 
 #define _DEBUG !NDEBUG
+#if _DEBUG
+#include <cxxabi.h>
+#define LOG_MESSAGE_TYPE false
+#else
+#define LOG_MESSAGE_TYPE false
+#endif
+
 #define USE_CUSTOM_ALLOCATOR true
 
 #define THREADS_AVAILABLE (!__EMSCRIPTEN__ || !SDL_THREADS_DISABLED)
@@ -150,6 +158,8 @@ template <typename T> static inline void deallocate(T *const);
 extern int DefaultPort;
 
 extern size_t MaxPacketSize;
+
+extern int64_t getTimestamp();
 
 template <typename VariantType, typename T, std::size_t index = 0> constexpr std::size_t variant_index()
 {

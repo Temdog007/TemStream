@@ -66,6 +66,12 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 	return true;
 }
 
+int64_t getTimestamp()
+{
+	auto now = std::chrono::system_clock::now().time_since_epoch();
+	return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+}
+
 PollState pollSocket(const int fd, const int timeout, const int events)
 {
 	struct pollfd inputfd;

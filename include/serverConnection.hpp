@@ -26,6 +26,8 @@ class ServerConnection : public Connection
 
 	static bool peerExists(const PeerInformation &);
 
+	static std::optional<Stream> getStream(const Message::Source &);
+
 	static void runPeerConnection(shared_ptr<ServerConnection> &&);
 
 	class MessageHandler
@@ -36,9 +38,13 @@ class ServerConnection : public Connection
 
 		bool processCurrentMessage(const Target t = Target::Both, const bool checkSubscription = true);
 
-		bool sendSubscriptionsToClient();
+		bool sendSubscriptionsToClient() const;
 
-		bool sendStreamsToClients();
+		bool sendStreamsToClients() const;
+
+		bool savePayloadIfNedded() const;
+
+		static std::optional<Message::Payload> loadPayloadForStream(const Message::Source &);
 
 	  public:
 		MessageHandler(ServerConnection &, Message::Packet &&);

@@ -2,16 +2,19 @@
 
 namespace TemStream
 {
-Stream::Stream() : access(), source(), type(UINT32_MAX)
+Stream::Stream() : access(), source(), creationTime(getTimestamp()), type(UINT32_MAX)
 {
 }
-Stream::Stream(const Message::Source &s, const uint32_t type) : access(), source(s), type(type)
+Stream::Stream(const Message::Source &s, const uint32_t type)
+	: access(), source(s), creationTime(getTimestamp()), type(type)
 {
 }
-Stream::Stream(const Stream &s) : access(s.access), source(s.source), type(s.type)
+Stream::Stream(const Stream &s) : access(s.access), source(s.source), creationTime(s.creationTime), type(s.type)
 {
 }
-Stream::Stream(Stream &&s) : access(std::move(s.access)), source(std::move(s.source)), type(std::move(s.type))
+Stream::Stream(Stream &&s)
+	: access(std::move(s.access)), source(std::move(s.source)), creationTime(std::move(s.creationTime)),
+	  type(std::move(s.type))
 {
 }
 Stream::~Stream()
@@ -22,6 +25,7 @@ Stream &Stream::operator=(const Stream &s)
 	access = s.access;
 	source = s.source;
 	type = s.type;
+	creationTime = s.creationTime;
 	return *this;
 }
 Stream &Stream::operator=(Stream &&s)
@@ -29,6 +33,7 @@ Stream &Stream::operator=(Stream &&s)
 	access = std::move(s.access);
 	source = std::move(s.source);
 	type = std::move(s.type);
+	creationTime = std::move(s.creationTime);
 	return *this;
 }
 Stream::Access::Access() : users(), isBanList(true)

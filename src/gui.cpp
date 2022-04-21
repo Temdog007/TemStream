@@ -981,6 +981,22 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 }
 
+bool TemStreamGui::operator()(const Message::Streams &s)
+{
+	streams = std::move(s);
+	*logger << "Got " << streams.size() << " streams from server" << std::endl;
+	streamDirty = true;
+	return true;
+}
+
+bool TemStreamGui::operator()(const Message::Subscriptions &s)
+{
+	subscriptions = std::move(s);
+	*logger << "Got " << subscriptions.size() << " subscriptions from server" << std::endl;
+	streamDirty = true;
+	return true;
+}
+
 bool TemStreamGui::addAudio(shared_ptr<Audio> &&ptr)
 {
 	auto pair = audio.emplace(ptr->getSource(), std::move(ptr));
@@ -1267,9 +1283,16 @@ int TemStreamGui::run()
 		{
 			if (gui.isConnected())
 			{
+				// Only keep display if owner or subscribed
 				for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 				{
-					if (gui.streams.find(iter->first) == gui.streams.end())
+					auto stream = gui.streams.find(iter->first);
+					if (stream == gui.streams.end())
+					{
+						iter = gui.displays.erase(iter);
+					}
+					else if (stream->first.author != gui.peerInfo.name &&
+							 gui.subscriptions.find(stream->first) == gui.subscriptions.end())
 					{
 						iter = gui.displays.erase(iter);
 					}
