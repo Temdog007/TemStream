@@ -35,15 +35,24 @@ bool QueryText::draw()
 }
 void QueryText::execute() const
 {
+	Message::Source source;
+	source.author = gui.getInfo().name;
+	source.destination = streamName;
+
+	if (!TemStreamGui::sendCreateMessage<Message::Text>(source))
+	{
+		return;
+	}
+
 	Message::Packet *packet = allocate<Message::Packet>();
 	packet->payload.emplace<Message::Text>(text);
-	packet->source.author = gui.getInfo().name;
-	packet->source.destination = streamName;
+	packet->source = std::move(source);
 
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendSingleMessagePacket;
-	e.user.data1 = reinterpret_cast<void *>(packet);
+	e.user.data1 = packet;
+	e.user.data2 = &e;
 	if (!tryPushEvent(e))
 	{
 		deallocate(packet);

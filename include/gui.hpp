@@ -80,8 +80,6 @@ class TemStreamGui
 
 	void handleMessage(Message::Packet &&);
 
-	bool createStreamIfNeeded(const Message::Packet &);
-
 	void onDisconnect(bool);
 
 	ImVec2 drawMainMenuBar(bool);
@@ -168,7 +166,17 @@ class TemStreamGui
 		return true;
 	}
 
+	void disconnect();
+
 	static int run();
+	static bool sendCreateMessage(const Message::Source &, uint32_t);
+
+	template <typename T> static bool sendCreateMessage(const Message::Source &source)
+	{
+		return sendCreateMessage(source, variant_index<Message::Payload, T>());
+	}
+
+	static bool sendCreateMessage(const Message::Packet &);
 };
 class TemStreamGuiLogger : public InMemoryLogger
 {

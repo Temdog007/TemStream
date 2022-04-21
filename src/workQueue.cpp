@@ -47,6 +47,11 @@ void SendImage::run() const
 		return;
 	}
 
+	if (!TemStreamGui::sendCreateMessage<Message::Image>(source))
+	{
+		return;
+	}
+
 	MessagePackets *packets = allocate<MessagePackets>();
 	const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 	{
@@ -77,6 +82,7 @@ void SendImage::run() const
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendMessagePackets;
 	e.user.data1 = reinterpret_cast<void *>(packets);
+	e.user.data2 = &e;
 	if (!tryPushEvent(e))
 	{
 		deallocate(packets);
@@ -179,6 +185,11 @@ void StartWindowRecording::run() const
 {
 	auto ptr = Audio::startRecordingWindow(source, windowProcess);
 	if (ptr == nullptr)
+	{
+		return;
+	}
+
+	if (!TemStreamGui::sendCreateMessage<Message::Audio>(source))
 	{
 		return;
 	}

@@ -350,6 +350,7 @@ SinkInputAudio::SinkInputAudio(const Message::Source &source, Sink &&nullSink, S
 }
 SinkInputAudio::~SinkInputAudio()
 {
+	close();
 }
 void Sink::unloadSink(const int32_t id)
 {

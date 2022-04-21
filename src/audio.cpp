@@ -9,7 +9,12 @@ Audio::Audio(const Message::Source &source, const bool recording)
 }
 Audio::~Audio()
 {
+	close();
+}
+void Audio::close()
+{
 	SDL_CloseAudioDevice(id);
+	id = 0;
 	if (isRecording() && encoder != nullptr)
 	{
 		free(encoder);

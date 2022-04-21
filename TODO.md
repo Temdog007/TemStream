@@ -231,10 +231,11 @@
 - [x] Log error if tried to send message when not connected to peer
 - [x] Make client implicitly create a stream
 - [x] Make server store list of streams
-- [ ] Make client subscribe to stream before sending data to it
+- [x] Make client subscribe to stream before sending data to it
 - [x] Make displays that don't match to a stream disappear
 
 ### Apr 21, 2022
+- [ ] Store image and text data (to hard disk) for each stream (send to newly connected clients)
 - [ ] Limit how many streams a client can create (default 10)
 - [ ] Window streaming
 - [ ] Webcam streaming
@@ -246,7 +247,6 @@
 - [ ] Update build for server to not include imgui and sdl
 - [ ] Make credientials for server to authenticate clients and servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
-- [ ] Store image and text data for each stream (send to newly connected clients)
 - [ ] Make server write all messages to hard disk
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded

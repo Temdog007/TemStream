@@ -155,7 +155,8 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 	return true;
 }
 #define BAD_MESSAGE(X)                                                                                                 \
-	logger->AddError("Got '" #X "' message from the server. Disconnecting from server for it may not be safe.");       \
+	logger->AddError("Got unexpected '" #X "' message from the server. Disconnecting from server.");                   \
+	gui.disconnect();                                                                                                  \
 	return false
 bool StreamDisplay::operator()(PeerInformation &)
 {

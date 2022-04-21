@@ -67,7 +67,7 @@ TemStreamGui::TemStreamGui(ImGuiIO &io)
 	  workThread(handleWorkThread, this),
 #endif
 	  fontFiles(), io(io), window(nullptr), renderer(nullptr), allUTF32(getAllUTF32()), fontSize(24.f), fontIndex(1),
-	  showLogs(false), showStreams(false), showDisplays(false), showAudio(false), showFont(false), showStats(false)
+	  showLogs(false), showStreams(true), showDisplays(false), showAudio(true), showFont(false), showStats(false)
 {
 }
 
@@ -105,6 +105,7 @@ void TemStreamGui::update()
 		(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
 		onDisconnect(peer->gotServerInformation());
 		peer = nullptr;
+		return;
 	}
 	for (const auto &a : audio)
 	{
@@ -113,6 +114,7 @@ void TemStreamGui::update()
 			(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
 			onDisconnect(peer->gotServerInformation());
 			peer = nullptr;
+			break;
 		}
 	}
 }
@@ -156,6 +158,14 @@ void TemStreamGui::onDisconnect(const bool gotInformation)
 		message = "Failed to connect to server";
 	}
 	(*logger)(Logger::Error) << message << std::endl;
+	streamDirty = true;
+}
+
+void TemStreamGui::disconnect()
+{
+	LOCK(peerMutex);
+	peer = nullptr;
+	streamDirty = true;
 }
 
 void TemStreamGui::pushFont()
@@ -616,7 +626,7 @@ void TemStreamGui::draw()
 					}
 					else if (subscriptions.find(source) == subscriptions.end())
 					{
-						if (ImGui::Button("Unsubscribed"))
+						if (ImGui::Button("Subscribe"))
 						{
 							Message::Packet packet;
 							packet.source.author = peerInfo.name;
@@ -630,7 +640,7 @@ void TemStreamGui::draw()
 					}
 					else
 					{
-						if (ImGui::Button("Subscribe"))
+						if (ImGui::Button("Unsubscribe"))
 						{
 							Message::Packet packet;
 							packet.source.author = peerInfo.name;
@@ -892,25 +902,37 @@ const char *getExtension(const char *filename)
 	return filename;
 }
 
-bool TemStreamGui::createStreamIfNeeded(const Message::Packet &packet)
+bool TemStreamGui::sendCreateMessage(const Message::Source &source, const uint32_t type)
 {
-	// Assume peer has already been checked
+	Message::StreamUpdate su;
+	su.source = source;
+	su.action = Message::StreamUpdate::Create;
+	su.type = type;
+	(*logger)(Logger::Trace) << "Creating stream " << su << std::endl;
 
-	// If stream not found, send create stream packet
-	if (streams.find(packet.source) == streams.end())
+	Message::Packet *newPacket = allocate<Message::Packet>();
+	newPacket->source = source;
+	newPacket->payload.emplace<Message::StreamUpdate>(std::move(su));
+
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::SendSingleMessagePacket;
+	e.user.data1 = newPacket;
+	e.user.data2 = nullptr;
+	if (tryPushEvent(e))
 	{
-		Message::StreamUpdate su;
-		su.source = packet.source;
-		su.action = Message::StreamUpdate::Create;
-		su.type = static_cast<uint32_t>(packet.payload.index());
-		(*logger)(Logger::Trace) << "Creating stream " << su << std::endl;
-
-		Message::Packet newPacket;
-		newPacket.source = packet.source;
-		newPacket.payload.emplace<Message::StreamUpdate>(std::move(su));
-		return (*peer)->sendPacket(newPacket);
+		return true;
 	}
-	return true;
+	else
+	{
+		deallocate(newPacket);
+		return false;
+	}
+}
+
+bool TemStreamGui::sendCreateMessage(const Message::Packet &packet)
+{
+	return sendCreateMessage(packet.source, packet.payload.index());
 }
 
 void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)
@@ -922,7 +944,7 @@ void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally
 		return;
 	}
 
-	if (!createStreamIfNeeded(packet) || !(*peer)->sendPacket(packet))
+	if (!(*peer)->sendPacket(packet))
 	{
 		(*logger)(Logger::Trace) << "TemStreamGui::sendPacket: error" << std::endl;
 		onDisconnect(peer->gotServerInformation());
@@ -945,7 +967,7 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 	for (const auto &packet : packets)
 	{
-		if (!createStreamIfNeeded(packet) || !(*peer)->sendPacket(packet))
+		if (!(*peer)->sendPacket(packet))
 		{
 			(*logger)(Logger::Trace) << "TemStreamGui::sendPackets: error" << std::endl;
 			onDisconnect(peer->gotServerInformation());
@@ -1135,7 +1157,8 @@ int TemStreamGui::run()
 				{
 				case TemStreamEvent::SendSingleMessagePacket: {
 					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
-					gui.sendPacket(std::move(*packet));
+					const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
+					gui.sendPacket(std::move(*packet), b);
 					deallocate(packet);
 				}
 				break;
@@ -1147,7 +1170,8 @@ int TemStreamGui::run()
 				break;
 				case TemStreamEvent::SendMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
-					gui.sendPackets(std::move(*packets));
+					const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
+					gui.sendPackets(std::move(*packets), b);
 					deallocate(packets);
 				}
 				break;
@@ -1241,16 +1265,37 @@ int TemStreamGui::run()
 
 		if (gui.streamDirty)
 		{
-			for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
+			if (gui.isConnected())
 			{
-				if (gui.streams.find(iter->first) == gui.streams.end())
+				for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 				{
-					iter = gui.displays.erase(iter);
+					if (gui.streams.find(iter->first) == gui.streams.end())
+					{
+						iter = gui.displays.erase(iter);
+					}
+					else
+					{
+						++iter;
+					}
 				}
-				else
+				for (auto iter = gui.audio.begin(); iter != gui.audio.end();)
 				{
-					++iter;
+					if (gui.audio.find(iter->first) == gui.audio.end())
+					{
+						iter = gui.audio.erase(iter);
+					}
+					else
+					{
+						++iter;
+					}
 				}
+			}
+			else
+			{
+				gui.displays.clear();
+				gui.audio.clear();
+				gui.streams.clear();
+				gui.subscriptions.clear();
 			}
 			gui.streamDirty = false;
 		}

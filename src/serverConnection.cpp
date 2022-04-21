@@ -41,7 +41,7 @@ bool ServerConnection::peerExists(const PeerInformation &info)
 	}
 	return false;
 }
-bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const bool checkSubscription, const Target target)
+bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
 {
 	const bool toServers = (target & Target::Server) != 0;
 	const bool toClients = (target & Target::Client) != 0;
@@ -53,14 +53,15 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const bool check
 	LOCK(peersMutex);
 	uint32_t expected = 0;
 	bool validPayload = true;
-	if (checkSubscription)
+	if (checkSubscription && toClients)
 	{
 		auto streamIter = ServerConnection::streams.find(packet.source);
 		// Stream doesn't exist. So, don't send packet
 		if (streamIter == ServerConnection::streams.end())
 		{
-			(*logger)(Logger::Error) << "Stream " << packet.source << " doesn't exist" << std::endl;
-			return false;
+			(*logger)(Logger::Warning) << "Stream " << packet.source << " doesn't exist" << std::endl;
+			// Don't disconnect
+			return true;
 		}
 		// If type doesn't match, don't send packet.
 		validPayload = streamIter->second.getType() == packet.payload.index();
@@ -307,7 +308,7 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	}
 
 	packet.trail.push_back(ServerConnection::serverInformation.name);
-	return connection.sendToAllPeers(std::move(packet), checkSubscription, target);
+	return ServerConnection::sendToPeers(std::move(packet), target, checkSubscription);
 }
 bool ServerConnection::MessageHandler::operator()(Message::Text &)
 {
@@ -343,8 +344,8 @@ bool ServerConnection::MessageHandler::operator()(PeerInformation &info)
 	}
 	connection.info = info;
 	connection.informationAcquired = true;
-	*logger << "Information from peer " << connection.address << " -> " << info << std::endl;
-	return true;
+	*logger << "Peer: " << connection.address << " -> " << info << std::endl;
+	return sendStreamsToClients();
 }
 bool ServerConnection::MessageHandler::operator()(Message::PeerInformationList &)
 {
@@ -361,6 +362,7 @@ bool ServerConnection::MessageHandler::operator()(Message::RequestPeers &)
 bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 {
 	CHECK_INFO(Message::StreamUpdate)
+
 	const auto &info = connection.getInfo();
 	switch (su.action)
 	{
@@ -370,7 +372,7 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			// If client tries to create stream, ensure they are the author
 			if (su.source.author != info.name)
 			{
-				PEER_ERROR("Author doesn't match");
+				PEER_ERROR("Failed to create stream. Author doesn't match");
 			}
 		}
 		LOCK(peersMutex);
@@ -424,9 +426,9 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			break;
 		}
 		connection.subscriptions.emplace(su.source);
-		*logger << "Client " << info.name << " subscribed stream " << su.source << std::endl;
+		*logger << info << " subscribed stream " << su.source << std::endl;
 		// Don't send message to other servers
-		return true;
+		return sendSubscriptionsToClient();
 	}
 	break;
 	case Message::StreamUpdate::Unsubscribe: {
@@ -441,9 +443,9 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			break;
 		}
 		connection.subscriptions.erase(su.source);
-		*logger << "Client " << info.name << " unsubscribed stream " << su.source << std::endl;
+		*logger << info << " unsubscribed stream " << su.source << std::endl;
 		// Don't send message to other servers
-		return true;
+		return sendSubscriptionsToClient();
 	}
 	break;
 	default:
@@ -481,7 +483,7 @@ bool ServerConnection::MessageHandler::sendStreamsToClients()
 	packet.source.author = serverInformation.name;
 	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
 	(*logger)(Logger::Trace) << "Sending streams to peers: " << ServerConnection::streams.size() << std::endl;
-	return connection.sendToAllPeers(std::move(packet), false, Target::Client);
+	return ServerConnection::sendToPeers(std::move(packet), Target::Client, false);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)
 {

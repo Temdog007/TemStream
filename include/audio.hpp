@@ -68,6 +68,8 @@ class Audio
   protected:
 	Audio(const Message::Source &, bool);
 
+	void close();
+
 	static unique_ptr<Audio> startRecording(Audio *, int);
 
   public:
