@@ -272,6 +272,26 @@ end:
 	logger = nullptr;
 	return result;
 }
+std::shared_ptr<ServerConnection> ServerConnection::getPointer() const
+{
+	LOCK(peersMutex);
+	for (auto iter = peers.begin(); iter != peers.end();)
+	{
+		if (auto ptr = iter->lock())
+		{
+			if (ptr.get() == this)
+			{
+				return ptr;
+			}
+			++iter;
+		}
+		else
+		{
+			iter = peers.erase(iter);
+		}
+	}
+	return nullptr;
+}
 ServerConnection::ServerConnection(const Address &address, unique_ptr<Socket> s)
 	: Connection(address, std::move(s)), subscriptions(), informationAcquired(false)
 {
@@ -329,10 +349,10 @@ bool ServerConnection::MessageHandler::operator()(Message::Text &)
 	savePayloadIfNedded();
 	return processCurrentMessage();
 }
-bool ServerConnection::MessageHandler::operator()(Message::Image &)
+bool ServerConnection::MessageHandler::operator()(Message::Image &image)
 {
 	CHECK_INFO(Message::Image)
-	savePayloadIfNedded();
+	std::visit(ImageSaver(connection, packet.source), image);
 	return processCurrentMessage();
 }
 bool ServerConnection::MessageHandler::operator()(Message::Video &)
@@ -450,16 +470,9 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 		*logger << info << " subscribed stream " << su.source << std::endl;
 
 		// Send any potential stored data the stream might have
-		auto payload = loadPayloadForStream(su.source);
-		if (payload.has_value())
+		if (!sendPayloadForStream(su.source))
 		{
-			Message::Packet packet;
-			packet.source = su.source;
-			packet.payload = std::move(*payload);
-			if (!connection->sendPacket(packet))
-			{
-				return false;
-			}
+			return false;
 		}
 		// Don't send message to other servers
 		return sendSubscriptionsToClient();
@@ -550,7 +563,7 @@ bool ServerConnection::MessageHandler::sendSubscriptionsToClient() const
 	packet.payload.emplace<Message::Subscriptions>(connection.subscriptions);
 	return connection->sendPacket(packet);
 }
-bool ServerConnection::MessageHandler::savePayloadIfNedded() const
+bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 {
 	if (!packet.trail.empty() || packet.source.author != connection.info.name)
 	{
@@ -565,7 +578,16 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded() const
 
 	std::array<char, KB(1)> buffer;
 	stream->getFileName(buffer);
-	std::ofstream file(buffer.data(), std::ios::trunc | std::ios::out);
+	auto flags = std::ios::out;
+	if (append)
+	{
+		flags |= std::ios::app;
+	}
+	else
+	{
+		flags |= std::ios::trunc;
+	}
+	std::ofstream file(buffer.data(), flags);
 	if (!file.is_open())
 	{
 		return false;
@@ -584,12 +606,12 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded() const
 		return false;
 	}
 }
-std::optional<Message::Payload> ServerConnection::MessageHandler::loadPayloadForStream(const Message::Source &source)
+bool ServerConnection::MessageHandler::sendPayloadForStream(const Message::Source &source)
 {
 	auto stream = ServerConnection::getStream(source);
 	if (!stream.has_value())
 	{
-		return std::nullopt;
+		return true;
 	}
 
 	std::array<char, KB(1)> buffer;
@@ -597,20 +619,94 @@ std::optional<Message::Payload> ServerConnection::MessageHandler::loadPayloadFor
 	std::ifstream file(buffer.data());
 	if (!file.is_open())
 	{
-		return std::nullopt;
+		return true;
 	}
 
-	try
+	switch (stream->getType())
 	{
-		Message::Payload payload;
-		cereal::PortableBinaryInputArchive ar(file);
-		ar(payload);
-		return payload;
+	case variant_index<Message::Payload, Message::Text>():
+		try
+		{
+			Message::Payload payload;
+			cereal::PortableBinaryInputArchive ar(file);
+			ar(payload);
+			Message::Packet packet;
+			packet.source = stream->getSource();
+			packet.payload = std::move(payload);
+			if (!connection->sendPacket(packet))
+			{
+				return false;
+			}
+		}
+		catch (const std::exception &e)
+		{
+			(*logger)(Logger::Error) << "Failed to load payload for stream " << *stream << ": " << e.what()
+									 << std::endl;
+			return false;
+		}
+		break;
+	case variant_index<Message::Payload, Message::Image>(): {
+		std::thread thread(MessageHandler::sendImageBytes, connection.getPointer(),
+						   Message::Source(stream->getSource()), String(buffer.data()));
+		thread.detach();
 	}
-	catch (const std::exception &e)
+	break;
+	default:
+		break;
+	}
+	return true;
+}
+void ServerConnection::MessageHandler::sendImageBytes(std::shared_ptr<ServerConnection> ptr, Message::Source &&source,
+													  String &&filename)
+{
+
+	std::ifstream file(filename.c_str(), std::ios::binary | std::ios::out);
+	if (!file.is_open())
 	{
-		(*logger)(Logger::Error) << "Failed to load payload for stream " << *stream << ": " << e.what() << std::endl;
-		return false;
+		return;
 	}
+
+	Message::prepareImageBytes(file, source, [ptr](Message::Packet &&packet) { (*ptr)->sendPacket(packet); });
+}
+ServerConnection::ImageSaver::ImageSaver(ServerConnection &connection, const Message::Source &source)
+	: connection(connection), source(source)
+{
+}
+ServerConnection::ImageSaver::~ImageSaver()
+{
+}
+void ServerConnection::ImageSaver::operator()(uint64_t)
+{
+	auto stream = ServerConnection::getStream(source);
+	if (!stream.has_value())
+	{
+		return;
+	}
+
+	std::array<char, KB(1)> buffer;
+	stream->getFileName(buffer);
+	std::filesystem::remove(buffer.data());
+}
+void ServerConnection::ImageSaver::operator()(const Bytes &bytes)
+{
+	auto stream = ServerConnection::getStream(source);
+	if (!stream.has_value())
+	{
+		return;
+	}
+
+	std::array<char, KB(1)> buffer;
+	stream->getFileName(buffer);
+	std::ofstream file(buffer.data(), std::ios::app | std::ios::out | std::ios::binary);
+	if (!file.is_open())
+	{
+		return;
+	}
+
+	std::ostreambuf_iterator<char> iter(file);
+	std::copy(bytes.begin(), bytes.end(), iter);
+}
+void ServerConnection::ImageSaver::operator()(std::monostate)
+{
 }
 } // namespace TemStream

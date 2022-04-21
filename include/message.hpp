@@ -109,5 +109,50 @@ struct Packet
 		ar(payload, source, trail);
 	}
 };
+template <typename Iterator> static Bytes getImageByteChunk(Iterator &start, Iterator end)
+{
+	Bytes bytes;
+	bytes.reserve(MAX_IMAGE_CHUNK);
+	while (start != end)
+	{
+		bytes.push_back(*start);
+		++start;
+		if (bytes.size() >= MAX_IMAGE_CHUNK)
+		{
+			return bytes;
+		}
+	}
+	return bytes;
+}
+template <typename Iterator>
+static void prepareImageBytes(Iterator start, Iterator end, const uint64_t size, const Source &source,
+							  const std::function<void(Packet &&)> &func)
+{
+	{
+		Message::Packet packet;
+		packet.payload.emplace<Message::Image>(size);
+		packet.source = source;
+		func(std::move(packet));
+	}
+	while (start != end)
+	{
+		Bytes bytes = getImageByteChunk(start, end);
+		if (bytes.empty())
+		{
+			break;
+		}
+		Message::Packet packet;
+		packet.payload.emplace<Message::Image>(std::move(bytes));
+		packet.source = source;
+		func(std::move(packet));
+	}
+	{
+		Message::Packet packet;
+		packet.payload.emplace<Message::Image>(std::monostate{});
+		packet.source = source;
+		func(std::move(packet));
+	}
+}
+extern void prepareImageBytes(std::ifstream &, const Source &, const std::function<void(Packet &&)> &);
 } // namespace Message
 } // namespace TemStream

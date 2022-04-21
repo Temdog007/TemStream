@@ -30,6 +30,8 @@ class ServerConnection : public Connection
 
 	static void runPeerConnection(shared_ptr<ServerConnection> &&);
 
+	std::shared_ptr<ServerConnection> getPointer() const;
+
 	class MessageHandler
 	{
 	  private:
@@ -42,9 +44,11 @@ class ServerConnection : public Connection
 
 		bool sendStreamsToClients() const;
 
-		bool savePayloadIfNedded() const;
+		bool savePayloadIfNedded(bool append = false) const;
 
-		static std::optional<Message::Payload> loadPayloadForStream(const Message::Source &);
+		bool sendPayloadForStream(const Message::Source &);
+
+		static void sendImageBytes(std::shared_ptr<ServerConnection>, Message::Source &&, String &&filename);
 
 	  public:
 		MessageHandler(ServerConnection &, Message::Packet &&);
@@ -52,6 +56,21 @@ class ServerConnection : public Connection
 
 		bool operator()();
 		MESSAGE_HANDLER_FUNCTIONS(bool);
+	};
+
+	class ImageSaver
+	{
+	  private:
+		ServerConnection &connection;
+		const Message::Source &source;
+
+	  public:
+		ImageSaver(ServerConnection &, const Message::Source &);
+		~ImageSaver();
+
+		void operator()(std::monostate);
+		void operator()(const Bytes &);
+		void operator()(uint64_t);
 	};
 
   public:

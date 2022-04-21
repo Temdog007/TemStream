@@ -53,31 +53,8 @@ void SendImage::run() const
 	}
 
 	MessagePackets *packets = allocate<MessagePackets>();
-	const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-	{
-		Message::Packet packet;
-		packet.payload.emplace<Message::Image>(static_cast<uint64_t>(bytes.size()));
-		packet.source = source;
-		packets->push_back(std::move(packet));
-	}
-	{
-
-		for (size_t i = 0; i < bytes.size(); i += KB(64))
-		{
-			Message::Packet packet;
-			packet.payload.emplace<Message::Image>(
-				Bytes(bytes.begin() + i, (i + KB(64)) > bytes.size() ? bytes.end() : (bytes.begin() + i + KB(64))));
-			packet.source = source;
-			packets->push_back(std::move(packet));
-		}
-	}
-	{
-		Message::Packet packet;
-		packet.payload.emplace<Message::Image>(std::monostate{});
-		packet.source = source;
-		packets->push_back(std::move(packet));
-	}
-
+	Message::prepareImageBytes(file, source,
+							   [packets](Message::Packet &&packet) { packets->emplace_back(std::move(packet)); });
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendMessagePackets;

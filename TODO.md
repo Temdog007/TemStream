@@ -258,7 +258,7 @@
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts
-- [ ] Remove OpenCL code
+- [ ] Add comments
 - [ ] Test browser
 - [ ] Test android
 

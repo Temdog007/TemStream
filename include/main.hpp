@@ -67,6 +67,8 @@ namespace fs = std::filesystem;
 #define MB(X) (KB(X) * 1024)
 #define GB(X) (MB(X) * 1024)
 
+#define MAX_IMAGE_CHUNK KB(64)
+
 #define _DEBUG !NDEBUG
 #if _DEBUG
 #include <cxxabi.h>

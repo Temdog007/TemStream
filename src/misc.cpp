@@ -2,6 +2,20 @@
 
 namespace TemStream
 {
+namespace Message
+{
+void prepareImageBytes(std::ifstream &file, const Source &source, const std::function<void(Packet &&)> &func)
+{
+	auto size = file.tellg();
+	file.seekg(0, std::ios::end);
+
+	size = file.tellg() - size;
+
+	file.seekg(0, std::ios::beg);
+
+	prepareImageBytes(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), size, source, func);
+}
+} // namespace Message
 Map<std::thread::id, size_t> LogMutex::threads;
 LogMutex::LogMutex(Mutex &m, const char *name) : m(m), name(name), id(0)
 {
