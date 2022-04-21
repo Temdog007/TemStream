@@ -22,7 +22,7 @@ class ServerConnection : public Connection
 		Both = Client | Server
 	};
 
-	bool sendToAllPeers(Message::Packet &&, Target t = Target::Both);
+	bool sendToAllPeers(Message::Packet &&, Target t = Target::Both, const bool checkSubscription = true);
 
 	static bool peerExists(const PeerInformation &);
 

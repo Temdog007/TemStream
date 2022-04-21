@@ -284,7 +284,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			{
 				showDisplays = true;
 			}
-			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !showStreams))
+			if (ImGui::MenuItem("Streams", "Ctrl+W", nullptr, !showStreams))
 			{
 				showStreams = true;
 			}

@@ -41,7 +41,7 @@ bool ServerConnection::peerExists(const PeerInformation &info)
 	}
 	return false;
 }
-bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target target)
+bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
 {
 	const bool toServers = (target & Target::Server) != 0;
 	const bool toClient = (target & Target::Client) != 0;
@@ -51,15 +51,20 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 	ar(packet);
 
 	LOCK(peersMutex);
-	auto streamIter = ServerConnection::streams.find(packet.source);
-	// Stream doesn't exist. So, don't send packet
-	if (streamIter == ServerConnection::streams.end())
+	uint32_t expected = 0;
+	bool validPayload = true;
+	if (checkSubscription)
 	{
-		(*logger)(Logger::Error) << "Stream " << packet.source << " doesn't exist" << std::endl;
-		return false;
+		auto streamIter = ServerConnection::streams.find(packet.source);
+		// Stream doesn't exist. So, don't send packet
+		if (streamIter == ServerConnection::streams.end())
+		{
+			(*logger)(Logger::Error) << "Stream " << packet.source << " doesn't exist" << std::endl;
+			return false;
+		}
+		// If type doesn't match, don't send packet.
+		validPayload = streamIter->second.getType() != packet.payload.index();
 	}
-	// If type doesn't match, don't send packet.
-	const bool validPayload = streamIter->second.getType() != packet.payload.index();
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
@@ -92,18 +97,20 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 					continue;
 				}
 				// If not subscribed, client won't get packet
-				auto sub = ptr->subscriptions.find(packet.source);
-				if (sub == ptr->subscriptions.end())
+				if (checkSubscription)
 				{
-					++iter;
-					continue;
-				}
-				// Only stop connection if a packet would attempted to be sent
-				if (!validPayload)
-				{
-					(*logger)(Logger::Error) << "Payload mismatch for stream. Got " << packet.payload.index()
-											 << "; Expected " << streamIter->second.getType() << std::endl;
-					return false;
+					auto sub = ptr->subscriptions.find(packet.source);
+					if (sub == ptr->subscriptions.end())
+					{
+						++iter;
+						continue;
+					}
+					if (!validPayload)
+					{
+						(*logger)(Logger::Error) << "Payload mismatch for stream. Got " << packet.payload.index()
+												 << "; Expected " << expected << std::endl;
+						return false;
+					}
 				}
 			}
 			if ((*ptr)->send(m.getData(), m.getSize()))
@@ -370,6 +377,10 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 		{
 			*logger << "Stream created: " << result.first->first << '(' << result.first->second.getType() << ')'
 					<< std::endl;
+			if (!sendStreamsToClients())
+			{
+				return false;
+			}
 		}
 		else
 		{
@@ -388,8 +399,15 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			}
 		}
 
-		ServerConnection::streams.erase(su.source);
-		*logger << "Client " << info.name << " deleted stream " << su.source << std::endl;
+		auto result = ServerConnection::streams.erase(su.source);
+		if (result > 0)
+		{
+			*logger << "Client " << info.name << " deleted stream " << su.source << std::endl;
+			if (!sendStreamsToClients())
+			{
+				return false;
+			}
+		}
 	}
 	break;
 	case Message::StreamUpdate::Subscribe: {
@@ -460,7 +478,7 @@ bool ServerConnection::MessageHandler::sendStreamsToClients()
 	Message::Packet packet;
 	packet.source.author = serverInformation.name;
 	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
-	return connection.sendToAllPeers(std::move(packet), Target::Client);
+	return connection.sendToAllPeers(std::move(packet), Target::Client, false);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)
 {

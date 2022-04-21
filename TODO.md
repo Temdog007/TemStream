@@ -240,6 +240,7 @@
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 
 ### Later
+- [ ] Validate stream names/client names
 - [ ] Replace peer information with credentials
 - [ ] Update build for server to not include imgui and sdl
 - [ ] Make credientials for server to authenticate clients and servers
