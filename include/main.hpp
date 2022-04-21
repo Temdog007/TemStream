@@ -14,11 +14,11 @@
 #include <mutex>
 #include <new>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -33,7 +33,8 @@ namespace fs = std::filesystem;
 #include <cereal/types/array.hpp>
 #include <cereal/types/optional.hpp>
 #include <cereal/types/string.hpp>
-#include <cereal/types/tuple.hpp>
+#include <cereal/types/unordered_map.hpp>
+#include <cereal/types/unordered_set.hpp>
 #include <cereal/types/variant.hpp>
 #include <cereal/types/vector.hpp>
 
@@ -124,7 +125,7 @@ extern bool openSocket(int &, const char *hostname, const char *port, const bool
 
 extern bool sendData(int, const void *, size_t);
 
-extern PollState pollSocket(const int fd, const int timeout = 1);
+extern PollState pollSocket(const int fd, const int timeout = 1, const int events = POLLIN);
 
 extern bool appDone;
 
@@ -163,17 +164,21 @@ extern size_t MaxPacketSize;
 
 #include "peerInformation.hpp"
 
+#include "message_source.hpp"
+
+#include "stream.hpp"
+
 #include "message.hpp"
 #include "socket.hpp"
 
 #include "address.hpp"
 
-#include "peer.hpp"
+#include "connection.hpp"
 
 #include "audio.hpp"
 
-#include "clientPeer.hpp"
-#include "serverPeer.hpp"
+#include "clientConnection.hpp"
+#include "serverConnection.hpp"
 
 #include "streamDisplay.hpp"
 

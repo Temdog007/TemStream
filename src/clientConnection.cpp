@@ -2,16 +2,16 @@
 
 namespace TemStream
 {
-ClientPeer::ClientPeer(const Address &address, unique_ptr<Socket> s)
-	: Peer(address, std::move(s)), acquiredServerInformation(false)
+ClientConnetion::ClientConnetion(const Address &address, unique_ptr<Socket> s)
+	: Connection(address, std::move(s)), acquiredServerInformation(false)
 {
 }
-ClientPeer::~ClientPeer()
+ClientConnetion::~ClientConnetion()
 {
 }
-bool ClientPeer::handlePacket(MessagePacket &&packet)
+bool ClientConnetion::handlePacket(Message::Packet &&packet)
 {
-	auto ptr = std::get_if<PeerInformation>(&packet.message);
+	auto ptr = std::get_if<PeerInformation>(&packet.payload);
 	if (ptr == nullptr)
 	{
 		addPacket(std::move(packet));
@@ -36,19 +36,19 @@ bool ClientPeer::handlePacket(MessagePacket &&packet)
 	}
 	return true;
 }
-void ClientPeer::addPacket(MessagePacket &&m)
+void ClientConnetion::addPacket(Message::Packet &&m)
 {
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::HandleMessagePacket;
-	auto packet = allocate<MessagePacket>(std::move(m));
+	auto packet = allocate<Message::Packet>(std::move(m));
 	e.user.data1 = packet;
 	if (!tryPushEvent(e))
 	{
 		deallocate(packet);
 	}
 }
-void ClientPeer::addPackets(MessagePackets &&m)
+void ClientConnetion::addPackets(MessagePackets &&m)
 {
 	SDL_Event e;
 	e.type = SDL_USEREVENT;

@@ -67,7 +67,7 @@ TemStreamGui::TemStreamGui(ImGuiIO &io)
 	  workThread(handleWorkThread, this),
 #endif
 	  fontFiles(), io(io), window(nullptr), renderer(nullptr), allUTF32(getAllUTF32()), fontSize(24.f), fontIndex(1),
-	  showLogs(false), showDisplays(false), showAudio(false), showFont(false), showStats(false)
+	  showLogs(false), showStreams(false), showDisplays(false), showAudio(false), showFont(false), showStats(false)
 {
 }
 
@@ -232,10 +232,10 @@ bool TemStreamGui::connect(const Address &address)
 	}
 
 	LOCK(peerMutex);
-	peer = tem_unique<ClientPeer>(address, std::move(s));
+	peer = tem_unique<ClientConnetion>(address, std::move(s));
 	*logger << "Connected to server: " << address << std::endl;
-	MessagePacket packet;
-	packet.message = peerInfo;
+	Message::Packet packet;
+	packet.payload.emplace<PeerInformation>(peerInfo);
 	return (*peer)->sendPacket(packet);
 }
 
@@ -283,6 +283,10 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !showDisplays))
 			{
 				showDisplays = true;
+			}
+			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !showStreams))
+			{
+				showStreams = true;
 			}
 			if (ImGui::MenuItem("Audio", "Ctrl+A", nullptr, !showAudio))
 			{
@@ -567,6 +571,73 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
+	if (!streams.empty() && showStreams)
+	{
+		SetWindowMinSize(window);
+		if (ImGui::Begin("Streams", &showStreams))
+		{
+			if (ImGui::BeginTable("Streams", 4, ImGuiTableFlags_Borders))
+			{
+				ImGui::TableSetupColumn("Name");
+				ImGui::TableSetupColumn("Author");
+				ImGui::TableSetupColumn("Type");
+				ImGui::TableSetupColumn("Status");
+				ImGui::TableHeadersRow();
+
+				for (const auto &stream : streams)
+				{
+					const auto &source = stream.first;
+
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", source.destination.c_str());
+
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", source.author.c_str());
+
+					ImGui::TableNextColumn();
+					ImGui::Text("%u", stream.second.getType());
+
+					ImGui::TableNextColumn();
+					if (peerInfo.name == source.author)
+					{
+						ImGui::Text("Owner");
+					}
+					else if (subscriptions.find(source) == subscriptions.end())
+					{
+						if (ImGui::Button("Unsubscribed"))
+						{
+							Message::Packet packet;
+							packet.source.author = peerInfo.name;
+							Message::StreamUpdate su;
+							su.action = Message::StreamUpdate::Subscribe;
+							su.source = source;
+							su.type = stream.second.getType();
+							packet.payload.emplace<Message::StreamUpdate>(std::move(su));
+							sendPacket(std::move(packet), false);
+						}
+					}
+					else
+					{
+						if (ImGui::Button("Subscribe"))
+						{
+							Message::Packet packet;
+							packet.source.author = peerInfo.name;
+							Message::StreamUpdate su;
+							su.action = Message::StreamUpdate::Unsubscribe;
+							su.source = source;
+							su.type = stream.second.getType();
+							packet.payload.emplace<Message::StreamUpdate>(std::move(su));
+							sendPacket(std::move(packet), false);
+						}
+					}
+				}
+
+				ImGui::EndTable();
+			}
+		}
+		ImGui::End();
+	}
+
 	if (showLogs)
 	{
 		SetWindowMinSize(window);
@@ -808,7 +879,26 @@ const char *getExtension(const char *filename)
 	return filename;
 }
 
-void TemStreamGui::sendPacket(MessagePacket &&packet, const bool handleLocally)
+bool TemStreamGui::createStreamIfNeeded(const Message::Packet &packet)
+{
+	// Assume peer has already been checked
+
+	// If stream not found, send create stream packet
+	if (streams.find(packet.source) == streams.end())
+	{
+		Message::Packet newPacket;
+		newPacket.source = packet.source;
+		Message::StreamUpdate su;
+		su.source = packet.source;
+		su.action = Message::StreamUpdate::Create;
+		su.type = static_cast<uint32_t>(packet.payload.index());
+		newPacket.payload.emplace<Message::StreamUpdate>(std::move(su));
+		return (*peer)->sendPacket(newPacket);
+	}
+	return true;
+}
+
+void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)
 {
 	LOCK(peerMutex);
 	if (peer == nullptr)
@@ -816,7 +906,8 @@ void TemStreamGui::sendPacket(MessagePacket &&packet, const bool handleLocally)
 		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
 		return;
 	}
-	if (!(*peer)->sendPacket(packet))
+
+	if (!createStreamIfNeeded(packet) || !(*peer)->sendPacket(packet))
 	{
 		(*logger)(Logger::Trace) << "TemStreamGui::sendPacket: error" << std::endl;
 		onDisconnect(peer->gotServerInformation());
@@ -839,7 +930,7 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 	for (const auto &packet : packets)
 	{
-		if (!(*peer)->sendPacket(packet))
+		if (!createStreamIfNeeded(packet) || !(*peer)->sendPacket(packet))
 		{
 			(*logger)(Logger::Trace) << "TemStreamGui::sendPackets: error" << std::endl;
 			onDisconnect(peer->gotServerInformation());
@@ -859,7 +950,7 @@ bool TemStreamGui::addAudio(shared_ptr<Audio> &&ptr)
 	return pair.second;
 }
 
-shared_ptr<Audio> TemStreamGui::getAudio(const MessageSource &source) const
+shared_ptr<Audio> TemStreamGui::getAudio(const Message::Source &source) const
 {
 	auto iter = audio.find(source);
 	if (iter == audio.end())
@@ -895,7 +986,7 @@ void TemStreamGui::LoadFonts()
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
 }
 
-void TemStreamGui::handleMessage(MessagePacket &&m)
+void TemStreamGui::handleMessage(Message::Packet &&m)
 {
 	auto iter = displays.find(m.source);
 	if (iter == displays.end())
@@ -913,7 +1004,7 @@ void TemStreamGui::handleMessage(MessagePacket &&m)
 		iter = pair.first;
 	}
 
-	if (!std::visit(iter->second, std::move(m.message)))
+	if (!std::visit(iter->second, m.payload))
 	{
 		displays.erase(iter);
 	}
@@ -929,8 +1020,31 @@ String32 TemStreamGui::getAllUTF32()
 	return s;
 }
 
+void guiSignalHandler(int s)
+{
+	switch (s)
+	{
+	case SIGPIPE:
+		(*logger)(Logger::Error) << "Broken pipe error occurred" << std::endl;
+		break;
+	default:
+		break;
+	}
+}
+
 int TemStreamGui::run()
 {
+	{
+		struct sigaction action;
+		action.sa_handler = &guiSignalHandler;
+		sigfillset(&action.sa_mask);
+		if (sigaction(SIGINT, &action, nullptr) == -1)
+		{
+			perror("sigaction");
+			return EXIT_FAILURE;
+		}
+	}
+
 	IMGUI_CHECKVERSION();
 #if USE_CUSTOM_ALLOCATOR
 	ImGui::SetAllocatorFunctions((ImGuiMemAllocFunc)allocatorImGuiAlloc, (ImGuiMemFreeFunc)allocatorImGuiFree, nullptr);
@@ -1001,13 +1115,13 @@ int TemStreamGui::run()
 				switch (event.user.code)
 				{
 				case TemStreamEvent::SendSingleMessagePacket: {
-					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
+					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
 					gui.sendPacket(std::move(*packet));
 					deallocate(packet);
 				}
 				break;
 				case TemStreamEvent::HandleMessagePacket: {
-					MessagePacket *packet = reinterpret_cast<MessagePacket *>(event.user.data1);
+					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
 					gui.handleMessage(std::move(*packet));
 					deallocate(packet);
 				}
@@ -1022,7 +1136,8 @@ int TemStreamGui::run()
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
 					const auto start = std::make_move_iterator(packets->begin());
 					const auto end = std::make_move_iterator(packets->end());
-					std::for_each(start, end, [&gui](MessagePacket &&packet) { gui.handleMessage(std::move(packet)); });
+					std::for_each(start, end,
+								  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
 					deallocate(packets);
 				}
 				break;
@@ -1037,7 +1152,7 @@ int TemStreamGui::run()
 				break;
 				case TemStreamEvent::SetSurfaceToStreamDisplay: {
 					SDL_Surface *surface = reinterpret_cast<SDL_Surface *>(event.user.data1);
-					MessageSource *source = reinterpret_cast<MessageSource *>(event.user.data2);
+					Message::Source *source = reinterpret_cast<Message::Source *>(event.user.data2);
 
 					auto iter = gui.displays.find(*source);
 					if (iter != gui.displays.end())
@@ -1080,6 +1195,9 @@ int TemStreamGui::run()
 					break;
 				case SDLK_d:
 					gui.showDisplays = !gui.showDisplays;
+					break;
+				case SDLK_w:
+					gui.showStreams = !gui.showStreams;
 					break;
 				case SDLK_l:
 					gui.showLogs = !gui.showLogs;

@@ -66,11 +66,11 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 	return true;
 }
 
-PollState pollSocket(const int fd, const int timeout)
+PollState pollSocket(const int fd, const int timeout, const int events)
 {
 	struct pollfd inputfd;
 	inputfd.fd = fd;
-	inputfd.events = POLLIN;
+	inputfd.events = events;
 	inputfd.revents = 0;
 	switch (poll(&inputfd, 1, timeout))
 	{
@@ -80,7 +80,7 @@ PollState pollSocket(const int fd, const int timeout)
 	case 0:
 		return PollState::NoData;
 	default:
-		return (inputfd.revents & POLLIN) == 0 ? PollState::NoData : PollState::GotData;
+		return (inputfd.revents & events) == 0 ? PollState::NoData : PollState::GotData;
 	}
 }
 

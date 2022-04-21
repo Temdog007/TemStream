@@ -4,13 +4,30 @@
 
 namespace TemStream
 {
-class ClientPeer;
+class ClientConnetion;
 struct WindowProcess
 {
 	String name;
 	int32_t id;
 
-	bool operator<(const WindowProcess &p) const;
+	WindowProcess(const String &name, const int32_t id) : name(name), id(id)
+	{
+	}
+	WindowProcess(String &&name, const int32_t id) : name(std::move(name)), id(id)
+	{
+	}
+	~WindowProcess()
+	{
+	}
+
+	bool operator==(const WindowProcess &p) const
+	{
+		return id == p.id && name == p.name;
+	}
+	bool operator!=(const WindowProcess &p) const
+	{
+		return !(*this == p);
+	}
 };
 class Audio
 {
@@ -20,7 +37,7 @@ class Audio
 		std::array<char, MB(1)> buffer;
 	};
 	List<char> recordBuffer;
-	const MessageSource source;
+	const Message::Source source;
 	String name;
 	Deque<char> storedAudio;
 	Bytes currentAudio;
@@ -49,7 +66,7 @@ class Audio
 	template <class T, class... Args> friend T *allocate(Args &&...);
 
   protected:
-	Audio(const MessageSource &, bool);
+	Audio(const Message::Source &, bool);
 
 	static unique_ptr<Audio> startRecording(Audio *, int);
 
@@ -61,7 +78,7 @@ class Audio
 
 	void enqueueAudio(const Bytes &);
 
-	bool encodeAndSendAudio(ClientPeer &);
+	bool encodeAndSendAudio(ClientConnetion &);
 
 	bool isRecording() const
 	{
@@ -91,7 +108,7 @@ class Audio
 
 	void clearAudio();
 
-	const MessageSource &getSource() const
+	const Message::Source &getSource() const
 	{
 		return source;
 	}
@@ -104,10 +121,10 @@ class Audio
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
 
 	static std::optional<Set<WindowProcess>> getWindowsWithAudio();
-	static unique_ptr<Audio> startRecordingWindow(const MessageSource &, const WindowProcess &);
+	static unique_ptr<Audio> startRecordingWindow(const Message::Source &, const WindowProcess &);
 
-	static unique_ptr<Audio> startRecording(const MessageSource &, const char *);
-	static unique_ptr<Audio> startPlayback(const MessageSource &, const char *);
+	static unique_ptr<Audio> startRecording(const Message::Source &, const char *);
+	static unique_ptr<Audio> startPlayback(const Message::Source &, const char *);
 
 	class Lock
 	{

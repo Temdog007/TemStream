@@ -14,9 +14,9 @@ bool IQuery::draw()
 	ImGui::InputText("Stream Name", &streamName);
 	return ImGui::Button("Send");
 }
-MessageSource IQuery::getSource() const
+Message::Source IQuery::getSource() const
 {
-	return MessageSource{gui.getInfo().name, streamName};
+	return Message::Source{gui.getInfo().name, streamName};
 }
 // QueryText
 QueryText::QueryText(TemStreamGui &gui) : IQuery(gui), text()
@@ -35,8 +35,8 @@ bool QueryText::draw()
 }
 void QueryText::execute() const
 {
-	MessagePacket *packet = allocate<MessagePacket>();
-	packet->message = TextMessage(text);
+	Message::Packet *packet = allocate<Message::Packet>();
+	packet->payload.emplace<Message::Text>(text);
 	packet->source.author = gui.getInfo().name;
 	packet->source.destination = streamName;
 

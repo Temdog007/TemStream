@@ -54,31 +54,32 @@ target_link_libraries(ImGui PRIVATE SDL2)
 set(SOURCES 
     src/addrinfo.cpp 
     src/audio.cpp
-    src/clientPeer.cpp
+    src/clientConnection.cpp
     src/colors.cpp
+    src/connection.cpp 
     src/gui.cpp
     src/logger.cpp
     src/main.cpp
     src/memoryStream.cpp 
     src/misc.cpp
-    src/peer.cpp 
     src/query.cpp
-    src/serverPeer.cpp
+    src/serverConnection.cpp
     src/socket.cpp
+    src/stream.cpp
     src/streamDisplay.cpp
     src/workQueue.cpp)
 
 set(HEADERS include/addrinfo.hpp
-    include/clientPeer.hpp
+    include/clientConnection.hpp
     include/colors.hpp
+    include/connection.hpp
     include/gui.hpp
     include/logger.hpp
     include/main.hpp
     include/memoryStream.hpp
     include/message.hpp
-    include/peer.hpp
     include/query.hpp
-    include/serverPeer.hpp
+    include/serverConnection.hpp
     include/socket.hpp
     include/streamDisplay.hpp
     include/TemStreamConfig.h)

@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-class Peer
+class Connection
 {
   private:
 	Bytes bytes;
@@ -16,10 +16,10 @@ class Peer
 	unique_ptr<Socket> mSocket;
 
   public:
-	Peer(const Address &, unique_ptr<Socket>);
-	Peer(const Peer &) = delete;
-	Peer(Peer &&) = delete;
-	virtual ~Peer();
+	Connection(const Address &, unique_ptr<Socket>);
+	Connection(const Connection &) = delete;
+	Connection(Connection &&) = delete;
+	~Connection();
 
 	const PeerInformation &getInfo() const
 	{
@@ -38,7 +38,12 @@ class Peer
 
 	bool readAndHandle(const int);
 
-	virtual bool handlePacket(MessagePacket &&) = 0;
+	bool isServer() const
+	{
+		return info.isServer;
+	}
+
+	virtual bool handlePacket(Message::Packet &&) = 0;
 };
 
 } // namespace TemStream

@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-StreamDisplay::StreamDisplay(TemStreamGui &gui, const MessageSource &source)
+StreamDisplay::StreamDisplay(TemStreamGui &gui, const Message::Source &source)
 	: source(source), data(std::monostate{}), gui(gui), flags(ImGuiWindowFlags_None), visible(true)
 {
 }
@@ -82,12 +82,12 @@ bool StreamDisplay::setSurface(SDL_Surface *surface)
 	data.emplace<SDL_TextureWrapper>(texture);
 	return true;
 }
-bool StreamDisplay::operator()(TextMessage &&message)
+bool StreamDisplay::operator()(Message::Text &message)
 {
 	data = std::move(message);
 	return true;
 }
-bool StreamDisplay::operator()(ImageMessage &&message)
+bool StreamDisplay::operator()(Message::Image &message)
 {
 	return std::visit(ImageMessageHandler(*this), std::move(message));
 }
@@ -129,11 +129,11 @@ bool StreamDisplay::ImageMessageHandler::operator()(Bytes &&bytes)
 	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
 	return true;
 }
-bool StreamDisplay::operator()(VideoMessage &&)
+bool StreamDisplay::operator()(Message::Video &)
 {
 	return true;
 }
-bool StreamDisplay::operator()(AudioMessage &&audio)
+bool StreamDisplay::operator()(Message::Audio &audio)
 {
 	if (auto a = gui.getAudio(source))
 	{
@@ -154,22 +154,42 @@ bool StreamDisplay::operator()(AudioMessage &&audio)
 	}
 	return true;
 }
-bool StreamDisplay::operator()(PeerInformation &&)
+#define BAD_MESSAGE(X)                                                                                                 \
+	logger->AddError("Got '" #X "' message from the server. Disconnecting from server for it may not be safe.");       \
+	return false
+bool StreamDisplay::operator()(PeerInformation &)
 {
-	logger->AddError(
-		"Got 'PeerInformation' message from the server. Disconnecting from server for it may not be safe.");
-	return false;
+	BAD_MESSAGE(PeerInformation);
 }
-bool StreamDisplay::operator()(PeerInformationList &&)
+bool StreamDisplay::operator()(Message::RequestPeers &)
 {
-	logger->AddError(
-		"Got 'PeerInformationList' message from the server. Disconnecting from server for it may not be safe.");
-	return false;
+	BAD_MESSAGE(RequestPeers);
 }
-bool StreamDisplay::operator()(RequestPeers &&)
+bool StreamDisplay::operator()(Message::PeerInformationList &)
 {
-	logger->AddError("Got 'RequestPeers' message from the server. Disconnecting from server for it may not be safe.");
-	return false;
+	BAD_MESSAGE(PeerInformationList);
+}
+bool StreamDisplay::operator()(Message::StreamUpdate &)
+{
+	BAD_MESSAGE(StreamUpdate);
+}
+bool StreamDisplay::operator()(Message::GetStreams &)
+{
+	BAD_MESSAGE(GetStreams);
+}
+bool StreamDisplay::operator()(Message::Streams &s)
+{
+	gui.setStreams(std::move(s));
+	return true;
+}
+bool StreamDisplay::operator()(Message::GetSubscriptions &)
+{
+	BAD_MESSAGE(GetSubscriptions);
+}
+bool StreamDisplay::operator()(Message::Subscriptions &s)
+{
+	gui.setSubscriptions(std::move(s));
+	return true;
 }
 StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)
 {

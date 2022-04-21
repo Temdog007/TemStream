@@ -8,7 +8,7 @@ Socket::Socket() : buffer()
 Socket::~Socket()
 {
 }
-bool Socket::sendPacket(const MessagePacket &packet)
+bool Socket::sendPacket(const Message::Packet &packet)
 {
 	try
 	{
@@ -55,6 +55,13 @@ bool TcpSocket::connect(const char *hostname, const char *port, const bool isSer
 }
 bool TcpSocket::send(const void *data, size_t size)
 {
+	switch (pollSocket(fd, -1, POLLOUT))
+	{
+	case PollState::GotData:
+		break;
+	default:
+		return false;
+	}
 	{
 		uint32_t u = static_cast<uint32_t>(size);
 		u = htonl(u);

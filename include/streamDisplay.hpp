@@ -45,7 +45,7 @@ using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Byt
 class StreamDisplay
 {
   private:
-	MessageSource source;
+	Message::Source source;
 	DisplayData data;
 	TemStreamGui &gui;
 	ImGuiWindowFlags flags;
@@ -101,7 +101,7 @@ class StreamDisplay
 
   public:
 	StreamDisplay() = delete;
-	StreamDisplay(TemStreamGui &, const MessageSource &);
+	StreamDisplay(TemStreamGui &, const Message::Source &);
 	StreamDisplay(const StreamDisplay &) = delete;
 	StreamDisplay(StreamDisplay &&);
 	virtual ~StreamDisplay();
@@ -119,7 +119,7 @@ class StreamDisplay
 		this->flags = flags;
 	}
 
-	const MessageSource &getSource() const
+	const Message::Source &getSource() const
 	{
 		return source;
 	}
@@ -129,12 +129,6 @@ class StreamDisplay
 	bool draw();
 	void drawFlagCheckboxes();
 
-	bool operator()(TextMessage &&);
-	bool operator()(ImageMessage &&);
-	bool operator()(VideoMessage &&);
-	bool operator()(AudioMessage &&);
-	bool operator()(PeerInformation &&);
-	bool operator()(PeerInformationList &&);
-	bool operator()(RequestPeers &&);
+	MESSAGE_HANDLER_FUNCTIONS(bool);
 };
 } // namespace TemStream

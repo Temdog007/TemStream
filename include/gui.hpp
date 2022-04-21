@@ -48,16 +48,18 @@ class TemStreamGui
 	std::array<char, KB(1)> strBuffer;
 	WorkQueue workQueue;
 	std::optional<Address> connectToServer;
-	Map<MessageSource, StreamDisplay> displays;
-	Map<MessageSource, shared_ptr<Audio>> audio;
+	Map<Message::Source, StreamDisplay> displays;
+	Map<Message::Source, shared_ptr<Audio>> audio;
+	Message::Streams streams;
+	Message::Subscriptions subscriptions;
 	PeerInformation peerInfo;
 	Mutex peerMutex;
-	unique_ptr<ClientPeer> peer;
+	unique_ptr<ClientConnetion> peer;
 	unique_ptr<IQuery> queryData;
 #if THREADS_AVAILABLE
 	std::thread workThread;
 #endif
-	std::optional<MessageSource> audioTarget;
+	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
 	List<String> fontFiles;
 	ImGuiIO &io;
@@ -67,6 +69,7 @@ class TemStreamGui
 	float fontSize;
 	int fontIndex;
 	bool showLogs;
+	bool showStreams;
 	bool showDisplays;
 	bool showAudio;
 	bool showFont;
@@ -74,7 +77,9 @@ class TemStreamGui
 
 	void LoadFonts();
 
-	void handleMessage(MessagePacket &&);
+	void handleMessage(Message::Packet &&);
+
+	bool createStreamIfNeeded(const Message::Packet &);
 
 	void onDisconnect(bool);
 
@@ -121,8 +126,17 @@ class TemStreamGui
 	void doWork();
 	void draw();
 
+	void setSubscriptions(Message::Subscriptions &&s)
+	{
+		subscriptions = std::move(s);
+	}
+	void setStreams(Message::Streams &&s)
+	{
+		streams = std::move(s);
+	}
+
 	bool addAudio(shared_ptr<Audio> &&);
-	shared_ptr<Audio> getAudio(const MessageSource &) const;
+	shared_ptr<Audio> getAudio(const Message::Source &) const;
 
 	bool isConnected();
 
@@ -139,7 +153,7 @@ class TemStreamGui
 
 	int getSelectedQuery() const;
 
-	void sendPacket(MessagePacket &&, const bool handleLocally = true);
+	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);
 
 	static int run();

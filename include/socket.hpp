@@ -4,7 +4,10 @@
 
 namespace TemStream
 {
-class MessagePacket;
+namespace Message
+{
+class Packet;
+}
 class Address;
 class Socket
 {
@@ -15,7 +18,7 @@ class Socket
 	Socket();
 	virtual ~Socket();
 
-	bool sendPacket(const MessagePacket &);
+	bool sendPacket(const Message::Packet &);
 	bool connectWithAddress(const Address &, const bool isServer);
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;

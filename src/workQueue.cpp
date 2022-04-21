@@ -32,7 +32,7 @@ void CheckFile::run() const
 		deallocate(data);
 	}
 }
-SendImage::SendImage(const String &filename, const MessageSource &source) : filename(filename), source(source)
+SendImage::SendImage(const String &filename, const Message::Source &source) : filename(filename), source(source)
 {
 }
 SendImage::~SendImage()
@@ -50,8 +50,8 @@ void SendImage::run() const
 	MessagePackets *packets = allocate<MessagePackets>();
 	const Bytes bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 	{
-		MessagePacket packet;
-		packet.message = ImageMessage(static_cast<uint64_t>(bytes.size()));
+		Message::Packet packet;
+		packet.payload.emplace<Message::Image>(static_cast<uint64_t>(bytes.size()));
 		packet.source = source;
 		packets->push_back(std::move(packet));
 	}
@@ -59,16 +59,16 @@ void SendImage::run() const
 
 		for (size_t i = 0; i < bytes.size(); i += KB(64))
 		{
-			MessagePacket packet;
-			packet.message =
-				Bytes(bytes.begin() + i, (i + KB(64)) > bytes.size() ? bytes.end() : (bytes.begin() + i + KB(64)));
+			Message::Packet packet;
+			packet.payload.emplace<Message::Image>(
+				Bytes(bytes.begin() + i, (i + KB(64)) > bytes.size() ? bytes.end() : (bytes.begin() + i + KB(64))));
 			packet.source = source;
 			packets->push_back(std::move(packet));
 		}
 	}
 	{
-		MessagePacket packet;
-		packet.message = ImageMessage(std::monostate{});
+		Message::Packet packet;
+		packet.payload.emplace<Message::Image>(std::monostate{});
 		packet.source = source;
 		packets->push_back(std::move(packet));
 	}
@@ -82,7 +82,7 @@ void SendImage::run() const
 		deallocate(packets);
 	}
 }
-LoadSurface::LoadSurface(const MessageSource &source, Bytes &&bytes) : source(source), bytes(std::move(bytes))
+LoadSurface::LoadSurface(const Message::Source &source, Bytes &&bytes) : source(source), bytes(std::move(bytes))
 {
 }
 LoadSurface::~LoadSurface()
@@ -108,7 +108,7 @@ void LoadSurface::run() const
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SetSurfaceToStreamDisplay;
 	e.user.data1 = surface;
-	auto ptr = allocate<MessageSource>(source);
+	auto ptr = allocate<Message::Source>(source);
 	e.user.data2 = ptr;
 	if (!tryPushEvent(e))
 	{
@@ -116,7 +116,7 @@ void LoadSurface::run() const
 		deallocate(ptr);
 	}
 }
-StartPlayback::StartPlayback(const MessageSource &source, const std::optional<String> &name)
+StartPlayback::StartPlayback(const Message::Source &source, const std::optional<String> &name)
 	: source(source), name(name)
 {
 }
@@ -142,7 +142,7 @@ void StartPlayback::run() const
 
 	// Pointer will deleted if not released
 }
-StartRecording::StartRecording(const MessageSource &source, const std::optional<String> &name)
+StartRecording::StartRecording(const Message::Source &source, const std::optional<String> &name)
 	: source(source), name(name)
 {
 }
@@ -168,7 +168,7 @@ void StartRecording::run() const
 
 	// Pointer will deleted if not released
 }
-StartWindowRecording::StartWindowRecording(const MessageSource &source, const WindowProcess &wp)
+StartWindowRecording::StartWindowRecording(const Message::Source &source, const WindowProcess &wp)
 	: source(source), windowProcess(wp)
 {
 }

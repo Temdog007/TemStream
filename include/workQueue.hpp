@@ -23,10 +23,10 @@ class SendImage
 {
   private:
 	String filename;
-	MessageSource source;
+	Message::Source source;
 
   public:
-	SendImage(const String &, const MessageSource &);
+	SendImage(const String &, const Message::Source &);
 	~SendImage();
 
 	void run() const;
@@ -34,11 +34,11 @@ class SendImage
 class LoadSurface
 {
   private:
-	MessageSource source;
+	Message::Source source;
 	Bytes bytes;
 
   public:
-	LoadSurface(const MessageSource &, Bytes &&);
+	LoadSurface(const Message::Source &, Bytes &&);
 	~LoadSurface();
 
 	void run() const;
@@ -46,11 +46,11 @@ class LoadSurface
 class StartPlayback
 {
   private:
-	MessageSource source;
+	Message::Source source;
 	std::optional<String> name;
 
   public:
-	StartPlayback(const MessageSource &, const std::optional<String> &);
+	StartPlayback(const Message::Source &, const std::optional<String> &);
 	~StartPlayback();
 
 	void run() const;
@@ -58,11 +58,11 @@ class StartPlayback
 class StartRecording
 {
   private:
-	MessageSource source;
+	Message::Source source;
 	std::optional<String> name;
 
   public:
-	StartRecording(const MessageSource &, const std::optional<String> &);
+	StartRecording(const Message::Source &, const std::optional<String> &);
 	~StartRecording();
 
 	void run() const;
@@ -70,11 +70,11 @@ class StartRecording
 class StartWindowRecording
 {
   private:
-	MessageSource source;
+	Message::Source source;
 	WindowProcess windowProcess;
 
   public:
-	StartWindowRecording(const MessageSource &, const WindowProcess &);
+	StartWindowRecording(const Message::Source &, const WindowProcess &);
 	~StartWindowRecording();
 
 	void run() const;

@@ -34,7 +34,7 @@ class SinkInput
 	static bool runCommand(const char *, Deque<String> &);
 
 	friend std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio();
-	friend unique_ptr<Audio> Audio::startRecordingWindow(const MessageSource &, const WindowProcess &s);
+	friend unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &, const WindowProcess &s);
 
 	friend std::ostream &operator<<(std::ostream &os, const SinkInput &si)
 	{
@@ -81,7 +81,7 @@ class SinkInputAudio : public Audio
 	Sink remapSink;
 
   public:
-	SinkInputAudio(const MessageSource &, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink);
+	SinkInputAudio(const Message::Source &, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink);
 	virtual ~SinkInputAudio();
 };
 
@@ -248,19 +248,22 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 }
 std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio()
 {
-	const auto sinks = SinkInput::getSinks();
+	auto sinks = SinkInput::getSinks();
 	if (sinks.has_value())
 	{
-		Set<WindowProcess> list;
-		for (const auto &sink : *sinks)
+		Set<WindowProcess> set;
+		const auto begin = std::make_move_iterator(sinks->begin());
+		const auto end = std::make_move_iterator(sinks->end());
+		for (auto iter = begin; iter != end; ++iter)
 		{
-			list.insert(WindowProcess{sink.processName, sink.processId});
+			SinkInput sinkInput(std::move(*iter));
+			set.emplace(std::move(sinkInput.processName), sinkInput.processId);
 		}
-		return list;
+		return set;
 	}
 	return std::nullopt;
 }
-unique_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const WindowProcess &wp)
+unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, const WindowProcess &wp)
 {
 	using namespace std::chrono_literals;
 
@@ -340,7 +343,7 @@ unique_ptr<Audio> Audio::startRecordingWindow(const MessageSource &source, const
 	audio->name = commandBuffer;
 	return Audio::startRecording(audio, OPUS_APPLICATION_AUDIO);
 }
-SinkInputAudio::SinkInputAudio(const MessageSource &source, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink)
+SinkInputAudio::SinkInputAudio(const Message::Source &source, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink)
 	: Audio(source, true), nullSink(std::move(nullSink)), comboSink(std::move(comboSink)),
 	  remapSink(std::move(remapSink))
 {

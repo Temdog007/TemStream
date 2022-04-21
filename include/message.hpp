@@ -4,7 +4,21 @@
 
 namespace TemStream
 {
-struct VideoMessage
+namespace Message
+{
+using Text = String;
+using Image = std::variant<std::monostate, uint64_t, Bytes>;
+#define EMPTY_MESSAGE(Name)                                                                                            \
+	struct Name                                                                                                        \
+	{                                                                                                                  \
+		template <class Archive> void save(Archive &) const                                                            \
+		{                                                                                                              \
+		}                                                                                                              \
+		template <class Archive> void load(Archive &)                                                                  \
+		{                                                                                                              \
+		}                                                                                                              \
+	}
+struct Video
 {
 	Bytes bytes;
 	template <class Archive> void save(Archive &ar) const
@@ -16,7 +30,7 @@ struct VideoMessage
 		ar(bytes);
 	}
 };
-struct AudioMessage
+struct Audio
 {
 	Bytes bytes;
 	template <class Archive> void save(Archive &ar) const
@@ -28,101 +42,65 @@ struct AudioMessage
 		ar(bytes);
 	}
 };
-struct RequestPeers
+struct StreamUpdate
 {
+	Source source;
+	enum
+	{
+		Create,
+		Delete,
+		Subscribe,
+		Unsubscribe
+	} action;
+	uint32_t type;
+
 	template <class Archive> void save(Archive &ar) const
 	{
-		(void)ar;
+		ar(source, action, type);
 	}
-	template <class Archive> void serialize(Archive &ar)
+	template <class Archive> void load(Archive &ar)
 	{
-		(void)ar;
+		ar(source, action, type);
 	}
 };
-using TextMessage = String;
-using ImageMessage = std::variant<std::monostate, uint64_t, Bytes>;
+EMPTY_MESSAGE(GetSubscriptions);
+using Subscriptions = Set<Message::Source>;
+EMPTY_MESSAGE(RequestPeers);
 using PeerInformationList = List<PeerInformation>;
-using Message = std::variant<TextMessage, ImageMessage, VideoMessage, AudioMessage, PeerInformation, RequestPeers,
-							 PeerInformationList>;
+EMPTY_MESSAGE(GetStreams);
+using Streams = Map<Message::Source, Stream>;
+using Payload = std::variant<Text, Image, Video, Audio, PeerInformation, RequestPeers, PeerInformationList,
+							 StreamUpdate, GetStreams, Streams, GetSubscriptions, Subscriptions>;
 
-struct MessageSource
+#define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
+	RVAL operator()(Message::Text &);                                                                                  \
+	RVAL operator()(Message::Image &);                                                                                 \
+	RVAL operator()(Message::Audio &);                                                                                 \
+	RVAL operator()(Message::Video &);                                                                                 \
+	RVAL operator()(PeerInformation &);                                                                                \
+	RVAL operator()(Message::RequestPeers &);                                                                          \
+	RVAL operator()(Message::PeerInformationList &);                                                                   \
+	RVAL operator()(Message::StreamUpdate &);                                                                          \
+	RVAL operator()(Message::GetStreams &);                                                                            \
+	RVAL operator()(Message::Streams &);                                                                               \
+	RVAL operator()(Message::GetSubscriptions &);                                                                      \
+	RVAL operator()(Message::Subscriptions &)
+
+struct Packet
 {
-	String author;
-	String destination;
-
-	bool operator==(const MessageSource &s) const
-	{
-		return author == s.author && destination == s.destination;
-	}
-
-	bool operator!=(const MessageSource &s) const
-	{
-		return !(*this == s);
-	}
-
-	bool empty() const
-	{
-		return author.empty() && destination.empty();
-	}
-
-	template <class Archive> void save(Archive &ar) const
-	{
-		ar(author, destination);
-	}
-
-	template <class Archive> void load(Archive &ar)
-	{
-		ar(author, destination);
-	}
-
-	template <const size_t N> int print(std::array<char, N> &arr, const size_t offset = 0) const
-	{
-		return snprintf(arr.data() + offset, sizeof(arr) - offset, "%s (%s)", destination.c_str(), author.c_str());
-	}
-
-	explicit operator String() const
-	{
-		String s(destination);
-		s += " (";
-		s += author;
-		s += ')';
-		return s;
-	}
-
-	friend std::ostream &operator<<(std::ostream &os, const MessageSource &s)
-	{
-		os << s.destination << " (" << s.author << ')';
-		return os;
-	}
-};
-
-struct MessagePacket
-{
-	Message message;
-	MessageSource source;
+	Payload payload;
+	Source source;
 	List<String> trail;
 
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(message, source, trail);
+		ar(payload, source, trail);
 	}
 
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(message, source, trail);
+		ar(payload, source, trail);
 	}
 };
+} // namespace Message
 } // namespace TemStream
-
-namespace std
-{
-template <> struct hash<TemStream::MessageSource>
-{
-	std::size_t operator()(const TemStream::MessageSource &source) const
-	{
-		std::size_t value = hash<TemStream::String>()(source.author);
-		TemStream::hash_combine(value, source.destination);
-		return value;
-	}
-};
-} // namespace std

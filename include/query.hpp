@@ -19,7 +19,7 @@ class IQuery
 
 	virtual void execute() const = 0;
 
-	MessageSource getSource() const;
+	Message::Source getSource() const;
 };
 class QueryText : public IQuery
 {

@@ -2,16 +2,16 @@
 
 namespace TemStream
 {
-Peer::Peer(const Address &address, unique_ptr<Socket> s)
+Connection::Connection(const Address &address, unique_ptr<Socket> s)
 	: bytes(), nextMessageSize(std::nullopt), info(), address(address), mSocket(std::move(s))
 {
 }
 
-Peer::~Peer()
+Connection::~Connection()
 {
 }
 
-bool Peer::readAndHandle(const int timeout)
+bool Connection::readAndHandle(const int timeout)
 {
 	if (mSocket == nullptr || !mSocket->read(timeout, bytes))
 	{
@@ -51,7 +51,7 @@ bool Peer::readAndHandle(const int timeout)
 			m.write(bytes.data(), bytes.size());
 			cereal::PortableBinaryInputArchive ar(m);
 
-			MessagePacket packet;
+			Message::Packet packet;
 			ar(packet);
 
 			const bool result = handlePacket(std::move(packet));
@@ -65,7 +65,7 @@ bool Peer::readAndHandle(const int timeout)
 			m.write(bytes.data(), *nextMessageSize);
 			cereal::PortableBinaryInputArchive ar(m);
 
-			MessagePacket packet;
+			Message::Packet packet;
 			ar(packet);
 
 			const bool result = handlePacket(std::move(packet));
@@ -77,7 +77,7 @@ bool Peer::readAndHandle(const int timeout)
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Peer::readData: " << e.what() << std::endl;
+		(*logger)(Logger::Error) << "Connection::readData: " << e.what() << std::endl;
 		return false;
 	}
 }

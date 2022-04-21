@@ -232,7 +232,6 @@
 - [ ] Make client explicitly create a stream
 - [ ] Make server store list of streams
 - [ ] Make client subscribe to stream before sending data to it
-- [ ] StreamModificationMessage(MessageSource + enum{Create, Delete, Subscribe, Unsubscribe})
 
 ### Apr 21, 2022
 - [ ] Limit how many streams a client and create (default 10)
@@ -241,6 +240,7 @@
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)
 
 ### Later
+- [ ] Replace peer information with credentials
 - [ ] Update build for server to not include imgui and sdl
 - [ ] Make credientials for server to authenticate clients and servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 

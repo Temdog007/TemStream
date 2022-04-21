@@ -2,12 +2,7 @@
 
 namespace TemStream
 {
-bool WindowProcess::operator<(const WindowProcess &p) const
-{
-	return std::hash<WindowProcess>()(*this) < std::hash<WindowProcess>()(p);
-}
-
-Audio::Audio(const MessageSource &source, const bool recording)
+Audio::Audio(const Message::Source &source, const bool recording)
 	: buffer(), recordBuffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
 	  code(SDLK_UNKNOWN), volume(1.f), recording(recording)
 {
@@ -65,7 +60,7 @@ SDL_AudioSpec Audio::getAudioSpec()
 	desired.samples = 4096;
 	return desired;
 }
-unique_ptr<Audio> Audio::startRecording(const MessageSource &source, const char *name)
+unique_ptr<Audio> Audio::startRecording(const Message::Source &source, const char *name)
 {
 	Audio *a = allocate<Audio>(source, true);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
@@ -99,7 +94,7 @@ unique_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }
-unique_ptr<Audio> Audio::startPlayback(const MessageSource &source, const char *name)
+unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char *name)
 {
 	auto a = unique_ptr<Audio>(allocate<Audio>(source, false), Deleter<Audio>());
 
@@ -170,7 +165,7 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 	currentAudio.clear();
 	currentAudio.insert(currentAudio.end(), data, data + count);
 }
-bool Audio::encodeAndSendAudio(ClientPeer &peer)
+bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 {
 	if (!isRecording())
 	{
@@ -205,9 +200,9 @@ bool Audio::encodeAndSendAudio(ClientPeer &peer)
 			break;
 		}
 
-		MessagePacket packet;
+		Message::Packet packet;
 		packet.source = source;
-		packet.message = AudioMessage{Bytes(buffer.begin(), buffer.begin() + result)};
+		packet.payload.emplace<Message::Audio>(Message::Audio{Bytes(buffer.begin(), buffer.begin() + result)});
 		if (!peer->sendPacket(packet))
 		{
 			return false;
