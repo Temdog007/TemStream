@@ -229,8 +229,8 @@
 - [x] Make work queue
 - [x] Make audio device start as work
 - [x] Log error if tried to send message when not connected to peer
-- [ ] Make client explicitly create a stream
-- [ ] Make server store list of streams
+- [x] Make client implicitly create a stream
+- [x] Make server store list of streams
 - [ ] Make client subscribe to stream before sending data to it
 
 ### Apr 21, 2022

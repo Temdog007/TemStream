@@ -886,12 +886,14 @@ bool TemStreamGui::createStreamIfNeeded(const Message::Packet &packet)
 	// If stream not found, send create stream packet
 	if (streams.find(packet.source) == streams.end())
 	{
-		Message::Packet newPacket;
-		newPacket.source = packet.source;
 		Message::StreamUpdate su;
 		su.source = packet.source;
 		su.action = Message::StreamUpdate::Create;
 		su.type = static_cast<uint32_t>(packet.payload.index());
+		(*logger)(Logger::Trace) << "Creating stream " << su << std::endl;
+
+		Message::Packet newPacket;
+		newPacket.source = packet.source;
 		newPacket.payload.emplace<Message::StreamUpdate>(std::move(su));
 		return (*peer)->sendPacket(newPacket);
 	}
@@ -1038,7 +1040,7 @@ int TemStreamGui::run()
 		struct sigaction action;
 		action.sa_handler = &guiSignalHandler;
 		sigfillset(&action.sa_mask);
-		if (sigaction(SIGINT, &action, nullptr) == -1)
+		if (sigaction(SIGPIPE, &action, nullptr) == -1)
 		{
 			perror("sigaction");
 			return EXIT_FAILURE;

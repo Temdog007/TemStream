@@ -5,7 +5,7 @@ namespace TemStream
 Stream::Stream() : access(), source(), type(UINT32_MAX)
 {
 }
-Stream::Stream(const Message::Source &s, const uint32_t u) : access(), source(s), type(u)
+Stream::Stream(const Message::Source &s, const uint32_t type) : access(), source(s), type(type)
 {
 }
 Stream::Stream(const Stream &s) : access(s.access), source(s.source), type(s.type)

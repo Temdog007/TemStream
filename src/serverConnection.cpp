@@ -55,19 +55,21 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 	// Stream doesn't exist. So, don't send packet
 	if (streamIter == ServerConnection::streams.end())
 	{
-		logger->AddError("Stream doesn't exist");
+		(*logger)(Logger::Error) << "Stream " << packet.source << " doesn't exist" << std::endl;
 		return false;
 	}
-	// If type doesn't match, don't send packet
-	if (streamIter->second.getType() != packet.payload.index())
-	{
-		logger->AddError("Payload type mismatch");
-		return false;
-	}
+	// If type doesn't match, don't send packet.
+	const bool validPayload = streamIter->second.getType() != packet.payload.index();
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
+			// Skip self
+			if (ptr.get() == this)
+			{
+				++iter;
+				continue;
+			}
 			// Don't send packet to author
 			if ((*ptr).getInfo().name == packet.source.author)
 			{
@@ -95,6 +97,13 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 				{
 					++iter;
 					continue;
+				}
+				// Only stop connection if a packet would attempted to be sent
+				if (!validPayload)
+				{
+					(*logger)(Logger::Error) << "Payload mismatch for stream. Got " << packet.payload.index()
+											 << "; Expected " << streamIter->second.getType() << std::endl;
+					return false;
 				}
 			}
 			if ((*ptr)->send(m.getData(), m.getSize()))
@@ -347,12 +356,6 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 	switch (su.action)
 	{
 	case Message::StreamUpdate::Create: {
-		auto iter = connection.streams.find(su.source);
-		if (iter != connection.streams.end())
-		{
-			// Stream already exists. Nothing to do but don't terminate connection.
-			break;
-		}
 		if (!info.isServer)
 		{
 			// If client tries to create stream, ensure they are the author
@@ -361,11 +364,21 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 				PEER_ERROR("Author doesn't match");
 			}
 		}
-		connection.streams.emplace(Message::Source(su.source), Stream(su.source, su.type));
-		*logger << "Client " << info.name << " created stream " << su.source << std::endl;
+		LOCK(peersMutex);
+		auto result = ServerConnection::streams.try_emplace(Message::Source(su.source), Stream(su.source, su.type));
+		if (result.second)
+		{
+			*logger << "Stream created: " << result.first->first << '(' << result.first->second.getType() << ')'
+					<< std::endl;
+		}
+		else
+		{
+			(*logger)(Logger::Warning) << "Stream already exists: " << su.source << std::endl;
+		}
 	}
 	break;
 	case Message::StreamUpdate::Delete: {
+		LOCK(peersMutex);
 		if (!info.isServer)
 		{
 			// If client tries to delete stream, ensure they are the author
@@ -375,7 +388,7 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			}
 		}
 
-		connection.streams.erase(su.source);
+		ServerConnection::streams.erase(su.source);
 		*logger << "Client " << info.name << " deleted stream " << su.source << std::endl;
 	}
 	break;
@@ -432,20 +445,22 @@ bool ServerConnection::MessageHandler::operator()(Message::GetStreams &)
 }
 bool ServerConnection::MessageHandler::operator()(Message::Streams &streams)
 {
+	LOCK(peersMutex);
 	// Server only. Append to the list of streams and send to clients
 	if (!connection.isServer())
 	{
 		BAD_MESSAGE(Streams);
 	}
-	connection.streams.insert(streams.begin(), streams.end());
+	ServerConnection::streams.insert(streams.begin(), streams.end());
 	return sendStreamsToClients();
 }
 bool ServerConnection::MessageHandler::sendStreamsToClients()
 {
+	LOCK(peersMutex);
 	Message::Packet packet;
 	packet.source.author = serverInformation.name;
-	packet.payload.emplace<Message::Streams>(connection.streams);
-	return sendToAllPeers(std::move(packet), Target::Client);
+	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
+	return connection.sendToAllPeers(std::move(packet), Target::Client);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)
 {

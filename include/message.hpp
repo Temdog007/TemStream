@@ -62,6 +62,12 @@ struct StreamUpdate
 	{
 		ar(source, action, type);
 	}
+
+	friend std::ostream &operator<<(std::ostream &os, const StreamUpdate &su)
+	{
+		os << su.source << "; Action: " << su.action << "; Type: " << su.type;
+		return os;
+	}
 };
 EMPTY_MESSAGE(GetSubscriptions);
 using Subscriptions = Set<Message::Source>;
