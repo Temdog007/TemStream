@@ -7,6 +7,20 @@ PeerInformation ServerConnection::serverInformation;
 Mutex ServerConnection::peersMutex;
 List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
 
+#define CHECK_INFO(X)                                                                                                  \
+	if (!connection.gotInfo())                                                                                         \
+	{                                                                                                                  \
+		logger->AddError("Got " #X " from peer before getting their information");                                     \
+		return false;                                                                                                  \
+	} // namespace TemStream
+#define BAD_MESSAGE(X)                                                                                                 \
+	(*logger)(Logger::Error) << "Client " << connection.getInfo().name << " sent invalid message: '" #X "'"            \
+							 << std::endl;                                                                             \
+	return false
+#define PEER_ERROR(str)                                                                                                \
+	(*logger)(Logger::Error) << "Error with peer " << connection.getInfo() << ": " << str << std::endl;                \
+	return false
+
 bool ServerConnection::peerExists(const PeerInformation &info)
 {
 	LOCK(peersMutex);
@@ -41,11 +55,13 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 	// Stream doesn't exist. So, don't send packet
 	if (streamIter == ServerConnection::streams.end())
 	{
+		logger->AddError("Stream doesn't exist");
 		return false;
 	}
 	// If type doesn't match, don't send packet
 	if (streamIter->second.getType() != packet.payload.index())
 	{
+		logger->AddError("Payload type mismatch");
 		return false;
 	}
 	for (auto iter = peers.begin(); iter != peers.end();)
@@ -246,13 +262,13 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	// All messages should have an author and destination
 	if (packet.source.empty())
 	{
-		return false;
+		PEER_ERROR("Got message with no source");
 	}
 
 	// If connected to a client, author should match peer name
 	if (!connection.isServer() && packet.source.author != connection.info.name)
 	{
-		return false;
+		PEER_ERROR("Got message with no author");
 	}
 
 	// Stream must exist in stream list
@@ -260,7 +276,7 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 		LOCK(peersMutex);
 		if (ServerConnection::streams.find(packet.source) == ServerConnection::streams.end())
 		{
-			return false;
+			PEER_ERROR("Got with no stream");
 		}
 	}
 
@@ -275,12 +291,6 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	packet.trail.push_back(ServerConnection::serverInformation.name);
 	return connection.sendToAllPeers(std::move(packet), target);
 }
-#define CHECK_INFO(X)                                                                                                  \
-	if (!connection.gotInfo())                                                                                         \
-	{                                                                                                                  \
-		logger->AddError("Got " #X " from peer before getting their information");                                     \
-		return false;                                                                                                  \
-	} // namespace TemStream
 bool ServerConnection::MessageHandler::operator()(Message::Text &)
 {
 	CHECK_INFO(Message::Text)
@@ -348,7 +358,7 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			// If client tries to create stream, ensure they are the author
 			if (su.source.author != info.name)
 			{
-				return false;
+				PEER_ERROR("Author doesn't match");
 			}
 		}
 		connection.streams.emplace(Message::Source(su.source), Stream(su.source, su.type));
@@ -361,7 +371,7 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			// If client tries to delete stream, ensure they are the author
 			if (su.source.author != info.name)
 			{
-				return false;
+				PEER_ERROR("Author doesn't match");
 			}
 		}
 
@@ -425,7 +435,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Streams &streams)
 	// Server only. Append to the list of streams and send to clients
 	if (!connection.isServer())
 	{
-		return false;
+		BAD_MESSAGE(Streams);
 	}
 	connection.streams.insert(streams.begin(), streams.end());
 	return sendStreamsToClients();
@@ -453,7 +463,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Subscriptions &subs)
 	// Server only. Send current subscriptions to clients
 	if (!connection.isServer())
 	{
-		return false;
+		BAD_MESSAGE(Subscriptions);
 	}
 	connection.subscriptions.insert(subs.begin(), subs.end());
 	return sendSubscriptionsToClient();
