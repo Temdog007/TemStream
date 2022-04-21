@@ -47,12 +47,14 @@ bool Connection::readAndHandle(const int timeout)
 
 		if (*nextMessageSize == bytes.size())
 		{
-			MemoryStream m;
-			m.write(bytes.data(), bytes.size());
-			cereal::PortableBinaryInputArchive ar(m);
-
 			Message::Packet packet;
-			ar(packet);
+			{
+				MemoryStream m;
+				m.write(bytes.data(), bytes.size());
+				cereal::PortableBinaryInputArchive ar(m);
+
+				ar(packet);
+			}
 
 			const bool result = handlePacket(std::move(packet));
 			bytes.clear();

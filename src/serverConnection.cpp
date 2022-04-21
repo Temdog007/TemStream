@@ -18,7 +18,7 @@ List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
 							 << std::endl;                                                                             \
 	return false
 #define PEER_ERROR(str)                                                                                                \
-	(*logger)(Logger::Error) << "Error with peer " << connection.getInfo() << ": " << str << std::endl;                \
+	(*logger)(Logger::Error) << "Error with peer '" << connection.getInfo() << "': " << str << std::endl;              \
 	return false
 
 bool ServerConnection::peerExists(const PeerInformation &info)
@@ -41,10 +41,10 @@ bool ServerConnection::peerExists(const PeerInformation &info)
 	}
 	return false;
 }
-bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
+bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const bool checkSubscription, const Target target)
 {
 	const bool toServers = (target & Target::Server) != 0;
-	const bool toClient = (target & Target::Client) != 0;
+	const bool toClients = (target & Target::Client) != 0;
 
 	MemoryStream m;
 	cereal::PortableBinaryOutputArchive ar(m);
@@ -63,18 +63,12 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 			return false;
 		}
 		// If type doesn't match, don't send packet.
-		validPayload = streamIter->second.getType() != packet.payload.index();
+		validPayload = streamIter->second.getType() == packet.payload.index();
 	}
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
-			// Skip self
-			if (ptr.get() == this)
-			{
-				++iter;
-				continue;
-			}
 			// Don't send packet to author
 			if ((*ptr).getInfo().name == packet.source.author)
 			{
@@ -91,7 +85,7 @@ bool ServerConnection::sendToAllPeers(Message::Packet &&packet, const Target tar
 			}
 			else
 			{
-				if (!toClient)
+				if (!toClients)
 				{
 					++iter;
 					continue;
@@ -151,6 +145,23 @@ void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> &&peer)
 		if (!peer->readAndHandle(1000))
 		{
 			break;
+		}
+	}
+
+	{
+		LOCK(peersMutex);
+		auto &streams = ServerConnection::streams;
+		const auto &name = peer->getInfo().name;
+		for (auto iter = streams.begin(); iter != streams.end();)
+		{
+			if (iter->first.author == name)
+			{
+				iter = streams.erase(iter);
+			}
+			else
+			{
+				++iter;
+			}
 		}
 	}
 
@@ -273,7 +284,7 @@ bool ServerConnection::MessageHandler::operator()()
 {
 	return std::visit(*this, packet.payload);
 }
-bool ServerConnection::MessageHandler::processCurrentMessage(const Target target)
+bool ServerConnection::MessageHandler::processCurrentMessage(const Target target, const bool checkSubscription)
 {
 	// All messages should have an author and destination
 	if (packet.source.empty())
@@ -287,15 +298,6 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 		PEER_ERROR("Got message with no author");
 	}
 
-	// Stream must exist in stream list
-	{
-		LOCK(peersMutex);
-		if (ServerConnection::streams.find(packet.source) == ServerConnection::streams.end())
-		{
-			PEER_ERROR("Got with no stream");
-		}
-	}
-
 	// Don't send packet if server has already received it
 	auto iter = std::find(packet.trail.begin(), packet.trail.end(), ServerConnection::serverInformation.name);
 	if (iter != packet.trail.end())
@@ -305,7 +307,7 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	}
 
 	packet.trail.push_back(ServerConnection::serverInformation.name);
-	return connection.sendToAllPeers(std::move(packet), target);
+	return connection.sendToAllPeers(std::move(packet), checkSubscription, target);
 }
 bool ServerConnection::MessageHandler::operator()(Message::Text &)
 {
@@ -402,7 +404,7 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 		auto result = ServerConnection::streams.erase(su.source);
 		if (result > 0)
 		{
-			*logger << "Client " << info.name << " deleted stream " << su.source << std::endl;
+			*logger << info << " deleted stream: " << su.source << std::endl;
 			if (!sendStreamsToClients())
 			{
 				return false;
@@ -448,12 +450,12 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 		(*logger)(Logger::Error) << "Invalid action " << su.action << std::endl;
 		return false;
 	}
-	return processCurrentMessage(Target::Server);
+	return processCurrentMessage(Target::Server, false);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetStreams &)
 {
 	// Send get streams to servers
-	if (!processCurrentMessage(Target::Server))
+	if (!processCurrentMessage(Target::Server, false))
 	{
 		return false;
 	}
@@ -478,12 +480,13 @@ bool ServerConnection::MessageHandler::sendStreamsToClients()
 	Message::Packet packet;
 	packet.source.author = serverInformation.name;
 	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
-	return connection.sendToAllPeers(std::move(packet), Target::Client, false);
+	(*logger)(Logger::Trace) << "Sending streams to peers: " << ServerConnection::streams.size() << std::endl;
+	return connection.sendToAllPeers(std::move(packet), false, Target::Client);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)
 {
 	// Send get subscription to servers
-	if (!processCurrentMessage(Target::Server))
+	if (!processCurrentMessage(Target::Server, false))
 	{
 		return false;
 	}
@@ -503,6 +506,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Subscriptions &subs)
 }
 bool ServerConnection::MessageHandler::sendSubscriptionsToClient()
 {
+	(*logger)(Logger::Trace) << "Sending subscriptions to peers: " << connection.subscriptions.size() << std::endl;
 	Message::Packet packet;
 	packet.source.author = serverInformation.name;
 	packet.payload.emplace<Message::Subscriptions>(connection.subscriptions);

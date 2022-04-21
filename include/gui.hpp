@@ -74,6 +74,7 @@ class TemStreamGui
 	bool showAudio;
 	bool showFont;
 	bool showStats;
+	bool streamDirty;
 
 	void LoadFonts();
 
@@ -126,15 +127,6 @@ class TemStreamGui
 	void doWork();
 	void draw();
 
-	void setSubscriptions(Message::Subscriptions &&s)
-	{
-		subscriptions = std::move(s);
-	}
-	void setStreams(Message::Streams &&s)
-	{
-		streams = std::move(s);
-	}
-
 	bool addAudio(shared_ptr<Audio> &&);
 	shared_ptr<Audio> getAudio(const Message::Source &) const;
 
@@ -155,6 +147,26 @@ class TemStreamGui
 
 	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);
+
+	template <typename T> bool operator()(T &)
+	{
+		return false;
+	}
+
+	bool operator()(Message::Streams &s)
+	{
+		streams = std::move(s);
+		*logger << "Got " << streams.size() << " streams from server" << std::endl;
+		streamDirty = true;
+		return true;
+	}
+
+	bool operator()(Message::Subscriptions &s)
+	{
+		subscriptions = std::move(s);
+		*logger << "Got " << subscriptions.size() << " streams from server" << std::endl;
+		return true;
+	}
 
 	static int run();
 };

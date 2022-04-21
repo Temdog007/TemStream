@@ -581,12 +581,14 @@ void TemStreamGui::draw()
 				ImGui::TableSetupColumn("Name");
 				ImGui::TableSetupColumn("Author");
 				ImGui::TableSetupColumn("Type");
-				ImGui::TableSetupColumn("Status");
+				ImGui::TableSetupColumn("Action");
 				ImGui::TableHeadersRow();
 
 				for (const auto &stream : streams)
 				{
 					const auto &source = stream.first;
+
+					ImGui::PushID(static_cast<String>(source).c_str());
 
 					ImGui::TableNextColumn();
 					ImGui::Text("%s", source.destination.c_str());
@@ -600,7 +602,17 @@ void TemStreamGui::draw()
 					ImGui::TableNextColumn();
 					if (peerInfo.name == source.author)
 					{
-						ImGui::Text("Owner");
+						if (ImGui::Button("Delete"))
+						{
+							Message::Packet packet;
+							packet.source = source;
+							Message::StreamUpdate su;
+							su.action = Message::StreamUpdate::Delete;
+							su.source = source;
+							su.type = stream.second.getType();
+							packet.payload.emplace<Message::StreamUpdate>(std::move(su));
+							sendPacket(std::move(packet), false);
+						}
 					}
 					else if (subscriptions.find(source) == subscriptions.end())
 					{
@@ -630,8 +642,9 @@ void TemStreamGui::draw()
 							sendPacket(std::move(packet), false);
 						}
 					}
-				}
 
+					ImGui::PopID();
+				}
 				ImGui::EndTable();
 			}
 		}
@@ -990,6 +1003,10 @@ void TemStreamGui::LoadFonts()
 
 void TemStreamGui::handleMessage(Message::Packet &&m)
 {
+	if (std::visit(*this, m.payload))
+	{
+		return;
+	}
 	auto iter = displays.find(m.source);
 	if (iter == displays.end())
 	{
@@ -1220,6 +1237,22 @@ int TemStreamGui::run()
 			default:
 				break;
 			}
+		}
+
+		if (gui.streamDirty)
+		{
+			for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
+			{
+				if (gui.streams.find(iter->first) == gui.streams.end())
+				{
+					iter = gui.displays.erase(iter);
+				}
+				else
+				{
+					++iter;
+				}
+			}
+			gui.streamDirty = false;
 		}
 
 		ImGui_ImplSDLRenderer_NewFrame();

@@ -232,9 +232,10 @@
 - [x] Make client implicitly create a stream
 - [x] Make server store list of streams
 - [ ] Make client subscribe to stream before sending data to it
+- [x] Make displays that don't match to a stream disappear
 
 ### Apr 21, 2022
-- [ ] Limit how many streams a client and create (default 10)
+- [ ] Limit how many streams a client can create (default 10)
 - [ ] Window streaming
 - [ ] Webcam streaming
 - [ ] Allow multiple trancodes for each video stream (apply to webcam stream)

@@ -177,18 +177,16 @@ bool StreamDisplay::operator()(Message::GetStreams &)
 {
 	BAD_MESSAGE(GetStreams);
 }
-bool StreamDisplay::operator()(Message::Streams &s)
+bool StreamDisplay::operator()(Message::Streams &)
 {
-	gui.setStreams(std::move(s));
 	return true;
 }
 bool StreamDisplay::operator()(Message::GetSubscriptions &)
 {
 	BAD_MESSAGE(GetSubscriptions);
 }
-bool StreamDisplay::operator()(Message::Subscriptions &s)
+bool StreamDisplay::operator()(Message::Subscriptions &)
 {
-	gui.setSubscriptions(std::move(s));
 	return true;
 }
 StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)

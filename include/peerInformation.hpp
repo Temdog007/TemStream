@@ -20,7 +20,7 @@ struct PeerInformation
 
 	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
 	{
-		os << "Name: " << info.name << '(' << (info.isServer ? "Server" : "Client") << ')';
+		os << info.name << '(' << (info.isServer ? "Server" : "Client") << ')';
 		return os;
 	}
 

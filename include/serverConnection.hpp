@@ -22,7 +22,7 @@ class ServerConnection : public Connection
 		Both = Client | Server
 	};
 
-	bool sendToAllPeers(Message::Packet &&, Target t = Target::Both, const bool checkSubscription = true);
+	bool sendToAllPeers(Message::Packet &&, const bool checkSubscription, const Target t = Target::Both);
 
 	static bool peerExists(const PeerInformation &);
 
@@ -34,7 +34,7 @@ class ServerConnection : public Connection
 		ServerConnection &connection;
 		Message::Packet packet;
 
-		bool processCurrentMessage(Target t = Target::Both);
+		bool processCurrentMessage(const Target t = Target::Both, const bool checkSubscription = true);
 
 		bool sendSubscriptionsToClient();
 
