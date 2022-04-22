@@ -809,8 +809,50 @@ void TemStreamGui::draw()
 				default:
 					break;
 				}
+				std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, configuration.colors.begin());
 			}
-			std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, configuration.colors.begin());
+
+			ImGui::Separator();
+			ImGui::SetNextWindowCollapsed(true, ImGuiCond_FirstUseEver);
+			if (ImGui::CollapsingHeader("Custom Styles"))
+			{
+				if (configuration.customColors.empty())
+				{
+					ImGui::Text("None");
+				}
+				else
+				{
+					for (const auto &pair : configuration.customColors)
+					{
+						if (ImGui::Button(pair.first.c_str()))
+						{
+							configuration.colors = pair.second;
+							std::copy(configuration.colors.begin(), configuration.colors.end(), style.Colors);
+							break;
+						}
+					}
+				}
+			}
+
+			ImGui::Separator();
+			ImGui::SetNextWindowCollapsed(true, ImGuiCond_FirstUseEver);
+			if (ImGui::CollapsingHeader("Create Custom Style"))
+			{
+				static int selected = 0;
+				static char name[32];
+				ImGui::SliderInt("Index", &selected, 0, ImGuiCol_COUNT - 1);
+				ImGui::ColorPicker4("Color", &style.Colors[selected].x);
+
+				ImGui::InputText("Name", name, sizeof(name));
+				if (ImGui::Button("Save"))
+				{
+					ColorList colors;
+					std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, colors.begin());
+					configuration.customColors.emplace(name, std::move(colors));
+					memset(name, 0, sizeof(name));
+					selected = 0;
+				}
+			}
 		}
 		ImGui::End();
 	}
@@ -1374,6 +1416,9 @@ int runApp(Configuration &configuration)
 					break;
 				case SDLK_i:
 					gui.configuration.showStats = !gui.configuration.showStats;
+					break;
+				case SDLK_t:
+					gui.configuration.showColors = !gui.configuration.showColors;
 					break;
 				case SDLK_p:
 					if (gui.queryData == nullptr)

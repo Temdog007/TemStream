@@ -247,7 +247,7 @@
 ### Apr 22, 2022
 - [x] Cleanup showDisplays window
 - [x] Add silence thresold, default volume and default st
-- [ ] Allow for custom colors
+- [x] Allow for custom colors
 - [ ] Fix JSON serializing
 - [ ] Window streaming
 - [ ] Optional OpenCL
