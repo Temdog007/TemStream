@@ -504,6 +504,7 @@ void TemStreamGui::draw()
 			ImGui::InputText("Hostname", &connectToServer->hostname);
 			ImGui::InputInt("Port", &connectToServer->port);
 
+			ImGui::Separator();
 			static const char *Options[]{"Token", "Username And Password"};
 			int selected = configuration.credentials.index();
 			if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
