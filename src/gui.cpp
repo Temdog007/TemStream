@@ -844,7 +844,17 @@ void TemStreamGui::draw()
 			{
 				static int selected = 0;
 				static char name[32];
-				ImGui::SliderInt("Index", &selected, 0, ImGuiCol_COUNT - 1);
+				if (ImGui::Button("<"))
+				{
+					selected = SDL_max(0, selected - 1);
+				}
+				ImGui::SameLine();
+				ImGui::SliderInt(ImGuiColNames[selected], &selected, 0, ImGuiCol_COUNT - 1);
+				ImGui::SameLine();
+				if (ImGui::Button(">"))
+				{
+					selected = SDL_min(selected + 1, ImGuiCol_COUNT - 1);
+				}
 				ImGui::ColorPicker4("Color", &style.Colors[selected].x);
 
 				ImGui::InputText("Name", name, sizeof(name));

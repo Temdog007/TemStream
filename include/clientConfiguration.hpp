@@ -2,6 +2,8 @@
 
 #include <main.hpp>
 
+#include "imguiName.hpp"
+
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
 	auto cc = toCustomColors();                                                                                        \
 	auto ff = toFontFiles();                                                                                           \
@@ -15,7 +17,36 @@
 			CEREAL_NVP(colors))
 namespace TemStream
 {
-using ColorList = std::array<ImVec4, ImGuiCol_COUNT>;
+class ColorList
+{
+  private:
+	std::array<ImVec4, ImGuiCol_COUNT> data;
+
+  public:
+	template <class Archive> void save(Archive &archive) const
+	{
+		for (size_t i = 0; i < data.size(); ++i)
+		{
+			archive(cereal::make_nvp(ImGuiColNames[i], data[i]));
+		}
+	}
+	template <class Archive> void load(Archive &archive)
+	{
+		for (size_t i = 0; i < data.size(); ++i)
+		{
+			archive(cereal::make_nvp(ImGuiColNames[i], data[i]));
+		}
+	}
+
+	auto begin()
+	{
+		return data.begin();
+	}
+	auto end()
+	{
+		return data.end();
+	}
+};
 struct Configuration
 {
 	ColorList colors;

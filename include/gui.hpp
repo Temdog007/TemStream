@@ -196,5 +196,5 @@ class TemStreamGuiLogger : public InMemoryLogger
 
 template <typename Archive> static inline void serialize(Archive &ar, ImVec4 &v)
 {
-	ar(v.x, v.y, v.z, v.w);
+	ar(cereal::make_nvp("x", v.x), cereal::make_nvp("y", v.y), cereal::make_nvp("z", v.z), cereal::make_nvp("w", v.w));
 }

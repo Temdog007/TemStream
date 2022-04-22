@@ -14,7 +14,11 @@ Configuration::Configuration()
 Configuration::~Configuration()
 {
 }
-const char ConfigurationFile[] = "TemStream.data";
+#if TEMSTREAM_CLIENT_JSON_CONFIG
+const char ConfigurationFile[] = "TemStreamConfig.json";
+#else
+const char ConfigurationFile[] = "TemStreamConfig.data";
+#endif
 Configuration loadConfiguration(int, const char **)
 {
 	Configuration configuration;
