@@ -3,9 +3,13 @@
 namespace TemStream
 {
 Configuration::Configuration()
-	: fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(24.f), fontIndex(1),
-	  showLogs(false), showStreams(true), showDisplays(false), showAudio(true), showFont(false), showStats(false)
+	: colors(), fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(24.f), fontIndex(1),
+	  showLogs(false), showStreams(true), showDisplays(false), showAudio(true), showFont(false), showStats(false),
+	  showColors(false)
 {
+	ImGuiStyle style;
+	ImGui::StyleColorsLight(&style);
+	std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, colors.begin());
 }
 Configuration::~Configuration()
 {

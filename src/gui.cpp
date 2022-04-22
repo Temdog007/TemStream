@@ -1,5 +1,7 @@
 #include <main.hpp>
 
+#include "colors.hpp"
+
 #include "fonts/Cousine.cpp"
 #include "fonts/DroidSans.cpp"
 #include "fonts/Karla.cpp"
@@ -17,6 +19,11 @@ const unsigned int FontSizes[]{Cousine_compressed_size,		DroidSans_compressed_si
 
 const ImWchar MinCharacters = 0x1;
 const ImWchar MaxCharacters = 0x1FFFF;
+
+bool colorIsLight(const ImVec4 &bg)
+{
+	return bg.x + bg.y + bg.z > 1.5f;
+}
 
 uint8_t *allocatorMalloc(const size_t size)
 {
@@ -310,6 +317,10 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			{
 				configuration.showStats = true;
 			}
+			if (ImGui::MenuItem("Style", "Ctrl+T", nullptr, !configuration.showColors))
+			{
+				configuration.showColors = true;
+			}
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
@@ -331,15 +342,19 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				ImGui::Separator();
 				if (connectedToServer)
 				{
-					ImGui::TextColored(Colors::Lime, "Logged in as: %s\n", peerInfo.name.c_str());
+					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
+					ImGui::TextColored(isLight ? Colors::Green : Colors::Lime, "Logged in as: %s\n",
+									   peerInfo.name.c_str());
 
 					{
 						LOCK(peerMutex);
 						const auto &info = peer->getInfo();
-						ImGui::TextColored(Colors::Yellow, "Server: %s\n", info.name.c_str());
+						ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "Server: %s\n",
+										   info.name.c_str());
 
 						const auto &addr = peer->getAddress();
-						ImGui::TextColored(Colors::Yellow, "Address: %s:%d\n", addr.hostname.c_str(), addr.port);
+						ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "Address: %s:%d\n",
+										   addr.hostname.c_str(), addr.port);
 					}
 
 					ImGui::Separator();
@@ -371,14 +386,16 @@ void TemStreamGui::draw()
 	{
 		ImColor color;
 		const char *text;
+		const auto &style = ImGui::GetStyle();
+		const auto &bg = style.Colors[ImGuiCol_WindowBg];
 		if (connectedToServer)
 		{
-			color = Colors::Lime;
+			color = colorIsLight(bg) ? Colors::Green : Colors::Lime;
 			text = "Connected";
 		}
 		else
 		{
-			color = Colors::Red;
+			color = colorIsLight(bg) ? Colors::DarkRed : Colors::Red;
 			text = "Disconnected";
 		}
 		const auto textSize = ImGui::CalcTextSize(text);
@@ -685,20 +702,22 @@ void TemStreamGui::draw()
 		if (ImGui::Begin("Logs", &configuration.showLogs))
 		{
 			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
-			mLogger.viewLogs([](const Logger::Log &log) {
+			auto &style = ImGui::GetStyle();
+			const bool isLight = colorIsLight(style.Colors[ImGuiCol_WindowBg]);
+			mLogger.viewLogs([&style, isLight](const Logger::Log &log) {
 				switch (log.first)
 				{
 				case Logger::Trace:
-					ImGui::TextColored(Colors::Cyan, "%s", log.second.c_str());
+					ImGui::TextColored(isLight ? Colors::DarkCyan : Colors::Cyan, "%s", log.second.c_str());
 					break;
 				case Logger::Info:
-					ImGui::TextColored(Colors::White, "%s", log.second.c_str());
+					ImGui::TextColored(style.Colors[ImGuiCol_Text], "%s", log.second.c_str());
 					break;
 				case Logger::Warning:
-					ImGui::TextColored(Colors::Yellow, "%s", log.second.c_str());
+					ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "%s", log.second.c_str());
 					break;
 				case Logger::Error:
-					ImGui::TextColored(Colors::Red, "%s", log.second.c_str());
+					ImGui::TextColored(isLight ? Colors::DarkRed : Colors::Red, "%s", log.second.c_str());
 					break;
 				default:
 					break;
@@ -739,6 +758,39 @@ void TemStreamGui::draw()
 				ImGui::ProgressBar(percent);
 				ImGui::Text("%zu / %zu %s", used, total, type);
 			}
+		}
+		ImGui::End();
+	}
+
+	if (configuration.showColors)
+	{
+		SetWindowMinSize(window);
+		if (ImGui::Begin("Select a style", &configuration.showColors))
+		{
+			static const char *styles[]{"Light", "Classic", "Dark", "Deep Dark"};
+			static int selected = 0;
+			auto &style = ImGui::GetStyle();
+			if (ImGui::Combo("Style", &selected, styles, IM_ARRAYSIZE(styles)))
+			{
+				switch (selected)
+				{
+				case 0:
+					ImGui::StyleColorsLight(&style);
+					break;
+				case 1:
+					ImGui::StyleColorsClassic(&style);
+					break;
+				case 2:
+					ImGui::StyleColorsDark(&style);
+					break;
+				case 3:
+					Colors::StyleDeepDark(style);
+					break;
+				default:
+					break;
+				}
+			}
+			std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, configuration.colors.begin());
 		}
 		ImGui::End();
 	}
@@ -1146,7 +1198,10 @@ int runApp(Configuration &configuration)
 
 	ImGuiIO &io = ImGui::GetIO();
 
-	ImGui::StyleColorsDark();
+	{
+		auto &style = ImGui::GetStyle();
+		std::copy(configuration.colors.begin(), configuration.colors.end(), style.Colors);
+	}
 
 	TemStreamGui gui(io, configuration);
 	logger = tem_unique<TemStreamGuiLogger>(gui);

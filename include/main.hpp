@@ -228,7 +228,6 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 
 #include "clientConfiguration.hpp"
 #include "clientConnection.hpp"
-#include "colors.hpp"
 
 #include "streamDisplay.hpp"
 

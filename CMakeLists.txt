@@ -58,7 +58,6 @@ set(CLIENT_SOURCES
   src/clientConnection.cpp
   src/clientConfiguration.cpp
   src/clientMisc.cpp
-  src/colors.cpp
   src/gui.cpp
   src/query.cpp
   src/streamDisplay.cpp
