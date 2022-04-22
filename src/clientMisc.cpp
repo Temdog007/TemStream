@@ -61,7 +61,7 @@ void logSDLError(const char *str)
 }
 } // namespace TemStream
 
-#if USE_CUSTOM_ALLOCATOR
+#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 struct InputTextCallback_UserData
 {
 	TemStream::String *Str;
@@ -90,7 +90,6 @@ static int InputTextCallback(ImGuiInputTextCallbackData *data)
 	}
 	return 0;
 }
-#endif
 
 bool ImGui::InputText(const char *label, TemStream::String *str, ImGuiInputTextFlags flags,
 					  ImGuiInputTextCallback callback, void *user_data)
@@ -118,3 +117,4 @@ bool ImGui::InputTextMultiline(const char *label, TemStream::String *str, const 
 	return InputTextMultiline(label, (char *)str->c_str(), str->capacity() + 1, size, flags, InputTextCallback,
 							  &cb_user_data);
 }
+#endif

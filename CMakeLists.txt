@@ -7,8 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 option(COMPILE_CLIENT "Compile TemStream client" ON)
 option(COMPILE_SERVER "Compile TemStream server" ON)
+option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
+option(JSON_CONFIG "Serialize client configurations to JSON" ON)
 option(RECORD_PULSE_AUDIO "Record windows with pulse audio" ON)
 
+set(JSON_CONFIG OFF)
+set(CUSTOM_ALLOCATOR ON)
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)
 set(SUPPORT_PNG ON)
@@ -92,6 +96,14 @@ if(COMPILE_CLIENT)
     "${PROJECT_SOURCE_DIR}/include"
     "${CEREAL_SOURCE_DIR}/include"
     "${PROJECT_SOURCE_DIR}/imgui")
+
+  if(JSON_CONFIG)
+    target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_CLIENT_JSON_CONFIG)
+  endif()
+
+  if(CUSTOM_ALLOCATOR)
+    target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_CUSTOM_ALLOCATOR)
+  endif()
 
   target_link_libraries(TemStream PRIVATE 
     SDL2 

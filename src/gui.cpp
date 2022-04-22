@@ -186,7 +186,7 @@ void TemStreamGui::pushFont()
 
 bool TemStreamGui::init()
 {
-#if USE_CUSTOM_ALLOCATOR
+#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 	SDL_MemoryFunctions memFuncs;
 	memFuncs.GetFromSDL();
 	SDL_SetMemoryFunctions((SDL_malloc_func)allocatorMalloc, (SDL_calloc_func)allocatorCalloc,
@@ -509,7 +509,11 @@ void TemStreamGui::draw()
 		SetWindowMinSize(window);
 		if (ImGui::Begin("Font", &configuration.showFont))
 		{
+#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t, Allocator<char32_t>, Allocator<char>> cvt;
+#else
+			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> cvt;
+#endif
 			const String s = cvt.to_bytes(allUTF32);
 			const size_t size = 1000;
 			for (size_t i = 0; i < s.size(); i += size)
@@ -1253,7 +1257,7 @@ int runApp(Configuration &configuration)
 	}
 
 	IMGUI_CHECKVERSION();
-#if USE_CUSTOM_ALLOCATOR
+#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 	ImGui::SetAllocatorFunctions((ImGuiMemAllocFunc)allocatorImGuiAlloc, (ImGuiMemFreeFunc)allocatorImGuiFree, nullptr);
 #endif
 
@@ -1377,7 +1381,7 @@ int runApp(Configuration &configuration)
 				break;
 				case TemStreamEvent::AddAudio: {
 					Audio *audio = reinterpret_cast<Audio *>(event.user.data1);
-					auto ptr = shared_ptr<Audio>(audio, Deleter<Audio>());
+					auto ptr = tem_shared<Audio>(audio);
 					gui.addAudio(std::move(ptr));
 				}
 				break;

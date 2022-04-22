@@ -49,7 +49,11 @@ namespace fs = std::filesystem;
 #include <cereal/types/variant.hpp>
 #include <cereal/types/vector.hpp>
 
+#if TEMSTREAM_CLIENT_JSON_CONFIG
+#include <cereal/archives/json.hpp>
+#else
 #include <cereal/archives/binary.hpp>
+#endif
 #include <cereal/archives/portable_binary.hpp>
 
 namespace std
@@ -132,8 +136,6 @@ extern void logSDLError(const char *);
 #else
 #define LOG_MESSAGE_TYPE false
 #endif
-
-#define USE_CUSTOM_ALLOCATOR true
 
 #define THREADS_AVAILABLE (!__EMSCRIPTEN__ || !SDL_THREADS_DISABLED)
 

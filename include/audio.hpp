@@ -76,6 +76,8 @@ class Audio
 
 	friend class Allocator<Audio>;
 
+	template <typename T, typename... Args> friend T *allocate(Args &&...args);
+
   protected:
 	Audio(const Message::Source &, Type, float);
 

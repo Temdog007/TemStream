@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-#if USE_CUSTOM_ALLOCATOR
+#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 using String = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
 using String32 = std::basic_string<char32_t, std::char_traits<char32_t>, Allocator<char32_t>>;
 using StringStream = std::basic_ostringstream<char, std::char_traits<char>, Allocator<char>>;
@@ -17,12 +17,13 @@ using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<s
 template <typename T, typename... Args> T *allocate(Args &&...args)
 {
 	Allocator<T> a;
-	return a.allocate(std::forward<Args>(args)...);
+	T *t = a.allocate();
+	return new (t) T(std::forward<Args>(args)...);
 }
 template <typename T> void deallocate(T *const t)
 {
 	Allocator<T> a;
-	a.deallocate(t, 1);
+	a.deallocate(t);
 }
 
 template <typename T> struct Deleter
@@ -36,6 +37,25 @@ template <typename T> struct Deleter
 		deallocate(t);
 	}
 };
+
+template <typename T> using unique_ptr = std::unique_ptr<T, Deleter<T>>;
+
+template <typename T> using shared_ptr = std::shared_ptr<T>;
+
+template <typename T, typename... Args> static inline unique_ptr<T> tem_unique(Args &&...args)
+{
+	return unique_ptr<T>(allocate<T>(std::forward<Args>(args)...), Deleter<T>());
+}
+
+template <typename T, typename... Args> static inline shared_ptr<T> tem_shared(Args &&...args)
+{
+	return shared_ptr<T>(allocate<T>(std::forward<Args>(args)...), Deleter<T>());
+}
+
+template <typename T> static inline shared_ptr<T> tem_shared(T *t)
+{
+	return shared_ptr<T>(t, Deleter<T>());
+}
 } // namespace TemStream
 namespace std
 {
@@ -73,7 +93,7 @@ using String32 = std::u32string;
 using StringStream = std::ostringstream;
 template <typename T> using List = std::vector<T>;
 template <typename T> using Deque = std::deque<T>;
-template <typename K, typename V> using Set = std::unordered_set<K, V>;
+template <typename T> using Set = std::unordered_set<T>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
 
 template <typename T, typename... Args> T *allocate(Args &&...args)
@@ -84,6 +104,25 @@ template <typename T> void deallocate(T *const t)
 {
 	delete t;
 }
+
+template <typename T> using unique_ptr = std::unique_ptr<T>;
+
+template <typename T> using shared_ptr = std::shared_ptr<T>;
+
+template <typename T, typename... Args> static inline unique_ptr<T> tem_unique(Args &&...args)
+{
+	return unique_ptr<T>(allocate<T>(std::forward<Args>(args)...));
+}
+
+template <typename T, typename... Args> static inline shared_ptr<T> tem_shared(Args &&...args)
+{
+	return shared_ptr<T>(allocate<T>(std::forward<Args>(args)...));
+}
+
+template <typename T> static inline shared_ptr<T> tem_shared(T *t)
+{
+	return shared_ptr<T>(t);
+}
 #endif
 
 extern String &trim(String &);
@@ -93,17 +132,4 @@ extern String &rtrim(String &);
 using Bytes = List<char>;
 using StringList = List<String>;
 
-template <typename T> using unique_ptr = std::unique_ptr<T, Deleter<T>>;
-
-template <typename T> using shared_ptr = std::shared_ptr<T>;
-
-template <typename T, typename... Args> static inline unique_ptr<T> tem_unique(Args &&...args)
-{
-	return unique_ptr<T>(allocate<T>(std::forward<Args>(args)...), Deleter<T>());
-}
-
-template <typename T, typename... Args> static inline shared_ptr<T> tem_shared(Args &&...args)
-{
-	return shared_ptr<T>(allocate<T>(std::forward<Args>(args)...), Deleter<T>());
-}
 } // namespace TemStream

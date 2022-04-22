@@ -23,8 +23,13 @@ Configuration loadConfiguration(int, const char **)
 		std::ifstream file(ConfigurationFile);
 		if (file.is_open())
 		{
+#if TEMSTREAM_CLIENT_JSON_CONFIG
+			cereal::JSONInputArchive ar(file);
+			ar(configuration);
+#else
 			cereal::BinaryInputArchive ar(file);
 			ar(configuration);
+#endif
 		}
 	}
 	catch (const std::exception &e)
@@ -40,8 +45,13 @@ void saveConfiguration(const Configuration &configuration)
 		std::ofstream file(ConfigurationFile);
 		if (file.is_open())
 		{
+#if TEMSTREAM_CLIENT_JSON_CONFIG
+			cereal::JSONOutputArchive ar(file);
+			ar(configuration);
+#else
 			cereal::BinaryOutputArchive ar(file);
 			ar(configuration);
+#endif
 		}
 	}
 	catch (const std::exception &e)

@@ -210,15 +210,8 @@ template <class T> class Allocator
 		return false;
 	}
 
-	T *allocate(const size_t n);
-	void deallocate(T *const p, size_t);
-
-	template <typename... Args> T *allocate(Args &&...args)
-	{
-		const size_t count = 1;
-		T *t = allocate(count);
-		return new (t) T(std::forward<Args>(args)...);
-	}
+	T *allocate(const size_t n = 1);
+	void deallocate(T *const p, const size_t count = 1);
 
 	size_t getBlockSize(const T *const p) const;
 };
