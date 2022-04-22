@@ -9,7 +9,7 @@ class FileDisplay
 {
   private:
 	String directory;
-	List<String> files;
+	StringList files;
 
 	void loadFiles();
 
@@ -23,7 +23,7 @@ class FileDisplay
 		return directory;
 	}
 
-	const List<String> &getFiles() const
+	const StringList &getFiles() const
 	{
 		return files;
 	}

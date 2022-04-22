@@ -11,7 +11,7 @@ option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
 option(RECORD_PULSE_AUDIO "Record windows with pulse audio" ON)
 
-set(JSON_CONFIG OFF)
+set(JSON_CONFIG ON)
 set(CUSTOM_ALLOCATOR ON)
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)

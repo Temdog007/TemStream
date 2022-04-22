@@ -59,4 +59,71 @@ void saveConfiguration(const Configuration &configuration)
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to save configuration", e.what(), nullptr);
 	}
 }
+std::unordered_map<std::string, ColorList> Configuration::toCustomColors() const
+{
+	return std::unordered_map<std::string, ColorList>(customColors.begin(), customColors.end());
+}
+void Configuration::fromCustomColors(std::unordered_map<std::string, ColorList> &&c)
+{
+	auto begin = std::make_move_iterator(c.begin());
+	auto end = std::make_move_iterator(c.end());
+	customColors.clear();
+	for (auto iter = begin; iter != end; ++iter)
+	{
+		customColors.emplace(*iter);
+	}
+}
+std::vector<std::string> Configuration::toFontFiles() const
+{
+	return std::vector<std::string>(fontFiles.begin(), fontFiles.end());
+}
+void Configuration::fromFontFiles(std::vector<std::string> &&v)
+{
+	auto begin = std::make_move_iterator(v.begin());
+	auto end = std::make_move_iterator(v.end());
+	fontFiles.clear();
+	for (auto iter = begin; iter != end; ++iter)
+	{
+		fontFiles.emplace_back(*iter);
+	}
+}
+std::string Configuration::toAddress() const
+{
+	return std::string(address.hostname);
+}
+void Configuration::fromAddress(std::string &&s)
+{
+	address.hostname = std::move(s);
+}
+std::variant<std::string, std::pair<std::string, std::string>> Configuration::toCredentials() const
+{
+	struct Foo
+	{
+		std::variant<std::string, std::pair<std::string, std::string>> operator()(const String &s)
+		{
+			return std::string(s);
+		}
+		std::variant<std::string, std::pair<std::string, std::string>> operator()(
+			const Message::UsernameAndPassword &up)
+		{
+			return std::make_pair<std::string, std::string>(std::string(up.first), std::string(up.second));
+		}
+	};
+	return std::visit(Foo(), credentials);
+}
+void Configuration::fromCredentials(std::variant<std::string, std::pair<std::string, std::string>> &&c)
+{
+	struct Foo
+	{
+		Message::Credentials operator()(std::string &&s)
+		{
+			return String(std::move(s));
+		}
+		Message::Credentials operator()(std::pair<std::string, std::string> &&up)
+		{
+			return Message::UsernameAndPassword(std::move(up.first), std::move(up.second));
+		}
+	};
+	credentials = std::visit(Foo(), std::move(c));
+}
 } // namespace TemStream

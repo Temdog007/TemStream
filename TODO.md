@@ -249,7 +249,7 @@
 - [x] Add silence thresold, default volume and default st
 - [x] Allow for custom colors
 - [x] Make custom allocator optional
-- [ ] Fix JSON serializing
+- [x] Fix JSON serializing
 - [ ] Window streaming
 - [ ] Optional OpenCL
 - [ ] Webcam streaming

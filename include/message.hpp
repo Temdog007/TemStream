@@ -114,7 +114,7 @@ struct Packet
 {
 	Payload payload;
 	Source source;
-	List<String> trail;
+	StringList trail;
 
 	template <class Archive> void save(Archive &ar) const
 	{
