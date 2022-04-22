@@ -245,6 +245,8 @@
 - [x] Replace peer information with credentials
 
 ### Apr 22, 2022
+- [ ] Cleanup showDisplays window
+- [ ] Make default style that matches website
 - [ ] Window streaming
 - [ ] Optional OpenCL
 - [ ] Webcam streaming

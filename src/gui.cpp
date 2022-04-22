@@ -764,10 +764,9 @@ void TemStreamGui::draw()
 
 	if (configuration.showColors)
 	{
-		SetWindowMinSize(window);
-		if (ImGui::Begin("Select a style", &configuration.showColors))
+		if (ImGui::Begin("Select a style", &configuration.showColors, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			static const char *styles[]{"Light", "Classic", "Dark", "Deep Dark"};
+			static const char *styles[]{"Light", "Classic", "Dark", "Deep Dark", "Red", "Green", "Gold"};
 			static int selected = 0;
 			auto &style = ImGui::GetStyle();
 			if (ImGui::Combo("Style", &selected, styles, IM_ARRAYSIZE(styles)))
@@ -785,6 +784,15 @@ void TemStreamGui::draw()
 					break;
 				case 3:
 					Colors::StyleDeepDark(style);
+					break;
+				case 4:
+					Colors::StyleRed(style);
+					break;
+				case 5:
+					Colors::StyleGreen(style);
+					break;
+				case 6:
+					Colors::StyleGold(style);
 					break;
 				default:
 					break;
