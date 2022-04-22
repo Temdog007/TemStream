@@ -10,7 +10,7 @@ Configuration::Configuration()
 Configuration::~Configuration()
 {
 }
-const char ConfigurationFile[] = "TemStream.json";
+const char ConfigurationFile[] = "TemStream.data";
 Configuration loadConfiguration(int, const char **)
 {
 	Configuration configuration;

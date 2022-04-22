@@ -68,7 +68,7 @@ class TemStreamGui
 	Configuration &configuration;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-	bool streamDirty;
+	bool dirty;
 
 	void LoadFonts();
 

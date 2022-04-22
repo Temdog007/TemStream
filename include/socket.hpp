@@ -41,6 +41,9 @@ class TcpSocket : public Socket
 	TcpSocket(TcpSocket &&) noexcept;
 	virtual ~TcpSocket();
 
+	PollState pollRead(const int timeout) const;
+	PollState pollWrite(const int timeout) const;
+
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
 	virtual bool send(const void *, size_t) override;
 	virtual bool read(const int timeout, Bytes &) override;

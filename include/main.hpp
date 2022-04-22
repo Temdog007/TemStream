@@ -145,7 +145,7 @@ extern bool openSocket(int &, const char *hostname, const char *port, const bool
 
 extern bool sendData(int, const void *, size_t);
 
-extern PollState pollSocket(const int fd, const int timeout = 1, const int events = POLLIN);
+extern PollState pollSocket(const int fd, const int timeout, const int events);
 
 extern bool appDone;
 
@@ -156,8 +156,6 @@ extern bool isSpace(char);
 template <typename T, typename... Args> static inline T *allocate(Args &&...);
 
 template <typename T> static inline void deallocate(T *const);
-
-extern size_t MaxPacketSize;
 
 extern int64_t getTimestamp();
 

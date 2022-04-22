@@ -3,7 +3,7 @@
 #include <main.hpp>
 
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
-	archive(address, name, maxMessageSize, maxStreamsPerClient, maxTotalStreams, recordStreams)
+	archive(address, name, maxClients, maxMessageSize, maxStreamsPerClient, maxTotalStreams, recordStreams)
 
 namespace TemStream
 {
@@ -11,6 +11,7 @@ struct Configuration
 {
 	Address address;
 	String name;
+	uint32_t maxClients;
 	uint32_t maxMessageSize;
 	uint32_t maxStreamsPerClient;
 	uint32_t maxTotalStreams;
@@ -33,7 +34,8 @@ struct Configuration
 
 	friend std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
 	{
-		os << "Address: " << configuration.address << "\nName: " << configuration.name << '\n';
+		os << "Address: " << configuration.address << "\nName: " << configuration.name
+		   << "\nMax Clients: " << configuration.maxClients << '\n';
 		printMemory(os, "Max Message Size", configuration.maxMessageSize)
 			<< "\nMax Streams Per Client: " << configuration.maxStreamsPerClient
 			<< "\nMax Total Streams: " << configuration.maxTotalStreams

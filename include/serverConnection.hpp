@@ -28,6 +28,10 @@ class ServerConnection : public Connection
 
 	static bool peerExists(const PeerInformation &);
 
+	static size_t totalPeers();
+
+	static size_t totalStreams();
+
 	static std::optional<Stream> getStream(const Message::Source &);
 
 	static void runPeerConnection(shared_ptr<ServerConnection> &&);

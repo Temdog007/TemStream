@@ -158,14 +158,14 @@ void TemStreamGui::onDisconnect(const bool gotInformation)
 		message = "Failed to connect to server";
 	}
 	(*logger)(Logger::Error) << message << std::endl;
-	streamDirty = true;
+	dirty = true;
 }
 
 void TemStreamGui::disconnect()
 {
 	LOCK(peerMutex);
 	peer = nullptr;
-	streamDirty = true;
+	dirty = true;
 }
 
 void TemStreamGui::pushFont()
@@ -985,7 +985,7 @@ bool TemStreamGui::operator()(const Message::Streams &s)
 {
 	streams = std::move(s);
 	*logger << "Got " << streams.size() << " streams from server" << std::endl;
-	streamDirty = true;
+	dirty = true;
 	return true;
 }
 
@@ -993,7 +993,7 @@ bool TemStreamGui::operator()(const Message::Subscriptions &s)
 {
 	subscriptions = std::move(s);
 	*logger << "Got " << subscriptions.size() << " subscriptions from server" << std::endl;
-	streamDirty = true;
+	dirty = true;
 	return true;
 }
 
@@ -1065,6 +1065,7 @@ void TemStreamGui::handleMessage(Message::Packet &&m)
 	{
 		displays.erase(iter);
 	}
+	dirty = true;
 }
 
 String32 TemStreamGui::getAllUTF32()
@@ -1279,7 +1280,7 @@ int runApp(Configuration &configuration)
 			}
 		}
 
-		if (gui.streamDirty)
+		if (gui.dirty)
 		{
 			if (gui.isConnected())
 			{
@@ -1320,7 +1321,7 @@ int runApp(Configuration &configuration)
 				gui.streams.clear();
 				gui.subscriptions.clear();
 			}
-			gui.streamDirty = false;
+			gui.dirty = false;
 		}
 
 		ImGui_ImplSDLRenderer_NewFrame();

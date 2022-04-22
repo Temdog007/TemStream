@@ -241,11 +241,12 @@
     Limit max message size
     Optional stream recording
 - [x] Update build for server to not include imgui and sdl
+- [x] Make server use configuration
 - [ ] Window streaming
-- [ ] Webcam streaming
-- [ ] Allow multiple transcodes for each video stream
 
 ### Apr 22, 2022
+- [ ] Webcam streaming
+- [ ] Allow multiple transcodes for each video stream
 - [ ] Replace peer information with credentials
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
@@ -254,12 +255,13 @@
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time stamp
 - [ ] Validate stream names/client names
-- [ ] Make server us configuration
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts
 - [ ] Add comments to code
+- [ ] Implement SSL socket
+- [ ] Implement web socket
 - [ ] Test browser
 - [ ] Test android
 

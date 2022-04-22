@@ -3,8 +3,8 @@
 namespace TemStream
 {
 Configuration::Configuration()
-	: address(), name("Server"), maxMessageSize(MB(1)), maxStreamsPerClient(10u), maxTotalStreams(1024u),
-	  recordStreams(false)
+	: address(), name("Server"), maxClients(UINT32_MAX), maxMessageSize(MB(1)), maxStreamsPerClient(10u),
+	  maxTotalStreams(1024u), recordStreams(false)
 {
 }
 Configuration::~Configuration()
@@ -49,7 +49,12 @@ Configuration loadConfiguration(const int argc, const char **argv)
 				i += 2;
 				continue;
 			}
-
+			if (strcmp("-MC", argv[i]) == 0 || strcmp("--max-clients", argv[i]) == 0)
+			{
+				configuration.maxClients = static_cast<uint32_t>(atoi(argv[i + 1]));
+				i += 2;
+				continue;
+			}
 			if (strcmp("-MS", argv[i]) == 0 || strcmp("--max-message-size", argv[i]) == 0)
 			{
 				configuration.maxMessageSize = static_cast<uint32_t>(atoi(argv[i + 1]));

@@ -14,6 +14,7 @@ class Connection
 	PeerInformation info;
 	const Address address;
 	unique_ptr<Socket> mSocket;
+	size_t maxMessageSize;
 
   public:
 	Connection(const Address &, unique_ptr<Socket>);

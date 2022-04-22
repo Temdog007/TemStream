@@ -1,12 +1,5 @@
 #include <main.hpp>
 
-namespace TemStream
-{
-Message::Streams ServerConnection::streams;
-Configuration ServerConnection::configuration;
-Mutex ServerConnection::peersMutex;
-List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
-
 #define CHECK_INFO(X)                                                                                                  \
 	if (!connection.gotInfo())                                                                                         \
 	{                                                                                                                  \
@@ -21,35 +14,132 @@ List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
 	(*logger)(Logger::Error) << "Error with peer '" << connection.getInfo() << "': " << str << std::endl;              \
 	return false
 
-bool ServerConnection::peerExists(const PeerInformation &info)
+namespace TemStream
 {
-	LOCK(peersMutex);
-	for (auto iter = peers.begin(); iter != peers.end();)
+Message::Streams ServerConnection::streams;
+Configuration ServerConnection::configuration;
+Mutex ServerConnection::peersMutex;
+List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
+
+int runApp(Configuration &configuration)
+{
+	logger = tem_unique<ConsoleLogger>();
+	TemStream::initialLogs();
+
+	*logger << configuration << std::endl;
+
+	int result = EXIT_FAILURE;
+	int fd = -1;
+
+	ServerConnection::configuration = configuration;
+
+	if (!openSocket(fd, configuration.address, true))
 	{
-		if (shared_ptr<ServerConnection> ptr = iter->lock())
+		goto end;
+	}
+
+	while (!appDone)
+	{
+		switch (pollSocket(fd, 1000, POLLIN))
 		{
-			if ((*ptr).getInfo() == info)
-			{
-				return true;
-			}
-			++iter;
+		case PollState::GotData:
+			break;
+		case PollState::Error:
+			appDone = true;
+			continue;
+		default:
+			continue;
 		}
-		else
+
+		struct sockaddr_storage addr;
+		socklen_t size = sizeof(addr);
+		const int newfd = accept(fd, (struct sockaddr *)&addr, &size);
+		if (newfd < 0)
 		{
-			iter = peers.erase(iter);
+			perror("accept");
+			continue;
+		}
+
+		if (ServerConnection::totalPeers() >= configuration.maxClients)
+		{
+			::close(newfd);
+			continue;
+		}
+
+		auto s = tem_unique<TcpSocket>(newfd);
+
+		std::array<char, INET6_ADDRSTRLEN> str;
+		uint16_t port;
+		if (s->getIpAndPort(str, port))
+		{
+			*logger << "New connection: " << str.data() << ':' << port << std::endl;
+
+			++runningThreads;
+			Address address(str.data(), port);
+			auto peer = tem_shared<ServerConnection>(address, std::move(s));
+			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
+			thread.detach();
 		}
 	}
-	return false;
+
+	result = EXIT_SUCCESS;
+
+end:
+	::close(fd);
+	logger->AddInfo("Ending server");
+	while (runningThreads > 0)
+	{
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(100ms);
+	}
+	logger = nullptr;
+	return result;
 }
-std::optional<Stream> ServerConnection::getStream(const Message::Source &source)
+void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> &&peer)
 {
-	LOCK(peersMutex);
-	auto iter = ServerConnection::streams.find(source);
-	if (iter == ServerConnection::streams.end())
+	*logger << "Handling connection: " << peer->getAddress() << std::endl;
+	peer->maxMessageSize = configuration.maxMessageSize;
 	{
-		return std::nullopt;
+		LOCK(peersMutex);
+		peers.emplace_back(peer);
 	}
-	return iter->second;
+	{
+		Message::Packet packet;
+		packet.payload.emplace<PeerInformation>(ServerConnection::configuration.getInfo());
+		if (!(*peer)->sendPacket(packet))
+		{
+			goto end;
+		}
+	}
+
+	while (!appDone)
+	{
+		if (!peer->readAndHandle(1000))
+		{
+			break;
+		}
+	}
+
+	{
+		LOCK(peersMutex);
+		auto &streams = ServerConnection::streams;
+		const auto &name = peer->getInfo().name;
+		for (auto iter = streams.begin(); iter != streams.end();)
+		{
+			if (iter->first.author == name)
+			{
+				iter = streams.erase(iter);
+			}
+			else
+			{
+				++iter;
+			}
+		}
+	}
+
+end:
+	*logger << "Ending connection: " << peer->getAddress() << std::endl;
+	--runningThreads;
 }
 bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
 {
@@ -134,118 +224,45 @@ bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target
 	return true;
 }
 
-void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> &&peer)
+bool ServerConnection::peerExists(const PeerInformation &info)
 {
-	*logger << "Handling connection: " << peer->getAddress() << std::endl;
+	LOCK(peersMutex);
+	for (auto iter = peers.begin(); iter != peers.end();)
 	{
-		LOCK(peersMutex);
-		peers.emplace_back(peer);
-	}
-	{
-		Message::Packet packet;
-		packet.payload.emplace<PeerInformation>(ServerConnection::configuration.getInfo());
-		if (!(*peer)->sendPacket(packet))
+		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
-			goto end;
-		}
-	}
-
-	while (!appDone)
-	{
-		if (!peer->readAndHandle(1000))
-		{
-			break;
-		}
-	}
-
-	{
-		LOCK(peersMutex);
-		auto &streams = ServerConnection::streams;
-		const auto &name = peer->getInfo().name;
-		for (auto iter = streams.begin(); iter != streams.end();)
-		{
-			if (iter->first.author == name)
+			if ((*ptr).getInfo() == info)
 			{
-				iter = streams.erase(iter);
+				return true;
 			}
-			else
-			{
-				++iter;
-			}
+			++iter;
+		}
+		else
+		{
+			iter = peers.erase(iter);
 		}
 	}
-
-end:
-	*logger << "Ending connection: " << peer->getAddress() << std::endl;
-	--runningThreads;
+	return false;
 }
-int runApp(Configuration &configuration)
+std::optional<Stream> ServerConnection::getStream(const Message::Source &source)
 {
-	logger = tem_unique<ConsoleLogger>();
-	TemStream::initialLogs();
-
-	*logger << configuration << std::endl;
-
-	int result = EXIT_FAILURE;
-	int fd = -1;
-
-	ServerConnection::configuration = configuration;
-
-	if (!openSocket(fd, configuration.address, true))
+	LOCK(peersMutex);
+	auto iter = ServerConnection::streams.find(source);
+	if (iter == ServerConnection::streams.end())
 	{
-		goto end;
+		return std::nullopt;
 	}
-
-	while (!appDone)
-	{
-		switch (pollSocket(fd, 1000))
-		{
-		case PollState::GotData:
-			break;
-		case PollState::Error:
-			appDone = true;
-			continue;
-		default:
-			continue;
-		}
-
-		struct sockaddr_storage addr;
-		socklen_t size = sizeof(addr);
-		const int newfd = accept(fd, (struct sockaddr *)&addr, &size);
-		if (newfd < 0)
-		{
-			perror("accept");
-			continue;
-		}
-
-		auto s = tem_unique<TcpSocket>(newfd);
-
-		std::array<char, INET6_ADDRSTRLEN> str;
-		uint16_t port;
-		if (s->getIpAndPort(str, port))
-		{
-			*logger << "New connection: " << str.data() << ':' << port << std::endl;
-
-			++runningThreads;
-			Address address(str.data(), port);
-			auto peer = tem_shared<ServerConnection>(address, std::move(s));
-			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
-			thread.detach();
-		}
-	}
-
-	result = EXIT_SUCCESS;
-
-end:
-	::close(fd);
-	logger->AddInfo("Ending server");
-	while (runningThreads > 0)
-	{
-		using namespace std::chrono_literals;
-		std::this_thread::sleep_for(100ms);
-	}
-	logger = nullptr;
-	return result;
+	return iter->second;
+}
+size_t ServerConnection::totalStreams()
+{
+	LOCK(peersMutex);
+	return ServerConnection::streams.size();
+}
+size_t ServerConnection::totalPeers()
+{
+	LOCK(peersMutex);
+	return ServerConnection::peers.size();
 }
 std::shared_ptr<ServerConnection> ServerConnection::getPointer() const
 {
@@ -384,6 +401,19 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 			{
 				PEER_ERROR("Failed to create stream. Author doesn't match");
 			}
+		}
+		// Ensure client hasn't created too many streams
+		if (streams.size() >= configuration.maxStreamsPerClient)
+		{
+			(*logger)(Logger::Warning) << info << " tried to make more streams than allowed ("
+									   << configuration.maxStreamsPerClient << ")" << std::endl;
+			return sendStreamsToClients();
+		}
+		if (totalStreams() >= configuration.maxTotalStreams)
+		{
+			(*logger)(Logger::Warning) << info << " tried to make a stream when the server max has been reached ("
+									   << configuration.maxTotalStreams << ")" << std::endl;
+			return sendStreamsToClients();
 		}
 		LOCK(peersMutex);
 		auto result = ServerConnection::streams.try_emplace(Message::Source(su.source), Stream(su.source, su.type));

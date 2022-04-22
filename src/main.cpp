@@ -4,7 +4,6 @@ using namespace TemStream;
 
 bool TemStream::appDone = false;
 std::atomic<int32_t> TemStream::runningThreads = 0;
-size_t TemStream::MaxPacketSize = MB(1);
 AllocatorData TemStream::globalAllocatorData;
 unique_ptr<Logger> TemStream::logger = nullptr;
 

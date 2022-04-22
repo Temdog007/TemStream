@@ -3,7 +3,7 @@
 namespace TemStream
 {
 Connection::Connection(const Address &address, unique_ptr<Socket> s)
-	: bytes(), nextMessageSize(std::nullopt), info(), address(address), mSocket(std::move(s))
+	: bytes(), nextMessageSize(std::nullopt), info(), address(address), mSocket(std::move(s)), maxMessageSize(MB(1))
 {
 }
 
@@ -13,7 +13,7 @@ Connection::~Connection()
 
 bool Connection::readAndHandle(const int timeout)
 {
-	if (mSocket == nullptr || !mSocket->read(timeout, bytes))
+	if (mSocket == nullptr || !mSocket->read(timeout, bytes) || bytes.size() > maxMessageSize)
 	{
 		return false;
 	}
@@ -37,7 +37,7 @@ bool Connection::readAndHandle(const int timeout)
 				v.data[i] = bytes[i];
 			}
 			nextMessageSize = ntohl(v.value);
-			if (nextMessageSize > MaxPacketSize)
+			if (nextMessageSize > maxMessageSize)
 			{
 				return false;
 			}

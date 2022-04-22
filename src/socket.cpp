@@ -53,9 +53,17 @@ bool TcpSocket::connect(const char *hostname, const char *port, const bool isSer
 	close();
 	return openSocket(fd, hostname, port, isServer);
 }
+PollState TcpSocket::pollRead(const int timeout) const
+{
+	return pollSocket(fd, timeout, POLLIN);
+}
+PollState TcpSocket::pollWrite(const int timeout) const
+{
+	return pollSocket(fd, timeout, POLLOUT);
+}
 bool TcpSocket::send(const void *data, size_t size)
 {
-	switch (pollSocket(fd, -1, POLLOUT))
+	switch (pollWrite(-1))
 	{
 	case PollState::GotData:
 		break;
@@ -90,7 +98,7 @@ bool TcpSocket::send(const void *data, size_t size)
 }
 bool TcpSocket::read(const int timeout, Bytes &bytes)
 {
-	switch (pollSocket(fd, timeout))
+	switch (pollRead(timeout))
 	{
 	case PollState::Error:
 		return false;
