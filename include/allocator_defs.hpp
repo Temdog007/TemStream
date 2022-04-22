@@ -34,6 +34,7 @@ template <typename T> struct Deleter
 	}
 	void operator()(T *t) const
 	{
+		t->~T();
 		deallocate(t);
 	}
 };

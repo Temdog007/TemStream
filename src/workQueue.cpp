@@ -141,6 +141,11 @@ void StartRecording::run() const
 		return;
 	}
 
+	if (!TemStreamGui::sendCreateMessage<Message::Audio>(source))
+	{
+		return;
+	}
+
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::AddAudio;

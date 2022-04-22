@@ -162,19 +162,21 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 		storedAudio.erase(start, end);
 	}
 }
-void Audio::clampAudio(float *data, const int count) const
+bool Audio::isLoudEnough(float *data, const int count) const
 {
+	float sum = 0.f;
 	for (int i = 0; i < count; ++i)
 	{
-		if (std::abs(data[i]) < silenceThreshold)
-		{
-			data[i] = 0.f;
-		}
+		sum += std::abs(data[i]);
 	}
+	return sum / count > silenceThreshold;
 }
 void Audio::recordAudio(uint8_t *data, const int count)
 {
-	clampAudio(reinterpret_cast<float *>(data), count / sizeof(float));
+	if (!isLoudEnough(reinterpret_cast<float *>(data), count / sizeof(float)))
+	{
+		memset(data, 0, count);
+	}
 	storedAudio.insert(storedAudio.end(), data, data + count);
 	if (storedAudio.size() > MB(1))
 	{

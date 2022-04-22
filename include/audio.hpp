@@ -148,7 +148,7 @@ class Audio
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
 	Bytes &&getCurrentAudio();
 
-	void clampAudio(float *, int) const;
+	bool isLoudEnough(float *, int) const;
 
 	static std::optional<Set<WindowProcess>> getWindowsWithAudio();
 	static unique_ptr<Audio> startRecordingWindow(const Message::Source &, const WindowProcess &, float);

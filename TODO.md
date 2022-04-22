@@ -250,7 +250,7 @@
 - [x] Allow for custom colors
 - [x] Make custom allocator optional
 - [x] Fix JSON serializing
-- [ ] Label ImGui Windows
+- [x] Label ImGui Windows
 - [ ] Window streaming
 - [ ] Optional OpenCL
 - [ ] Webcam streaming
@@ -281,7 +281,7 @@
 - [x] Connecting to multiple streams quickly causes some displays to not show
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
-- [ ] Sinks not being unloaded
+- [x] Sinks not being unloaded (need to call destructor in custom deleter)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
