@@ -29,6 +29,8 @@ template <> struct hash<TemStream::String>
 	}
 };
 } // namespace std
+
+#if !TEMSTREAM_SERVER
 namespace ImGui
 {
 IMGUI_API bool InputText(const char *, TemStream::String *, ImGuiInputTextFlags flags = 0,
@@ -37,6 +39,8 @@ IMGUI_API bool InputTextMultiline(const char *, TemStream::String *, const ImVec
 								  ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr,
 								  void *user_data = nullptr);
 } // namespace ImGui
+#endif
+
 namespace TemStream
 {
 #else

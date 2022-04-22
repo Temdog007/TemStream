@@ -4,7 +4,6 @@ using namespace TemStream;
 
 bool TemStream::appDone = false;
 std::atomic<int32_t> TemStream::runningThreads = 0;
-int TemStream::DefaultPort = 10000;
 size_t TemStream::MaxPacketSize = MB(1);
 AllocatorData TemStream::globalAllocatorData;
 unique_ptr<Logger> TemStream::logger = nullptr;
@@ -24,21 +23,30 @@ int main(const int argc, const char **argv)
 			return EXIT_FAILURE;
 		}
 	}
-	for (int i = 1; i < argc; ++i)
-	{
-		if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--server") == 0)
-		{
-			parseMemory(argc, argv, 8);
-			return ServerConnection::run(argc, argv);
-		}
-	}
-	parseMemory(argc, argv, 256);
-	return TemStreamGui::run();
+	const size_t defaultMemory =
+#if TEMSTREAM_SERVER
+		8
+#else
+		256
+#endif
+		;
+	parseMemory(argc, argv, defaultMemory);
+	Configuration configuration = loadConfiguration(argc, argv);
+	const int result = runApp(configuration);
+	saveConfiguration(configuration);
+	return result;
 }
 
 void TemStream::initialLogs()
 {
-	*logger << "TemStream v" << TemStream_VERSION_MAJOR << '.' << TemStream_VERSION_MINOR << '.'
+	const char *AppName =
+#if TEMSTREAM_SERVER
+		"TemStream Server"
+#else
+		"TemStream"
+#endif
+		;
+	*logger << AppName << ' ' << TemStream_VERSION_MAJOR << '.' << TemStream_VERSION_MINOR << '.'
 			<< TemStream_VERSION_PATCH << std::endl;
 	(*logger)(Logger::Trace) << "Debug mode" << std::endl;
 	(*logger) << "Using " << globalAllocatorData.getTotal() / MB(1) << " MB" << std::endl;

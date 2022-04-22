@@ -3,7 +3,7 @@
 namespace TemStream
 {
 Message::Streams ServerConnection::streams;
-PeerInformation ServerConnection::serverInformation;
+Configuration ServerConnection::configuration;
 Mutex ServerConnection::peersMutex;
 List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
 
@@ -143,7 +143,7 @@ void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> &&peer)
 	}
 	{
 		Message::Packet packet;
-		packet.payload.emplace<PeerInformation>(ServerConnection::serverInformation);
+		packet.payload.emplace<PeerInformation>(ServerConnection::configuration.getInfo());
 		if (!(*peer)->sendPacket(packet))
 		{
 			goto end;
@@ -179,44 +179,19 @@ end:
 	*logger << "Ending connection: " << peer->getAddress() << std::endl;
 	--runningThreads;
 }
-int ServerConnection::run(const int argc, const char **argv)
+int runApp(Configuration &configuration)
 {
 	logger = tem_unique<ConsoleLogger>();
 	TemStream::initialLogs();
 
+	*logger << configuration << std::endl;
+
 	int result = EXIT_FAILURE;
 	int fd = -1;
 
-	const char *hostname = NULL;
-	const char *port = "10000";
-	ServerConnection::serverInformation.name = "Server";
-	ServerConnection::serverInformation.isServer = true;
+	ServerConnection::configuration = configuration;
 
-	for (int i = 1; i < argc - 1;)
-	{
-		if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--hostname") == 0)
-		{
-			hostname = argv[i + 1];
-			i += 2;
-			continue;
-		}
-		if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--port") == 0)
-		{
-			port = argv[i + 1];
-			i += 2;
-			continue;
-		}
-		if (strcmp(argv[i], "-N") == 0 || strcmp(argv[i], "--name") == 0)
-		{
-			ServerConnection::serverInformation.name = argv[i + 1];
-			i += 2;
-			continue;
-		}
-		++i;
-	}
-
-	printf("Connecting to %s:%s\n", hostname == nullptr ? "any" : hostname, port);
-	if (!openSocket(fd, hostname, port, true))
+	if (!openSocket(fd, configuration.address, true))
 	{
 		goto end;
 	}
@@ -249,12 +224,12 @@ int ServerConnection::run(const int argc, const char **argv)
 		uint16_t port;
 		if (s->getIpAndPort(str, port))
 		{
-			printf("New connection: %s:%u\n", str.data(), port);
+			*logger << "New connection: " << str.data() << ':' << port << std::endl;
 
 			++runningThreads;
 			Address address(str.data(), port);
 			auto peer = tem_shared<ServerConnection>(address, std::move(s));
-			std::thread thread(runPeerConnection, std::move(peer));
+			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
 			thread.detach();
 		}
 	}
@@ -329,14 +304,14 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	}
 
 	// Don't send packet if server has already received it
-	auto iter = std::find(packet.trail.begin(), packet.trail.end(), ServerConnection::serverInformation.name);
+	auto iter = std::find(packet.trail.begin(), packet.trail.end(), ServerConnection::configuration.name);
 	if (iter != packet.trail.end())
 	{
 		// Stay connected
 		return true;
 	}
 
-	packet.trail.push_back(ServerConnection::serverInformation.name);
+	packet.trail.push_back(ServerConnection::configuration.name);
 	return ServerConnection::sendToPeers(std::move(packet), target, checkSubscription);
 }
 bool ServerConnection::MessageHandler::operator()(std::monostate)
@@ -527,7 +502,7 @@ bool ServerConnection::MessageHandler::sendStreamsToClients() const
 {
 	LOCK(peersMutex);
 	Message::Packet packet;
-	packet.source.author = serverInformation.name;
+	packet.source.author = ServerConnection::configuration.name;
 	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
 	(*logger)(Logger::Trace) << "Sending " << ServerConnection::streams.size()
 							 << " streams to peers: " << connection.getInfo() << std::endl;
@@ -559,7 +534,7 @@ bool ServerConnection::MessageHandler::sendSubscriptionsToClient() const
 	(*logger)(Logger::Trace) << "Sending " << connection.subscriptions.size()
 							 << " subscriptions to peer: " << connection.getInfo() << std::endl;
 	Message::Packet packet;
-	packet.source.author = serverInformation.name;
+	packet.source.author = ServerConnection::configuration.name;
 	packet.payload.emplace<Message::Subscriptions>(connection.subscriptions);
 	return connection->sendPacket(packet);
 }

@@ -9,7 +9,7 @@ struct Address
 	String hostname;
 	int port;
 
-	Address() : hostname("localhost"), port(DefaultPort)
+	Address() : hostname("localhost"), port(10000)
 	{
 	}
 	Address(const char *hostname, int port) : hostname(hostname), port(port)
@@ -17,6 +17,16 @@ struct Address
 	}
 	~Address()
 	{
+	}
+
+	template <class Archive> void save(Archive &archive) const
+	{
+		archive(hostname, port);
+	}
+
+	template <class Archive> void load(Archive &archive)
+	{
+		archive(hostname, port);
 	}
 
 	bool operator==(const Address &a) const
@@ -44,6 +54,7 @@ struct Address
 		return os;
 	}
 };
+extern bool openSocket(int &, const Address &, const bool isServer);
 } // namespace TemStream
 
 namespace std

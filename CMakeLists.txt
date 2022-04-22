@@ -51,44 +51,34 @@ target_include_directories(ImGui PUBLIC
 
 target_link_libraries(ImGui PRIVATE SDL2)
 
-set(SOURCES 
-    src/addrinfo.cpp 
-    src/audio.cpp
-    src/clientConnection.cpp
-    src/colors.cpp
-    src/connection.cpp 
-    src/gui.cpp
-    src/logger.cpp
-    src/main.cpp
-    src/memoryStream.cpp 
-    src/misc.cpp
-    src/query.cpp
-    src/serverConnection.cpp
-    src/socket.cpp
-    src/stream.cpp
-    src/streamDisplay.cpp
-    src/workQueue.cpp)
-
-set(HEADERS include/addrinfo.hpp
-    include/clientConnection.hpp
-    include/colors.hpp
-    include/connection.hpp
-    include/gui.hpp
-    include/logger.hpp
-    include/main.hpp
-    include/memoryStream.hpp
-    include/message.hpp
-    include/query.hpp
-    include/serverConnection.hpp
-    include/socket.hpp
-    include/streamDisplay.hpp
-    include/TemStreamConfig.h)
-
+set(CLIENT_SOURCES
+  src/audio.cpp
+  src/clientConnection.cpp
+  src/clientConfiguration.cpp
+  src/clientMisc.cpp
+  src/colors.cpp
+  src/gui.cpp
+  src/query.cpp
+  src/streamDisplay.cpp
+  src/workQueue.cpp
+  )
 if(RECORD_PULSE_AUDIO)
   set(AUDIO_SOURCE src/audioPulse.cpp)
 endif()
 
-add_executable(TemStream ${SOURCES} ${HEADERS} ${AUDIO_SOURCE})
+set(SOURCES 
+    src/addrinfo.cpp 
+    src/connection.cpp 
+    src/logger.cpp
+    src/main.cpp
+    src/memoryStream.cpp 
+    src/misc.cpp
+    src/stream.cpp
+    src/socket.cpp
+  )
+
+# Compile client
+add_executable(TemStream ${SOURCES} ${CLIENT_SOURCES} ${AUDIO_SOURCE})
 
 if(MSVC)
   target_compile_options(TemStream PRIVATE /W4 /WX)
@@ -112,3 +102,29 @@ target_link_libraries(TemStream PRIVATE
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(TemStream PRIVATE Threads::Threads)
+
+set(SERVER_SOURCES
+  src/serverConnection.cpp
+  src/serverConfiguration.cpp
+  )
+
+# Compile Server
+add_executable(TemStreamServer ${SOURCES} ${SERVER_SOURCES})
+
+if(MSVC)
+  target_compile_options(TemStreamServer PRIVATE /W4 /WX)
+else()
+  target_compile_options(TemStreamServer PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+target_compile_definitions(TemStreamServer PRIVATE -DTEMSTREAM_SERVER)
+
+target_include_directories(TemStreamServer PRIVATE 
+  "${PROJECT_SOURCE_DIR}/include"
+  "${CEREAL_SOURCE_DIR}/include")
+
+target_link_libraries(TemStreamServer PRIVATE cereal)
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(TemStreamServer PRIVATE Threads::Threads)

@@ -59,15 +59,15 @@ uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
 
 namespace TemStream
 {
+
 void handleWorkThread(TemStreamGui *gui);
 
-TemStreamGui::TemStreamGui(ImGuiIO &io)
+TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
 	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr),
 #if THREADS_AVAILABLE
 	  workThread(handleWorkThread, this),
 #endif
-	  fontFiles(), io(io), window(nullptr), renderer(nullptr), allUTF32(getAllUTF32()), fontSize(24.f), fontIndex(1),
-	  showLogs(false), showStreams(true), showDisplays(false), showAudio(true), showFont(false), showStats(false)
+	  allUTF32(getAllUTF32()), io(io), configuration(c), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -170,11 +170,11 @@ void TemStreamGui::disconnect()
 
 void TemStreamGui::pushFont()
 {
-	if (fontIndex >= io.Fonts->Fonts.size())
+	if (configuration.fontIndex >= io.Fonts->Fonts.size())
 	{
-		fontIndex = 0;
+		configuration.fontIndex = 0;
 	}
-	ImGui::PushFont(io.Fonts->Fonts[fontIndex]);
+	ImGui::PushFont(io.Fonts->Fonts[configuration.fontIndex]);
 }
 
 bool TemStreamGui::init()
@@ -272,12 +272,12 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 		{
 			if (ImGui::BeginMenu("Font"))
 			{
-				ImGui::Checkbox("Font Display", &showFont);
-				int value = fontSize;
+				ImGui::Checkbox("Font Display", &configuration.showFont);
+				int value = configuration.fontSize;
 				if (ImGui::SliderInt("Font Size", &value, 12, 96, "%d",
 									 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput))
 				{
-					fontSize = value;
+					configuration.fontSize = value;
 				}
 				if (ImGui::IsItemDeactivatedAfterEdit())
 				{
@@ -286,29 +286,29 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					e.user.code = TemStreamEvent::ReloadFont;
 					tryPushEvent(e);
 				}
-				ImGui::SliderInt("Font Type", &fontIndex, 0, io.Fonts->Fonts.size() - 1, "%d",
+				ImGui::SliderInt("Font Type", &configuration.fontIndex, 0, io.Fonts->Fonts.size() - 1, "%d",
 								 ImGuiSliderFlags_NoInput);
 				ImGui::EndMenu();
 			}
-			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !showDisplays))
+			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !configuration.showDisplays))
 			{
-				showDisplays = true;
+				configuration.showDisplays = true;
 			}
-			if (ImGui::MenuItem("Streams", "Ctrl+W", nullptr, !showStreams))
+			if (ImGui::MenuItem("Streams", "Ctrl+W", nullptr, !configuration.showStreams))
 			{
-				showStreams = true;
+				configuration.showStreams = true;
 			}
-			if (ImGui::MenuItem("Audio", "Ctrl+A", nullptr, !showAudio))
+			if (ImGui::MenuItem("Audio", "Ctrl+A", nullptr, !configuration.showAudio))
 			{
-				showAudio = true;
+				configuration.showAudio = true;
 			}
-			if (ImGui::MenuItem("Logs", "Ctrl+L", nullptr, !showLogs))
+			if (ImGui::MenuItem("Logs", "Ctrl+L", nullptr, !configuration.showLogs))
 			{
-				showLogs = true;
+				configuration.showLogs = true;
 			}
-			if (ImGui::MenuItem("Stats", "Ctrl+I", nullptr, !showStats))
+			if (ImGui::MenuItem("Stats", "Ctrl+I", nullptr, !configuration.showStats))
 			{
-				showStats = true;
+				configuration.showStats = true;
 			}
 			ImGui::EndMenu();
 		}
@@ -318,7 +318,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 		{
 			if (ImGui::MenuItem("Connect to server", "", nullptr, !connectedToServer))
 			{
-				connectToServer = Address();
+				connectToServer = configuration.address;
 			}
 			if (ImGui::MenuItem("Disconnect from server", "", nullptr, connectedToServer))
 			{
@@ -390,9 +390,9 @@ void TemStreamGui::draw()
 	}
 	ImGui::End();
 
-	if (!audio.empty() && showAudio)
+	if (!audio.empty() && configuration.showAudio)
 	{
-		if (ImGui::Begin("Audio", &showAudio, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("Audio", &configuration.showAudio, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			if (ImGui::BeginTable("Audio", 6, ImGuiTableFlags_Borders))
 			{
@@ -475,10 +475,10 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (showFont)
+	if (configuration.showFont)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Font", &showFont))
+		if (ImGui::Begin("Font", &configuration.showFont))
 		{
 			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t, Allocator<char32_t>, Allocator<char>> cvt;
 			const String s = cvt.to_bytes(allUTF32);
@@ -565,9 +565,9 @@ void TemStreamGui::draw()
 		}
 	}
 
-	if (!displays.empty() && showDisplays)
+	if (!displays.empty() && configuration.showDisplays)
 	{
-		if (ImGui::Begin("Displays", &showDisplays, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("Displays", &configuration.showDisplays, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			for (auto &pair : displays)
 			{
@@ -581,10 +581,10 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (!streams.empty() && showStreams)
+	if (!streams.empty() && configuration.showStreams)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Streams", &showStreams))
+		if (ImGui::Begin("Streams", &configuration.showStreams))
 		{
 			if (ImGui::BeginTable("Streams", 4, ImGuiTableFlags_Borders))
 			{
@@ -661,10 +661,10 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (showLogs)
+	if (configuration.showLogs)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Logs", &showLogs))
+		if (ImGui::Begin("Logs", &configuration.showLogs))
 		{
 			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
 			mLogger.viewLogs([](const Logger::Log &log) {
@@ -690,9 +690,9 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (showStats)
+	if (configuration.showStats)
 	{
-		if (ImGui::Begin("Stats", &showStats, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("Stats", &configuration.showStats, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			SDL_version v;
 			SDL_GetVersion(&v);
@@ -1029,11 +1029,11 @@ void TemStreamGui::LoadFonts()
 	cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
 	for (size_t i = 0; i < IM_ARRAYSIZE(Fonts); ++i)
 	{
-		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], fontSize, &cfg, ranges);
+		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], configuration.fontSize, &cfg, ranges);
 	}
-	for (const auto &file : fontFiles)
+	for (const auto &file : configuration.fontFiles)
 	{
-		io.Fonts->AddFontFromFileTTF(file.c_str(), fontSize);
+		io.Fonts->AddFontFromFileTTF(file.c_str(), configuration.fontSize);
 	}
 	io.Fonts->Build();
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
@@ -1089,7 +1089,7 @@ void guiSignalHandler(int s)
 	}
 }
 
-int TemStreamGui::run()
+int runApp(Configuration &configuration)
 {
 	{
 		struct sigaction action;
@@ -1113,7 +1113,7 @@ int TemStreamGui::run()
 
 	ImGui::StyleColorsDark();
 
-	TemStreamGui gui(io);
+	TemStreamGui gui(io, configuration);
 	logger = tem_unique<TemStreamGuiLogger>(gui);
 	initialLogs();
 	(*logger)(Logger::Info) << "Dear ImGui v" << ImGui::GetVersion() << std::endl;
@@ -1156,8 +1156,8 @@ int TemStreamGui::run()
 				if (isTTF(event.drop.file))
 				{
 					*logger << "Adding new font: " << event.drop.file << std::endl;
-					gui.fontFiles.emplace_back(event.drop.file);
-					gui.fontIndex = IM_ARRAYSIZE(Fonts) + gui.fontFiles.size() - 1;
+					gui.configuration.fontFiles.emplace_back(event.drop.file);
+					gui.configuration.fontIndex = IM_ARRAYSIZE(Fonts) + gui.configuration.fontFiles.size() - 1;
 					gui.LoadFonts();
 				}
 				else
@@ -1250,19 +1250,19 @@ int TemStreamGui::run()
 					}
 					break;
 				case SDLK_a:
-					gui.showAudio = !gui.showAudio;
+					gui.configuration.showAudio = !gui.configuration.showAudio;
 					break;
 				case SDLK_d:
-					gui.showDisplays = !gui.showDisplays;
+					gui.configuration.showDisplays = !gui.configuration.showDisplays;
 					break;
 				case SDLK_w:
-					gui.showStreams = !gui.showStreams;
+					gui.configuration.showStreams = !gui.configuration.showStreams;
 					break;
 				case SDLK_l:
-					gui.showLogs = !gui.showLogs;
+					gui.configuration.showLogs = !gui.configuration.showLogs;
 					break;
 				case SDLK_i:
-					gui.showStats = !gui.showStats;
+					gui.configuration.showStats = !gui.configuration.showStats;
 					break;
 				case SDLK_p:
 					if (gui.queryData == nullptr)

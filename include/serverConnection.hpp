@@ -6,12 +6,14 @@ namespace TemStream
 {
 class ServerConnection : public Connection
 {
+	friend int runApp(Configuration &configuration);
+
   private:
 	Message::Subscriptions subscriptions;
 	bool informationAcquired;
 
 	static Message::Streams streams;
-	static PeerInformation serverInformation;
+	static Configuration configuration;
 	static Mutex peersMutex;
 	static List<std::weak_ptr<ServerConnection>> peers;
 
@@ -83,7 +85,5 @@ class ServerConnection : public Connection
 	}
 
 	bool handlePacket(Message::Packet &&) override;
-
-	static int run(int, const char **);
 };
 } // namespace TemStream

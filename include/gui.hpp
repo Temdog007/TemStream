@@ -44,6 +44,8 @@ class SDL_MemoryFunctions
 };
 class TemStreamGui
 {
+	friend int runApp(Configuration &);
+
   private:
 	std::array<char, KB(1)> strBuffer;
 	WorkQueue workQueue;
@@ -61,19 +63,11 @@ class TemStreamGui
 #endif
 	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
-	List<String> fontFiles;
+	const String32 allUTF32;
 	ImGuiIO &io;
+	Configuration &configuration;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-	const String32 allUTF32;
-	float fontSize;
-	int fontIndex;
-	bool showLogs;
-	bool showStreams;
-	bool showDisplays;
-	bool showAudio;
-	bool showFont;
-	bool showStats;
 	bool streamDirty;
 
 	void LoadFonts();
@@ -89,7 +83,7 @@ class TemStreamGui
 	friend class TemStreamGuiLogger;
 
   public:
-	TemStreamGui(ImGuiIO &);
+	TemStreamGui(ImGuiIO &, Configuration &);
 	TemStreamGui(const TemStreamGui &) = delete;
 	TemStreamGui(TemStreamGui &&) = delete;
 
@@ -134,11 +128,11 @@ class TemStreamGui
 
 	void setShowLogs(bool v)
 	{
-		showLogs = v;
+		configuration.showLogs = v;
 	}
 	bool isShowingLogs() const
 	{
-		return showLogs;
+		return configuration.showLogs;
 	}
 
 	int getSelectedQuery() const;
@@ -161,7 +155,6 @@ class TemStreamGui
 
 	void disconnect();
 
-	static int run();
 	static bool sendCreateMessage(const Message::Source &, uint32_t);
 
 	template <typename T> static bool sendCreateMessage(const Message::Source &source)
