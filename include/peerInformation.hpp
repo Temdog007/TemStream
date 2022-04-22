@@ -30,3 +30,15 @@ struct PeerInformation
 	}
 };
 } // namespace TemStream
+namespace std
+{
+template <> struct hash<TemStream::PeerInformation>
+{
+	std::size_t operator()(const TemStream::PeerInformation &info) const
+	{
+		std::size_t value = hash<TemStream::String>()(info.name);
+		TemStream::hash_combine(value, info.isServer);
+		return value;
+	}
+};
+} // namespace std

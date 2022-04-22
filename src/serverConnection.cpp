@@ -7,8 +7,7 @@
 		return false;                                                                                                  \
 	} // namespace TemStream
 #define BAD_MESSAGE(X)                                                                                                 \
-	(*logger)(Logger::Error) << "Client " << connection.getInfo().name << " sent invalid message: '" #X "'"            \
-							 << std::endl;                                                                             \
+	(*logger)(Logger::Error) << "Client " << connection.getInfo() << " sent invalid message: '" #X "'" << std::endl;   \
 	return false
 #define PEER_ERROR(str)                                                                                                \
 	(*logger)(Logger::Error) << "Error with peer '" << connection.getInfo() << "': " << str << std::endl;              \
@@ -20,6 +19,7 @@ Message::Streams ServerConnection::streams;
 Configuration ServerConnection::configuration;
 Mutex ServerConnection::peersMutex;
 List<std::weak_ptr<ServerConnection>> ServerConnection::peers;
+Message::PeerInformationSet ServerConnection::peersFromOtherServers;
 
 int runApp(Configuration &configuration)
 {
@@ -254,6 +254,11 @@ std::optional<Stream> ServerConnection::getStream(const Message::Source &source)
 	}
 	return iter->second;
 }
+std::optional<PeerInformation> ServerConnection::getPeerFromCredentials(Message::Credentials &&credentials)
+{
+	// TODO: Load dll to handle credentials
+	return std::visit(CredentialHandler(nullptr, nullptr), std::move(credentials));
+}
 size_t ServerConnection::totalStreams()
 {
 	LOCK(peersMutex);
@@ -263,6 +268,24 @@ size_t ServerConnection::totalPeers()
 {
 	LOCK(peersMutex);
 	return ServerConnection::peers.size();
+}
+Message::PeerInformationSet ServerConnection::getPeers()
+{
+	Message::PeerInformationSet set;
+	LOCK(peersMutex);
+	for (auto iter = peers.begin(); iter != peers.end();)
+	{
+		if (auto ptr = iter->lock())
+		{
+			set.insert(ptr->info);
+			++iter;
+		}
+		else
+		{
+			iter = peers.erase(iter);
+		}
+	}
+	return set;
 }
 std::shared_ptr<ServerConnection> ServerConnection::getPointer() const
 {
@@ -357,34 +380,76 @@ bool ServerConnection::MessageHandler::operator()(Message::Audio &)
 	CHECK_INFO(Message::Audio)
 	return processCurrentMessage();
 }
-bool ServerConnection::MessageHandler::operator()(PeerInformation &info)
+bool ServerConnection::MessageHandler::operator()(Message::Credentials &credentials)
 {
 	if (connection.informationAcquired)
 	{
 		(*logger)(Logger::Error) << "Connection sent information more than once" << std::endl;
 		return false;
 	}
-	if (ServerConnection::peerExists(info))
+	auto info = getPeerFromCredentials(std::move(credentials));
+	if (!info.has_value() || info->name.empty())
 	{
-		(*logger)(Logger::Error) << "Duplicate peer " << info << " attempted to connect" << std::endl;
+		(*logger)(Logger::Error) << "Invalid credentials sent" << std::endl;
 		return false;
 	}
-	connection.info = info;
+	if (ServerConnection::peerExists(*info))
+	{
+		(*logger)(Logger::Error) << "Duplicate peer " << *info << " attempted to connect" << std::endl;
+		return false;
+	}
+	connection.info = std::move(*info);
 	connection.informationAcquired = true;
-	*logger << "Peer: " << connection.address << " -> " << info << std::endl;
+	*logger << "Peer: " << connection.address << " -> " << connection.info << std::endl;
+	{
+		Message::Packet packet;
+		packet.source.author = configuration.name;
+		packet.payload.emplace<Message::VerifyLogin>(Message::VerifyLogin{connection.info});
+		if (!connection->sendPacket(packet))
+		{
+			return false;
+		}
+	}
 	return sendStreamsToClients();
 }
-bool ServerConnection::MessageHandler::operator()(Message::PeerInformationList &)
+bool ServerConnection::MessageHandler::operator()(Message::VerifyLogin &)
 {
-	// TODO: Server only. Send current set of peers to clients
-	return true;
+	BAD_MESSAGE(VerifyLogin);
+}
+bool ServerConnection::MessageHandler::operator()(PeerInformation &)
+{
+	BAD_MESSAGE(PeerInformation);
+}
+bool ServerConnection::MessageHandler::operator()(Message::PeerInformationSet &set)
+{
+	CHECK_INFO(Message::RequestPeers)
+	LOCK(peersMutex);
+	if (!connection.isServer())
+	{
+		BAD_MESSAGE(PeerInformationSet);
+	}
+
+	ServerConnection::peersFromOtherServers.insert(set.begin(), set.end());
+	return processCurrentMessage(Target::Server, false);
 }
 bool ServerConnection::MessageHandler::operator()(Message::RequestPeers &)
 {
 	CHECK_INFO(Message::RequestPeers)
-	// TODO: If from client, send request to other servers.
+	LOCK(peersMutex);
+	// If from client, clear current set and send request to other servers.
+	if (connection.isServer())
+	{
+		peersFromOtherServers.clear();
+		return processCurrentMessage(Target::Server, false);
+	}
 	//  If from server, send current set of clients
-	return true;
+	else
+	{
+		Message::Packet packet;
+		packet.source.author = configuration.name;
+		packet.payload.emplace<Message::PeerInformationSet>(getPeers());
+		return connection.sendToPeers(std::move(packet), Target::Client, false);
+	}
 }
 bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 {
@@ -508,6 +573,7 @@ bool ServerConnection::MessageHandler::operator()(Message::StreamUpdate &su)
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetStreams &)
 {
+	CHECK_INFO(Message::GetStreams)
 	// Send get streams to servers
 	if (!processCurrentMessage(Target::Server, false))
 	{
@@ -519,6 +585,7 @@ bool ServerConnection::MessageHandler::operator()(Message::GetStreams &)
 }
 bool ServerConnection::MessageHandler::operator()(Message::Streams &streams)
 {
+	CHECK_INFO(Message::Streams)
 	LOCK(peersMutex);
 	// Server only. Append to the list of streams and send to clients
 	if (!connection.isServer())
@@ -551,6 +618,7 @@ bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)
 }
 bool ServerConnection::MessageHandler::operator()(Message::Subscriptions &subs)
 {
+	CHECK_INFO(Message::Subscriptions)
 	// Server only. Send current subscriptions to clients
 	if (!connection.isServer())
 	{
@@ -713,5 +781,59 @@ void ServerConnection::ImageSaver::operator()(const Bytes &bytes)
 }
 void ServerConnection::ImageSaver::operator()(std::monostate)
 {
+}
+ServerConnection::CredentialHandler::CredentialHandler(VerifyToken verifyToken,
+													   VerifyUsernameAndPassword verifyUsernameAndPassword)
+	: verifyToken(verifyToken), verifyUsernameAndPassword(verifyUsernameAndPassword)
+{
+}
+ServerConnection::CredentialHandler::~CredentialHandler()
+{
+}
+std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(String &&token)
+{
+	PeerInformation info;
+	if (verifyToken)
+	{
+		char username[KB(1)];
+		if (verifyToken(token.c_str(), username, &info.isServer))
+		{
+			info.name = username;
+		}
+		else
+		{
+			return std::nullopt;
+		}
+	}
+	else
+	{
+		// Default credentials always set peer to client
+		info.name = std::move(token);
+		info.isServer = false;
+	}
+	return info;
+}
+std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(Message::UsernameAndPassword &&pair)
+{
+	PeerInformation info;
+	if (verifyUsernameAndPassword)
+	{
+		char username[KB(1)];
+		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), username, &info.isServer))
+		{
+			info.name = username;
+		}
+		else
+		{
+			return std::nullopt;
+		}
+	}
+	else
+	{
+		// Default credentials always set peer to client
+		info.name = std::move(pair.first);
+		info.isServer = false;
+	}
+	return info;
 }
 } // namespace TemStream

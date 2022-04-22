@@ -242,20 +242,24 @@
     Optional stream recording
 - [x] Update build for server to not include imgui and sdl
 - [x] Make server use configuration
-- [ ] Window streaming
+- [x] Replace peer information with credentials
 
 ### Apr 22, 2022
+- [ ] Window streaming
+- [ ] Optional OpenCL
 - [ ] Webcam streaming
 - [ ] Allow multiple transcodes for each video stream
-- [ ] Replace peer information with credentials
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
-### Later
+### Apr 23, 2022
+- [ ] Make server write all messages to hard disk when recording
+- [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time stamp
+
+### Apr 24, 2022
 - [ ] Validate stream names/client names
-- [ ] Make server write all messages to hard disk when recording
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts

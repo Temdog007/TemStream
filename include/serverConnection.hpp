@@ -16,6 +16,7 @@ class ServerConnection : public Connection
 	static Configuration configuration;
 	static Mutex peersMutex;
 	static List<std::weak_ptr<ServerConnection>> peers;
+	static Message::PeerInformationSet peersFromOtherServers;
 
 	enum Target
 	{
@@ -36,7 +37,28 @@ class ServerConnection : public Connection
 
 	static void runPeerConnection(shared_ptr<ServerConnection> &&);
 
-	std::shared_ptr<ServerConnection> getPointer() const;
+	static Message::PeerInformationSet getPeers();
+
+	static std::optional<PeerInformation> getPeerFromCredentials(Message::Credentials &&);
+
+	shared_ptr<ServerConnection> getPointer() const;
+
+	typedef bool (*VerifyToken)(const char *, char *, bool *);
+	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, bool *);
+
+	class CredentialHandler
+	{
+	  private:
+		VerifyToken verifyToken;
+		VerifyUsernameAndPassword verifyUsernameAndPassword;
+
+	  public:
+		CredentialHandler(VerifyToken, VerifyUsernameAndPassword);
+		~CredentialHandler();
+
+		std::optional<PeerInformation> operator()(String &&);
+		std::optional<PeerInformation> operator()(Message::UsernameAndPassword &&);
+	};
 
 	class MessageHandler
 	{
@@ -54,7 +76,7 @@ class ServerConnection : public Connection
 
 		bool sendPayloadForStream(const Message::Source &);
 
-		static void sendImageBytes(std::shared_ptr<ServerConnection>, Message::Source &&, String &&filename);
+		static void sendImageBytes(shared_ptr<ServerConnection>, Message::Source &&, String &&filename);
 
 	  public:
 		MessageHandler(ServerConnection &, Message::Packet &&);

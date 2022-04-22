@@ -3,13 +3,14 @@
 #include <main.hpp>
 
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
-	archive(fontFiles, address, fontSize, fontIndex, showLogs, showStreams, showDisplays, showAudio, showFont,         \
-			showStats)
+	archive(fontFiles, credentials, address, fontSize, fontIndex, showLogs, showStreams, showDisplays, showAudio,      \
+			showFont, showStats)
 namespace TemStream
 {
 struct Configuration
 {
 	List<String> fontFiles;
+	Message::Credentials credentials;
 	Address address;
 	float fontSize;
 	int fontIndex;

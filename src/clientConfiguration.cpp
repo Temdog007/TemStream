@@ -3,8 +3,8 @@
 namespace TemStream
 {
 Configuration::Configuration()
-	: fontFiles(), address(), fontSize(24.f), fontIndex(1), showLogs(false), showStreams(true), showDisplays(false),
-	  showAudio(true), showFont(false), showStats(false)
+	: fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(24.f), fontIndex(1),
+	  showLogs(false), showStreams(true), showDisplays(false), showAudio(true), showFont(false), showStats(false)
 {
 }
 Configuration::~Configuration()

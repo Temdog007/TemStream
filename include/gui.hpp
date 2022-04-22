@@ -54,6 +54,7 @@ class TemStreamGui
 	Map<Message::Source, shared_ptr<Audio>> audio;
 	Message::Streams streams;
 	Message::Subscriptions subscriptions;
+	Message::PeerInformationSet otherPeers;
 	PeerInformation peerInfo;
 	Mutex peerMutex;
 	unique_ptr<ClientConnetion> peer;
@@ -81,6 +82,12 @@ class TemStreamGui
 	static String32 getAllUTF32();
 
 	friend class TemStreamGuiLogger;
+
+	struct RenderCredentials
+	{
+		void operator()(String &) const;
+		void operator()(Message::UsernameAndPassword &) const;
+	};
 
   public:
 	TemStreamGui(ImGuiIO &, Configuration &);
@@ -140,9 +147,11 @@ class TemStreamGui
 	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);
 
-	bool operator()(const Message::Streams &s);
-	bool operator()(const Message::Subscriptions &s);
-	template <typename T> bool operator()(const T &)
+	bool operator()(Message::Streams &s);
+	bool operator()(Message::VerifyLogin &);
+	bool operator()(Message::PeerInformationSet &s);
+	bool operator()(Message::Subscriptions &s);
+	template <typename T> bool operator()(T &)
 	{
 #if LOG_MESSAGE_TYPE
 		int status;

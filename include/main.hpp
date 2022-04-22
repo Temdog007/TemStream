@@ -43,6 +43,7 @@ namespace fs = std::filesystem;
 #include <cereal/types/array.hpp>
 #include <cereal/types/optional.hpp>
 #include <cereal/types/string.hpp>
+#include <cereal/types/tuple.hpp>
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/types/unordered_set.hpp>
 #include <cereal/types/variant.hpp>
@@ -50,6 +51,19 @@ namespace fs = std::filesystem;
 
 #include <cereal/archives/binary.hpp>
 #include <cereal/archives/portable_binary.hpp>
+
+namespace std
+{
+template <class Archive, typename T1, typename T2> void save(Archive &archive, const std::pair<T1, T2> &pair)
+{
+	archive(pair.first, pair.second);
+}
+
+template <class Archive, typename T1, typename T2> void load(Archive &archive, std::pair<T1, T2> &pair)
+{
+	archive(pair.first, pair.second);
+}
+} // namespace std
 
 #if !TEMSTREAM_SERVER
 #include <SDL.h>

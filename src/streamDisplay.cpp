@@ -162,15 +162,23 @@ bool StreamDisplay::operator()(std::monostate)
 {
 	BAD_MESSAGE(Empty);
 }
+bool StreamDisplay::operator()(Message::Credentials &)
+{
+	BAD_MESSAGE(Credentials);
+}
 bool StreamDisplay::operator()(PeerInformation &)
 {
 	BAD_MESSAGE(PeerInformation);
+}
+bool StreamDisplay::operator()(Message::VerifyLogin &)
+{
+	BAD_MESSAGE(VerifyLogin);
 }
 bool StreamDisplay::operator()(Message::RequestPeers &)
 {
 	BAD_MESSAGE(RequestPeers);
 }
-bool StreamDisplay::operator()(Message::PeerInformationList &)
+bool StreamDisplay::operator()(Message::PeerInformationSet &)
 {
 	BAD_MESSAGE(PeerInformationList);
 }

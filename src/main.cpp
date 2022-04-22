@@ -22,18 +22,26 @@ int main(const int argc, const char **argv)
 			return EXIT_FAILURE;
 		}
 	}
-	const size_t defaultMemory =
+	try
+	{
+		const size_t defaultMemory =
 #if TEMSTREAM_SERVER
-		8
+			8
 #else
-		256
+			256
 #endif
-		;
-	parseMemory(argc, argv, defaultMemory);
-	Configuration configuration = loadConfiguration(argc, argv);
-	const int result = runApp(configuration);
-	saveConfiguration(configuration);
-	return result;
+			;
+		parseMemory(argc, argv, defaultMemory);
+		Configuration configuration = loadConfiguration(argc, argv);
+		const int result = runApp(configuration);
+		saveConfiguration(configuration);
+		return result;
+	}
+	catch (const std::exception &e)
+	{
+		fprintf(stderr, "An error occurred: %s\n", e.what());
+		return EXIT_FAILURE;
+	}
 }
 
 void TemStream::initialLogs()

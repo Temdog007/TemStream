@@ -7,6 +7,20 @@ namespace TemStream
 namespace Message
 {
 using Text = String;
+using UsernameAndPassword = std::pair<String, String>;
+using Credentials = std::variant<String, UsernameAndPassword>;
+struct VerifyLogin
+{
+	PeerInformation info;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(info);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(info);
+	}
+};
 using Image = std::variant<std::monostate, uint64_t, Bytes>;
 #define EMPTY_MESSAGE(Name)                                                                                            \
 	struct Name                                                                                                        \
@@ -72,21 +86,24 @@ struct StreamUpdate
 EMPTY_MESSAGE(GetSubscriptions);
 using Subscriptions = Set<Message::Source>;
 EMPTY_MESSAGE(RequestPeers);
-using PeerInformationList = List<PeerInformation>;
+using PeerInformationSet = Set<PeerInformation>;
 EMPTY_MESSAGE(GetStreams);
 using Streams = Map<Message::Source, Stream>;
-using Payload = std::variant<std::monostate, Text, Image, Video, Audio, PeerInformation, RequestPeers,
-							 PeerInformationList, StreamUpdate, GetStreams, Streams, GetSubscriptions, Subscriptions>;
+using Payload =
+	std::variant<std::monostate, Text, Credentials, VerifyLogin, Image, Video, Audio, PeerInformation, RequestPeers,
+				 PeerInformationSet, StreamUpdate, GetStreams, Streams, GetSubscriptions, Subscriptions>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
 	RVAL operator()(Message::Text &);                                                                                  \
+	RVAL operator()(Message::Credentials &);                                                                           \
+	RVAL operator()(Message::VerifyLogin &);                                                                           \
 	RVAL operator()(Message::Image &);                                                                                 \
 	RVAL operator()(Message::Audio &);                                                                                 \
 	RVAL operator()(Message::Video &);                                                                                 \
 	RVAL operator()(PeerInformation &);                                                                                \
 	RVAL operator()(Message::RequestPeers &);                                                                          \
-	RVAL operator()(Message::PeerInformationList &);                                                                   \
+	RVAL operator()(Message::PeerInformationSet &);                                                                    \
 	RVAL operator()(Message::StreamUpdate &);                                                                          \
 	RVAL operator()(Message::GetStreams &);                                                                            \
 	RVAL operator()(Message::Streams &);                                                                               \

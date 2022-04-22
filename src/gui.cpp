@@ -63,7 +63,7 @@ namespace TemStream
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: connectToServer(), peerInfo({"User", false}), peerMutex(), peer(nullptr), queryData(nullptr),
+	: connectToServer(), peerMutex(), peer(nullptr), queryData(nullptr),
 #if THREADS_AVAILABLE
 	  workThread(handleWorkThread, this),
 #endif
@@ -245,7 +245,7 @@ bool TemStreamGui::connect(const Address &address)
 	peer = tem_unique<ClientConnetion>(address, std::move(s));
 	*logger << "Connected to server: " << address << std::endl;
 	Message::Packet packet;
-	packet.payload.emplace<PeerInformation>(peerInfo);
+	packet.payload.emplace<Message::Credentials>(configuration.credentials);
 	return (*peer)->sendPacket(packet);
 }
 
@@ -503,7 +503,24 @@ void TemStreamGui::draw()
 		{
 			ImGui::InputText("Hostname", &connectToServer->hostname);
 			ImGui::InputInt("Port", &connectToServer->port);
-			ImGui::InputText("Name", &peerInfo.name);
+
+			static const char *Options[]{"Token", "Username And Password"};
+			int selected = configuration.credentials.index();
+			if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
+			{
+				switch (selected)
+				{
+				case variant_index<Message::Credentials, String>():
+					configuration.credentials.emplace<String>("token12345");
+					break;
+				case variant_index<Message::Credentials, Message::UsernameAndPassword>():
+					configuration.credentials.emplace<Message::UsernameAndPassword>("User", "Password");
+					break;
+				default:
+					break;
+				}
+			}
+			std::visit(RenderCredentials(), configuration.credentials);
 			if (ImGui::Button("Connect"))
 			{
 				connect(*connectToServer);
@@ -981,7 +998,23 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 }
 
-bool TemStreamGui::operator()(const Message::Streams &s)
+bool TemStreamGui::operator()(Message::VerifyLogin &login)
+{
+	peerInfo = std::move(login.info);
+	*logger << "Logged in as " << peerInfo.name << std::endl;
+	dirty = true;
+	return true;
+}
+
+bool TemStreamGui::operator()(Message::PeerInformationSet &set)
+{
+	otherPeers = std::move(set);
+	*logger << "Got " << set.size() << " peers from server" << std::endl;
+	dirty = true;
+	return true;
+}
+
+bool TemStreamGui::operator()(Message::Streams &s)
 {
 	streams = std::move(s);
 	*logger << "Got " << streams.size() << " streams from server" << std::endl;
@@ -989,7 +1022,7 @@ bool TemStreamGui::operator()(const Message::Streams &s)
 	return true;
 }
 
-bool TemStreamGui::operator()(const Message::Subscriptions &s)
+bool TemStreamGui::operator()(Message::Subscriptions &s)
 {
 	subscriptions = std::move(s);
 	*logger << "Got " << subscriptions.size() << " subscriptions from server" << std::endl;
@@ -1426,5 +1459,14 @@ void SDL_MemoryFunctions::GetFromSDL()
 void SDL_MemoryFunctions::SetToSDL() const
 {
 	SDL_SetMemoryFunctions(mallocFunc, callocFunc, reallocFunc, freeFunc);
+}
+void TemStreamGui::RenderCredentials::operator()(String &s) const
+{
+	ImGui::InputText("Token", &s);
+}
+void TemStreamGui::RenderCredentials::operator()(std::pair<String, String> &pair) const
+{
+	ImGui::InputText("Username", &pair.first);
+	ImGui::InputText("Password", &pair.second, ImGuiInputTextFlags_Password);
 }
 } // namespace TemStream
