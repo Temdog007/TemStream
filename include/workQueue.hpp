@@ -48,9 +48,10 @@ class StartPlayback
   private:
 	Message::Source source;
 	std::optional<String> name;
+	float volume;
 
   public:
-	StartPlayback(const Message::Source &, const std::optional<String> &);
+	StartPlayback(const Message::Source &, const std::optional<String> &, float);
 	~StartPlayback();
 
 	void run() const;
@@ -60,9 +61,10 @@ class StartRecording
   private:
 	Message::Source source;
 	std::optional<String> name;
+	float silenceThreshold;
 
   public:
-	StartRecording(const Message::Source &, const std::optional<String> &);
+	StartRecording(const Message::Source &, const std::optional<String> &, float);
 	~StartRecording();
 
 	void run() const;
@@ -72,9 +74,10 @@ class StartWindowRecording
   private:
 	Message::Source source;
 	WindowProcess windowProcess;
+	float silenceThreshold;
 
   public:
-	StartWindowRecording(const Message::Source &, const WindowProcess &);
+	StartWindowRecording(const Message::Source &, const WindowProcess &, float);
 	~StartWindowRecording();
 
 	void run() const;

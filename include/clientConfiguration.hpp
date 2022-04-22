@@ -3,17 +3,21 @@
 #include <main.hpp>
 
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
-	archive(colors, fontFiles, credentials, address, fontSize, fontIndex, showLogs, showStreams, showDisplays,         \
-			showAudio, showFont, showStats, showColors)
+	archive(colors, customColors, fontFiles, credentials, address, fontSize, defaultVolume, defaultSilenceThreshold,   \
+			fontIndex, showLogs, showStreams, showDisplays, showAudio, showFont, showStats, showColors)
 namespace TemStream
 {
+using ColorList = std::array<ImVec4, ImGuiCol_COUNT>;
 struct Configuration
 {
-	std::array<ImVec4, ImGuiCol_COUNT> colors;
+	ColorList colors;
+	Map<String, ColorList> customColors;
 	List<String> fontFiles;
 	Message::Credentials credentials;
 	Address address;
 	float fontSize;
+	int defaultVolume;
+	int defaultSilenceThreshold;
 	int fontIndex;
 	bool showLogs;
 	bool showStreams;

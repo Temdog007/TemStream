@@ -120,6 +120,11 @@ class TemStreamGui
 		return workQueue;
 	}
 
+	const Configuration &getConfiguration() const
+	{
+		return configuration;
+	}
+
 	bool init();
 	bool connect(const Address &);
 	void update();
@@ -192,12 +197,4 @@ class TemStreamGuiLogger : public InMemoryLogger
 template <typename Archive> static inline void serialize(Archive &ar, ImVec4 &v)
 {
 	ar(v.x, v.y, v.z, v.w);
-}
-
-template <typename Archive> static inline void serialize(Archive &ar, ImGuiStyle &style)
-{
-	for (size_t i = 0; i < ImGuiCol_COUNT; ++i)
-	{
-		ar(style.Colors[i]);
-	}
 }

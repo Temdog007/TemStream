@@ -22,6 +22,26 @@ static const ImVec4 Blue(0.f, 0.f, 1.f, 1.f);
 
 static const ImVec4 Lime(0.f, 1.f, 0.f, 1.f);
 
+static const ImVec4 &GetGreen(const bool isLight)
+{
+	return isLight ? Green : Lime;
+}
+
+static const ImVec4 &GetYellow(const bool isLight)
+{
+	return isLight ? DarkYellow : Yellow;
+}
+
+static const ImVec4 &GetRed(const bool isLight)
+{
+	return isLight ? DarkRed : Red;
+}
+
+static const ImVec4 &GetCyan(const bool isLight)
+{
+	return isLight ? DarkCyan : Cyan;
+}
+
 static inline void StyleDeepDark(ImGuiStyle &style)
 {
 	ImVec4 *colors = style.Colors;

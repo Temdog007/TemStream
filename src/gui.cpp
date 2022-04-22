@@ -343,8 +343,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				if (connectedToServer)
 				{
 					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
-					ImGui::TextColored(isLight ? Colors::Green : Colors::Lime, "Logged in as: %s\n",
-									   peerInfo.name.c_str());
+					ImGui::TextColored(Colors::GetGreen(isLight), "Logged in as: %s\n", peerInfo.name.c_str());
 
 					{
 						LOCK(peerMutex);
@@ -353,8 +352,8 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 										   info.name.c_str());
 
 						const auto &addr = peer->getAddress();
-						ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "Address: %s:%d\n",
-										   addr.hostname.c_str(), addr.port);
+						ImGui::TextColored(Colors::GetYellow(isLight), "Address: %s:%d\n", addr.hostname.c_str(),
+										   addr.port);
 					}
 
 					ImGui::Separator();
@@ -390,12 +389,12 @@ void TemStreamGui::draw()
 		const auto &bg = style.Colors[ImGuiCol_WindowBg];
 		if (connectedToServer)
 		{
-			color = colorIsLight(bg) ? Colors::Green : Colors::Lime;
+			color = Colors::GetGreen(colorIsLight(bg));
 			text = "Connected";
 		}
 		else
 		{
-			color = colorIsLight(bg) ? Colors::DarkRed : Colors::Red;
+			color = Colors::GetRed(colorIsLight(bg));
 			text = "Disconnected";
 		}
 		const auto textSize = ImGui::CalcTextSize(text);
@@ -407,16 +406,18 @@ void TemStreamGui::draw()
 	}
 	ImGui::End();
 
-	if (!audio.empty() && configuration.showAudio)
+	if (configuration.showAudio)
 	{
 		if (ImGui::Begin("Audio", &configuration.showAudio, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			if (ImGui::BeginTable("Audio", 6, ImGuiTableFlags_Borders))
+			ImGui::SliderInt("Default Volume", &configuration.defaultVolume, 0, 100);
+			ImGui::SliderInt("Default Silence Threshold", &configuration.defaultSilenceThreshold, 0, 100);
+			if (!audio.empty() && ImGui::BeginTable("Audio", 6, ImGuiTableFlags_Borders))
 			{
 				ImGui::TableSetupColumn("Device Name");
 				ImGui::TableSetupColumn("Source/Destination");
 				ImGui::TableSetupColumn("Recording");
-				ImGui::TableSetupColumn("Volume");
+				ImGui::TableSetupColumn("Level");
 				ImGui::TableSetupColumn("Muted");
 				ImGui::TableSetupColumn("Stop");
 				ImGui::TableHeadersRow();
@@ -424,30 +425,41 @@ void TemStreamGui::draw()
 				for (auto iter = audio.begin(); iter != audio.end();)
 				{
 					auto &a = iter->second;
-					const bool recording = a->isRecording();
 
 					ImGui::TableNextColumn();
-					if (ImGui::Button(a->getName().c_str()))
+					if (a->getType() == Audio::Type::RecordWindow)
 					{
-						audioTarget = iter->first;
+						ImGui::Text("%s", a->getName().c_str());
+					}
+					else
+					{
+						if (ImGui::Button(a->getName().c_str()))
+						{
+							audioTarget = iter->first;
+						}
 					}
 
 					ImGui::TableNextColumn();
 					iter->first.print(strBuffer);
 					ImGui::Text("%s", strBuffer.data());
 
-					if (recording)
+					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
+					if (a->isRecording())
 					{
 						ImGui::TableNextColumn();
-						ImGui::TextColored(Colors::Lime, "Yes");
+						ImGui::TextColored(Colors::GetGreen(isLight), "Yes");
 
+						float v = a->getSilenceThreshold();
 						ImGui::TableNextColumn();
-						ImGui::TextColored(Colors::Yellow, "N\\A");
+						if (ImGui::SliderFloat("Silence Threshold", &v, 0.f, 1.f))
+						{
+							a->setSilenceThreshold(v);
+						}
 					}
 					else
 					{
 						ImGui::TableNextColumn();
-						ImGui::TextColored(Colors::Red, "No");
+						ImGui::TextColored(Colors::GetRed(isLight), "No");
 
 						float v = a->getVolume();
 						ImGui::TableNextColumn();
@@ -607,10 +619,10 @@ void TemStreamGui::draw()
 			for (auto &pair : displays)
 			{
 				pair.first.print(strBuffer);
-				ImGui::PushID(strBuffer.data());
-				ImGui::Text("%s", strBuffer.data());
-				pair.second.drawFlagCheckboxes();
-				ImGui::PopID();
+				if (ImGui::CollapsingHeader(strBuffer.data()))
+				{
+					pair.second.drawFlagCheckboxes();
+				}
 			}
 		}
 		ImGui::End();
@@ -708,16 +720,16 @@ void TemStreamGui::draw()
 				switch (log.first)
 				{
 				case Logger::Trace:
-					ImGui::TextColored(isLight ? Colors::DarkCyan : Colors::Cyan, "%s", log.second.c_str());
+					ImGui::TextColored(Colors::GetCyan(isLight), "%s", log.second.c_str());
 					break;
 				case Logger::Info:
 					ImGui::TextColored(style.Colors[ImGuiCol_Text], "%s", log.second.c_str());
 					break;
 				case Logger::Warning:
-					ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "%s", log.second.c_str());
+					ImGui::TextColored(Colors::GetYellow(isLight), "%s", log.second.c_str());
 					break;
 				case Logger::Error:
-					ImGui::TextColored(isLight ? Colors::DarkRed : Colors::Red, "%s", log.second.c_str());
+					ImGui::TextColored(Colors::GetRed(isLight), "%s", log.second.c_str());
 					break;
 				default:
 					break;
@@ -926,11 +938,12 @@ void TemStreamGui::draw()
 				shared_ptr<Audio> newAudio = nullptr;
 				if (recording)
 				{
-					newAudio = Audio::startRecording(a->getSource(), name);
+					newAudio =
+						Audio::startRecording(a->getSource(), name, configuration.defaultSilenceThreshold / 100.f);
 				}
 				else
 				{
-					newAudio = Audio::startPlayback(a->getSource(), name);
+					newAudio = Audio::startPlayback(a->getSource(), name, configuration.defaultVolume / 100.f);
 				}
 				if (newAudio != nullptr)
 				{

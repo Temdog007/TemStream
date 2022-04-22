@@ -31,6 +31,14 @@ struct WindowProcess
 };
 class Audio
 {
+  public:
+	enum Type
+	{
+		Playback,
+		Record,
+		RecordWindow
+	};
+
   private:
 	union {
 		std::array<float, MB(1) / sizeof(float)> fbuffer;
@@ -48,25 +56,28 @@ class Audio
 	};
 	SDL_AudioDeviceID id;
 	SDL_KeyCode code;
-	float volume;
-	const bool recording;
+	union {
+		float volume;
+		float silenceThreshold;
+	};
+	const Type type;
 
-	void recordAudio(const uint8_t *, int);
+	void recordAudio(uint8_t *, int);
 	void playbackAudio(uint8_t *, int);
 
 	static SDL_AudioSpec getAudioSpec();
 
-	static void recordCallback(Audio *, const uint8_t *, int);
+	static void recordCallback(Audio *, uint8_t *, int);
 	static void playbackCallback(Audio *, uint8_t *, int);
 
 	static int audioLengthToFrames(const int frequency, const int duration);
 
 	static int closestValidFrameCount(const int frequency, const int frames);
 
-	template <class T, class... Args> friend T *allocate(Args &&...);
+	friend class Allocator<Audio>;
 
   protected:
-	Audio(const Message::Source &, bool);
+	Audio(const Message::Source &, Type, float);
 
 	void close();
 
@@ -82,10 +93,12 @@ class Audio
 
 	bool encodeAndSendAudio(ClientConnetion &);
 
-	bool isRecording() const
+	Type getType() const
 	{
-		return recording;
+		return type;
 	}
+
+	bool isRecording() const;
 
 	float getVolume() const
 	{
@@ -95,6 +108,16 @@ class Audio
 	void setVolume(float volume)
 	{
 		this->volume = volume;
+	}
+
+	float getSilenceThreshold() const
+	{
+		return silenceThreshold;
+	}
+
+	void setSilenceThreshold(float silenceThreshold)
+	{
+		this->silenceThreshold = silenceThreshold;
 	}
 
 	bool isMuted() const
@@ -121,12 +144,15 @@ class Audio
 	}
 
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
+	Bytes &&getCurrentAudio();
+
+	void clampAudio(float *, int) const;
 
 	static std::optional<Set<WindowProcess>> getWindowsWithAudio();
-	static unique_ptr<Audio> startRecordingWindow(const Message::Source &, const WindowProcess &);
+	static unique_ptr<Audio> startRecordingWindow(const Message::Source &, const WindowProcess &, float);
 
-	static unique_ptr<Audio> startRecording(const Message::Source &, const char *);
-	static unique_ptr<Audio> startPlayback(const Message::Source &, const char *);
+	static unique_ptr<Audio> startRecording(const Message::Source &, const char *, float);
+	static unique_ptr<Audio> startPlayback(const Message::Source &, const char *, float);
 
 	class Lock
 	{

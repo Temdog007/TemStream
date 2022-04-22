@@ -34,7 +34,7 @@ class SinkInput
 	static bool runCommand(const char *, Deque<String> &);
 
 	friend std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio();
-	friend unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &, const WindowProcess &s);
+	friend unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &, const WindowProcess &s, float);
 
 	friend std::ostream &operator<<(std::ostream &os, const SinkInput &si)
 	{
@@ -80,8 +80,10 @@ class SinkInputAudio : public Audio
 	Sink comboSink;
 	Sink remapSink;
 
+	friend class Allocator<SinkInputAudio>;
+
   public:
-	SinkInputAudio(const Message::Source &, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink);
+	SinkInputAudio(const Message::Source &, float, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink);
 	virtual ~SinkInputAudio();
 };
 
@@ -263,7 +265,8 @@ std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio()
 	}
 	return std::nullopt;
 }
-unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, const WindowProcess &wp)
+unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, const WindowProcess &wp,
+											  const float silenceThreshold)
 {
 	using namespace std::chrono_literals;
 
@@ -338,14 +341,15 @@ unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, con
 	std::this_thread::sleep_for(1s);
 
 	snprintf(commandBuffer, sizeof(commandBuffer), "%s_remapped", sinkName);
-	SinkInputAudio *audio =
-		allocate<SinkInputAudio>(source, std::move(nullSink), std::move(comboSink), std::move(remapSink));
+	SinkInputAudio *audio = allocate<SinkInputAudio>(source, silenceThreshold, std::move(nullSink),
+													 std::move(comboSink), std::move(remapSink));
 	audio->name = commandBuffer;
 	return Audio::startRecording(audio, OPUS_APPLICATION_AUDIO);
 }
-SinkInputAudio::SinkInputAudio(const Message::Source &source, Sink &&nullSink, Sink &&comboSink, Sink &&remapSink)
-	: Audio(source, true), nullSink(std::move(nullSink)), comboSink(std::move(comboSink)),
-	  remapSink(std::move(remapSink))
+SinkInputAudio::SinkInputAudio(const Message::Source &source, const float silenceThreshold, Sink &&nullSink,
+							   Sink &&comboSink, Sink &&remapSink)
+	: Audio(source, Type::RecordWindow, silenceThreshold), nullSink(std::move(nullSink)),
+	  comboSink(std::move(comboSink)), remapSink(std::move(remapSink))
 {
 }
 SinkInputAudio::~SinkInputAudio()
@@ -356,6 +360,13 @@ void Sink::unloadSink(const int32_t id)
 {
 	char buffer[KB(1)] = {0};
 	snprintf(buffer, sizeof(buffer), "pactl unload-module %d", id);
-	system(buffer);
+	if (system(buffer) == EXIT_SUCCESS)
+	{
+		(*logger)(Logger::Trace) << "Unloaded sink: " << id << std::endl;
+	}
+	else
+	{
+		(*logger)(Logger::Warning) << "Failed to unload sink: " << id << std::endl;
+	}
 }
 } // namespace TemStream

@@ -149,7 +149,7 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 	}
 	else
 	{
-		Work::Task task(Work::StartPlayback(source, std::nullopt));
+		Work::Task task(Work::StartPlayback(source, std::nullopt, gui.getConfiguration().defaultVolume / 100.f));
 		(*gui).addWork(std::move(task));
 	}
 	return true;
@@ -268,6 +268,7 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	Bytes current;
 	ptr->useCurrentAudio([&current](const Bytes &b) { current.insert(current.end(), b.begin(), b.end()); });
+	// const Bytes current(std::move(ptr->getCurrentAudio()));
 
 	const int audioWidth = 2048;
 	const int audioHeight = 512;

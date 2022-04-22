@@ -49,6 +49,12 @@ Configuration loadConfiguration(const int argc, const char **argv)
 				i += 2;
 				continue;
 			}
+			if (strcmp("-M", argv[i]) == 0 || strcmp("--memory", argv[i]) == 0)
+			{
+				// memory already handled
+				i += 2;
+				continue;
+			}
 			if (strcmp("-MC", argv[i]) == 0 || strcmp("--max-clients", argv[i]) == 0)
 			{
 				configuration.maxClients = static_cast<uint32_t>(atoi(argv[i + 1]));

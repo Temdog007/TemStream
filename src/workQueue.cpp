@@ -99,8 +99,8 @@ void LoadSurface::run() const
 		deallocate(ptr);
 	}
 }
-StartPlayback::StartPlayback(const Message::Source &source, const std::optional<String> &name)
-	: source(source), name(name)
+StartPlayback::StartPlayback(const Message::Source &source, const std::optional<String> &name, const float volume)
+	: source(source), name(name), volume(volume)
 {
 }
 StartPlayback::~StartPlayback()
@@ -108,7 +108,7 @@ StartPlayback::~StartPlayback()
 }
 void StartPlayback::run() const
 {
-	auto ptr = Audio::startPlayback(source, name.has_value() ? name->c_str() : nullptr);
+	auto ptr = Audio::startPlayback(source, name.has_value() ? name->c_str() : nullptr, volume);
 	if (ptr == nullptr)
 	{
 		return;
@@ -125,8 +125,9 @@ void StartPlayback::run() const
 
 	// Pointer will deleted if not released
 }
-StartRecording::StartRecording(const Message::Source &source, const std::optional<String> &name)
-	: source(source), name(name)
+StartRecording::StartRecording(const Message::Source &source, const std::optional<String> &name,
+							   const float silenceThreshold)
+	: source(source), name(name), silenceThreshold(silenceThreshold)
 {
 }
 StartRecording::~StartRecording()
@@ -134,7 +135,7 @@ StartRecording::~StartRecording()
 }
 void StartRecording::run() const
 {
-	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr);
+	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);
 	if (ptr == nullptr)
 	{
 		return;
@@ -151,8 +152,9 @@ void StartRecording::run() const
 
 	// Pointer will deleted if not released
 }
-StartWindowRecording::StartWindowRecording(const Message::Source &source, const WindowProcess &wp)
-	: source(source), windowProcess(wp)
+StartWindowRecording::StartWindowRecording(const Message::Source &source, const WindowProcess &wp,
+										   const float silenceThreshold)
+	: source(source), windowProcess(wp), silenceThreshold(silenceThreshold)
 {
 }
 StartWindowRecording::~StartWindowRecording()
@@ -160,7 +162,7 @@ StartWindowRecording::~StartWindowRecording()
 }
 void StartWindowRecording::run() const
 {
-	auto ptr = Audio::startRecordingWindow(source, windowProcess);
+	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);
 	if (ptr == nullptr)
 	{
 		return;

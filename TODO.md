@@ -245,8 +245,10 @@
 - [x] Replace peer information with credentials
 
 ### Apr 22, 2022
-- [ ] Cleanup showDisplays window
-- [ ] Make default style that matches website
+- [x] Cleanup showDisplays window
+- [x] Add silence thresold, default volume and default st
+- [ ] Allow for custom colors
+- [ ] Fix JSON serializing
 - [ ] Window streaming
 - [ ] Optional OpenCL
 - [ ] Webcam streaming
@@ -277,6 +279,7 @@
 - [x] Connecting to multiple streams quickly causes some displays to not show
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
+- [ ] Sink not being unloaded
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

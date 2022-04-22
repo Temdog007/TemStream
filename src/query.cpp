@@ -140,7 +140,7 @@ void QueryAudio::execute() const
 		}
 		const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
 		const auto s = name == nullptr ? std::nullopt : std::make_optional<String>(name);
-		Work::Task task(Work::StartRecording(getSource(), s));
+		Work::Task task(Work::StartRecording(getSource(), s, gui.getConfiguration().defaultSilenceThreshold / 100.f));
 		(*gui).addWork(std::move(task));
 	}
 	break;
@@ -151,7 +151,8 @@ void QueryAudio::execute() const
 		{
 			if (i == index)
 			{
-				Work::Task task(Work::StartWindowRecording(getSource(), wp));
+				Work::Task task(Work::StartWindowRecording(getSource(), wp,
+														   gui.getConfiguration().defaultSilenceThreshold / 100.f));
 				(*gui).addWork(std::move(task));
 				break;
 			}

@@ -3,9 +3,9 @@
 namespace TemStream
 {
 Configuration::Configuration()
-	: colors(), fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(24.f), fontIndex(1),
-	  showLogs(false), showStreams(true), showDisplays(false), showAudio(true), showFont(false), showStats(false),
-	  showColors(false)
+	: colors(), fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(24.f),
+	  defaultVolume(100), defaultSilenceThreshold(1), fontIndex(1), showLogs(false), showStreams(true),
+	  showDisplays(false), showAudio(true), showFont(false), showStats(false), showColors(false)
 {
 	ImGuiStyle style;
 	ImGui::StyleColorsLight(&style);

@@ -13,6 +13,29 @@ template <typename T> using Deque = std::deque<T, Allocator<T>>;
 template <typename K> using Set = std::unordered_set<K, std::hash<K>, std::equal_to<K>, Allocator<K>>;
 template <typename K, typename V>
 using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<std::pair<const K, V>>>;
+
+template <typename T, typename... Args> T *allocate(Args &&...args)
+{
+	Allocator<T> a;
+	return a.allocate(std::forward<Args>(args)...);
+}
+template <typename T> void deallocate(T *const t)
+{
+	Allocator<T> a;
+	a.deallocate(t, 1);
+}
+
+template <typename T> struct Deleter
+{
+	constexpr Deleter() noexcept = default;
+	template <typename U, typename = std::_Require<std::is_convertible<U *, T *>>> Deleter(const Deleter<U> &) noexcept
+	{
+	}
+	void operator()(T *t) const
+	{
+		deallocate(t);
+	}
+};
 } // namespace TemStream
 namespace std
 {
@@ -52,14 +75,6 @@ template <typename T> using List = std::vector<T>;
 template <typename T> using Deque = std::deque<T>;
 template <typename K, typename V> using Set = std::unordered_set<K, V>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
-#endif
-
-extern String &trim(String &);
-extern String &ltrim(String &);
-extern String &rtrim(String &);
-
-using Bytes = List<char>;
-using StringList = List<String>;
 
 template <typename T, typename... Args> T *allocate(Args &&...args)
 {
@@ -69,18 +84,14 @@ template <typename T> void deallocate(T *const t)
 {
 	delete t;
 }
+#endif
 
-template <typename T> struct Deleter
-{
-	constexpr Deleter() noexcept = default;
-	template <typename U, typename = std::_Require<std::is_convertible<U *, T *>>> Deleter(const Deleter<U> &) noexcept
-	{
-	}
-	void operator()(T *t) const
-	{
-		deallocate(t);
-	}
-};
+extern String &trim(String &);
+extern String &ltrim(String &);
+extern String &rtrim(String &);
+
+using Bytes = List<char>;
+using StringList = List<String>;
 
 template <typename T> using unique_ptr = std::unique_ptr<T, Deleter<T>>;
 

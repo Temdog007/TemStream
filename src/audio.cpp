@@ -2,9 +2,9 @@
 
 namespace TemStream
 {
-Audio::Audio(const Message::Source &source, const bool recording)
+Audio::Audio(const Message::Source &source, const Type type, const float volume)
 	: buffer(), recordBuffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
-	  code(SDLK_UNKNOWN), volume(1.f), recording(recording)
+	  code(SDLK_UNKNOWN), volume(volume), type(type)
 {
 }
 Audio::~Audio()
@@ -54,7 +54,13 @@ void Audio::clearAudio()
 }
 void Audio::useCurrentAudio(const std::function<void(const Bytes &)> &f) const
 {
+	Lock lock(id);
 	f(currentAudio);
+}
+Bytes &&Audio::getCurrentAudio()
+{
+	Lock lock(id);
+	return std::move(currentAudio);
 }
 SDL_AudioSpec Audio::getAudioSpec()
 {
@@ -65,9 +71,9 @@ SDL_AudioSpec Audio::getAudioSpec()
 	desired.samples = 4096;
 	return desired;
 }
-unique_ptr<Audio> Audio::startRecording(const Message::Source &source, const char *name)
+unique_ptr<Audio> Audio::startRecording(const Message::Source &source, const char *name, const float silenceThresold)
 {
-	Audio *a = allocate<Audio>(source, true);
+	Audio *a = allocate<Audio>(source, Type::Record, silenceThresold);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return startRecording(a, OPUS_APPLICATION_VOIP);
 }
@@ -99,9 +105,9 @@ unique_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }
-unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char *name)
+unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char *name, const float volume)
 {
-	auto a = unique_ptr<Audio>(allocate<Audio>(source, false), Deleter<Audio>());
+	auto a = tem_unique<Audio>(source, Type::Playback, volume);
 
 	SDL_AudioSpec desired = getAudioSpec();
 	desired.callback = (SDL_AudioCallback)Audio::playbackCallback;
@@ -128,7 +134,7 @@ unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char
 	*logger << "Playing audio from device: " << a->name << std::endl;
 	return a;
 }
-void Audio::recordCallback(Audio *a, const uint8_t *data, const int count)
+void Audio::recordCallback(Audio *a, uint8_t *data, const int count)
 {
 	a->recordAudio(data, count);
 }
@@ -156,8 +162,19 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 		storedAudio.erase(start, end);
 	}
 }
-void Audio::recordAudio(const uint8_t *data, const int count)
+void Audio::clampAudio(float *data, const int count) const
 {
+	for (int i = 0; i < count; ++i)
+	{
+		if (std::abs(data[i]) < silenceThreshold)
+		{
+			data[i] = 0.f;
+		}
+	}
+}
+void Audio::recordAudio(uint8_t *data, const int count)
+{
+	clampAudio(reinterpret_cast<float *>(data), count / sizeof(float));
 	storedAudio.insert(storedAudio.end(), data, data + count);
 	if (storedAudio.size() > MB(1))
 	{
@@ -169,6 +186,17 @@ void Audio::recordAudio(const uint8_t *data, const int count)
 
 	currentAudio.clear();
 	currentAudio.insert(currentAudio.end(), data, data + count);
+}
+bool Audio::isRecording() const
+{
+	switch (type)
+	{
+	case Type::Record:
+	case Type::RecordWindow:
+		return true;
+	default:
+		return false;
+	}
 }
 bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 {
