@@ -13,8 +13,8 @@
 			cereal::make_nvp("credentials", cred), CEREAL_NVP(hostname), cereal::make_nvp("port", address.port),       \
 			CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold),                      \
 			CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs), CEREAL_NVP(showStreams), CEREAL_NVP(showDisplays),            \
-			CEREAL_NVP(showAudio), CEREAL_NVP(showFont), CEREAL_NVP(showStats), CEREAL_NVP(showColors),                \
-			CEREAL_NVP(colors))
+			CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats),                 \
+			CEREAL_NVP(showColors), CEREAL_NVP(colors))
 namespace TemStream
 {
 class ColorList
@@ -62,6 +62,7 @@ struct Configuration
 	bool showStreams;
 	bool showDisplays;
 	bool showAudio;
+	bool showVideo;
 	bool showFont;
 	bool showStats;
 	bool showColors;

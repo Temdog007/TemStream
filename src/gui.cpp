@@ -309,6 +309,10 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			{
 				configuration.showAudio = true;
 			}
+			if (ImGui::MenuItem("Video", "Ctrl+H", nullptr, !configuration.showVideo))
+			{
+				configuration.showVideo = true;
+			}
 			if (ImGui::MenuItem("Logs", "Ctrl+L", nullptr, !configuration.showLogs))
 			{
 				configuration.showLogs = true;
@@ -426,6 +430,8 @@ void TemStreamGui::draw()
 				{
 					auto &a = iter->second;
 
+					ImGui::PushID(a->getName().c_str());
+
 					ImGui::TableNextColumn();
 					if (a->getType() == Audio::Type::RecordWindow)
 					{
@@ -497,6 +503,43 @@ void TemStreamGui::draw()
 					{
 						++iter;
 					}
+
+					ImGui::PopID();
+				}
+				ImGui::EndTable();
+			}
+		}
+		ImGui::End();
+	}
+
+	if (configuration.showVideo && !video.empty())
+	{
+		if (ImGui::Begin("Video", &configuration.showVideo, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			if (ImGui::BeginTable("Video", 2, ImGuiTableFlags_Borders))
+			{
+				ImGui::TableSetupColumn("Device Name");
+				ImGui::TableSetupColumn("Stop");
+				ImGui::TableHeadersRow();
+				for (auto iter = video.begin(); iter != video.end();)
+				{
+					const auto &data = iter->second->getInfo();
+					ImGui::PushID(data.name.c_str());
+
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", data.name.c_str());
+
+					ImGui::TableNextColumn();
+					if (ImGui::Button("Stop"))
+					{
+						iter = video.erase(iter);
+					}
+					else
+					{
+						++iter;
+					}
+
+					ImGui::PopID();
 				}
 				ImGui::EndTable();
 			}
@@ -1360,9 +1403,8 @@ int runApp(Configuration &configuration)
 				break;
 				case TemStreamEvent::HandleMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
-					const auto start = std::make_move_iterator(packets->begin());
-					const auto end = std::make_move_iterator(packets->end());
-					std::for_each(start, end,
+					auto pair = toMoveIterator(std::move(*packets));
+					std::for_each(pair.first, pair.second,
 								  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
 					deallocate(packets);
 				}
@@ -1427,6 +1469,9 @@ int runApp(Configuration &configuration)
 					break;
 				case SDLK_l:
 					gui.configuration.showLogs = !gui.configuration.showLogs;
+					break;
+				case SDLK_h:
+					gui.configuration.showVideo = !gui.configuration.showVideo;
 					break;
 				case SDLK_i:
 					gui.configuration.showStats = !gui.configuration.showStats;
@@ -1540,7 +1585,7 @@ TemStreamGuiLogger::TemStreamGuiLogger(TemStreamGui &gui) : gui(gui)
 TemStreamGuiLogger::~TemStreamGuiLogger()
 {
 	char buffer[KB(1)];
-	snprintf(buffer, sizeof(buffer), "TemStream_log_%zu.txt", time(NULL));
+	snprintf(buffer, sizeof(buffer), "TemStream_log_%zu.txt", time(nullptr));
 	std::ofstream file(buffer);
 	this->viewLogs([&file](const Log &log) { file << log.first << ": " << log.second; });
 }

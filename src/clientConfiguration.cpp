@@ -8,7 +8,7 @@ Configuration::Configuration()
 	  showDisplays(false), showAudio(true), showFont(false), showStats(false), showColors(false)
 {
 	ImGuiStyle style;
-	ImGui::StyleColorsLight(&style);
+	ImGui::StyleColorsClassic(&style);
 	std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, colors.begin());
 }
 Configuration::~Configuration()
@@ -69,10 +69,9 @@ std::unordered_map<std::string, ColorList> Configuration::toCustomColors() const
 }
 void Configuration::fromCustomColors(std::unordered_map<std::string, ColorList> &&c)
 {
-	auto begin = std::make_move_iterator(c.begin());
-	auto end = std::make_move_iterator(c.end());
+	auto pair = toMoveIterator(std::move(c));
 	customColors.clear();
-	for (auto iter = begin; iter != end; ++iter)
+	for (auto iter = pair.first; iter != pair.second; ++iter)
 	{
 		customColors.emplace(*iter);
 	}
@@ -83,10 +82,9 @@ std::vector<std::string> Configuration::toFontFiles() const
 }
 void Configuration::fromFontFiles(std::vector<std::string> &&v)
 {
-	auto begin = std::make_move_iterator(v.begin());
-	auto end = std::make_move_iterator(v.end());
+	auto pair = toMoveIterator(std::move(v));
 	fontFiles.clear();
-	for (auto iter = begin; iter != end; ++iter)
+	for (auto iter = pair.first; iter != pair.second; ++iter)
 	{
 		fontFiles.emplace_back(*iter);
 	}

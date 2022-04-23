@@ -14,6 +14,8 @@ template <typename K> using Set = std::unordered_set<K, std::hash<K>, std::equal
 template <typename K, typename V>
 using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<std::pair<const K, V>>>;
 
+template <typename T> using LinkedList = std::list<T, Allocator<T>>;
+template <typename T> using Queue = std::queue<T, Deque<T>>;
 template <typename T, typename... Args> T *allocate(Args &&...args)
 {
 	Allocator<T> a;
@@ -97,6 +99,8 @@ template <typename T> using Deque = std::deque<T>;
 template <typename T> using Set = std::unordered_set<T>;
 template <typename K, typename V> using Map = std::unordered_map<K, V>;
 
+template <typename T> using LinkedList = std::list<T>;
+template <typename T> using Queue = std::queue<T>;
 template <typename T, typename... Args> T *allocate(Args &&...args)
 {
 	return new T(std::forward<Args>(args)...);

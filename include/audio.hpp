@@ -5,30 +5,6 @@
 namespace TemStream
 {
 class ClientConnetion;
-struct WindowProcess
-{
-	String name;
-	int32_t id;
-
-	WindowProcess(const String &name, const int32_t id) : name(name), id(id)
-	{
-	}
-	WindowProcess(String &&name, const int32_t id) : name(std::move(name)), id(id)
-	{
-	}
-	~WindowProcess()
-	{
-	}
-
-	bool operator==(const WindowProcess &p) const
-	{
-		return id == p.id && name == p.name;
-	}
-	bool operator!=(const WindowProcess &p) const
-	{
-		return !(*this == p);
-	}
-};
 class Audio
 {
   public:
@@ -84,6 +60,16 @@ class Audio
 	void close();
 
 	static unique_ptr<Audio> startRecording(Audio *, int);
+
+	class Lock
+	{
+	  private:
+		const SDL_AudioDeviceID id;
+
+	  public:
+		Lock(SDL_AudioDeviceID);
+		~Lock();
+	};
 
   public:
 	Audio() = delete;
@@ -150,32 +136,10 @@ class Audio
 
 	bool isLoudEnough(float *, int) const;
 
-	static std::optional<Set<WindowProcess>> getWindowsWithAudio();
+	static std::optional<WindowProcesses> getWindowsWithAudio();
 	static unique_ptr<Audio> startRecordingWindow(const Message::Source &, const WindowProcess &, float);
 
 	static unique_ptr<Audio> startRecording(const Message::Source &, const char *, float);
 	static unique_ptr<Audio> startPlayback(const Message::Source &, const char *, float);
-
-	class Lock
-	{
-	  private:
-		const SDL_AudioDeviceID id;
-
-	  public:
-		Lock(SDL_AudioDeviceID);
-		~Lock();
-	};
 };
 } // namespace TemStream
-namespace std
-{
-template <> struct hash<TemStream::WindowProcess>
-{
-	size_t operator()(const TemStream::WindowProcess &s) const
-	{
-		size_t value = hash<TemStream::String>()(s.name);
-		TemStream::hash_combine(value, hash<int32_t>()(s.id));
-		return value;
-	}
-};
-} // namespace std

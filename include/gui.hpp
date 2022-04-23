@@ -52,6 +52,7 @@ class TemStreamGui
 	std::optional<Address> connectToServer;
 	Map<Message::Source, StreamDisplay> displays;
 	Map<Message::Source, unique_ptr<Audio>> audio;
+	Map<Message::Source, shared_ptr<Video>> video;
 	Message::Streams streams;
 	Message::Subscriptions subscriptions;
 	Message::PeerInformationSet otherPeers;

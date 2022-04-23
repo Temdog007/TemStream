@@ -33,7 +33,7 @@ class SinkInput
 	static std::optional<String> runCommand(const char *);
 	static bool runCommand(const char *, Deque<String> &);
 
-	friend std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio();
+	friend std::optional<WindowProcesses> Audio::getWindowsWithAudio();
 	friend unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &, const WindowProcess &s, float);
 
 	friend std::ostream &operator<<(std::ostream &os, const SinkInput &si)
@@ -159,7 +159,7 @@ bool SinkInput::valid() const
 bool SinkInput::runCommand(const char *command, Deque<String> &s)
 {
 	FILE *file = popen(command, "r");
-	if (file == NULL)
+	if (file == nullptr)
 	{
 		perror("popen");
 		(*logger)(Logger::Error) << "Failed to start process: " << strerror(errno) << std::endl;
@@ -177,7 +177,7 @@ bool SinkInput::runCommand(const char *command, Deque<String> &s)
 std::optional<String> SinkInput::runCommand(const char *command)
 {
 	FILE *file = popen(command, "r");
-	if (file == NULL)
+	if (file == nullptr)
 	{
 		perror("popen");
 		(*logger)(Logger::Error) << "Failed to start process: " << strerror(errno) << std::endl;
@@ -195,7 +195,7 @@ std::optional<String> SinkInput::runCommand(const char *command)
 std::optional<String> SinkInput::getSinkName() const
 {
 	FILE *file = popen("pactl list sinks short", "r");
-	if (file == NULL)
+	if (file == nullptr)
 	{
 		perror("popen");
 		(*logger)(Logger::Error) << "Failed to start process: " << strerror(errno) << std::endl;
@@ -248,15 +248,14 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 	list.erase(iter, list.end());
 	return list;
 }
-std::optional<Set<WindowProcess>> Audio::getWindowsWithAudio()
+std::optional<WindowProcesses> Audio::getWindowsWithAudio()
 {
 	auto sinks = SinkInput::getSinks();
 	if (sinks.has_value())
 	{
-		Set<WindowProcess> set;
-		const auto begin = std::make_move_iterator(sinks->begin());
-		const auto end = std::make_move_iterator(sinks->end());
-		for (auto iter = begin; iter != end; ++iter)
+		WindowProcesses set;
+		auto pair = toMoveIterator(std::move(*sinks));
+		for (auto iter = pair.first; iter != pair.second; ++iter)
 		{
 			SinkInput sinkInput(std::move(*iter));
 			set.emplace(std::move(sinkInput.processName), sinkInput.processId);

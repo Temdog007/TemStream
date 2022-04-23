@@ -52,14 +52,13 @@ class QueryImage : public IQuery
 class QueryAudio : public IQuery
 {
   private:
-	Set<WindowProcess> windowNames;
+	WindowProcesses windowNames;
 	enum Source
 	{
 		Device,
 		Window
 	};
 	Source source;
-
 	int selected;
 
   public:
@@ -72,6 +71,15 @@ class QueryAudio : public IQuery
 };
 class QueryVideo : public IQuery
 {
+  private:
+	struct WindowSelection
+	{
+		WindowProcesses windows;
+		int selected;
+	};
+	using VideoSelection = std::variant<String, WindowSelection>;
+	VideoSelection selection;
+
   public:
 	QueryVideo(TemStreamGui &);
 	~QueryVideo();

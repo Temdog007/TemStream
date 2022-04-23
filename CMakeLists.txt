@@ -9,10 +9,9 @@ option(COMPILE_CLIENT "Compile TemStream client" ON)
 option(COMPILE_SERVER "Compile TemStream server" ON)
 option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
-option(RECORD_PULSE_AUDIO "Record windows with pulse audio" ON)
+option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
+option(XCB_RECORD "Record windows with XCB" ON)
 
-set(JSON_CONFIG ON)
-set(CUSTOM_ALLOCATOR ON)
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)
 set(SUPPORT_PNG ON)
@@ -66,9 +65,14 @@ set(CLIENT_SOURCES
   src/query.cpp
   src/streamDisplay.cpp
   src/workQueue.cpp
+  src/video.cpp
   )
 if(RECORD_PULSE_AUDIO)
   set(AUDIO_SOURCE src/audioPulse.cpp)
+endif()
+
+if(XCB_RECORD)
+  set(VIDEO_SOURCE src/video_x11.cpp)
 endif()
 
 set(SOURCES 
@@ -84,7 +88,15 @@ set(SOURCES
 
 # Compile client
 if(COMPILE_CLIENT)
-  add_executable(TemStream ${SOURCES} ${CLIENT_SOURCES} ${AUDIO_SOURCE})
+  add_executable(TemStream ${SOURCES} ${CLIENT_SOURCES} ${AUDIO_SOURCE} ${VIDEO_SOURCE})
+
+  if(XCB_RECORD)
+    list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
+    include(FindXCB)
+    find_package(XCB REQUIRED)
+    target_include_directories(TemStream PRIVATE ${X11_XCB_INCLUDE_DIR})
+    target_link_libraries(TemStream PRIVATE XCB::XCB)
+  endif()
 
   if(MSVC)
     target_compile_options(TemStream PRIVATE /W4 /WX)
@@ -131,6 +143,10 @@ if(COMPILE_SERVER)
     target_compile_options(TemStreamServer PRIVATE /W4 /WX)
   else()
     target_compile_options(TemStreamServer PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+
+  if(CUSTOM_ALLOCATOR)
+    target_compile_definitions(TemStreamServer PRIVATE -DTEMSTREAM_USE_CUSTOM_ALLOCATOR)
   endif()
 
   target_compile_definitions(TemStreamServer PRIVATE -DTEMSTREAM_SERVER)

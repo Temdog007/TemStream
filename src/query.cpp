@@ -164,7 +164,7 @@ void QueryAudio::execute() const
 		break;
 	}
 }
-QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui)
+QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection("/dev/video0")
 {
 }
 QueryVideo::~QueryVideo()
@@ -172,9 +172,55 @@ QueryVideo::~QueryVideo()
 }
 bool QueryVideo::draw()
 {
+	static const char *selections[]{"Webcam", "Window"};
+	int s = static_cast<int>(selection.index());
+	if (ImGui::Combo("Source", &s, selections, IM_ARRAYSIZE(selections)))
+	{
+		switch (s)
+		{
+		case variant_index<VideoSelection, String>():
+			selection.emplace<String>("/dev/video0");
+			break;
+		case variant_index<VideoSelection, WindowSelection>():
+			selection.emplace<WindowSelection>(WindowSelection{Video::getRecordableWindows(), 0});
+			break;
+		default:
+			break;
+		}
+	}
+	struct Foo
+	{
+		void operator()(WindowSelection &ws)
+		{
+			char buffer[KB(1)];
+			size_t i = 0;
+			for (const auto &wp : ws.windows)
+			{
+				snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.windowId);
+				ImGui::RadioButton(buffer, &ws.selected, i++);
+			}
+		}
+		void operator()(String &s)
+		{
+			ImGui::InputText("Webcam location", &s);
+		}
+	};
+	std::visit(Foo(), selection);
 	return IQuery::draw();
 }
 void QueryVideo::execute() const
 {
+	struct Foo
+	{
+		void operator()(const WindowSelection &)
+		{
+			(*logger)(Logger::Error) << "Window not implemented..." << std::endl;
+		}
+		void operator()(const String &)
+		{
+			(*logger)(Logger::Error) << "Webcam not implemented..." << std::endl;
+		}
+	};
+	std::visit(Foo(), selection);
 }
 } // namespace TemStream

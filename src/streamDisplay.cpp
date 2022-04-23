@@ -394,7 +394,7 @@ void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 
 		{
 			char buffer[1024];
-			const time_t t = time(NULL);
+			const time_t t = time(nullptr);
 			strftime(buffer, sizeof(buffer), "screenshot_%y_%m_%d_%H_%M_%S.png", localtime(&t));
 			if (IMG_SavePNG(surface, buffer) == 0)
 			{

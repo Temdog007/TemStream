@@ -19,16 +19,19 @@
 #include <array>
 #include <atomic>
 #include <codecvt>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <list>
 #include <locale>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <optional>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -182,6 +185,13 @@ extern int runApp(Configuration &);
 
 extern std::ostream &printMemory(std::ostream &, const char *, const size_t mem);
 
+template <typename T> auto toMoveIterator(T &&t)
+{
+	auto begin = std::make_move_iterator(t.begin());
+	auto end = std::make_move_iterator(t.end());
+	return std::make_pair(begin, end);
+}
+
 template <typename VariantType, typename T, std::size_t index = 0> constexpr std::size_t variant_index()
 {
 	static_assert(std::variant_size_v<VariantType> > index, "Type not found in variant");
@@ -206,6 +216,7 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 #include "memoryStream.hpp"
 
 #include "logger.hpp"
+#include "windowProcess.hpp"
 
 #include "addrinfo.hpp"
 
@@ -220,6 +231,8 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 
 #include "address.hpp"
 
+#include "concurrent_queue.hpp"
+
 #include "connection.hpp"
 
 #if TEMSTREAM_SERVER
@@ -227,6 +240,7 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 #include "serverConnection.hpp"
 #else
 #include "audio.hpp"
+#include "video.hpp"
 
 #include "clientConfiguration.hpp"
 #include "clientConnection.hpp"
