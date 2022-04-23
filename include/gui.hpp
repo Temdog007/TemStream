@@ -51,7 +51,7 @@ class TemStreamGui
 	WorkQueue workQueue;
 	std::optional<Address> connectToServer;
 	Map<Message::Source, StreamDisplay> displays;
-	Map<Message::Source, shared_ptr<Audio>> audio;
+	Map<Message::Source, unique_ptr<Audio>> audio;
 	Message::Streams streams;
 	Message::Subscriptions subscriptions;
 	Message::PeerInformationSet otherPeers;
@@ -131,8 +131,8 @@ class TemStreamGui
 	void doWork();
 	void draw();
 
-	bool addAudio(shared_ptr<Audio> &&);
-	shared_ptr<Audio> getAudio(const Message::Source &) const;
+	bool addAudio(unique_ptr<Audio> &&);
+	bool useAudio(const Message::Source &, const std::function<void(Audio &)> &f);
 
 	bool isConnected();
 

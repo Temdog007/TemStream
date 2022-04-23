@@ -991,7 +991,7 @@ void TemStreamGui::draw()
 			if (opt.has_value())
 			{
 				const char *name = *opt;
-				shared_ptr<Audio> newAudio = nullptr;
+				unique_ptr<Audio> newAudio = nullptr;
 				if (recording)
 				{
 					newAudio =
@@ -1160,21 +1160,21 @@ bool TemStreamGui::operator()(Message::Subscriptions &s)
 	return true;
 }
 
-bool TemStreamGui::addAudio(shared_ptr<Audio> &&ptr)
+bool TemStreamGui::addAudio(unique_ptr<Audio> &&ptr)
 {
 	auto pair = audio.emplace(ptr->getSource(), std::move(ptr));
 	return pair.second;
 }
 
-shared_ptr<Audio> TemStreamGui::getAudio(const Message::Source &source) const
+bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(Audio &)> &f)
 {
 	auto iter = audio.find(source);
-	if (iter == audio.end())
+	if (iter != audio.end())
 	{
-		return nullptr;
+		f(*iter->second);
+		return true;
 	}
-
-	return iter->second;
+	return false;
 }
 
 bool TemStreamGui::isConnected()
@@ -1391,7 +1391,7 @@ int runApp(Configuration &configuration)
 				break;
 				case TemStreamEvent::AddAudio: {
 					Audio *audio = reinterpret_cast<Audio *>(event.user.data1);
-					auto ptr = tem_shared<Audio>(audio);
+					auto ptr = unique_ptr<Audio>(audio);
 					gui.addAudio(std::move(ptr));
 				}
 				break;

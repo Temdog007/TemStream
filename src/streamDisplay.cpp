@@ -135,19 +135,17 @@ bool StreamDisplay::operator()(Message::Video &)
 }
 bool StreamDisplay::operator()(Message::Audio &audio)
 {
-	if (auto a = gui.getAudio(source))
-	{
-		const bool isRecording = a->isRecording();
-		if (!isRecording)
-		{
-			a->enqueueAudio(audio.bytes);
-		}
-		if (!std::holds_alternative<CheckAudio>(data))
-		{
-			data.emplace<CheckAudio>(nullptr, isRecording);
-		}
-	}
-	else
+	if (!gui.useAudio(source, [this, &audio](Audio &a) {
+			const bool isRecording = a.isRecording();
+			if (!isRecording)
+			{
+				a.enqueueAudio(audio.bytes);
+			}
+			if (!std::holds_alternative<CheckAudio>(data))
+			{
+				data.emplace<CheckAudio>(nullptr, isRecording);
+			}
+		}))
 	{
 		Work::Task task(Work::StartPlayback(source, std::nullopt, gui.getConfiguration().defaultVolume / 100.f));
 		(*gui).addWork(std::move(task));
@@ -256,19 +254,24 @@ bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 }
 bool StreamDisplay::Draw::operator()(CheckAudio &t)
 {
-	auto ptr = display.gui.getAudio(display.getSource());
-	if (ptr == nullptr)
+	Bytes current;
+	if (!display.gui.useAudio(display.getSource(), [&current](Audio &a) {
+			// a.useCurrentAudio([&current](const Bytes &b) { current.insert(current.end(), b.begin(), b.end()); });
+			a.useCurrentAudio([&current](Bytes &&b) { current.swap(b); });
+		}))
 	{
 		// Maybe determine when this is an error and when the user removed the audio
 		// (*logger)(Logger::Error) << "Audio is missing for stream: " << display.getSource() << std::endl;
 		return false;
 	}
 
-	SDL_Renderer *renderer = display.gui.getRenderer();
+	if (current.empty())
+	{
+		// Don't update texture
+		return operator()(static_cast<SDL_TextureWrapper &>(t));
+	}
 
-	Bytes current;
-	ptr->useCurrentAudio([&current](const Bytes &b) { current.insert(current.end(), b.begin(), b.end()); });
-	// const Bytes current(std::move(ptr->getCurrentAudio()));
+	SDL_Renderer *renderer = display.gui.getRenderer();
 
 	const int audioWidth = 2048;
 	const int audioHeight = 512;

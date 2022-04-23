@@ -146,7 +146,7 @@ class Audio
 	}
 
 	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
-	Bytes &&getCurrentAudio();
+	void useCurrentAudio(const std::function<void(Bytes &&)> &);
 
 	bool isLoudEnough(float *, int) const;
 

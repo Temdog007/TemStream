@@ -57,10 +57,10 @@ void Audio::useCurrentAudio(const std::function<void(const Bytes &)> &f) const
 	Lock lock(id);
 	f(currentAudio);
 }
-Bytes &&Audio::getCurrentAudio()
+void Audio::useCurrentAudio(const std::function<void(Bytes &&)> &f)
 {
 	Lock lock(id);
-	return std::move(currentAudio);
+	f(std::move(currentAudio));
 }
 SDL_AudioSpec Audio::getAudioSpec()
 {

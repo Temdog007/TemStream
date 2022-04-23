@@ -287,7 +287,7 @@ Message::PeerInformationSet ServerConnection::getPeers()
 	}
 	return set;
 }
-std::shared_ptr<ServerConnection> ServerConnection::getPointer() const
+shared_ptr<ServerConnection> ServerConnection::getPointer() const
 {
 	LOCK(peersMutex);
 	for (auto iter = peers.begin(); iter != peers.end();)
@@ -729,7 +729,7 @@ bool ServerConnection::MessageHandler::sendPayloadForStream(const Message::Sourc
 	}
 	return true;
 }
-void ServerConnection::MessageHandler::sendImageBytes(std::shared_ptr<ServerConnection> ptr, Message::Source &&source,
+void ServerConnection::MessageHandler::sendImageBytes(shared_ptr<ServerConnection> ptr, Message::Source &&source,
 													  String &&filename)
 {
 
