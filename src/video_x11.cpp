@@ -184,91 +184,86 @@ WindowProcesses Video::getRecordableWindows()
 
 	return getAllX11Windows(con, screenNum);
 }
-struct WindowEncoder
+
+using Converter = Video::RGBA2YUV<unique_ptr<xcb_shm_get_image_reply_t>>;
+class Screenshotter
 {
-	ConcurrentQueue<shared_ptr<xcb_shm_get_image_reply_t>> frames;
-	Message::Source source;
-	float ratio;
-};
-struct WindowData
-{
-	WindowData(const WindowProcess &w) : encoders(), window(w), video(), fps(24)
-	{
-	}
-	~WindowData()
-	{
-	}
-	std::vector<std::weak_ptr<WindowEncoder>> encoders;
+  private:
+	std::weak_ptr<Converter> converter;
 	WindowProcess window;
 	std::weak_ptr<Video> video;
 	uint64_t fps;
-};
-void recordFrames(const unique_ptr<WindowData> data)
-{
-	int unused;
-	auto con = getXCBConnection(unused);
-	const uint64_t delay = 1000 / data->fps;
-	uint64_t last = 0;
-	while (!appDone)
-	{
-		const uint64_t now = SDL_GetTicks64();
-		const uint64_t diff = now - last;
-		if (diff < delay)
-		{
-			SDL_Delay(diff);
-			continue;
-		}
-		last = now;
 
-		auto ptr = data->video.lock();
-		if (!ptr)
-		{
-			break;
-		}
+  public:
+	Screenshotter(const WindowProcess &w, const shared_ptr<Converter> &ptr, const shared_ptr<Video> &v,
+				  const uint32_t fps)
+		: converter(ptr), window(w), video(v), fps(fps)
+	{
+	}
+	~Screenshotter()
+	{
+	}
 
-		// Get screenshot, insert into encoders
-	}
-}
-void encodeFrames(shared_ptr<WindowEncoder> ptr)
-{
-	if (!TemStreamGui::sendCreateMessage<Message::Video>(ptr->source))
+	static void startTakingScreenshots(shared_ptr<Screenshotter> &&ss)
 	{
-		return;
-	}
-	using namespace std::chrono_literals;
-	const auto maxWaitTime = 1s;
-	while (!appDone)
-	{
-		auto data = ptr->frames.pop(maxWaitTime);
-		if (!data)
-		{
-			break;
-		}
-
-		// Encode, resize, make and send packet
-	}
-}
-std::shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
-										   const List<float> &ratios, const uint32_t fps)
-{
-	auto ptr = tem_shared<Video>(source, wp);
-	auto data = tem_unique<WindowData>(wp);
-	data->fps = fps;
-	data->video = std::weak_ptr(ptr);
-	char buffer[KB(1)];
-	for (const auto ratio : ratios)
-	{
-		auto encoder = tem_shared<WindowEncoder>();
-		encoder->ratio = ratio;
-		encoder->source.author = source.author;
-		snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), static_cast<int32_t>(ratio * 100.f));
-		encoder->source.destination = buffer;
-		data->encoders.push_back(std::weak_ptr<WindowEncoder>(encoder));
-		std::thread thread(encodeFrames, std::move(encoder));
+		std::thread thread(takeScreenshots, std::move(ss));
 		thread.detach();
 	}
-	std::thread thread(recordFrames, std::move(data));
-	thread.detach();
-	return ptr;
+
+	static void takeScreenshots(shared_ptr<Screenshotter> &&data)
+	{
+		(*logger)(Logger::Trace) << "Starting to record " << data->window.name << std::endl;
+		int unused;
+		auto con = getXCBConnection(unused);
+		const uint64_t delay = 1000 / data->fps;
+		uint64_t last = 0;
+		while (!appDone)
+		{
+			const uint64_t now = SDL_GetTicks64();
+			const uint64_t diff = now - last;
+			if (diff < delay)
+			{
+				SDL_Delay(diff);
+				continue;
+			}
+			last = now;
+
+			{
+				auto ptr = data->video.lock();
+				if (!ptr)
+				{
+					break;
+				}
+			}
+			auto converter = data->converter.lock();
+			if (!converter)
+			{
+				break;
+			}
+
+			// Get screenshot, send to converter
+		}
+
+		(*logger)(Logger::Trace) << "Ending recording of " << data->window.name << std::endl;
+	}
+};
+
+shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
+									  const List<int32_t> &ratios, const uint32_t fps)
+{
+
+	FrameEncoders encoders;
+	for (const auto ratio : ratios)
+	{
+		auto encoder = tem_shared<FrameEncoder>(source, ratio);
+		encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));
+		FrameEncoder::startEncodingFrames(std::move(encoder));
+	}
+	auto converter = tem_shared<Converter>(std::move(encoders));
+	auto video = tem_shared<Video>(source, wp);
+	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fps);
+	Converter::startConverteringFrames(std::move(converter));
+	Screenshotter::startTakingScreenshots(std::move(screenshotter));
+	return video;
 }
 } // namespace TemStream

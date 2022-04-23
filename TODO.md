@@ -287,6 +287,7 @@
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
+- [ ] Potential memory leak when loading images
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

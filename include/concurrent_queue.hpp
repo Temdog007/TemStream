@@ -26,22 +26,10 @@ template <typename T> class ConcurrentQueue
 	{
 	}
 
-	bool empty()
-	{
-		auto lck = lock();
-		return queue.empty();
-	}
-
-	size_t size()
-	{
-		auto lck = lock();
-		return queue.size();
-	}
-
 	std::optional<T> tryPop()
 	{
 		auto lck = lock();
-		if (empty())
+		if (queue.empty())
 		{
 			return std::nullopt;
 		}
@@ -53,7 +41,7 @@ template <typename T> class ConcurrentQueue
 	T pop()
 	{
 		auto lck = lock();
-		while (empty())
+		while (queue.empty())
 		{
 			cv.wait(lck);
 		}
@@ -66,7 +54,7 @@ template <typename T> class ConcurrentQueue
 	std::optional<T> pop(const std::chrono::duration<_Rep, _Period> &maxWaitTime)
 	{
 		auto lck = lock();
-		while (empty())
+		while (queue.empty())
 		{
 			if (cv.wait_for(lck, maxWaitTime) == std::cv_status::timeout)
 			{

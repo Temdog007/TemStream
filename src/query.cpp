@@ -246,10 +246,7 @@ void QueryVideo::execute() const
 			{
 				if (i == ws.selected)
 				{
-					List<float> ratios;
-					std::transform(ws.ratios.begin(), ws.ratios.end(), std::inserter(ratios, ratios.begin()),
-								   [](const int x) { return static_cast<float>(x) / 100.f; });
-					auto ptr = Video::recordWindow(wp, source, std::move(ratios), static_cast<uint32_t>(ws.fps));
+					auto ptr = Video::recordWindow(wp, source, ws.ratios, static_cast<uint32_t>(ws.fps));
 					gui.addVideo(std::move(ptr));
 					break;
 				}
