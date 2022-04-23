@@ -137,4 +137,8 @@ extern String &rtrim(String &);
 using Bytes = List<char>;
 using StringList = List<String>;
 
+extern std::ostream &printMemory(std::ostream &os, const char *label, const size_t mem);
+
+extern String printMemory(const size_t mem);
+
 } // namespace TemStream

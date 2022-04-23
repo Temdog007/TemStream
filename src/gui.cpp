@@ -796,27 +796,18 @@ void TemStreamGui::draw()
 						TemStream_VERSION_PATCH);
 			ImGui::Text("SDL %u.%u.%u", v.major, v.minor, v.patch);
 			ImGui::Text("Dear ImGui %s", ImGui::GetVersion());
+#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 			if (ImGui::CollapsingHeader("Memory"))
 			{
-				auto total = globalAllocatorData.getTotal();
-				auto used = globalAllocatorData.getUsed();
-				const char *type = "bytes";
-				if (used >= MB(1))
-				{
-					total /= MB(1);
-					used /= MB(1);
-					type = "MB";
-				}
-				else if (used >= KB(1))
-				{
-					total /= KB(1);
-					used /= KB(1);
-					type = "KB";
-				}
+				const auto total = globalAllocatorData.getTotal();
+				const auto used = globalAllocatorData.getUsed();
 				const float percent = (float)used / (float)total;
 				ImGui::ProgressBar(percent);
-				ImGui::Text("%zu / %zu %s", used, total, type);
+				const auto totalStr = printMemory(total);
+				const auto usedStr = printMemory(used);
+				ImGui::Text("%s / %s", usedStr.c_str(), totalStr.c_str());
 			}
+#endif
 		}
 		ImGui::End();
 	}

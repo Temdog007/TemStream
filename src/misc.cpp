@@ -19,23 +19,30 @@ void prepareImageBytes(std::ifstream &file, const Source &source, const std::fun
 
 std::ostream &printMemory(std::ostream &os, const char *label, const size_t mem)
 {
+	os << label << ": " << printMemory(mem);
+	return os;
+}
+
+String printMemory(const size_t mem)
+{
+	char buffer[KB(1)];
+	if (mem >= GB(1))
+	{
+		snprintf(buffer, sizeof(buffer), "%3.2f GB", (float)mem / (float)(GB(1)));
+	}
 	if (mem >= MB(1))
 	{
-		const size_t whole = mem / MB(1);
-		const size_t remainder = mem % MB(1);
-		os << label << ": " << whole << '.' << (float)remainder / (float)(MB(1)) << " MB";
+		snprintf(buffer, sizeof(buffer), "%3.2f GB", (float)mem / (float)(MB(1)));
 	}
 	else if (mem >= KB(1))
 	{
-		const size_t whole = mem / KB(1);
-		const size_t remainder = mem % KB(1);
-		os << label << ": " << whole << '.' << (float)remainder / (float)(KB(1)) << " KB";
+		snprintf(buffer, sizeof(buffer), "%3.2f GB", (float)mem / (float)(KB(1)));
 	}
 	else
 	{
-		os << label << ": " << mem << " bytes";
+		snprintf(buffer, sizeof(buffer), "%zu bytes", mem);
 	}
-	return os;
+	return String(buffer);
 }
 
 bool openSocket(int &fd, const Address &address, const bool isServer)
