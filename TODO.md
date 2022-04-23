@@ -251,10 +251,11 @@
 - [x] Make custom allocator optional
 - [x] Fix JSON serializing
 - [x] Label ImGui Windows
-- [ ] Window streaming
-- [ ] Allow multiple transcodes for each video stream
+- [x] Allow multiple transcodes for each video stream
+- [x] Render audio channels separately
 
 ### Apr 23, 2022
+- [ ] Window streaming
 - [ ] Optional OpenCL
 - [ ] Webcam streaming
 

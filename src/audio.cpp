@@ -151,7 +151,7 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 								   << std::endl;
 		storedAudio.clear();
 	}
-	const size_t toCopy = SDL_min((size_t)count, storedAudio.size());
+	const size_t toCopy = std::min((size_t)count, storedAudio.size());
 	currentAudio.clear();
 	if (toCopy > 0)
 	{

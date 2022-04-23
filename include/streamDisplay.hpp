@@ -24,16 +24,18 @@ class SDL_TextureWrapper
 		return texture;
 	}
 };
-class CheckAudio : public SDL_TextureWrapper
+struct CheckAudio : public SDL_TextureWrapper
 {
-  private:
-	bool isRecording;
+	List<float> left;
+	List<float> right;
+	const bool isRecording;
 
   public:
-	CheckAudio(SDL_Texture *t, const bool b) : SDL_TextureWrapper(t), isRecording(b)
+	CheckAudio(SDL_Texture *t, const bool b) : SDL_TextureWrapper(t), left(), right(), isRecording(b)
 	{
 	}
-	CheckAudio(CheckAudio &&a) : SDL_TextureWrapper(a.texture), isRecording(a.isRecording)
+	CheckAudio(CheckAudio &&a)
+		: SDL_TextureWrapper(a.texture), left(std::move(left)), right(std::move(right)), isRecording(a.isRecording)
 	{
 		a.texture = nullptr;
 	}
@@ -84,6 +86,8 @@ class StreamDisplay
 	{
 	  private:
 		StreamDisplay &display;
+
+		void drawPoints(const List<float> &, float, float, float, float);
 
 	  public:
 		Draw(StreamDisplay &);

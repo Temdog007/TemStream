@@ -185,6 +185,11 @@ extern int runApp(Configuration &);
 
 extern std::ostream &printMemory(std::ostream &, const char *, const size_t mem);
 
+template <typename T> T lerp(T min, T max, float percent)
+{
+	return min + (max - min) * percent;
+}
+
 template <typename T> auto toMoveIterator(T &&t)
 {
 	auto begin = std::make_move_iterator(t.begin());

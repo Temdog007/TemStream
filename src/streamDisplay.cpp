@@ -252,23 +252,70 @@ bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 	ImGui::End();
 	return true;
 }
+void StreamDisplay::Draw::drawPoints(const List<float> &list, const float audioWidth, const float, const float minY,
+									 const float maxY)
+{
+	SDL_Renderer *renderer = display.gui.getRenderer();
+
+	SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
+	const float midY = (maxY + minY) * 0.5f;
+	SDL_RenderDrawLineF(renderer, 0.f, midY, audioWidth, midY);
+
+	List<SDL_FPoint> points;
+	points.reserve(list.size());
+	for (size_t i = 0; i < list.size(); ++i)
+	{
+		const float f = list[i];
+		if (std::isinf(f) || std::isnan(f))
+		{
+			continue;
+		}
+		const float xpercent = (float)i / (float)list.size();
+		SDL_FPoint point;
+		point.x = audioWidth * xpercent;
+		const float ypercent = ((f + 1.f) / 2.f);
+		point.y = minY + (maxY - minY) * ypercent;
+		points.push_back(point);
+	}
+	SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
+	SDL_RenderDrawLinesF(renderer, points.data(), static_cast<int>(points.size()));
+}
 bool StreamDisplay::Draw::operator()(CheckAudio &t)
 {
-	Bytes current;
-	if (!display.gui.useAudio(display.getSource(), [&current](Audio &a) {
-			// a.useCurrentAudio([&current](const Bytes &b) { current.insert(current.end(), b.begin(), b.end()); });
-			a.useCurrentAudio([&current](Bytes &&b) { current.swap(b); });
-		}))
+	const auto bfunc = [&t](const Bytes &b) {
+		constexpr float speed = 0.75f;
+		if (b.empty())
+		{
+			for (auto &f : t.left)
+			{
+				f = std::clamp(f * (1.f - speed), -1.f, 1.f);
+			}
+			for (auto &f : t.right)
+			{
+				f = std::clamp(f * (1.f - speed), -1.f, 1.f);
+			}
+		}
+		else
+		{
+			const float *fdata = reinterpret_cast<const float *>(b.data());
+			const size_t fsize = b.size() / sizeof(float);
+			t.left.resize(fsize / 2, 0.f);
+			t.right.resize(fsize / 2, 0.f);
+			for (size_t i = 0; i < fsize - 1; i += 2)
+			{
+				const size_t half = i / 2;
+				t.left[half] = std::clamp(lerp(fdata[i], t.left[half], speed), -1.f, 1.f);
+				t.right[half] = std::clamp(lerp(fdata[i + 1], t.right[half], speed), -1.f, 1.f);
+			}
+		}
+	};
+	const auto func = [&bfunc](const Audio &a) { a.useCurrentAudio(bfunc); };
+
+	if (!display.gui.useAudio(display.getSource(), func))
 	{
 		// Maybe determine when this is an error and when the user removed the audio
 		// (*logger)(Logger::Error) << "Audio is missing for stream: " << display.getSource() << std::endl;
 		return false;
-	}
-
-	if (current.empty())
-	{
-		// Don't update texture
-		return operator()(static_cast<SDL_TextureWrapper &>(t));
 	}
 
 	SDL_Renderer *renderer = display.gui.getRenderer();
@@ -292,31 +339,14 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 	SDL_SetRenderTarget(renderer, texture);
 	SDL_SetRenderDrawColor(renderer, 0u, 0u, 0u, 255u);
 	SDL_RenderClear(renderer);
-	SDL_SetRenderDrawColor(renderer, 0u, 0u, 255u, 255u);
-	SDL_RenderDrawLineF(renderer, 0.f, audioHeight / 2, audioWidth, audioHeight / 2);
 
-	if (!current.empty() && current.size() < INT32_MAX)
+	if (!t.left.empty() && t.left.size() < INT32_MAX)
 	{
-		SDL_SetRenderDrawColor(renderer, 0u, 255u, 0u, 255u);
-		const float *fdata = reinterpret_cast<const float *>(current.data());
-		const size_t fsize = current.size() / sizeof(float);
-
-		List<SDL_FPoint> points;
-		points.reserve(fsize);
-		SDL_FPoint point;
-		for (size_t i = 0; i < fsize; ++i)
-		{
-			const float f = fdata[i];
-			if (f < -1.f || f > 1.f || std::isinf(f) || std::isnan(f))
-			{
-				continue;
-			}
-			const float percent = (float)i / (float)fsize;
-			point.x = audioWidth * percent;
-			point.y = ((f + 1.f) / 2.f) * audioHeight;
-			points.push_back(point);
-		}
-		SDL_RenderDrawLinesF(renderer, points.data(), static_cast<int>(points.size()));
+		drawPoints(t.left, audioWidth, audioHeight, 0.f, audioHeight * 0.5f);
+	}
+	if (!t.right.empty() && t.right.size() < INT32_MAX)
+	{
+		drawPoints(t.right, audioWidth, audioHeight, audioHeight * 0.5f, audioHeight);
 	}
 	SDL_SetRenderTarget(renderer, target);
 
