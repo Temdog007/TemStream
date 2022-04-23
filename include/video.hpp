@@ -25,8 +25,13 @@ class Video
 		return windowProcress;
 	}
 
+	const Message::Source &getSource() const
+	{
+		return source;
+	}
+
 	static WindowProcesses getRecordableWindows();
-	static std::shared_ptr<Video> recordWindow(WindowProcess &&, const Message::Source &, const std::vector<float> &,
+	static std::shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<float> &,
 											   const uint32_t fps);
 };
 } // namespace TemStream

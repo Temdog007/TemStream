@@ -1209,6 +1209,12 @@ bool TemStreamGui::addAudio(unique_ptr<Audio> &&ptr)
 	return pair.second;
 }
 
+bool TemStreamGui::addVideo(shared_ptr<Video> &&ptr)
+{
+	auto pair = video.emplace(ptr->getSource(), std::move(ptr));
+	return pair.second;
+}
+
 bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(Audio &)> &f)
 {
 	auto iter = audio.find(source);

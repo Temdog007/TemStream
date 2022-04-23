@@ -187,11 +187,12 @@ WindowProcesses Video::getRecordableWindows()
 struct WindowEncoder
 {
 	ConcurrentQueue<shared_ptr<xcb_shm_get_image_reply_t>> frames;
+	Message::Source source;
 	float ratio;
 };
 struct WindowData
 {
-	WindowData(WindowProcess &&w) : encoders(), window(std::move(w)), video(), fps(24)
+	WindowData(const WindowProcess &w) : encoders(), window(w), video(), fps(24)
 	{
 	}
 	~WindowData()
@@ -204,6 +205,8 @@ struct WindowData
 };
 void recordFrames(const unique_ptr<WindowData> data)
 {
+	int unused;
+	auto con = getXCBConnection(unused);
 	const uint64_t delay = 1000 / data->fps;
 	uint64_t last = 0;
 	while (!appDone)
@@ -228,6 +231,10 @@ void recordFrames(const unique_ptr<WindowData> data)
 }
 void encodeFrames(shared_ptr<WindowEncoder> ptr)
 {
+	if (!TemStreamGui::sendCreateMessage<Message::Video>(ptr->source))
+	{
+		return;
+	}
 	using namespace std::chrono_literals;
 	const auto maxWaitTime = 1s;
 	while (!appDone)
@@ -241,22 +248,21 @@ void encodeFrames(shared_ptr<WindowEncoder> ptr)
 		// Encode, resize, make and send packet
 	}
 }
-std::shared_ptr<Video> Video::recordWindow(WindowProcess &&wp, const Message::Source &source,
-										   const std::vector<float> &ratios, const uint32_t fps)
+std::shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
+										   const List<float> &ratios, const uint32_t fps)
 {
-	if (!TemStreamGui::sendCreateMessage<Message::Video>(source))
-	{
-		return nullptr;
-	}
-
 	auto ptr = tem_shared<Video>(source, wp);
-	auto data = tem_unique<WindowData>(std::move(wp));
+	auto data = tem_unique<WindowData>(wp);
 	data->fps = fps;
 	data->video = std::weak_ptr(ptr);
+	char buffer[KB(1)];
 	for (const auto ratio : ratios)
 	{
 		auto encoder = tem_shared<WindowEncoder>();
 		encoder->ratio = ratio;
+		encoder->source.author = source.author;
+		snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), static_cast<int32_t>(ratio * 100.f));
+		encoder->source.destination = buffer;
 		data->encoders.push_back(std::weak_ptr<WindowEncoder>(encoder));
 		std::thread thread(encodeFrames, std::move(encoder));
 		thread.detach();

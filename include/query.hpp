@@ -74,7 +74,10 @@ class QueryVideo : public IQuery
   private:
 	struct WindowSelection
 	{
+		List<int32_t> ratios;
 		WindowProcesses windows;
+		int32_t nextRatio;
+		int fps;
 		int selected;
 	};
 	using VideoSelection = std::variant<String, WindowSelection>;

@@ -252,9 +252,13 @@
 - [x] Fix JSON serializing
 - [x] Label ImGui Windows
 - [ ] Window streaming
+- [ ] Allow multiple transcodes for each video stream
+
+### Apr 23, 2022
 - [ ] Optional OpenCL
 - [ ] Webcam streaming
-- [ ] Allow multiple transcodes for each video stream
+
+### Apr 24, 2022
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 

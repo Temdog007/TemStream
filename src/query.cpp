@@ -151,8 +151,8 @@ void QueryAudio::execute() const
 		{
 			if (i == index)
 			{
-				Work::Task task(Work::StartWindowRecording(getSource(), wp,
-														   gui.getConfiguration().defaultSilenceThreshold / 100.f));
+				Work::Task task(Work::StartWindowAudioRecording(
+					getSource(), wp, gui.getConfiguration().defaultSilenceThreshold / 100.f));
 				(*gui).addWork(std::move(task));
 				break;
 			}
@@ -182,7 +182,7 @@ bool QueryVideo::draw()
 			selection.emplace<String>("/dev/video0");
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
-			selection.emplace<WindowSelection>(WindowSelection{Video::getRecordableWindows(), 0});
+			selection.emplace<WindowSelection>(WindowSelection{{100}, Video::getRecordableWindows(), 50, 24, 0});
 			break;
 		default:
 			break;
@@ -199,6 +199,27 @@ bool QueryVideo::draw()
 				snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.windowId);
 				ImGui::RadioButton(buffer, &ws.selected, i++);
 			}
+			ImGui::SliderInt("Frames per second", &ws.fps, 1, 120);
+			ImGui::SliderInt("Ratio", &ws.nextRatio, 1, 100);
+			if (!ws.ratios.empty())
+			{
+				if (ImGui::CollapsingHeader("Ratios"))
+				{
+					for (auto iter = ws.ratios.begin(); iter != ws.ratios.end();)
+					{
+						ImGui::Text("%d%%", *iter);
+						ImGui::SameLine();
+						if (ImGui::Button("Remove"))
+						{
+							iter = ws.ratios.erase(iter);
+						}
+						else
+						{
+							++iter;
+						}
+					}
+				}
+			}
 		}
 		void operator()(String &s)
 		{
@@ -212,15 +233,34 @@ void QueryVideo::execute() const
 {
 	struct Foo
 	{
-		void operator()(const WindowSelection &)
+		Message::Source source;
+		TemStreamGui &gui;
+		void operator()(const WindowSelection &ws) const
 		{
-			(*logger)(Logger::Error) << "Window not implemented..." << std::endl;
+			if (ws.ratios.empty())
+			{
+				return;
+			}
+			int i = 0;
+			for (const auto &wp : ws.windows)
+			{
+				if (i == ws.selected)
+				{
+					List<float> ratios;
+					std::transform(ws.ratios.begin(), ws.ratios.end(), std::inserter(ratios, ratios.begin()),
+								   [](const int x) { return static_cast<float>(x) / 100.f; });
+					auto ptr = Video::recordWindow(wp, source, std::move(ratios), static_cast<uint32_t>(ws.fps));
+					gui.addVideo(std::move(ptr));
+					break;
+				}
+				++i;
+			}
 		}
-		void operator()(const String &)
+		void operator()(const String &) const
 		{
 			(*logger)(Logger::Error) << "Webcam not implemented..." << std::endl;
 		}
 	};
-	std::visit(Foo(), selection);
+	std::visit(Foo{getSource(), gui}, selection);
 }
 } // namespace TemStream

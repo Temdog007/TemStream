@@ -69,7 +69,7 @@ class StartRecording
 
 	void run() const;
 };
-class StartWindowRecording
+class StartWindowAudioRecording
 {
   private:
 	Message::Source source;
@@ -77,12 +77,12 @@ class StartWindowRecording
 	float silenceThreshold;
 
   public:
-	StartWindowRecording(const Message::Source &, const WindowProcess &, float);
-	~StartWindowRecording();
+	StartWindowAudioRecording(const Message::Source &, const WindowProcess &, float);
+	~StartWindowAudioRecording();
 
 	void run() const;
 };
-using Task = std::variant<CheckFile, SendImage, LoadSurface, StartPlayback, StartRecording, StartWindowRecording>;
+using Task = std::variant<CheckFile, SendImage, LoadSurface, StartPlayback, StartRecording, StartWindowAudioRecording>;
 } // namespace Work
 
 class WorkQueue

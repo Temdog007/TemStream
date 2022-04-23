@@ -157,15 +157,15 @@ void StartRecording::run() const
 
 	// Pointer will deleted if not released
 }
-StartWindowRecording::StartWindowRecording(const Message::Source &source, const WindowProcess &wp,
-										   const float silenceThreshold)
+StartWindowAudioRecording::StartWindowAudioRecording(const Message::Source &source, const WindowProcess &wp,
+													 const float silenceThreshold)
 	: source(source), windowProcess(wp), silenceThreshold(silenceThreshold)
 {
 }
-StartWindowRecording::~StartWindowRecording()
+StartWindowAudioRecording::~StartWindowAudioRecording()
 {
 }
-void StartWindowRecording::run() const
+void StartWindowAudioRecording::run() const
 {
 	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);
 	if (ptr == nullptr)
