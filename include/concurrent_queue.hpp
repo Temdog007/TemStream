@@ -86,5 +86,20 @@ template <typename T> class ConcurrentQueue
 		queue.emplace_back(std::forward<_Args>(__args)...);
 		cv.notify_all();
 	}
+
+	void use(const std::function<void(Queue<T> &)> &f)
+	{
+		auto lck = lock();
+		f(queue);
+		cv.notify_all();
+	}
+
+	template <typename R> R use(const std::function<R(Queue<T> &)> &f)
+	{
+		auto lck = lock();
+		R r = f(queue);
+		cv.notify_all();
+		return r;
+	}
 };
 } // namespace TemStream

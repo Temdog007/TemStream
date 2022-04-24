@@ -85,6 +85,12 @@ template <class Archive, typename T1, typename T2> void load(Archive &archive, s
 #include <imgui_stdlib.h>
 
 #include <opus.h>
+
+#include <vpx/vp8cx.h>
+#include <vpx/vp8dx.h>
+#include <vpx/vpx_decoder.h>
+#include <vpx/vpx_encoder.h>
+
 namespace TemStream
 {
 enum TemStreamEvent : int32_t

@@ -1,43 +1,6 @@
 #include <main.hpp>
 
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <xcb/shm.h>
-#include <xcb/xcb.h>
-#include <xcb/xcb_image.h>
-
-template <typename T> struct XCB_Deleter
-{
-	constexpr XCB_Deleter() noexcept = default;
-	template <typename U, typename = std::_Require<std::is_convertible<U *, T *>>>
-	XCB_Deleter(const XCB_Deleter<U> &) noexcept
-	{
-	}
-	void operator()(T *t) const
-	{
-		if (t != nullptr)
-		{
-			free(t);
-		}
-	}
-};
-
-template <typename T> using xcb_ptr = std::unique_ptr<T, XCB_Deleter<T>>;
-
-struct XCB_ConnectionDeleter
-{
-	void operator()(xcb_connection_t *t) const
-	{
-		xcb_disconnect(t);
-	}
-};
-
-using XCB_Connection = std::unique_ptr<xcb_connection_t, XCB_ConnectionDeleter>;
-
-template <typename T> xcb_ptr<T> makeXCB(T *t)
-{
-	return xcb_ptr<T>(t, XCB_Deleter<T>());
-}
+#include <video_x11.hpp>
 
 namespace TemStream
 {
@@ -185,68 +148,114 @@ WindowProcesses Video::getRecordableWindows()
 	return getAllX11Windows(con, screenNum);
 }
 
-using Converter = Video::RGBA2YUV<unique_ptr<xcb_shm_get_image_reply_t>>;
-class Screenshotter
+shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s) const
 {
-  private:
-	std::weak_ptr<Converter> converter;
-	WindowProcess window;
-	std::weak_ptr<Video> video;
-	uint64_t fps;
+	void *data = xcb_get_image_data(s.reply.get());
 
-  public:
-	Screenshotter(const WindowProcess &w, const shared_ptr<Converter> &ptr, const shared_ptr<Video> &v,
-				  const uint32_t fps)
-		: converter(ptr), window(w), video(v), fps(fps)
+	auto frame = tem_shared<Video::Frame>();
+	frame->width = s.width;
+	frame->height = s.height;
+	frame->bytes.resize((s.width * s.height) * 3 / 2, '\0');
+	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_RGBA8888, data, s.width * 4, SDL_PIXELFORMAT_IYUV,
+						  frame->bytes.data(), s.width) == 0)
 	{
+		return frame;
 	}
-	~Screenshotter()
+	else
 	{
+		logSDLError("Failed to convert pixels");
+		return nullptr;
 	}
+}
 
-	static void startTakingScreenshots(shared_ptr<Screenshotter> &&ss)
-	{
-		std::thread thread(takeScreenshots, std::move(ss));
-		thread.detach();
-	}
+Screenshotter::Dimensions Screenshotter::getSize(xcb_connection_t *con, const Message::Source &source)
+{
+	xcb_get_geometry_cookie_t cookie = xcb_get_geometry(con, window.windowId);
+	xcb_generic_error_t *errorPtr = nullptr;
+	xcb_get_geometry_reply_t *geomPtr = xcb_get_geometry_reply(con, cookie, &errorPtr);
+	auto error = makeXCB(errorPtr);
+	auto geom = makeXCB(geomPtr);
 
-	static void takeScreenshots(shared_ptr<Screenshotter> &&data)
+	if (error || !geom)
 	{
-		(*logger)(Logger::Trace) << "Starting to record " << data->window.name << std::endl;
-		int unused;
-		auto con = getXCBConnection(unused);
-		const uint64_t delay = 1000 / data->fps;
-		uint64_t last = 0;
-		while (!appDone)
+		if (!windowHidden)
 		{
-			const uint64_t now = SDL_GetTicks64();
-			const uint64_t diff = now - last;
-			if (diff < delay)
-			{
-				SDL_Delay(diff);
-				continue;
-			}
-			last = now;
+			(*logger)(Logger::Warning) << "Window " << source << " is hidden" << std::endl;
+			windowHidden = true;
+		}
+		return std::nullopt;
+	}
+	return std::make_pair(geom->width, geom->height);
+}
 
-			{
-				auto ptr = data->video.lock();
-				if (!ptr)
-				{
-					break;
-				}
-			}
-			auto converter = data->converter.lock();
-			if (!converter)
-			{
-				break;
-			}
+void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
+{
+	(*logger)(Logger::Trace) << "Starting to record " << data->window.name << std::endl;
+	int unused;
+	auto con = getXCBConnection(unused);
 
-			// Get screenshot, send to converter
+	Dimensions dim = std::nullopt;
+	if (auto v = data->video.lock())
+	{
+		dim = data->getSize(con.get(), v->getSource());
+		if (!dim)
+		{
+			return;
+		}
+	}
+	else
+	{
+		return;
+	}
+
+	const uint64_t delay = 1000 / data->fps;
+	uint64_t last = 0;
+	while (!appDone)
+	{
+		const uint64_t now = SDL_GetTicks64();
+		const uint64_t diff = now - last;
+		if (diff < delay)
+		{
+			SDL_Delay(diff);
+			continue;
+		}
+		last = now;
+
+		auto video = data->video.lock();
+		if (!video)
+		{
+			break;
 		}
 
-		(*logger)(Logger::Trace) << "Ending recording of " << data->window.name << std::endl;
+		auto converter = data->converter.lock();
+		if (!converter)
+		{
+			break;
+		}
+
+		dim = data->getSize(con.get(), video->getSource());
+		if (!dim)
+		{
+			// Window is hidden
+			continue;
+		}
+
+		xcb_get_image_cookie_t cookie = xcb_get_image(con.get(), XCB_IMAGE_FORMAT_Z_PIXMAP, data->window.windowId, 0, 0,
+													  dim->first, dim->second, ~0U);
+		xcb_generic_error_t *errorPtr = nullptr;
+		auto replyPtr = xcb_get_image_reply(con.get(), cookie, &errorPtr);
+		auto error = makeXCB(errorPtr);
+		auto reply = makeXCB(replyPtr);
+		if (error || !reply)
+		{
+			break;
+		}
+
+		data->windowHidden = false;
 	}
-};
+
+	(*logger)(Logger::Trace) << "Ending recording of " << data->window.name << std::endl;
+}
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
 									  const List<int32_t> &ratios, const uint32_t fps)
@@ -259,7 +268,7 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 		encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));
 		FrameEncoder::startEncodingFrames(std::move(encoder));
 	}
-	auto converter = tem_shared<Converter>(std::move(encoders));
+	auto converter = tem_shared<Converter>(std::move(encoders), source);
 	auto video = tem_shared<Video>(source, wp);
 	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fps);
 	Converter::startConverteringFrames(std::move(converter));

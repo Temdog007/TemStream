@@ -98,6 +98,8 @@ if(COMPILE_CLIENT)
     target_link_libraries(TemStream PRIVATE XCB::XCB)
   endif()
 
+  target_link_libraries(TemStream PRIVATE vpx)
+
   if(MSVC)
     target_compile_options(TemStream PRIVATE /W4 /WX)
   else()

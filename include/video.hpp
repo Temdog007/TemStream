@@ -33,12 +33,34 @@ class Video
 	static WindowProcesses getRecordableWindows();
 	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
 										  const uint32_t fps);
+	class VPX
+	{
+	  private:
+		vpx_codec_ctx_t ctx;
+		vpx_image_t image;
+		int frameCount;
 
-	using Frame = shared_ptr<Bytes>;
+	  public:
+		VPX();
+		~VPX();
+
+		Bytes encoder(const Bytes &);
+		Bytes decoder(const Bytes &);
+
+		static std::optional<VPX> createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrateInMbps);
+		static std::optional<VPX> createDecoder();
+	};
+	struct Frame
+	{
+		Bytes bytes;
+		uint16_t width;
+		uint16_t height;
+	};
 	class FrameEncoder
 	{
 	  private:
-		ConcurrentQueue<Frame> frames;
+		ConcurrentQueue<shared_ptr<Frame>> frames;
+		VPX vpx;
 		Message::Source source;
 		const float ratio;
 
@@ -46,9 +68,12 @@ class Video
 
 	  public:
 		FrameEncoder(const Message::Source &, float);
-		~FrameEncoder();
+		virtual ~FrameEncoder();
 
-		void addFrame(Frame);
+		void addFrame(shared_ptr<Frame>);
+
+		Bytes resize(const Bytes &);
+		Bytes encode(const Bytes &) const;
 
 		static void startEncodingFrames(shared_ptr<FrameEncoder> &&);
 	};
@@ -60,30 +85,18 @@ class Video
 	  private:
 		ConcurrentQueue<T> frames;
 		FrameEncoders encoders;
+		const Message::Source source;
 
-		static void convertFrames(shared_ptr<RGBA2YUV> &&ptr)
-		{
-			(*logger)(Logger::Trace) << "Starting converter thread" << std::endl;
-			using namespace std::chrono_literals;
-			const auto maxWaitTime = 1s;
-			while (!appDone)
-			{
-				auto data = ptr->frames.pop(maxWaitTime);
-				if (!data)
-				{
-					break;
-				}
+		static void convertFrames(shared_ptr<RGBA2YUV> &&);
 
-				// Convert and send to encoders
-			}
-			(*logger)(Logger::Trace) << "Ending converter thread" << std::endl;
-		}
+		virtual shared_ptr<Frame> convertToFrame(T &&) const = 0;
 
 	  public:
-		RGBA2YUV(FrameEncoders &&frames) : frames(), encoders(std::move(frames))
+		RGBA2YUV(FrameEncoders &&frames, const Message::Source &source)
+			: frames(), encoders(std::move(frames)), source(source)
 		{
 		}
-		~RGBA2YUV()
+		virtual ~RGBA2YUV()
 		{
 		}
 
@@ -99,4 +112,43 @@ class Video
 		}
 	};
 };
+template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV> &&ptr)
+{
+	(*logger)(Logger::Trace) << "Starting converter thread" << std::endl;
+	using namespace std::chrono_literals;
+	const auto maxWaitTime = 3s;
+	while (!appDone)
+	{
+		// If too many frames; start dropping them.
+		ptr->frames.use([&ptr](Queue<T> &queue) {
+			const size_t size = queue.size();
+			if (size > 5)
+			{
+				(*logger)(Logger::Warning) << "Dropping " << size << " video frames from " << ptr->source << std::endl;
+				Queue<T> empty;
+				queue.swap(empty);
+			}
+		});
+
+		auto data = ptr->frames.pop(maxWaitTime);
+		if (!data)
+		{
+			break;
+		}
+
+		auto frame = ptr->convertToFrame(std::move(*data));
+		if (!frame)
+		{
+			continue;
+		}
+		for (auto &encoder : ptr->encoders)
+		{
+			if (auto e = encoder.lock())
+			{
+				e->addFrame(frame);
+			}
+		}
+	}
+	(*logger)(Logger::Trace) << "Ending converter thread" << std::endl;
+}
 } // namespace TemStream
