@@ -12,6 +12,7 @@ class ServerConnection : public Connection
 	Message::Subscriptions subscriptions;
 	bool informationAcquired;
 
+	static std::atomic_int32_t runningThreads;
 	static Message::Streams streams;
 	static Configuration configuration;
 	static Mutex peersMutex;

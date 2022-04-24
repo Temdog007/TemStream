@@ -64,19 +64,19 @@ class Converter : public Video::RGBA2YUV<Screenshot>
 	}
 };
 
+using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
+
 class Screenshotter
 {
   private:
 	std::weak_ptr<Converter> converter;
 	WindowProcess window;
 	std::weak_ptr<Video> video;
-	uint64_t fps;
+	uint32_t fps;
 	bool windowHidden;
 
+	Dimensions getSize(xcb_connection_t *);
 	static void takeScreenshots(shared_ptr<Screenshotter> &&);
-
-	using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
-	Dimensions getSize(xcb_connection_t *, const Message::Source &);
 
   public:
 	Screenshotter(const WindowProcess &w, const shared_ptr<Converter> &ptr, const shared_ptr<Video> &v,
@@ -88,10 +88,6 @@ class Screenshotter
 	{
 	}
 
-	static void startTakingScreenshots(shared_ptr<Screenshotter> &&ss)
-	{
-		std::thread thread(takeScreenshots, std::move(ss));
-		thread.detach();
-	}
+	static void startTakingScreenshots(shared_ptr<Screenshotter> &&ss);
 };
 } // namespace TemStream

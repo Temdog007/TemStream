@@ -64,8 +64,8 @@ set(CLIENT_SOURCES
   src/gui.cpp
   src/query.cpp
   src/streamDisplay.cpp
-  src/workQueue.cpp
   src/video.cpp
+  src/work.cpp
   )
 if(RECORD_PULSE_AUDIO)
   set(AUDIO_SOURCE src/audioPulse.cpp)

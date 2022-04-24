@@ -2,15 +2,35 @@
 
 namespace TemStream
 {
-namespace Work
+WorkList Task::workList;
+void Task::addTask(std::future<void> &&f)
 {
-CheckFile::CheckFile(const String &filename, TemStreamGui &gui) : filename(filename), gui(gui)
-{
+	workList.push_back(std::move(f));
 }
-CheckFile::~CheckFile()
+void Task::cleanupTasks()
 {
+	using namespace std::chrono_literals;
+	for (auto iter = workList.begin(); iter != workList.end();)
+	{
+		if (iter->wait_for(0ms) == std::future_status::ready)
+		{
+			iter = workList.erase(iter);
+		}
+		else
+		{
+			++iter;
+		}
+	}
 }
-void CheckFile::run() const
+void Task::waitForAll()
+{
+	for (auto &f : workList)
+	{
+		f.wait();
+	}
+	workList.clear();
+}
+void Task::checkFile(TemStreamGui &gui, String filename)
 {
 	IQuery *data = nullptr;
 	if (isImage(filename.c_str()))
@@ -32,13 +52,7 @@ void CheckFile::run() const
 		deallocate(data);
 	}
 }
-SendImage::SendImage(const String &filename, const Message::Source &source) : filename(filename), source(source)
-{
-}
-SendImage::~SendImage()
-{
-}
-void SendImage::run() const
+void Task::sendImage(String filename, Message::Source source)
 {
 	std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open())
@@ -65,13 +79,7 @@ void SendImage::run() const
 		deallocate(packets);
 	}
 }
-LoadSurface::LoadSurface(const Message::Source &source, Bytes &&bytes) : source(source), bytes(std::move(bytes))
-{
-}
-LoadSurface::~LoadSurface()
-{
-}
-void LoadSurface::run() const
+void Task::loadSurface(Message::Source source, Bytes bytes)
 {
 	(*logger)(Logger::Trace) << "Loading image data: " << bytes.size() / KB(1) << "KB" << std::endl;
 	SDL_RWops *src = SDL_RWFromConstMem(bytes.data(), bytes.size());
@@ -99,14 +107,8 @@ void LoadSurface::run() const
 		deallocate(ptr);
 	}
 }
-StartPlayback::StartPlayback(const Message::Source &source, const std::optional<String> &name, const float volume)
-	: source(source), name(name), volume(volume)
-{
-}
-StartPlayback::~StartPlayback()
-{
-}
-void StartPlayback::run() const
+
+void Task::startPlayback(Message::Source source, const std::optional<String> name, const float volume)
 {
 	auto ptr = Audio::startPlayback(source, name.has_value() ? name->c_str() : nullptr, volume);
 	if (ptr == nullptr)
@@ -125,15 +127,9 @@ void StartPlayback::run() const
 
 	// Pointer will deleted if not released
 }
-StartRecording::StartRecording(const Message::Source &source, const std::optional<String> &name,
+
+void Task::startRecordingAudio(const Message::Source source, const std::optional<String> name,
 							   const float silenceThreshold)
-	: source(source), name(name), silenceThreshold(silenceThreshold)
-{
-}
-StartRecording::~StartRecording()
-{
-}
-void StartRecording::run() const
 {
 	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);
 	if (ptr == nullptr)
@@ -157,15 +153,8 @@ void StartRecording::run() const
 
 	// Pointer will deleted if not released
 }
-StartWindowAudioRecording::StartWindowAudioRecording(const Message::Source &source, const WindowProcess &wp,
-													 const float silenceThreshold)
-	: source(source), windowProcess(wp), silenceThreshold(silenceThreshold)
-{
-}
-StartWindowAudioRecording::~StartWindowAudioRecording()
-{
-}
-void StartWindowAudioRecording::run() const
+void Task::startRecordingWindowAudio(const Message::Source source, const WindowProcess windowProcess,
+									 const float silenceThreshold)
 {
 	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);
 	if (ptr == nullptr)
@@ -188,31 +177,5 @@ void StartWindowAudioRecording::run() const
 	}
 
 	// Pointer will deleted if not released
-}
-} // namespace Work
-WorkQueue::WorkQueue() : tasks(), mutex()
-{
-}
-WorkQueue::~WorkQueue()
-{
-}
-void WorkQueue::addWork(Work::Task &&task)
-{
-	LOCK(mutex);
-	tasks.emplace_back(std::move(task));
-}
-std::optional<Work::Task> WorkQueue::getWork()
-{
-	std::optional<Work::Task> rval = std::nullopt;
-	if (mutex.try_lock())
-	{
-		if (!tasks.empty())
-		{
-			rval.emplace(std::move(tasks.front()));
-			tasks.pop_front();
-		}
-		mutex.unlock();
-	}
-	return rval;
 }
 } // namespace TemStream

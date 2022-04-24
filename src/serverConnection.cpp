@@ -15,6 +15,7 @@
 
 namespace TemStream
 {
+std::atomic_int32_t ServerConnection::runningThreads = 0;
 Message::Streams ServerConnection::streams;
 Configuration ServerConnection::configuration;
 Mutex ServerConnection::peersMutex;
@@ -74,9 +75,9 @@ int runApp(Configuration &configuration)
 		{
 			*logger << "New connection: " << str.data() << ':' << port << std::endl;
 
-			++runningThreads;
 			Address address(str.data(), port);
 			auto peer = tem_shared<ServerConnection>(address, std::move(s));
+			++ServerConnection::runningThreads;
 			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
 			thread.detach();
 		}
@@ -87,7 +88,7 @@ int runApp(Configuration &configuration)
 end:
 	::close(fd);
 	logger->AddInfo("Ending server");
-	while (runningThreads > 0)
+	while (ServerConnection::runningThreads > 0)
 	{
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(100ms);
@@ -138,8 +139,8 @@ void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> &&peer)
 	}
 
 end:
+	--ServerConnection::runningThreads;
 	*logger << "Ending connection: " << peer->getAddress() << std::endl;
-	--runningThreads;
 }
 bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
 {

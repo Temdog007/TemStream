@@ -17,10 +17,38 @@ template <const size_t N> std::optional<xcb_atom_t> getAtom(xcb_connection_t *co
 	}
 	return reply->atom;
 }
+Dimensions getWindowSize(xcb_connection_t *con, const xcb_window_t id)
+{
+	xcb_get_geometry_cookie_t cookie = xcb_get_geometry(con, id);
+	xcb_generic_error_t *errorPtr = nullptr;
+	xcb_get_geometry_reply_t *geomPtr = xcb_get_geometry_reply(con, cookie, &errorPtr);
+	auto error = makeXCB(errorPtr);
+	auto geom = makeXCB(geomPtr);
+
+	if (error || !geom)
+	{
+		if (error)
+		{
+			printf("%u\n", error->error_code);
+		}
+		if (!geom)
+		{
+			printf("No geometry\n");
+		}
+		return std::nullopt;
+	}
+	return std::make_pair(geom->width, geom->height);
+}
 bool isDesktopWindow(xcb_connection_t *con, const xcb_window_t window)
 {
 	auto atom = getAtom(con, "_NET_WM_WINDOW_TYPE");
 	if (!atom.has_value())
+	{
+		return false;
+	}
+
+	auto dim = getWindowSize(con, window);
+	if (!dim)
 	{
 		return false;
 	}
@@ -108,20 +136,21 @@ void getX11Windows(xcb_connection_t *con, const xcb_window_t window, WindowProce
 			if (len > 0)
 			{
 				const char *name = (char *)xcb_get_property_value(reply.get());
-				set.emplace(String(name, name + len), *atom);
+				set.emplace(String(name, name + len), window);
 			}
 		}
 	}
 }
 XCB_Connection getXCBConnection(int &screenNum)
 {
-	xcb_connection_t *conPtr = xcb_connect(NULL, &screenNum);
-	if (xcb_connection_has_error(conPtr))
+	auto con = XCB_Connection(xcb_connect(NULL, &screenNum), XCB_ConnectionDeleter());
+	if (xcb_connection_has_error(con.get()))
 	{
 		(*logger)(Logger::Error) << "Error establishing connection with X11 server" << std::endl;
+		return nullptr;
 	}
 
-	return XCB_Connection(conPtr, XCB_ConnectionDeleter());
+	return con;
 }
 WindowProcesses getAllX11Windows(XCB_Connection &con, int screenNum)
 {
@@ -155,7 +184,7 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s) const
 	auto frame = tem_shared<Video::Frame>();
 	frame->width = s.width;
 	frame->height = s.height;
-	frame->bytes.resize((s.width * s.height) * 3 / 2, '\0');
+	frame->bytes.resize((s.width * s.height) * 2, '\0');
 	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_RGBA8888, data, s.width * 4, SDL_PIXELFORMAT_IYUV,
 						  frame->bytes.data(), s.width) == 0)
 	{
@@ -167,53 +196,34 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s) const
 		return nullptr;
 	}
 }
-
-Screenshotter::Dimensions Screenshotter::getSize(xcb_connection_t *con, const Message::Source &source)
+Dimensions Screenshotter::getSize(xcb_connection_t *con)
 {
-	xcb_get_geometry_cookie_t cookie = xcb_get_geometry(con, window.windowId);
-	xcb_generic_error_t *errorPtr = nullptr;
-	xcb_get_geometry_reply_t *geomPtr = xcb_get_geometry_reply(con, cookie, &errorPtr);
-	auto error = makeXCB(errorPtr);
-	auto geom = makeXCB(geomPtr);
-
-	if (error || !geom)
-	{
-		if (!windowHidden)
-		{
-			(*logger)(Logger::Warning) << "Window " << source << " is hidden" << std::endl;
-			windowHidden = true;
-		}
-		return std::nullopt;
-	}
-	return std::make_pair(geom->width, geom->height);
+	return getWindowSize(con, window.windowId);
 }
-
+void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> &&ss)
+{
+	Task::addTask(std::async(std::launch::async, takeScreenshots, std::move(ss)));
+}
 void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 {
-	(*logger)(Logger::Trace) << "Starting to record " << data->window.name << std::endl;
+	(*logger)(Logger::Trace) << "Starting to record: " << data->window.name << ' ' << data->fps << "FPS" << std::endl;
 	int unused;
 	auto con = getXCBConnection(unused);
 
-	Dimensions dim = std::nullopt;
-	if (auto v = data->video.lock())
+	const uint32_t delay = 1000 / data->fps;
+	uint32_t last = 0;
+
+	Dimensions dim = data->getSize(con.get());
+	if (!dim)
 	{
-		dim = data->getSize(con.get(), v->getSource());
-		if (!dim)
-		{
-			return;
-		}
-	}
-	else
-	{
-		return;
+		(*logger)(Logger::Error) << "Failed to get size of window: " << data->window.name << std::endl;
+		goto end;
 	}
 
-	const uint64_t delay = 1000 / data->fps;
-	uint64_t last = 0;
 	while (!appDone)
 	{
-		const uint64_t now = SDL_GetTicks64();
-		const uint64_t diff = now - last;
+		const uint32_t now = SDL_GetTicks();
+		const uint32_t diff = now - last;
 		if (diff < delay)
 		{
 			SDL_Delay(diff);
@@ -227,16 +237,19 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 			break;
 		}
 
+		auto &source = video->getSource();
+
 		auto converter = data->converter.lock();
 		if (!converter)
 		{
 			break;
 		}
 
-		dim = data->getSize(con.get(), video->getSource());
+		dim = data->getSize(con.get());
 		if (!dim)
 		{
-			// Window is hidden
+			(*logger)(Logger::Warning) << "Window " << source << " is hidden" << std::endl;
+			data->windowHidden = true;
 			continue;
 		}
 
@@ -251,10 +264,21 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 			break;
 		}
 
-		data->windowHidden = false;
+		if (data->windowHidden)
+		{
+			(*logger)(Logger::Info) << "Window is visible again" << std::endl;
+			data->windowHidden = false;
+		}
+
+		Screenshot s;
+		s.reply = std::move(reply);
+		s.width = dim->first;
+		s.height = dim->second;
+		converter->addFrame(std::move(s));
 	}
 
-	(*logger)(Logger::Trace) << "Ending recording of " << data->window.name << std::endl;
+end:
+	(*logger)(Logger::Trace) << "Ending recording of: " << data->window.name << std::endl;
 }
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,

@@ -8,12 +8,12 @@ Video::Video(const Message::Source &source, const WindowProcess &wp) : source(so
 Video::~Video()
 {
 }
-Video::FrameEncoder::FrameEncoder(const Message::Source &source, const float ratio)
+Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio)
 	: frames(), vpx(), source(), ratio(ratio)
 {
 	this->source.author = source.author;
 	char buffer[KB(1)];
-	snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), static_cast<int32_t>(ratio * 100.f));
+	snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), ratio);
 	this->source.destination = buffer;
 }
 Video::FrameEncoder::~FrameEncoder()
@@ -34,22 +34,28 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr)
 	const auto maxWaitTime = 3s;
 	while (!appDone)
 	{
-		auto data = ptr->frames.pop(maxWaitTime);
-		if (!data)
+		auto result = ptr->frames.pop(maxWaitTime);
+		if (!result)
 		{
 			break;
 		}
 
-		// TODO: Resize, encode, make and send packet
+		auto data = *result;
+		if (!data)
+		{
+			continue;
+		}
+
+		// TODO: Resize
+		ptr->vpx.encodeAndSend(data->bytes, ptr->source);
 	}
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr)
 {
-	std::thread thread(encodeFrames, std::move(ptr));
-	thread.detach();
+	Task::addTask(std::async(std::launch::async, encodeFrames, std::move(ptr)));
 }
-Video::VPX::VPX() : ctx(), image(), frameCount(0)
+Video::VPX::VPX() : ctx(), image(), frameCount(0), keyFrameInterval(0)
 {
 }
 Video::VPX::~VPX()
@@ -66,7 +72,81 @@ vpx_codec_iface_t *codec_decoder_interface()
 {
 	return vpx_codec_vp8_dx();
 }
+int vpx_img_plane_width(const vpx_image_t *img, const int plane)
+{
+	if (plane > 0 && img->x_chroma_shift > 0)
+	{
+		return (img->d_w + 1) >> img->x_chroma_shift;
+	}
+	else
+	{
+		return img->d_w;
+	}
+}
 
+int vpx_img_plane_height(const vpx_image_t *img, const int plane)
+{
+	if (plane > 0 && img->y_chroma_shift > 0)
+	{
+		return (img->d_h + 1) >> img->y_chroma_shift;
+	}
+	else
+	{
+		return img->d_h;
+	}
+}
+void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source)
+{
+	const char *ptr = bytes.data();
+	for (int plane = 0; plane < 3; ++plane)
+	{
+		unsigned char *buf = image.planes[plane];
+		const int stride = image.stride[plane];
+		const int w = vpx_img_plane_width(&image, plane) * ((image.fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+		const int h = vpx_img_plane_height(&image, plane);
+
+		for (int y = 0; y < h; ++y)
+		{
+			memcpy(buf, ptr, w);
+			ptr += w;
+			buf += stride;
+		}
+	}
+
+	int flags = 0;
+	if (keyFrameInterval > 0 && ++frameCount % keyFrameInterval == 0)
+	{
+		flags |= VPX_EFLAG_FORCE_KF;
+	}
+
+	vpx_codec_err_t res;
+	res = vpx_codec_encode(&ctx, &image, frameCount++, 1, flags, VPX_DL_REALTIME);
+	if (res != VPX_CODEC_OK)
+	{
+		return;
+	}
+	vpx_codec_iter_t iter = NULL;
+	const vpx_codec_cx_pkt_t *pkt = NULL;
+	while ((pkt = vpx_codec_get_cx_data(&ctx, &iter)) != NULL)
+	{
+
+		Message::Packet *packet = allocate<Message::Packet>();
+		packet->source = source;
+		Message::Video v;
+		const char *data = reinterpret_cast<const char *>(pkt->data.frame.buf);
+		v.bytes = Bytes(data, data + pkt->data.frame.sz);
+		packet->payload.emplace<Message::Video>(std::move(v));
+
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::SendSingleMessagePacket;
+		e.user.data1 = packet;
+		if (!tryPushEvent(e))
+		{
+			deallocate(packet);
+		}
+	}
+}
 std::optional<Video::VPX> Video::VPX::createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrate)
 {
 	Video::VPX vpx;

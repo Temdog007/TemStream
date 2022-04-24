@@ -48,7 +48,6 @@ class TemStreamGui
 
   private:
 	std::array<char, KB(1)> strBuffer;
-	WorkQueue workQueue;
 	std::optional<Address> connectToServer;
 	Map<Message::Source, StreamDisplay> displays;
 	Map<Message::Source, unique_ptr<Audio>> audio;
@@ -60,9 +59,6 @@ class TemStreamGui
 	Mutex peerMutex;
 	unique_ptr<ClientConnetion> peer;
 	unique_ptr<IQuery> queryData;
-#if THREADS_AVAILABLE
-	std::thread workThread;
-#endif
 	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
 	const String32 allUTF32;
@@ -114,11 +110,6 @@ class TemStreamGui
 	SDL_Window *getWindow()
 	{
 		return window;
-	}
-
-	WorkQueue &operator*()
-	{
-		return workQueue;
 	}
 
 	const Configuration &getConfiguration() const

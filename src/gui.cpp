@@ -70,32 +70,19 @@ namespace TemStream
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: connectToServer(), peerMutex(), peer(nullptr), queryData(nullptr),
-#if THREADS_AVAILABLE
-	  workThread(handleWorkThread, this),
-#endif
-	  allUTF32(getAllUTF32()), io(io), configuration(c), window(nullptr), renderer(nullptr)
+	: connectToServer(), peerMutex(), peer(nullptr), queryData(nullptr), allUTF32(getAllUTF32()), io(io),
+	  configuration(c), window(nullptr), renderer(nullptr)
 {
 }
 
 TemStreamGui::~TemStreamGui()
 {
-#if THREADS_AVAILABLE
-	appDone = true;
-	workThread.join();
-#endif
 	SDL_DestroyRenderer(renderer);
 	renderer = nullptr;
 	SDL_DestroyWindow(window);
 	window = nullptr;
 	IMG_Quit();
 	SDL_Quit();
-}
-
-uint32_t updatePeer(uint32_t interval, TemStreamGui *gui)
-{
-	gui->update();
-	return interval;
 }
 
 void TemStreamGui::update()
@@ -124,33 +111,6 @@ void TemStreamGui::update()
 			break;
 		}
 	}
-}
-
-uint32_t handleWork(uint32_t interval, TemStreamGui *gui)
-{
-	gui->doWork();
-	return interval;
-}
-
-void handleWorkThread(TemStreamGui *gui)
-{
-	using namespace std::chrono_literals;
-	while (!appDone)
-	{
-		gui->doWork();
-		std::this_thread::sleep_for(100ms);
-	}
-}
-
-void TemStreamGui::doWork()
-{
-	auto task = workQueue.getWork();
-	if (!task.has_value())
-	{
-		return;
-	}
-
-	std::visit(workQueue, *task);
 }
 
 void TemStreamGui::onDisconnect(const bool gotInformation)
@@ -193,7 +153,7 @@ bool TemStreamGui::init()
 						   (SDL_realloc_func)allocatorReallocate, (SDL_free_func)allocatorFree);
 #endif
 
-	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
+	if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0)
 	{
 		logSDLError("SDL error");
 		return false;
@@ -221,19 +181,14 @@ bool TemStreamGui::init()
 		return false;
 	}
 
-	if (SDL_AddTimer(1, (SDL_TimerCallback)updatePeer, this) == 0)
-	{
-		logSDLError("Failed to add timer");
-		return false;
-	}
-
-#if !THREADS_AVAILABLE
-	if (SDL_AddTimer(100, (SDL_TimerCallback)handleWork, this) == 0)
-	{
-		logSDLError("Failed to add timer");
-		return false;
-	}
-#endif
+	Task::addTask(std::async(std::launch::async, [this]() {
+		using namespace std::chrono_literals;
+		while (!appDone)
+		{
+			this->update();
+			std::this_thread::sleep_for(1ms);
+		}
+	}));
 
 	return true;
 }
@@ -1369,8 +1324,8 @@ int runApp(Configuration &configuration)
 				}
 				else
 				{
-					Work::CheckFile cf(String(event.drop.file), gui);
-					(*gui).addWork(std::move(cf));
+					String s(event.drop.file);
+					Task::addTask(std::async([&gui, s = std::move(s)]() { Task::checkFile(gui, s); }));
 				}
 				SDL_free(event.drop.file);
 			}
@@ -1568,11 +1523,7 @@ int runApp(Configuration &configuration)
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
-	while (runningThreads > 0)
-	{
-		using namespace std::chrono_literals;
-		std::this_thread::sleep_for(100ms);
-	}
+	Task::waitForAll();
 	logger = nullptr;
 	return EXIT_SUCCESS;
 }

@@ -75,8 +75,7 @@ bool QueryImage::draw()
 }
 void QueryImage::execute() const
 {
-	Work::Task task(Work::SendImage(image, getSource()));
-	(*gui).addWork(std::move(task));
+	Task::addTask(std::async(Task::sendImage, image, getSource()));
 }
 QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), windowNames(), source(Source::Device), selected(-1)
 {
@@ -140,8 +139,8 @@ void QueryAudio::execute() const
 		}
 		const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
 		const auto s = name == nullptr ? std::nullopt : std::make_optional<String>(name);
-		Work::Task task(Work::StartRecording(getSource(), s, gui.getConfiguration().defaultSilenceThreshold / 100.f));
-		(*gui).addWork(std::move(task));
+		Task::addTask(std::async(Task::startRecordingAudio, getSource(), s,
+								 gui.getConfiguration().defaultSilenceThreshold / 100.f));
 	}
 	break;
 	case Source::Window: {
@@ -151,9 +150,8 @@ void QueryAudio::execute() const
 		{
 			if (i == index)
 			{
-				Work::Task task(Work::StartWindowAudioRecording(
-					getSource(), wp, gui.getConfiguration().defaultSilenceThreshold / 100.f));
-				(*gui).addWork(std::move(task));
+				Task::addTask(std::async(Task::startRecordingWindowAudio, getSource(), wp,
+										 gui.getConfiguration().defaultSilenceThreshold / 100.f));
 				break;
 			}
 			++i;

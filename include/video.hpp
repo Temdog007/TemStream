@@ -33,29 +33,33 @@ class Video
 	static WindowProcesses getRecordableWindows();
 	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
 										  const uint32_t fps);
-	class VPX
-	{
-	  private:
-		vpx_codec_ctx_t ctx;
-		vpx_image_t image;
-		int frameCount;
 
-	  public:
-		VPX();
-		~VPX();
-
-		Bytes encoder(const Bytes &);
-		Bytes decoder(const Bytes &);
-
-		static std::optional<VPX> createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrateInMbps);
-		static std::optional<VPX> createDecoder();
-	};
 	struct Frame
 	{
 		Bytes bytes;
 		uint16_t width;
 		uint16_t height;
 	};
+
+	class VPX
+	{
+	  private:
+		vpx_codec_ctx_t ctx;
+		vpx_image_t image;
+		int frameCount;
+		int keyFrameInterval;
+
+	  public:
+		VPX();
+		~VPX();
+
+		void encodeAndSend(const Bytes &, const Message::Source &);
+		Bytes decode(const Bytes &);
+
+		static std::optional<VPX> createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrateInMbps);
+		static std::optional<VPX> createDecoder();
+	};
+
 	class FrameEncoder
 	{
 	  private:
@@ -67,7 +71,7 @@ class Video
 		static void encodeFrames(shared_ptr<FrameEncoder> &&);
 
 	  public:
-		FrameEncoder(const Message::Source &, float);
+		FrameEncoder(const Message::Source &, int32_t);
 		virtual ~FrameEncoder();
 
 		void addFrame(shared_ptr<Frame>);
@@ -107,8 +111,7 @@ class Video
 
 		static void startConverteringFrames(shared_ptr<RGBA2YUV> &&ptr)
 		{
-			std::thread thread(convertFrames, std::move(ptr));
-			thread.detach();
+			Task::addTask(std::async(std::launch::async, convertFrames, std::move(ptr)));
 		}
 	};
 };

@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <iostream>
 #include <list>
 #include <locale>
@@ -152,7 +153,6 @@ namespace TemStream
 {
 using Mutex = std::recursive_mutex;
 #define LOCK(M) std::lock_guard<Mutex> mutexLockGuard(M)
-extern std::atomic<int32_t> runningThreads;
 enum PollState
 {
 	Error,
@@ -217,6 +217,7 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 		return variant_index<VariantType, T, index + 1>();
 	}
 }
+
 } // namespace TemStream
 
 #include "TemStreamConfig.h"
@@ -248,6 +249,8 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 #include "serverConfiguration.hpp"
 #include "serverConnection.hpp"
 #else
+#include "work.hpp"
+
 #include "audio.hpp"
 #include "video.hpp"
 
@@ -256,8 +259,7 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 
 #include "streamDisplay.hpp"
 
-#include "workQueue.hpp"
-
 #include "gui.hpp"
 #include "query.hpp"
+
 #endif
