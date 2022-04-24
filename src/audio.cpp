@@ -208,42 +208,49 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 	}
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
-	Lock lock(id);
-	while (!storedAudio.empty())
+	MessagePackets packets;
 	{
-		int frameSize = storedAudio.size() / (spec.channels * sizeof(float));
-		if (frameSize < minDuration)
+		Lock lock(id);
+		while (!storedAudio.empty())
 		{
-			break;
+			int frameSize = storedAudio.size() / (spec.channels * sizeof(float));
+			if (frameSize < minDuration)
+			{
+				break;
+			}
+
+			frameSize = closestValidFrameCount(spec.freq, frameSize);
+			const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
+
+			const auto start = storedAudio.begin();
+			const auto end = storedAudio.begin() + bytesUsed;
+			recordBuffer.clear();
+			recordBuffer.insert(recordBuffer.end(), start, end);
+			storedAudio.erase(start, end);
+
+			const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
+												 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
+			if (result < 0)
+			{
+				(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
+										 << "; Frame size: " << frameSize << std::endl;
+				break;
+			}
+
+			Message::Packet packet;
+			packet.source = source;
+			packet.payload.emplace<Message::Audio>(Message::Audio{Bytes(buffer.begin(), buffer.begin() + result)});
+			packets.push_back(std::move(packet));
 		}
-
-		frameSize = closestValidFrameCount(spec.freq, frameSize);
-		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
-
-		const auto start = storedAudio.begin();
-		const auto end = storedAudio.begin() + bytesUsed;
-		recordBuffer.clear();
-		recordBuffer.insert(recordBuffer.end(), start, end);
-		storedAudio.erase(start, end);
-
-		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
-											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
-		if (result < 0)
-		{
-			(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
-									 << "; Frame size: " << frameSize << std::endl;
-			break;
-		}
-
-		Message::Packet packet;
-		packet.source = source;
-		packet.payload.emplace<Message::Audio>(Message::Audio{Bytes(buffer.begin(), buffer.begin() + result)});
+	}
+	for (const auto &packet : packets)
+	{
 		if (!peer->sendPacket(packet))
 		{
 			return false;
 		}
-		peer.addPacket(std::move(packet));
 	}
+	peer.addPackets(std::move(packets));
 	return true;
 }
 int Audio::closestValidFrameCount(const int frequency, const int frames)

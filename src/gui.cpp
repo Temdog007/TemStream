@@ -1393,6 +1393,14 @@ int runApp(Configuration &configuration)
 					break;
 				}
 				break;
+			case SDL_AUDIODEVICEADDED:
+				(*logger)(Logger::Info) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
+										<< " device added" << std::endl;
+				break;
+			case SDL_AUDIODEVICEREMOVED:
+				(*logger)(Logger::Info) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
+										<< " device removed" << std::endl;
+				break;
 			case SDL_KEYDOWN:
 				if (io.WantCaptureKeyboard)
 				{
