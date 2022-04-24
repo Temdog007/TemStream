@@ -85,7 +85,7 @@ TemStreamGui::~TemStreamGui()
 	SDL_Quit();
 }
 
-void TemStreamGui::update()
+void TemStreamGui::updatePeer()
 {
 	LOCK(peerMutex);
 
@@ -109,6 +109,80 @@ void TemStreamGui::update()
 			onDisconnect(peer->gotServerInformation());
 			peer = nullptr;
 			break;
+		}
+	}
+}
+
+void TemStreamGui::decodeVideoPackets()
+{
+	Map<Message::Source, Video::VPX> map;
+	using namespace std::chrono_literals;
+	while (!appDone)
+	{
+		if (auto result = videoPackets.clearIfGreaterThan(5))
+		{
+			(*logger)(Logger::Warning) << "Dropping " << *result << " received video frames" << std::endl;
+		}
+
+		auto result = videoPackets.pop(100ms);
+		if (!result)
+		{
+			continue;
+		}
+
+		const auto &[source, packet] = *result;
+
+		auto iter = map.find(source);
+		if (iter == map.end())
+		{
+			auto vpx = Video::VPX::createDecoder();
+			if (!vpx)
+			{
+				continue;
+			}
+			vpx->setWidth(packet.width);
+			vpx->setHeight(packet.height);
+			auto pair = map.try_emplace(source, std::move(*vpx));
+			if (!pair.second)
+			{
+				continue;
+			}
+			iter = pair.first;
+		}
+		if (iter->second.getHeight() != packet.height || iter->second.getWidth() != packet.width)
+		{
+			auto vpx = Video::VPX::createDecoder();
+			if (!vpx)
+			{
+				continue;
+			}
+			vpx->setWidth(packet.width);
+			vpx->setHeight(packet.height);
+			iter->second = std::move(*vpx);
+		}
+
+		auto output = iter->second.decode(packet.bytes);
+		if (!output)
+		{
+			continue;
+		}
+
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::HandleFrame;
+
+		auto frame = allocate<Video::Frame>();
+		frame->bytes = std::move(*output);
+		frame->width = packet.width;
+		frame->height = packet.height;
+		e.user.data1 = frame;
+
+		auto *newSource = allocate<Message::Source>(source);
+		e.user.data2 = newSource;
+		if (!tryPushEvent(e))
+		{
+			deallocate(frame);
+			deallocate(newSource);
 		}
 	}
 }
@@ -185,10 +259,12 @@ bool TemStreamGui::init()
 		using namespace std::chrono_literals;
 		while (!appDone)
 		{
-			this->update();
+			this->updatePeer();
 			std::this_thread::sleep_for(1ms);
 		}
 	}));
+
+	Task::addTask(std::async(TaskPolicy, [this]() { this->decodeVideoPackets(); }));
 
 	return true;
 }
@@ -467,7 +543,8 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (configuration.showVideo && !video.empty())
+	configuration.showVideo &= !video.empty();
+	if (configuration.showVideo)
 	{
 		if (ImGui::Begin("Video", &configuration.showVideo, ImGuiWindowFlags_AlwaysAutoResize))
 		{
@@ -614,7 +691,8 @@ void TemStreamGui::draw()
 		}
 	}
 
-	if (!displays.empty() && configuration.showDisplays)
+	configuration.showDisplays &= !displays.empty();
+	if (configuration.showDisplays)
 	{
 		if (ImGui::Begin("Displays", &configuration.showDisplays, ImGuiWindowFlags_AlwaysAutoResize))
 		{
@@ -630,7 +708,8 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (!streams.empty() && configuration.showStreams)
+	configuration.showStreams &= !streams.empty();
+	if (configuration.showStreams)
 	{
 		SetWindowMinSize(window);
 		if (ImGui::Begin("Streams", &configuration.showStreams))
@@ -751,6 +830,7 @@ void TemStreamGui::draw()
 						TemStream_VERSION_PATCH);
 			ImGui::Text("SDL %u.%u.%u", v.major, v.minor, v.patch);
 			ImGui::Text("Dear ImGui %s", ImGui::GetVersion());
+			ImGui::Text("FPS: %2.2f", io.Framerate);
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 			if (ImGui::CollapsingHeader("Memory"))
 			{
@@ -1117,35 +1197,43 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 }
 
-bool TemStreamGui::operator()(Message::VerifyLogin &login)
+bool TemStreamGui::MessageHandler::operator()(Message::VerifyLogin &login)
 {
-	peerInfo = std::move(login.info);
-	*logger << "Logged in as " << peerInfo.name << std::endl;
-	dirty = true;
+	gui.peerInfo = std::move(login.info);
+	*logger << "Logged in as " << gui.peerInfo.name << std::endl;
+	gui.dirty = true;
 	return true;
 }
 
-bool TemStreamGui::operator()(Message::PeerInformationSet &set)
+bool TemStreamGui::MessageHandler::operator()(Message::PeerInformationSet &set)
 {
-	otherPeers = std::move(set);
+	gui.otherPeers = std::move(set);
 	*logger << "Got " << set.size() << " peers from server" << std::endl;
-	dirty = true;
+	gui.dirty = true;
 	return true;
 }
 
-bool TemStreamGui::operator()(Message::Streams &s)
+bool TemStreamGui::MessageHandler::operator()(Message::Streams &s)
 {
-	streams = std::move(s);
-	*logger << "Got " << streams.size() << " streams from server" << std::endl;
-	dirty = true;
+	gui.streams = std::move(s);
+	*logger << "Got " << gui.streams.size() << " streams from server" << std::endl;
+	gui.dirty = true;
 	return true;
 }
 
-bool TemStreamGui::operator()(Message::Subscriptions &s)
+bool TemStreamGui::MessageHandler::operator()(Message::Subscriptions &s)
 {
-	subscriptions = std::move(s);
-	*logger << "Got " << subscriptions.size() << " subscriptions from server" << std::endl;
-	dirty = true;
+	gui.subscriptions = std::move(s);
+	*logger << "Got " << gui.subscriptions.size() << " subscriptions from server" << std::endl;
+	gui.dirty = true;
+	return true;
+}
+
+bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
+{
+	auto pair = std::make_pair(source, std::move(v));
+	gui.videoPackets.push(std::move(pair));
+	gui.dirty = true;
 	return true;
 }
 
@@ -1199,7 +1287,7 @@ void TemStreamGui::LoadFonts()
 
 void TemStreamGui::handleMessage(Message::Packet &&m)
 {
-	if (std::visit(*this, m.payload))
+	if (std::visit(MessageHandler{*this, m.source}, m.payload))
 	{
 		return;
 	}
@@ -1389,17 +1477,56 @@ int runApp(Configuration &configuration)
 					gui.addAudio(std::move(ptr));
 				}
 				break;
+				case TemStreamEvent::HandleFrame: {
+					Video::Frame *framePtr = reinterpret_cast<Video::Frame *>(event.user.data1);
+					auto frame = unique_ptr<Video::Frame>(framePtr);
+					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
+					auto source = unique_ptr<Message::Source>(sourcePtr);
+					auto iter = gui.displays.find(*source);
+					if (iter == gui.displays.end())
+					{
+						auto [newIter, added] = gui.displays.emplace(*source, StreamDisplay(gui, *source));
+						if (!added)
+						{
+							break;
+						}
+						iter = newIter;
+					}
+					iter->second.updateTexture(*frame);
+				}
+				break;
+				case TemStreamEvent::StopVideoStream: {
+					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data1);
+					auto source = unique_ptr<Message::Source>(sourcePtr);
+					gui.displays.erase(*source);
+					gui.dirty = true;
+					// Remove video packets belonging to source
+					gui.videoPackets.use([&source](Queue<VideoPacket> &queue) {
+						Queue<VideoPacket> newQueue;
+						while (!queue.empty())
+						{
+							VideoPacket packet = std::move(queue.front());
+							queue.pop();
+							if (packet.first != *source)
+							{
+								newQueue.push(std::move(packet));
+							}
+						}
+						queue.swap(newQueue);
+					});
+				}
+				break;
 				default:
 					break;
 				}
 				break;
 			case SDL_AUDIODEVICEADDED:
-				(*logger)(Logger::Info) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
-										<< " device added" << std::endl;
+				(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
+										 << " device added" << std::endl;
 				break;
 			case SDL_AUDIODEVICEREMOVED:
-				(*logger)(Logger::Info) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
-										<< " device removed" << std::endl;
+				(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
+										 << " device removed" << std::endl;
 				break;
 			case SDL_KEYDOWN:
 				if (io.WantCaptureKeyboard)
@@ -1491,6 +1618,17 @@ int runApp(Configuration &configuration)
 						++iter;
 					}
 				}
+				for (auto iter = gui.video.begin(); iter != gui.video.end();)
+				{
+					if (gui.video.find(iter->first) == gui.video.end())
+					{
+						iter = gui.video.erase(iter);
+					}
+					else
+					{
+						++iter;
+					}
+				}
 			}
 			else
 			{
@@ -1532,6 +1670,8 @@ int runApp(Configuration &configuration)
 		SDL_RenderPresent(gui.renderer);
 	}
 
+	gui.audio.clear();
+	gui.video.clear();
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
@@ -1547,7 +1687,7 @@ TemStreamGuiLogger::~TemStreamGuiLogger()
 	char buffer[KB(1)];
 	snprintf(buffer, sizeof(buffer), "TemStream_log_%zu.txt", time(nullptr));
 	std::ofstream file(buffer);
-	this->viewLogs([&file](const Log &log) { file << log.first << ": " << log.second; });
+	viewLogs([&file](const Log &log) { file << log.first << ": " << log.second; });
 }
 void TemStreamGuiLogger::Add(const Level level, const String &s, const bool b)
 {

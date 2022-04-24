@@ -206,7 +206,7 @@ void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> &&ss)
 }
 void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 {
-	(*logger)(Logger::Trace) << "Starting to record: " << data->window.name << ' ' << data->fps << "FPS" << std::endl;
+	(*logger)(Logger::Trace) << "Starting to record: " << data->window.name << ' ' << data->fps << " FPS" << std::endl;
 	int unused;
 	auto con = getXCBConnection(unused);
 
@@ -237,7 +237,7 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 			break;
 		}
 
-		auto &source = video->getSource();
+		const auto &source = video->getSource();
 
 		auto converter = data->converter.lock();
 		if (!converter)

@@ -75,6 +75,23 @@ class Video
 
 		Dimensions getSize() const;
 
+		int getWidth() const
+		{
+			return width;
+		}
+		void setWidth(int w)
+		{
+			width = w;
+		}
+		int getHeight() const
+		{
+			return height;
+		}
+		void setHeight(int h)
+		{
+			height = h;
+		}
+
 		static std::optional<VPX> createEncoder(FrameData);
 		static std::optional<VPX> createDecoder();
 	};
@@ -140,16 +157,11 @@ template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV
 	const auto maxWaitTime = 3s;
 	while (!appDone)
 	{
-		// If too many frames; start dropping them.
-		ptr->frames.use([&ptr](Queue<T> &queue) {
-			const size_t size = queue.size();
-			if (size > 5)
-			{
-				(*logger)(Logger::Warning) << "Dropping " << size << " video frames from " << ptr->source << std::endl;
-				Queue<T> empty;
-				queue.swap(empty);
-			}
-		});
+		auto result = ptr->frames.clearIfGreaterThan(5);
+		if (result)
+		{
+			(*logger)(Logger::Warning) << "Dropping " << *result << " video frames from " << ptr->source << std::endl;
+		}
 
 		auto data = ptr->frames.pop(maxWaitTime);
 		if (!data)

@@ -55,7 +55,7 @@ void TemStream::initialLogs()
 	*logger << AppName << ' ' << TemStream_VERSION_MAJOR << '.' << TemStream_VERSION_MINOR << '.'
 			<< TemStream_VERSION_PATCH << std::endl;
 	(*logger)(Logger::Trace) << "Debug mode" << std::endl;
-	(*logger) << "Using " << globalAllocatorData.getTotal() / MB(1) << " MB" << std::endl;
+	(*logger) << "Using " << printMemory(globalAllocatorData.getTotal()) << std::endl;
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 	(*logger)(Logger::Trace) << "Using custom allocator" << std::endl;
 #endif

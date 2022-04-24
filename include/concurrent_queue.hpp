@@ -26,18 +26,6 @@ template <typename T> class ConcurrentQueue
 	{
 	}
 
-	std::optional<T> tryPop()
-	{
-		auto lck = lock();
-		if (queue.empty())
-		{
-			return std::nullopt;
-		}
-		T t = std::move(queue.front());
-		queue.pop();
-		return t;
-	}
-
 	T pop()
 	{
 		auto lck = lock();
@@ -92,6 +80,20 @@ template <typename T> class ConcurrentQueue
 		auto lck = lock();
 		f(queue);
 		cv.notify_all();
+	}
+
+	std::optional<size_t> clearIfGreaterThan(size_t size)
+	{
+		auto lck = lock();
+		if (queue.size() > size)
+		{
+			size = queue.size();
+			Queue<T> empty;
+			empty.swap(queue);
+			return size;
+		}
+		cv.notify_all();
+		return std::nullopt;
 	}
 
 	template <typename R> R use(const std::function<R(Queue<T> &)> &f)

@@ -15,7 +15,7 @@ template <typename K, typename V>
 using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<std::pair<const K, V>>>;
 
 template <typename T> using LinkedList = std::list<T, Allocator<T>>;
-template <typename T> using Queue = std::queue<T, Deque<T>>;
+template <typename T> using Queue = std::queue<T, LinkedList<T>>;
 template <typename T, typename... Args> T *allocate(Args &&...args)
 {
 	Allocator<T> a;

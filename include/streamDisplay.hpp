@@ -42,18 +42,7 @@ struct CheckAudio
 	{
 	}
 };
-struct VideoDecoder
-{
-	Video::VPX vpx;
-	std::optional<std::future<std::optional<Video::Frame>>> decodeWork;
-	SDL_TextureWrapper texture;
-
-	VideoDecoder(Video::VPX &&);
-	VideoDecoder(VideoDecoder &&);
-	~VideoDecoder();
-};
-using VideoDecoderPtr = shared_ptr<VideoDecoder>;
-using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Bytes, CheckAudio, VideoDecoderPtr>;
+using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Bytes, CheckAudio>;
 class StreamDisplay
 {
   private:
@@ -76,7 +65,6 @@ class StreamDisplay
 
 		void operator()(std::monostate);
 		void operator()(String &);
-		void operator()(VideoDecoderPtr &);
 		void operator()(SDL_TextureWrapper &);
 		void operator()(Bytes &);
 
@@ -113,7 +101,6 @@ class StreamDisplay
 		bool operator()(String &);
 		bool operator()(SDL_TextureWrapper &);
 		bool operator()(CheckAudio &);
-		bool operator()(VideoDecoderPtr &);
 		bool operator()(Bytes &);
 
 		template <typename T> bool operator()(T &t)
@@ -149,6 +136,8 @@ class StreamDisplay
 	{
 		return source;
 	}
+
+	void updateTexture(const Video::Frame &);
 
 	bool setSurface(SDL_Surface *);
 

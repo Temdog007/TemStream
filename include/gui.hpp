@@ -42,6 +42,7 @@ class SDL_MemoryFunctions
 	void SetToSDL() const;
 	void GetFromSDL();
 };
+using VideoPacket = std::pair<Message::Source, Message::Video>;
 class TemStreamGui
 {
 	friend int runApp(Configuration &);
@@ -52,6 +53,7 @@ class TemStreamGui
 	Map<Message::Source, StreamDisplay> displays;
 	Map<Message::Source, unique_ptr<Audio>> audio;
 	Map<Message::Source, shared_ptr<Video>> video;
+	ConcurrentQueue<VideoPacket> videoPackets;
 	Message::Streams streams;
 	Message::Subscriptions subscriptions;
 	Message::PeerInformationSet otherPeers;
@@ -86,6 +88,36 @@ class TemStreamGui
 		void operator()(Message::UsernameAndPassword &) const;
 	};
 
+	bool init();
+	bool connect(const Address &);
+	void updatePeer();
+	void decodeVideoPackets();
+	void doWork();
+	void draw();
+
+	struct MessageHandler
+	{
+		TemStreamGui &gui;
+		const Message::Source &source;
+
+		bool operator()(Message::Streams &s);
+		bool operator()(Message::VerifyLogin &);
+		bool operator()(Message::PeerInformationSet &);
+		bool operator()(Message::Subscriptions &);
+		bool operator()(Message::Video &);
+
+		template <typename T> bool operator()(T &)
+		{
+#if LOG_MESSAGE_TYPE
+			int status;
+			char *realname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
+			std::cout << "Ignoring -> " << realname << ':' << status << std::endl;
+			free(realname);
+#endif
+			return false;
+		}
+	};
+
   public:
 	TemStreamGui(ImGuiIO &, Configuration &);
 	TemStreamGui(const TemStreamGui &) = delete;
@@ -117,12 +149,6 @@ class TemStreamGui
 		return configuration;
 	}
 
-	bool init();
-	bool connect(const Address &);
-	void update();
-	void doWork();
-	void draw();
-
 	bool addAudio(unique_ptr<Audio> &&);
 	bool useAudio(const Message::Source &, const std::function<void(Audio &)> &f);
 
@@ -145,21 +171,6 @@ class TemStreamGui
 
 	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);
-
-	bool operator()(Message::Streams &s);
-	bool operator()(Message::VerifyLogin &);
-	bool operator()(Message::PeerInformationSet &s);
-	bool operator()(Message::Subscriptions &s);
-	template <typename T> bool operator()(T &)
-	{
-#if LOG_MESSAGE_TYPE
-		int status;
-		char *realname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
-		std::cout << "Ignoring -> " << realname << ':' << status << std::endl;
-		free(realname);
-#endif
-		return false;
-	}
 
 	void disconnect();
 

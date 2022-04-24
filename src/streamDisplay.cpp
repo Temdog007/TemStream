@@ -14,6 +14,44 @@ StreamDisplay::StreamDisplay(StreamDisplay &&display)
 StreamDisplay::~StreamDisplay()
 {
 }
+void StreamDisplay::updateTexture(const Video::Frame &frame)
+{
+	if (!std::holds_alternative<SDL_TextureWrapper>(data))
+	{
+		(*logger)(Logger::Trace) << "Resized video texture " << frame.width << 'x' << frame.height << std::endl;
+		SDL_Texture *texture = SDL_CreateTexture(gui.getRenderer(), SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING,
+												 frame.width, frame.height);
+		data.emplace<SDL_TextureWrapper>(texture);
+	}
+	auto &wrapper = std::get<SDL_TextureWrapper>(data);
+	auto &texture = wrapper.getTexture();
+	{
+		int w, h;
+		if (SDL_QueryTexture(texture, 0, 0, &w, &h) != 0)
+		{
+			logSDLError("Failed to query texture");
+			return;
+		}
+		if (frame.width != w || frame.height != h)
+		{
+			data.emplace<std::monostate>();
+			updateTexture(frame);
+			return;
+		}
+	}
+	void *pixels = nullptr;
+	int pitch;
+	if (SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0)
+	{
+		// std::copy(frame.bytes.begin(), frame.bytes.end(), reinterpret_cast<char *>(pixels));
+		memcpy(pixels, frame.bytes.data(), frame.bytes.size());
+	}
+	else
+	{
+		logSDLError("Failed to update texture");
+	}
+	SDL_UnlockTexture(texture);
+}
 bool StreamDisplay::draw()
 {
 	if (!visible)
@@ -128,51 +166,6 @@ bool StreamDisplay::ImageMessageHandler::operator()(Bytes &&bytes)
 	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
 	return true;
 }
-bool StreamDisplay::operator()(Message::Video &v)
-{
-	if (VideoDecoderPtr *dPtr = std::get_if<VideoDecoderPtr>(&data))
-	{
-		auto ptr = *dPtr;
-		if (ptr->decodeWork.has_value())
-		{
-			using namespace std::chrono_literals;
-			if (ptr->decodeWork->wait_for(0ms) != std::future_status::ready)
-			{
-				return true;
-			}
-		}
-		auto f = std::async(TaskPolicy, [ptr, v = std::move(v)]() {
-			std::optional<Video::Frame> rval = std::nullopt;
-			auto result = ptr->vpx.decode(v.bytes);
-			if (result)
-			{
-				Video::Frame frame;
-				frame.bytes = std::move(*result);
-				frame.width = v.width;
-				frame.height = v.height;
-				rval.emplace(std::move(frame));
-			}
-			return rval;
-		});
-		(*dPtr)->decodeWork.emplace(std::move(f));
-	}
-	else
-	{
-		auto vpx = Video::VPX::createDecoder();
-		if (vpx)
-		{
-			(*logger)(Logger::Trace) << "Created video decoder" << std::endl;
-			auto d = tem_shared<VideoDecoder>(std::move(*vpx));
-			data.emplace<VideoDecoderPtr>(std::move(d));
-		}
-		else
-		{
-			(*logger)(Logger::Error) << "Failed to create video decoder" << std::endl;
-			return false;
-		}
-	}
-	return true;
-}
 bool StreamDisplay::operator()(Message::Audio &audio)
 {
 	if (!gui.useAudio(source, [this, &audio](Audio &a) {
@@ -199,6 +192,10 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 bool StreamDisplay::operator()(std::monostate)
 {
 	BAD_MESSAGE(Empty);
+}
+bool StreamDisplay::operator()(Message::Video &)
+{
+	BAD_MESSAGE(Video);
 }
 bool StreamDisplay::operator()(Message::Credentials &)
 {
@@ -291,65 +288,6 @@ bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 	}
 	ImGui::End();
 	return true;
-}
-bool StreamDisplay::Draw::operator()(VideoDecoderPtr &vd)
-{
-	if (vd->decodeWork.has_value())
-	{
-		using namespace std::chrono_literals;
-		if (vd->decodeWork->wait_for(0s) == std::future_status::ready)
-		{
-			auto frame = vd->decodeWork->get();
-			vd->decodeWork = std::nullopt;
-			if (frame)
-			{
-				auto &texture = vd->texture.getTexture();
-				bool needLoad = false;
-				if (texture == nullptr)
-				{
-					needLoad = true;
-				}
-				else
-				{
-					int w, h;
-					needLoad = SDL_QueryTexture(texture, 0, 0, &w, &h) != 0 || w != frame->width || h != frame->height;
-				}
-				if (needLoad)
-				{
-					SDL_DestroyTexture(texture);
-					texture = SDL_CreateTexture(display.gui.getRenderer(), SDL_PIXELFORMAT_IYUV,
-												SDL_TEXTUREACCESS_STREAMING, frame->width, frame->height);
-					if (texture == nullptr)
-					{
-						logSDLError("Failed to create texture");
-						return false;
-					}
-					else
-					{
-						auto p = Video::VPX::createDecoder();
-						if (p)
-						{
-							vd->vpx = std::move(*p);
-						}
-						(*logger)(Logger::Trace)
-							<< "Created texture " << frame->width << "x" << frame->height << std::endl;
-					}
-				}
-				void *pixels = nullptr;
-				int pitch;
-				if (SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0)
-				{
-					memcpy(pixels, frame->bytes.data(), frame->bytes.size());
-				}
-				else
-				{
-					logSDLError("Failed to update texture");
-				}
-				SDL_UnlockTexture(texture);
-			}
-		}
-	}
-	return operator()(vd->texture);
 }
 void StreamDisplay::Draw::drawPoints(const List<float> &list, const float audioWidth, const float, const float minY,
 									 const float maxY)
@@ -500,10 +438,6 @@ void StreamDisplay::ContextMenu::operator()(String &s)
 		}
 	}
 }
-void StreamDisplay::ContextMenu::operator()(VideoDecoderPtr &ptr)
-{
-	return operator()(ptr->texture);
-}
 void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 {
 	auto texture = w.getTexture();
@@ -550,15 +484,5 @@ void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 		SDL_DestroyTexture(t);
 		SDL_FreeSurface(surface);
 	}
-}
-VideoDecoder::VideoDecoder(Video::VPX &&vpx) : vpx(std::move(vpx)), decodeWork(std::nullopt), texture(nullptr)
-{
-}
-VideoDecoder::VideoDecoder(VideoDecoder &&v)
-	: vpx(std::move(v.vpx)), decodeWork(std::move(v.decodeWork)), texture(std::move(v.texture))
-{
-}
-VideoDecoder::~VideoDecoder()
-{
 }
 } // namespace TemStream

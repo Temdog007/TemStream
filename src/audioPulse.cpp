@@ -359,21 +359,13 @@ void Sink::unloadSink(const int32_t id)
 {
 	char buffer[KB(1)] = {0};
 	snprintf(buffer, sizeof(buffer), "pactl unload-module %d", id);
-	// Logger will be destroyed on appDone. Don't log
-	if (appDone)
+	if (system(buffer) == EXIT_SUCCESS)
 	{
-		system(buffer);
+		(*logger)(Logger::Trace) << "Unloaded sink: " << id << std::endl;
 	}
 	else
 	{
-		if (system(buffer) == EXIT_SUCCESS)
-		{
-			(*logger)(Logger::Trace) << "Unloaded sink: " << id << std::endl;
-		}
-		else
-		{
-			(*logger)(Logger::Warning) << "Failed to unload sink: " << id << std::endl;
-		}
+		(*logger)(Logger::Warning) << "Failed to unload sink: " << id << std::endl;
 	}
 }
 } // namespace TemStream

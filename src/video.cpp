@@ -109,6 +109,15 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 		vpx->encodeAndSend(data->bytes, ptr->source);
 	}
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::StopVideoStream;
+	auto source = allocate<Message::Source>(ptr->source);
+	e.user.data1 = source;
+	if (!tryPushEvent(e))
+	{
+		deallocate(source);
+	}
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr, FrameData frameData)
 {

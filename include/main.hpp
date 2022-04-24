@@ -103,7 +103,9 @@ enum TemStreamEvent : int32_t
 	HandleMessagePackets,
 	SetQueryData,
 	SetSurfaceToStreamDisplay,
-	AddAudio
+	AddAudio,
+	HandleFrame,
+	StopVideoStream
 };
 class SDL_MutexWrapper
 {
@@ -133,9 +135,9 @@ extern void logSDLError(const char *);
 } // namespace TemStream
 #endif
 
-#define KB(X) (X * 1024)
-#define MB(X) (KB(X) * 1024)
-#define GB(X) (MB(X) * 1024)
+#define KB(X) (X * 1024UL)
+#define MB(X) (KB(X) * 1024UL)
+#define GB(X) (MB(X) * 1024UL)
 
 #define MAX_IMAGE_CHUNK KB(64)
 

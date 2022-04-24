@@ -254,28 +254,30 @@
 - [x] Allow multiple transcodes for each video stream
 - [x] Render audio channels separately
 
-### Apr 23, 2022
-- [ ] Window streaming
-- [ ] Optional OpenCL
+### Apr 23, 2022 - Apr 24, 2022
+- [x] Window streaming
+- [x] Make thread to handle decoding (all frames must be decoded in order)
+- [ ] Handle texture resizing
+- [ ] Optional OpenCV
 - [ ] Webcam streaming
 
-### Apr 24, 2022
+### Apr 25, 2022
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
-### Apr 23, 2022
+### Apr 26, 2022
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time stamp
 
-### Apr 24, 2022
+### Apr 27, 2022
 - [ ] Validate stream names/client names
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts
 
-### Apr 25, 2022
+### Apr 28, 2022
 - [ ] Add comments to code
 - [ ] Implement SSL socket
 - [ ] Implement web socket
@@ -287,7 +289,7 @@
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
-- [ ] Potential memory leak when loading images (clear doesn't free buffer for maps or sets; Might not be an issue)
+- [?] Potential memory leak when loading images (clear doesn't free buffer for maps or sets; Logs are never cleared. Might not be an issue)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
