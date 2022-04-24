@@ -64,8 +64,6 @@ class Converter : public Video::RGBA2YUV<Screenshot>
 	}
 };
 
-using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
-
 class Screenshotter
 {
   private:

@@ -4,6 +4,7 @@
 
 namespace TemStream
 {
+using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
 class Video
 {
 	friend class Allocator<Video>;
@@ -57,6 +58,8 @@ class Video
 		vpx_image_t image;
 		int frameCount;
 		int keyFrameInterval;
+		int width;
+		int height;
 
 	  public:
 		VPX();
@@ -69,6 +72,8 @@ class Video
 
 		void encodeAndSend(const Bytes &, const Message::Source &);
 		std::optional<Bytes> decode(const Bytes &);
+
+		Dimensions getSize() const;
 
 		static std::optional<VPX> createEncoder(FrameData);
 		static std::optional<VPX> createDecoder();

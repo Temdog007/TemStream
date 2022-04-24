@@ -200,13 +200,8 @@ bool QueryVideo::draw()
 			}
 			ImGui::SliderInt("Frames per second", &ws.frameData.fps, 1, 120);
 			ImGui::SliderInt("Bitrate in Mbps", &ws.frameData.bitrateInMbps, 1, 100);
-			ImGui::SliderInt("Key Frame Interval", &ws.frameData.keyFrameInterval, 1, 100);
+			ImGui::SliderInt("Key Frame Interval", &ws.frameData.keyFrameInterval, 1, 1000);
 			ImGui::Separator();
-			ImGui::SliderInt("Next Ratio", &ws.nextRatio, 1, 100);
-			if (ImGui::Button("Add Ratio"))
-			{
-				ws.ratios.push_back(ws.nextRatio);
-			}
 			if (!ws.ratios.empty())
 			{
 				if (ImGui::CollapsingHeader("Ratios"))
@@ -225,6 +220,11 @@ bool QueryVideo::draw()
 						}
 					}
 				}
+			}
+			ImGui::SliderInt("Next Ratio", &ws.nextRatio, 1, 100);
+			if (ImGui::Button("Add Ratio"))
+			{
+				ws.ratios.push_back(ws.nextRatio);
 			}
 		}
 		void operator()(String &s)

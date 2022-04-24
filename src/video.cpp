@@ -2,6 +2,38 @@
 
 namespace TemStream
 {
+vpx_codec_iface_t *codec_encoder_interface()
+{
+	return vpx_codec_vp8_cx();
+}
+
+vpx_codec_iface_t *codec_decoder_interface()
+{
+	return vpx_codec_vp8_dx();
+}
+int vpx_img_plane_width(const vpx_image_t *img, const int plane)
+{
+	if (plane > 0 && img->x_chroma_shift > 0)
+	{
+		return (img->d_w + 1) >> img->x_chroma_shift;
+	}
+	else
+	{
+		return img->d_w;
+	}
+}
+
+int vpx_img_plane_height(const vpx_image_t *img, const int plane)
+{
+	if (plane > 0 && img->y_chroma_shift > 0)
+	{
+		return (img->d_h + 1) >> img->y_chroma_shift;
+	}
+	else
+	{
+		return img->d_h;
+	}
+}
 Video::Video(const Message::Source &source, const WindowProcess &wp) : source(source), windowProcress(wp)
 {
 }
@@ -21,6 +53,12 @@ Video::FrameEncoder::~FrameEncoder()
 void Video::FrameEncoder::addFrame(shared_ptr<Frame> frame)
 {
 	frames.push(frame);
+}
+Dimensions Video::VPX::getSize() const
+{
+	int w = vpx_img_plane_width(&image, 0);
+	int h = vpx_img_plane_height(&image, 0);
+	return std::make_pair(w, h);
 }
 void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, FrameData frameData)
 {
@@ -53,6 +91,21 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 		}
 
 		// TODO: Resize
+
+		{
+			auto size = vpx->getSize();
+			if (data->width != size->first || data->height != size->second)
+			{
+				FrameData fd = frameData;
+				fd.width = data->width;
+				fd.height = data->height;
+				auto newVpx = VPX::createEncoder(fd);
+				if (newVpx)
+				{
+					vpx = std::move(*newVpx);
+				}
+			}
+		}
 		vpx->encodeAndSend(data->bytes, ptr->source);
 	}
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
@@ -61,11 +114,12 @@ void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr, Fr
 {
 	Task::addTask(std::async(TaskPolicy, encodeFrames, std::move(ptr), frameData));
 }
-Video::VPX::VPX() : ctx(), image(), frameCount(0), keyFrameInterval(120)
+Video::VPX::VPX() : ctx(), image(), frameCount(0), keyFrameInterval(120), width(800), height(600)
 {
 }
 Video::VPX::VPX(VPX &&v)
-	: ctx(std::move(v.ctx)), image(std::move(v.image)), frameCount(v.frameCount), keyFrameInterval(v.keyFrameInterval)
+	: ctx(std::move(v.ctx)), image(std::move(v.image)), frameCount(v.frameCount), keyFrameInterval(v.keyFrameInterval),
+	  width(v.width), height(v.height)
 {
 	memset(&v.ctx, 0, sizeof(v.ctx));
 	memset(&v.image, 0, sizeof(v.image));
@@ -81,41 +135,11 @@ Video::VPX &Video::VPX::operator=(Video::VPX &&v)
 	image = v.image;
 	frameCount = v.frameCount;
 	keyFrameInterval = v.keyFrameInterval;
+	width = v.width;
+	height = v.height;
 	memset(&v.ctx, 0, sizeof(v.ctx));
 	memset(&v.image, 0, sizeof(v.image));
 	return *this;
-}
-vpx_codec_iface_t *codec_encoder_interface()
-{
-	return vpx_codec_vp8_cx();
-}
-
-vpx_codec_iface_t *codec_decoder_interface()
-{
-	return vpx_codec_vp8_dx();
-}
-int vpx_img_plane_width(const vpx_image_t *img, const int plane)
-{
-	if (plane > 0 && img->x_chroma_shift > 0)
-	{
-		return (img->d_w + 1) >> img->x_chroma_shift;
-	}
-	else
-	{
-		return img->d_w;
-	}
-}
-
-int vpx_img_plane_height(const vpx_image_t *img, const int plane)
-{
-	if (plane > 0 && img->y_chroma_shift > 0)
-	{
-		return (img->d_h + 1) >> img->y_chroma_shift;
-	}
-	else
-	{
-		return img->d_h;
-	}
 }
 void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source)
 {
@@ -151,8 +175,12 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 	vpx_codec_iter_t iter = NULL;
 	const vpx_codec_cx_pkt_t *pkt = NULL;
 	MessagePackets *packets = allocate<MessagePackets>();
-	while ((pkt = vpx_codec_get_cx_data(&ctx, &iter)) != NULL)
+	while ((pkt = vpx_codec_get_cx_data(&ctx, &iter)) != nullptr)
 	{
+		if (pkt->kind != VPX_CODEC_CX_FRAME_PKT)
+		{
+			continue;
+		}
 		Message::Packet packet;
 		packet.source = source;
 		Message::Video v;
@@ -230,7 +258,7 @@ std::optional<Video::VPX> Video::VPX::createEncoder(FrameData fd)
 	cfg.g_timebase.num = 1;
 	cfg.g_timebase.den = fd.fps;
 	cfg.rc_target_bitrate = fd.bitrateInMbps * 1024;
-	cfg.g_threads = std::thread::hardware_concurrency();
+	// cfg.g_threads = std::thread::hardware_concurrency();
 	cfg.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
 
 	if (vpx_codec_enc_init(&vpx.ctx, codec_encoder_interface(), &cfg, 0) == 0)
@@ -244,7 +272,7 @@ std::optional<Video::VPX> Video::VPX::createDecoder()
 {
 	Video::VPX vpx;
 	struct vpx_codec_dec_cfg cfg;
-	cfg.threads = std::thread::hardware_concurrency();
+	// cfg.threads = std::thread::hardware_concurrency();
 	if (vpx_codec_dec_init(&vpx.ctx, codec_decoder_interface(), &cfg, 0) == 0)
 	{
 		return vpx;

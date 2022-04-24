@@ -32,11 +32,11 @@ String printMemory(const size_t mem)
 	}
 	if (mem >= MB(1))
 	{
-		snprintf(buffer, sizeof(buffer), "%3.2f GB", (float)mem / (float)(MB(1)));
+		snprintf(buffer, sizeof(buffer), "%3.2f MB", (float)mem / (float)(MB(1)));
 	}
 	else if (mem >= KB(1))
 	{
-		snprintf(buffer, sizeof(buffer), "%3.2f GB", (float)mem / (float)(KB(1)));
+		snprintf(buffer, sizeof(buffer), "%3.2f KB", (float)mem / (float)(KB(1)));
 	}
 	else
 	{
