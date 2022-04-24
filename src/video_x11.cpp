@@ -284,7 +284,6 @@ end:
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
 									  const List<int32_t> &ratios, const uint32_t fps)
 {
-
 	FrameEncoders encoders;
 	for (const auto ratio : ratios)
 	{

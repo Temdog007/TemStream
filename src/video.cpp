@@ -127,24 +127,25 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 	}
 	vpx_codec_iter_t iter = NULL;
 	const vpx_codec_cx_pkt_t *pkt = NULL;
+	MessagePackets *packets = allocate<MessagePackets>();
 	while ((pkt = vpx_codec_get_cx_data(&ctx, &iter)) != NULL)
 	{
-
-		Message::Packet *packet = allocate<Message::Packet>();
-		packet->source = source;
+		Message::Packet packet;
+		packet.source = source;
 		Message::Video v;
 		const char *data = reinterpret_cast<const char *>(pkt->data.frame.buf);
 		v.bytes = Bytes(data, data + pkt->data.frame.sz);
-		packet->payload.emplace<Message::Video>(std::move(v));
-
-		SDL_Event e;
-		e.type = SDL_USEREVENT;
-		e.user.code = TemStreamEvent::SendSingleMessagePacket;
-		e.user.data1 = packet;
-		if (!tryPushEvent(e))
-		{
-			deallocate(packet);
-		}
+		packet.payload.emplace<Message::Video>(std::move(v));
+		packets->push_back(std::move(packet));
+	}
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::SendMessagePackets;
+	e.user.data1 = packets;
+	e.user.data2 = &e;
+	if (!tryPushEvent(e))
+	{
+		deallocate(packets);
 	}
 }
 std::optional<Video::VPX> Video::VPX::createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrate)

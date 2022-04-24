@@ -43,6 +43,7 @@ void ClientConnetion::addPacket(Message::Packet &&m)
 	e.user.code = TemStreamEvent::HandleMessagePacket;
 	auto packet = allocate<Message::Packet>(std::move(m));
 	e.user.data1 = packet;
+	e.user.data2 = nullptr;
 	if (!tryPushEvent(e))
 	{
 		deallocate(packet);
@@ -55,6 +56,7 @@ void ClientConnetion::addPackets(MessagePackets &&m)
 	e.user.code = TemStreamEvent::HandleMessagePackets;
 	auto packets = allocate<MessagePackets>(std::move(m));
 	e.user.data1 = packets;
+	e.user.data2 = nullptr;
 	if (!tryPushEvent(e))
 	{
 		deallocate(packets);
