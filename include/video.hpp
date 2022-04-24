@@ -32,13 +32,21 @@ class Video
 
 	static WindowProcesses getRecordableWindows();
 	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
-										  const uint32_t fps);
+										  const uint32_t fps, const uint32_t bitrate);
 
 	struct Frame
 	{
 		Bytes bytes;
 		uint16_t width;
 		uint16_t height;
+	};
+
+	struct FrameData
+	{
+		uint32_t width;
+		uint32_t height;
+		uint32_t fps;
+		uint32_t bitrateInMbps;
 	};
 
 	class VPX
@@ -51,12 +59,13 @@ class Video
 
 	  public:
 		VPX();
+		VPX(VPX &&);
 		~VPX();
 
 		void encodeAndSend(const Bytes &, const Message::Source &);
-		Bytes decode(const Bytes &);
+		std::optional<Bytes> decode(const Bytes &);
 
-		static std::optional<VPX> createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrateInMbps);
+		static std::optional<VPX> createEncoder(FrameData);
 		static std::optional<VPX> createDecoder();
 	};
 
@@ -64,11 +73,10 @@ class Video
 	{
 	  private:
 		ConcurrentQueue<shared_ptr<Frame>> frames;
-		VPX vpx;
 		Message::Source source;
 		const float ratio;
 
-		static void encodeFrames(shared_ptr<FrameEncoder> &&);
+		static void encodeFrames(shared_ptr<FrameEncoder> &&, FrameData);
 
 	  public:
 		FrameEncoder(const Message::Source &, int32_t);
@@ -79,7 +87,7 @@ class Video
 		Bytes resize(const Bytes &);
 		Bytes encode(const Bytes &) const;
 
-		static void startEncodingFrames(shared_ptr<FrameEncoder> &&);
+		static void startEncodingFrames(shared_ptr<FrameEncoder> &&, FrameData);
 	};
 
 	using FrameEncoders = std::vector<std::weak_ptr<FrameEncoder>>;

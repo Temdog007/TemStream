@@ -14,36 +14,46 @@ class SDL_TextureWrapper
 	SDL_TextureWrapper(SDL_Texture *);
 	SDL_TextureWrapper(const SDL_TextureWrapper &) = delete;
 	SDL_TextureWrapper(SDL_TextureWrapper &&);
-	virtual ~SDL_TextureWrapper();
+	~SDL_TextureWrapper();
 
 	SDL_TextureWrapper &operator=(const SDL_TextureWrapper &) = delete;
-	SDL_TextureWrapper &operator=(SDL_TextureWrapper &&) = delete;
+	SDL_TextureWrapper &operator=(SDL_TextureWrapper &&);
 
 	SDL_Texture *&getTexture()
 	{
 		return texture;
 	}
 };
-struct CheckAudio : public SDL_TextureWrapper
+struct CheckAudio
 {
 	List<float> left;
 	List<float> right;
+	SDL_TextureWrapper texture;
 	const bool isRecording;
 
-  public:
-	CheckAudio(SDL_Texture *t, const bool b) : SDL_TextureWrapper(t), left(), right(), isRecording(b)
+	CheckAudio(SDL_Texture *t, const bool b) : left(), right(), texture(t), isRecording(b)
 	{
 	}
 	CheckAudio(CheckAudio &&a)
-		: SDL_TextureWrapper(a.texture), left(std::move(left)), right(std::move(right)), isRecording(a.isRecording)
+		: left(std::move(left)), right(std::move(right)), texture(std::move(a.texture)), isRecording(a.isRecording)
 	{
-		a.texture = nullptr;
 	}
 	~CheckAudio()
 	{
 	}
 };
-using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Bytes, CheckAudio>;
+struct VideoDecoder
+{
+	Video::VPX vpx;
+	std::optional<std::future<std::optional<Video::Frame>>> decodeWork;
+	SDL_TextureWrapper texture;
+
+	VideoDecoder(Video::VPX &&);
+	VideoDecoder(VideoDecoder &&);
+	~VideoDecoder();
+};
+using VideoDecoderPtr = shared_ptr<VideoDecoder>;
+using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, Bytes, CheckAudio, VideoDecoderPtr>;
 class StreamDisplay
 {
   private:
@@ -65,9 +75,15 @@ class StreamDisplay
 		~ContextMenu();
 
 		void operator()(std::monostate);
-		void operator()(const String &);
+		void operator()(String &);
+		void operator()(VideoDecoderPtr &);
 		void operator()(SDL_TextureWrapper &);
-		void operator()(const Bytes &);
+		void operator()(Bytes &);
+
+		template <typename T> void operator()(T &t)
+		{
+			operator()(t.texture);
+		}
 	};
 	struct ImageMessageHandler
 	{
@@ -94,10 +110,16 @@ class StreamDisplay
 		~Draw();
 
 		bool operator()(std::monostate);
-		bool operator()(const String &);
+		bool operator()(String &);
 		bool operator()(SDL_TextureWrapper &);
 		bool operator()(CheckAudio &);
-		bool operator()(const Bytes &);
+		bool operator()(VideoDecoderPtr &);
+		bool operator()(Bytes &);
+
+		template <typename T> bool operator()(T &t)
+		{
+			return operator()(t.texture);
+		}
 	};
 
   protected:

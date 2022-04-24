@@ -180,7 +180,7 @@ bool QueryVideo::draw()
 			selection.emplace<String>("/dev/video0");
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
-			selection.emplace<WindowSelection>(WindowSelection{{100}, Video::getRecordableWindows(), 50, 24, 0});
+			selection.emplace<WindowSelection>(WindowSelection{{100}, Video::getRecordableWindows(), 50, 24, 10, 0});
 			break;
 		default:
 			break;
@@ -198,6 +198,7 @@ bool QueryVideo::draw()
 				ImGui::RadioButton(buffer, &ws.selected, i++);
 			}
 			ImGui::SliderInt("Frames per second", &ws.fps, 1, 120);
+			ImGui::SliderInt("Bitrate in Mbps", &ws.bitrate, 1, 100);
 			ImGui::SliderInt("Ratio", &ws.nextRatio, 1, 100);
 			if (!ws.ratios.empty())
 			{
@@ -244,7 +245,8 @@ void QueryVideo::execute() const
 			{
 				if (i == ws.selected)
 				{
-					auto ptr = Video::recordWindow(wp, source, ws.ratios, static_cast<uint32_t>(ws.fps));
+					auto ptr = Video::recordWindow(wp, source, ws.ratios, static_cast<uint32_t>(ws.fps),
+												   static_cast<uint32_t>(ws.bitrate));
 					gui.addVideo(std::move(ptr));
 					break;
 				}

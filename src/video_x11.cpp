@@ -282,14 +282,28 @@ end:
 }
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
-									  const List<int32_t> &ratios, const uint32_t fps)
+									  const List<int32_t> &ratios, const uint32_t fps, const uint32_t bitrate)
 {
 	FrameEncoders encoders;
+	FrameData fd;
+	fd.fps = fps;
+	fd.bitrateInMbps = bitrate;
+	{
+		int s;
+		auto con = getXCBConnection(s);
+		auto size = getWindowSize(con.get(), wp.windowId);
+		if (!size)
+		{
+			return nullptr;
+		}
+		fd.width = size->first;
+		fd.height = size->second;
+	}
 	for (const auto ratio : ratios)
 	{
 		auto encoder = tem_shared<FrameEncoder>(source, ratio);
 		encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));
-		FrameEncoder::startEncodingFrames(std::move(encoder));
+		FrameEncoder::startEncodingFrames(std::move(encoder), fd);
 	}
 	auto converter = tem_shared<Converter>(std::move(encoders), source);
 	auto video = tem_shared<Video>(source, wp);

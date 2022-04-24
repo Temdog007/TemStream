@@ -34,14 +34,16 @@ using Image = std::variant<std::monostate, uint64_t, Bytes>;
 	}
 struct Video
 {
+	uint16_t width;
+	uint16_t height;
 	Bytes bytes;
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(bytes);
+		ar(width, height, bytes);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(bytes);
+		ar(width, height, bytes);
 	}
 };
 struct Audio

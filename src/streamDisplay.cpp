@@ -128,8 +128,49 @@ bool StreamDisplay::ImageMessageHandler::operator()(Bytes &&bytes)
 	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
 	return true;
 }
-bool StreamDisplay::operator()(Message::Video &)
+bool StreamDisplay::operator()(Message::Video &v)
 {
+	if (VideoDecoderPtr *dPtr = std::get_if<VideoDecoderPtr>(&data))
+	{
+		auto ptr = *dPtr;
+		if (ptr->decodeWork.has_value())
+		{
+			using namespace std::chrono_literals;
+			if (ptr->decodeWork->wait_for(0ms) != std::future_status::ready)
+			{
+				return true;
+			}
+		}
+		auto f = std::async([ptr, v = std::move(v)]() {
+			std::optional<Video::Frame> rval = std::nullopt;
+			auto result = ptr->vpx.decode(v.bytes);
+			if (result)
+			{
+				Video::Frame frame;
+				frame.bytes = std::move(*result);
+				frame.width = v.width;
+				frame.height = v.height;
+				rval.emplace(std::move(frame));
+			}
+			return rval;
+		});
+		(*dPtr)->decodeWork.emplace(std::move(f));
+	}
+	else
+	{
+		auto vpx = Video::VPX::createDecoder();
+		if (vpx)
+		{
+			(*logger)(Logger::Trace) << "Created video decoder" << std::endl;
+			auto d = tem_shared<VideoDecoder>(std::move(*vpx));
+			data.emplace<VideoDecoderPtr>(std::move(d));
+		}
+		else
+		{
+			(*logger)(Logger::Error) << "Failed to create video decoder" << std::endl;
+			return false;
+		}
+	}
 	return true;
 }
 bool StreamDisplay::operator()(Message::Audio &audio)
@@ -209,7 +250,7 @@ bool StreamDisplay::Draw::operator()(std::monostate)
 {
 	return true;
 }
-bool StreamDisplay::Draw::operator()(const String &s)
+bool StreamDisplay::Draw::operator()(String &s)
 {
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
@@ -236,7 +277,7 @@ bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 	auto &texture = t.getTexture();
 	if (texture == nullptr)
 	{
-		return false;
+		return true;
 	}
 	std::array<char, KB(8)> buffer;
 	display.source.print(buffer);
@@ -250,6 +291,60 @@ bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 	}
 	ImGui::End();
 	return true;
+}
+bool StreamDisplay::Draw::operator()(VideoDecoderPtr &vd)
+{
+	if (vd->decodeWork.has_value())
+	{
+		using namespace std::chrono_literals;
+		if (vd->decodeWork->wait_for(0s) == std::future_status::ready)
+		{
+			auto frame = vd->decodeWork->get();
+			vd->decodeWork = std::nullopt;
+			if (frame)
+			{
+				auto &texture = vd->texture.getTexture();
+				bool needLoad = false;
+				if (texture == nullptr)
+				{
+					needLoad = true;
+				}
+				else
+				{
+					int w, h;
+					needLoad = SDL_QueryTexture(texture, 0, 0, &w, &h) != 0 || w != frame->width || h != frame->height;
+				}
+				if (needLoad)
+				{
+					SDL_DestroyTexture(texture);
+					texture = SDL_CreateTexture(display.gui.getRenderer(), SDL_PIXELFORMAT_IYUV,
+												SDL_TEXTUREACCESS_STATIC, frame->width, frame->height);
+					if (texture == nullptr)
+					{
+						logSDLError("Failed to create texture");
+						return false;
+					}
+					else
+					{
+						(*logger)(Logger::Trace)
+							<< "Created texture " << frame->width << "x" << frame->height << std::endl;
+					}
+				}
+				void *pixels = nullptr;
+				int pitch;
+				if (SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0)
+				{
+					memcpy(pixels, frame->bytes.data(), frame->bytes.size());
+				}
+				else
+				{
+					logSDLError("Failed to update texture");
+				}
+				SDL_UnlockTexture(texture);
+			}
+		}
+	}
+	return operator()(vd->texture);
 }
 void StreamDisplay::Draw::drawPoints(const List<float> &list, const float audioWidth, const float, const float minY,
 									 const float maxY)
@@ -321,7 +416,7 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	const int audioWidth = 2048;
 	const int audioHeight = 512;
-	auto &texture = t.getTexture();
+	auto &texture = t.texture.getTexture();
 	if (texture == nullptr)
 	{
 		SDL_DestroyTexture(texture);
@@ -349,9 +444,9 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 	}
 	SDL_SetRenderTarget(renderer, target);
 
-	return operator()(static_cast<SDL_TextureWrapper &>(t));
+	return operator()(t.texture);
 }
-bool StreamDisplay::Draw::operator()(const Bytes &)
+bool StreamDisplay::Draw::operator()(Bytes &)
 {
 	return true;
 }
@@ -367,6 +462,13 @@ SDL_TextureWrapper::~SDL_TextureWrapper()
 	SDL_DestroyTexture(texture);
 	texture = nullptr;
 }
+SDL_TextureWrapper &SDL_TextureWrapper::operator=(SDL_TextureWrapper &&w)
+{
+	SDL_DestroyTexture(texture);
+	texture = w.texture;
+	w.texture = nullptr;
+	return *this;
+}
 StreamDisplay::ContextMenu::ContextMenu(StreamDisplay &d) : display(d)
 {
 }
@@ -376,10 +478,10 @@ StreamDisplay::ContextMenu::~ContextMenu()
 void StreamDisplay::ContextMenu::operator()(std::monostate)
 {
 }
-void StreamDisplay::ContextMenu::operator()(const Bytes &)
+void StreamDisplay::ContextMenu::operator()(Bytes &)
 {
 }
-void StreamDisplay::ContextMenu::operator()(const String &s)
+void StreamDisplay::ContextMenu::operator()(String &s)
 {
 	if (ImGui::Button("Copy"))
 	{
@@ -392,6 +494,10 @@ void StreamDisplay::ContextMenu::operator()(const String &s)
 			logSDLError("Failed to copy to clipboard");
 		}
 	}
+}
+void StreamDisplay::ContextMenu::operator()(VideoDecoderPtr &ptr)
+{
+	return operator()(ptr->texture);
 }
 void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 {
@@ -439,5 +545,15 @@ void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 		SDL_DestroyTexture(t);
 		SDL_FreeSurface(surface);
 	}
+}
+VideoDecoder::VideoDecoder(Video::VPX &&vpx) : vpx(std::move(vpx)), decodeWork(std::nullopt), texture(nullptr)
+{
+}
+VideoDecoder::VideoDecoder(VideoDecoder &&v)
+	: vpx(std::move(v.vpx)), decodeWork(std::move(v.decodeWork)), texture(std::move(v.texture))
+{
+}
+VideoDecoder::~VideoDecoder()
+{
 }
 } // namespace TemStream

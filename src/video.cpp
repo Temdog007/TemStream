@@ -8,8 +8,7 @@ Video::Video(const Message::Source &source, const WindowProcess &wp) : source(so
 Video::~Video()
 {
 }
-Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio)
-	: frames(), vpx(), source(), ratio(ratio)
+Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio) : frames(), source(), ratio(ratio)
 {
 	this->source.author = source.author;
 	char buffer[KB(1)];
@@ -23,13 +22,20 @@ void Video::FrameEncoder::addFrame(shared_ptr<Frame> frame)
 {
 	frames.push(frame);
 }
-void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr)
+void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, FrameData frameData)
 {
 	(*logger)(Logger::Trace) << "Starting encoding thread: " << ptr->source << std::endl;
 	if (!TemStreamGui::sendCreateMessage<Message::Video>(ptr->source))
 	{
 		return;
 	}
+
+	auto vpx = VPX::createEncoder(frameData);
+	if (!vpx)
+	{
+		return;
+	}
+
 	using namespace std::chrono_literals;
 	const auto maxWaitTime = 3s;
 	while (!appDone)
@@ -47,16 +53,22 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr)
 		}
 
 		// TODO: Resize
-		ptr->vpx.encodeAndSend(data->bytes, ptr->source);
+		vpx->encodeAndSend(data->bytes, ptr->source);
 	}
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
 }
-void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr)
+void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr, FrameData frameData)
 {
-	Task::addTask(std::async(TaskPolicy, encodeFrames, std::move(ptr)));
+	Task::addTask(std::async(TaskPolicy, encodeFrames, std::move(ptr), frameData));
 }
-Video::VPX::VPX() : ctx(), image(), frameCount(0), keyFrameInterval(0)
+Video::VPX::VPX() : ctx(), image(), frameCount(0), keyFrameInterval(120)
 {
+}
+Video::VPX::VPX(VPX &&v)
+	: ctx(std::move(v.ctx)), image(std::move(v.image)), frameCount(v.frameCount), keyFrameInterval(v.keyFrameInterval)
+{
+	memset(&v.ctx, 0, sizeof(v.ctx));
+	memset(&v.image, 0, sizeof(v.image));
 }
 Video::VPX::~VPX()
 {
@@ -123,6 +135,7 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 	res = vpx_codec_encode(&ctx, &image, frameCount++, 1, flags, VPX_DL_REALTIME);
 	if (res != VPX_CODEC_OK)
 	{
+		(*logger)(Logger::Error) << "Encoding failed: " << vpx_codec_err_to_string(res) << std::endl;
 		return;
 	}
 	vpx_codec_iter_t iter = NULL;
@@ -135,6 +148,8 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 		Message::Video v;
 		const char *data = reinterpret_cast<const char *>(pkt->data.frame.buf);
 		v.bytes = Bytes(data, data + pkt->data.frame.sz);
+		v.width = vpx_img_plane_width(&image, 0);
+		v.height = vpx_img_plane_height(&image, 0);
 		packet.payload.emplace<Message::Video>(std::move(v));
 		packets->push_back(std::move(packet));
 	}
@@ -148,11 +163,43 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 		deallocate(packets);
 	}
 }
-std::optional<Video::VPX> Video::VPX::createEncoder(uint32_t width, uint32_t height, int fps, uint32_t bitrate)
+std::optional<Bytes> Video::VPX::decode(const Bytes &bytes)
+{
+	vpx_codec_err_t res =
+		vpx_codec_decode(&ctx, reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size(), NULL, VPX_DL_REALTIME);
+	if (res != VPX_CODEC_OK)
+	{
+		(*logger)(Logger::Error) << "Failed to decode video: " << vpx_codec_err_to_string(res) << std::endl;
+		return std::nullopt;
+	}
+	vpx_codec_iter_t iter = NULL;
+	vpx_image_t *img = NULL;
+	Bytes rval;
+	rval.reserve(MB(8));
+
+	while ((img = vpx_codec_get_frame(&ctx, &iter)) != NULL)
+	{
+		rval.clear();
+		for (int plane = 0; plane < 3; ++plane)
+		{
+			const char *buf = reinterpret_cast<const char *>(img->planes[plane]);
+			const int stride = img->stride[plane];
+			const int w = vpx_img_plane_width(img, plane) * ((img->fmt & VPX_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+			const int h = vpx_img_plane_height(img, plane);
+			for (int y = 0; y < h; ++y)
+			{
+				rval.insert(rval.end(), buf, buf + w);
+				buf += stride;
+			}
+		}
+	}
+	return rval;
+}
+std::optional<Video::VPX> Video::VPX::createEncoder(FrameData fd)
 {
 	Video::VPX vpx;
 	vpx_codec_enc_cfg_t cfg;
-	if (vpx_img_alloc(&vpx.image, VPX_IMG_FMT_I420, width, height, 1) == nullptr)
+	if (vpx_img_alloc(&vpx.image, VPX_IMG_FMT_I420, fd.width, fd.height, 1) == nullptr)
 	{
 		(*logger)(Logger::Error) << "Failed to allocate image" << std::endl;
 		return std::nullopt;
@@ -168,11 +215,11 @@ std::optional<Video::VPX> Video::VPX::createEncoder(uint32_t width, uint32_t hei
 		return std::nullopt;
 	}
 
-	cfg.g_w = width;
-	cfg.g_h = height;
+	cfg.g_w = fd.width;
+	cfg.g_h = fd.height;
 	cfg.g_timebase.num = 1;
-	cfg.g_timebase.den = fps;
-	cfg.rc_target_bitrate = bitrate * 1024;
+	cfg.g_timebase.den = fd.fps;
+	cfg.rc_target_bitrate = fd.bitrateInMbps * 1024;
 	cfg.g_threads = std::thread::hardware_concurrency();
 	cfg.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
 

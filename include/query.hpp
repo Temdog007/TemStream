@@ -78,6 +78,7 @@ class QueryVideo : public IQuery
 		WindowProcesses windows;
 		int32_t nextRatio;
 		int fps;
+		int bitrate;
 		int selected;
 	};
 	using VideoSelection = std::variant<String, WindowSelection>;

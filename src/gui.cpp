@@ -1464,11 +1464,15 @@ int runApp(Configuration &configuration)
 					auto stream = gui.streams.find(iter->first);
 					if (stream == gui.streams.end())
 					{
+						(*logger)(Logger::Trace) << "Removed stream display (" << iter->first
+												 << ") becuase it is missing from the stream list" << std::endl;
 						iter = gui.displays.erase(iter);
 					}
 					else if (stream->first.author != gui.peerInfo.name &&
 							 gui.subscriptions.find(stream->first) == gui.subscriptions.end())
 					{
+						(*logger)(Logger::Trace) << "Removed stream display (" << iter->first
+												 << ") becuase not subscribed nor own stream" << std::endl;
 						iter = gui.displays.erase(iter);
 					}
 					else
