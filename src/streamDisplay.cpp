@@ -16,6 +16,10 @@ StreamDisplay::~StreamDisplay()
 }
 void StreamDisplay::updateTexture(const Video::Frame &frame)
 {
+	if (!visible)
+	{
+		return;
+	}
 	if (!std::holds_alternative<SDL_TextureWrapper>(data))
 	{
 		(*logger)(Logger::Trace) << "Resized video texture " << frame.width << 'x' << frame.height << std::endl;
@@ -32,7 +36,7 @@ void StreamDisplay::updateTexture(const Video::Frame &frame)
 			logSDLError("Failed to query texture");
 			return;
 		}
-		if (frame.width != w || frame.height != h)
+		if (frame.width != static_cast<uint32_t>(w) || frame.height != static_cast<uint32_t>(h))
 		{
 			data.emplace<std::monostate>();
 			updateTexture(frame);
@@ -43,8 +47,8 @@ void StreamDisplay::updateTexture(const Video::Frame &frame)
 	int pitch;
 	if (SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0)
 	{
-		// std::copy(frame.bytes.begin(), frame.bytes.end(), reinterpret_cast<char *>(pixels));
-		memcpy(pixels, frame.bytes.data(), frame.bytes.size());
+		std::copy(frame.bytes.begin(), frame.bytes.end(), reinterpret_cast<char *>(pixels));
+		// memcpy(pixels, frame.bytes.data(), frame.bytes.size());
 	}
 	else
 	{

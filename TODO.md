@@ -257,7 +257,7 @@
 ### Apr 23, 2022 - Apr 24, 2022
 - [x] Window streaming
 - [x] Make thread to handle decoding (all frames must be decoded in order)
-- [ ] Handle texture resizing
+- [x] Handle texture resizing
 - [ ] Optional OpenCV
 - [ ] Webcam streaming
 

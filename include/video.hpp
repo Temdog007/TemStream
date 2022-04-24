@@ -34,8 +34,18 @@ class Video
 	struct Frame
 	{
 		Bytes bytes;
-		uint16_t width;
-		uint16_t height;
+		uint32_t width;
+		uint32_t height;
+
+		template <typename T> uint8_t getPixel(T x, T y) const
+		{
+			x = std::clamp(x, 0, width - 1);
+			y = std::clamp(y, 0, height - 1);
+			return bytes[x + y * width];
+		}
+
+		Frame resize(uint32_t ratio) const;
+		Frame resizeTo(uint32_t, uint32_t) const;
 	};
 
 	struct FrameData
@@ -101,7 +111,7 @@ class Video
 	  private:
 		ConcurrentQueue<shared_ptr<Frame>> frames;
 		Message::Source source;
-		const float ratio;
+		const int32_t ratio;
 
 		static void encodeFrames(shared_ptr<FrameEncoder> &&, FrameData);
 

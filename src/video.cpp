@@ -90,7 +90,15 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 			continue;
 		}
 
-		// TODO: Resize
+		Frame frame;
+		if (ptr->ratio == 100)
+		{
+			frame = *data;
+		}
+		else
+		{
+			frame = std::move(data->resize(ptr->ratio));
+		}
 
 		{
 			auto size = vpx->getSize();
@@ -267,7 +275,7 @@ std::optional<Video::VPX> Video::VPX::createEncoder(FrameData fd)
 	cfg.g_timebase.num = 1;
 	cfg.g_timebase.den = fd.fps;
 	cfg.rc_target_bitrate = fd.bitrateInMbps * 1024;
-	// cfg.g_threads = std::thread::hardware_concurrency();
+	cfg.g_threads = std::thread::hardware_concurrency();
 	cfg.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
 
 	if (vpx_codec_enc_init(&vpx.ctx, codec_encoder_interface(), &cfg, 0) == 0)
@@ -281,12 +289,55 @@ std::optional<Video::VPX> Video::VPX::createDecoder()
 {
 	Video::VPX vpx;
 	struct vpx_codec_dec_cfg cfg;
-	// cfg.threads = std::thread::hardware_concurrency();
+	cfg.threads = std::thread::hardware_concurrency();
 	if (vpx_codec_dec_init(&vpx.ctx, codec_decoder_interface(), &cfg, 0) == 0)
 	{
 		return vpx;
 	}
 	(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
 	return std::nullopt;
+}
+Video::Frame Video::Frame::resize(uint32_t ratio) const
+{
+	return resizeTo(width * ratio / 100, height * ratio / 100);
+}
+Bytes resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t oldHeight, const uint32_t newWidth,
+				  const uint32_t newHeight)
+{
+	Bytes b;
+	b.resize(newWidth * newHeight);
+	for (uint32_t y = 0; y < newHeight; ++y)
+	{
+		const float ypercent = (float)y / (float)newHeight;
+		const uint32_t yIndex = static_cast<uint32_t>(oldHeight * ypercent);
+		for (uint32_t x = 0; x < newWidth; ++x)
+		{
+			const float xpercent = (float)x / (float)newWidth;
+			const uint32_t xIndex = static_cast<uint32_t>(oldWidth * xpercent);
+
+			b[x + y * newWidth] = bytes[xIndex + yIndex * oldWidth];
+		}
+	}
+	return b;
+}
+Video::Frame Video::Frame::resizeTo(const uint32_t w, const uint32_t h) const
+{
+	Frame frame;
+	frame.width = w;
+	frame.height = h;
+
+	{
+		Bytes Y = resizePlane(bytes.data(), width, height, w, h);
+		frame.bytes.insert(frame.bytes.end(), Y.begin(), Y.end());
+	}
+	{
+		Bytes U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
+		frame.bytes.insert(frame.bytes.end(), U.begin(), U.end());
+	}
+	{
+		Bytes V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
+		frame.bytes.insert(frame.bytes.end(), V.begin(), V.end());
+	}
+	return frame;
 }
 } // namespace TemStream
