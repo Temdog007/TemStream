@@ -185,7 +185,7 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s) const
 	frame->width = s.width;
 	frame->height = s.height;
 	frame->bytes.resize((s.width * s.height) * 2, '\0');
-	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_RGBA8888, data, s.width * 4, SDL_PIXELFORMAT_IYUV,
+	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_RGBA32, data, s.width * 4, SDL_PIXELFORMAT_YV12,
 						  frame->bytes.data(), s.width) == 0)
 	{
 		return frame;
@@ -282,12 +282,9 @@ end:
 }
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
-									  const List<int32_t> &ratios, const uint32_t fps, const uint32_t bitrate)
+									  const List<int32_t> &ratios, FrameData fd)
 {
 	FrameEncoders encoders;
-	FrameData fd;
-	fd.fps = fps;
-	fd.bitrateInMbps = bitrate;
 	{
 		int s;
 		auto con = getXCBConnection(s);
@@ -307,7 +304,7 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	}
 	auto converter = tem_shared<Converter>(std::move(encoders), source);
 	auto video = tem_shared<Video>(source, wp);
-	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fps);
+	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fd.fps);
 	Converter::startConverteringFrames(std::move(converter));
 	Screenshotter::startTakingScreenshots(std::move(screenshotter));
 	return video;

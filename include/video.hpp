@@ -30,10 +30,6 @@ class Video
 		return source;
 	}
 
-	static WindowProcesses getRecordableWindows();
-	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
-										  const uint32_t fps, const uint32_t bitrate);
-
 	struct Frame
 	{
 		Bytes bytes;
@@ -45,9 +41,14 @@ class Video
 	{
 		uint32_t width;
 		uint32_t height;
-		uint32_t fps;
-		uint32_t bitrateInMbps;
+		int fps;
+		int bitrateInMbps;
+		int keyFrameInterval;
 	};
+
+	static WindowProcesses getRecordableWindows();
+	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
+										  Video::FrameData);
 
 	class VPX
 	{
@@ -59,8 +60,12 @@ class Video
 
 	  public:
 		VPX();
+		VPX(const VPX &) = delete;
 		VPX(VPX &&);
 		~VPX();
+
+		VPX &operator=(const VPX &) = delete;
+		VPX &operator=(VPX &&);
 
 		void encodeAndSend(const Bytes &, const Message::Source &);
 		std::optional<Bytes> decode(const Bytes &);

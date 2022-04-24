@@ -75,6 +75,16 @@ Video::VPX::~VPX()
 	vpx_codec_destroy(&ctx);
 	vpx_img_free(&image);
 }
+Video::VPX &Video::VPX::operator=(Video::VPX &&v)
+{
+	ctx = v.ctx;
+	image = v.image;
+	frameCount = v.frameCount;
+	keyFrameInterval = v.keyFrameInterval;
+	memset(&v.ctx, 0, sizeof(v.ctx));
+	memset(&v.image, 0, sizeof(v.image));
+	return *this;
+}
 vpx_codec_iface_t *codec_encoder_interface()
 {
 	return vpx_codec_vp8_cx();

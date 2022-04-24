@@ -180,7 +180,8 @@ bool QueryVideo::draw()
 			selection.emplace<String>("/dev/video0");
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
-			selection.emplace<WindowSelection>(WindowSelection{{100}, Video::getRecordableWindows(), 50, 24, 10, 0});
+			selection.emplace<WindowSelection>(
+				WindowSelection{{100}, {0, 0, 24, 10, 48}, Video::getRecordableWindows(), 50, 0});
 			break;
 		default:
 			break;
@@ -197,9 +198,15 @@ bool QueryVideo::draw()
 				snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.windowId);
 				ImGui::RadioButton(buffer, &ws.selected, i++);
 			}
-			ImGui::SliderInt("Frames per second", &ws.fps, 1, 120);
-			ImGui::SliderInt("Bitrate in Mbps", &ws.bitrate, 1, 100);
-			ImGui::SliderInt("Ratio", &ws.nextRatio, 1, 100);
+			ImGui::SliderInt("Frames per second", &ws.frameData.fps, 1, 120);
+			ImGui::SliderInt("Bitrate in Mbps", &ws.frameData.bitrateInMbps, 1, 100);
+			ImGui::SliderInt("Key Frame Interval", &ws.frameData.keyFrameInterval, 1, 100);
+			ImGui::Separator();
+			ImGui::SliderInt("Next Ratio", &ws.nextRatio, 1, 100);
+			if (ImGui::Button("Add Ratio"))
+			{
+				ws.ratios.push_back(ws.nextRatio);
+			}
 			if (!ws.ratios.empty())
 			{
 				if (ImGui::CollapsingHeader("Ratios"))
@@ -245,8 +252,7 @@ void QueryVideo::execute() const
 			{
 				if (i == ws.selected)
 				{
-					auto ptr = Video::recordWindow(wp, source, ws.ratios, static_cast<uint32_t>(ws.fps),
-												   static_cast<uint32_t>(ws.bitrate));
+					auto ptr = Video::recordWindow(wp, source, ws.ratios, ws.frameData);
 					gui.addVideo(std::move(ptr));
 					break;
 				}

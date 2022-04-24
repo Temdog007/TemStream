@@ -141,7 +141,7 @@ bool StreamDisplay::operator()(Message::Video &v)
 				return true;
 			}
 		}
-		auto f = std::async([ptr, v = std::move(v)]() {
+		auto f = std::async(TaskPolicy, [ptr, v = std::move(v)]() {
 			std::optional<Video::Frame> rval = std::nullopt;
 			auto result = ptr->vpx.decode(v.bytes);
 			if (result)
@@ -318,7 +318,7 @@ bool StreamDisplay::Draw::operator()(VideoDecoderPtr &vd)
 				{
 					SDL_DestroyTexture(texture);
 					texture = SDL_CreateTexture(display.gui.getRenderer(), SDL_PIXELFORMAT_IYUV,
-												SDL_TEXTUREACCESS_STATIC, frame->width, frame->height);
+												SDL_TEXTUREACCESS_STREAMING, frame->width, frame->height);
 					if (texture == nullptr)
 					{
 						logSDLError("Failed to create texture");
@@ -326,6 +326,11 @@ bool StreamDisplay::Draw::operator()(VideoDecoderPtr &vd)
 					}
 					else
 					{
+						auto p = Video::VPX::createDecoder();
+						if (p)
+						{
+							vd->vpx = std::move(*p);
+						}
 						(*logger)(Logger::Trace)
 							<< "Created texture " << frame->width << "x" << frame->height << std::endl;
 					}
