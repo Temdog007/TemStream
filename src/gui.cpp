@@ -181,7 +181,7 @@ bool TemStreamGui::init()
 		return false;
 	}
 
-	Task::addTask(std::async(std::launch::async, [this]() {
+	Task::addTask(std::async(TaskPolicy, [this]() {
 		using namespace std::chrono_literals;
 		while (!appDone)
 		{
@@ -1325,7 +1325,7 @@ int runApp(Configuration &configuration)
 				else
 				{
 					String s(event.drop.file);
-					Task::addTask(std::async([&gui, s = std::move(s)]() { Task::checkFile(gui, s); }));
+					Task::addTask(std::async(TaskPolicy, [&gui, s = std::move(s)]() { Task::checkFile(gui, s); }));
 				}
 				SDL_free(event.drop.file);
 			}

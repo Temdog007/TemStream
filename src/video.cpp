@@ -53,7 +53,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr)
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr)
 {
-	Task::addTask(std::async(std::launch::async, encodeFrames, std::move(ptr)));
+	Task::addTask(std::async(TaskPolicy, encodeFrames, std::move(ptr)));
 }
 Video::VPX::VPX() : ctx(), image(), frameCount(0), keyFrameInterval(0)
 {

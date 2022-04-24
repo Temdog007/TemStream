@@ -108,7 +108,7 @@ bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
 {
 	if (Bytes *bytes = std::get_if<Bytes>(&display.data))
 	{
-		Task::addTask(std::async(Task::loadSurface, display.getSource(), std::move(*bytes)));
+		Task::addTask(std::async(TaskPolicy, Task::loadSurface, display.getSource(), std::move(*bytes)));
 		display.data.emplace<std::monostate>();
 		return true;
 	}
@@ -146,8 +146,8 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 			}
 		}))
 	{
-		Task::addTask(
-			std::async(Task::startPlayback, source, std::nullopt, gui.getConfiguration().defaultVolume / 100.f));
+		Task::addTask(std::async(TaskPolicy, Task::startPlayback, source, std::nullopt,
+								 gui.getConfiguration().defaultVolume / 100.f));
 	}
 	return true;
 }

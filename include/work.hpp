@@ -4,6 +4,7 @@ namespace TemStream
 {
 class TemStreamGui;
 typedef LinkedList<std::future<void>> WorkList;
+extern const std::launch TaskPolicy;
 class Task
 {
   private:

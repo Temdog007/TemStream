@@ -2,6 +2,7 @@
 
 namespace TemStream
 {
+const std::launch TaskPolicy = std::launch::async;
 WorkList Task::workList;
 void Task::addTask(std::future<void> &&f)
 {
