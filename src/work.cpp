@@ -80,7 +80,7 @@ void Task::sendImage(String filename, Message::Source source)
 		deallocate(packets);
 	}
 }
-void Task::loadSurface(Message::Source source, Bytes bytes)
+void Task::loadSurface(Message::Source source, ByteList bytes)
 {
 	(*logger)(Logger::Trace) << "Loading image data: " << bytes.size() / KB(1) << "KB" << std::endl;
 	SDL_RWops *src = SDL_RWFromConstMem(bytes.data(), bytes.size());

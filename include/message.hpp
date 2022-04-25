@@ -21,7 +21,7 @@ struct VerifyLogin
 		ar(info);
 	}
 };
-using Image = std::variant<std::monostate, uint64_t, Bytes>;
+using Image = std::variant<std::monostate, uint64_t, ByteList>;
 #define EMPTY_MESSAGE(Name)                                                                                            \
 	struct Name                                                                                                        \
 	{                                                                                                                  \
@@ -36,7 +36,7 @@ struct Video
 {
 	uint16_t width;
 	uint16_t height;
-	Bytes bytes;
+	ByteList bytes;
 	template <class Archive> void save(Archive &ar) const
 	{
 		ar(width, height, bytes);
@@ -48,7 +48,7 @@ struct Video
 };
 struct Audio
 {
-	Bytes bytes;
+	ByteList bytes;
 	template <class Archive> void save(Archive &ar) const
 	{
 		ar(bytes);
@@ -128,13 +128,12 @@ struct Packet
 		ar(payload, source, trail);
 	}
 };
-template <typename Iterator> static Bytes getImageByteChunk(Iterator &start, Iterator end)
+template <typename Iterator> static ByteList getImageByteChunk(Iterator &start, Iterator end)
 {
-	Bytes bytes;
-	bytes.reserve(MAX_IMAGE_CHUNK);
+	ByteList bytes(MAX_IMAGE_CHUNK);
 	while (start != end)
 	{
-		bytes.push_back(*start);
+		bytes.append(*start);
 		++start;
 		if (bytes.size() >= MAX_IMAGE_CHUNK)
 		{
@@ -155,7 +154,7 @@ static void prepareImageBytes(Iterator start, Iterator end, const uint64_t size,
 	}
 	while (start != end)
 	{
-		Bytes bytes = getImageByteChunk(start, end);
+		ByteList bytes = getImageByteChunk(start, end);
 		if (bytes.empty())
 		{
 			break;

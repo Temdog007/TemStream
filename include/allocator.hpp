@@ -211,6 +211,7 @@ template <class T> class Allocator
 	}
 
 	T *allocate(const size_t n = 1);
+	T *reallocate(T *, const size_t newSize);
 	void deallocate(T *const p, const size_t count = 1);
 
 	size_t getBlockSize(const T *const p) const;
@@ -263,6 +264,74 @@ template <class T> T *Allocator<T>::allocate(const size_t requestedCount)
 	const size_t dataAddress = reinterpret_cast<size_t>(affectedNode) + sizeof(FreeListNode);
 	T *ptr = reinterpret_cast<T *>(dataAddress);
 	return ptr;
+}
+template <class T> T *Allocator<T>::reallocate(T *oldPtr, const size_t count)
+{
+	LOCK(ad.mutex);
+
+	if (oldPtr == nullptr)
+	{
+		return allocate(count);
+	}
+
+	size_t size = sizeof(T) * count;
+	size = std::max(size, ALLOCATOR_ALIGNMENT);
+	size += ALLOCATOR_ALIGNMENT - (size % ALLOCATOR_ALIGNMENT);
+
+	const size_t currentAddress = (size_t)oldPtr;
+	const size_t nodeAddress = currentAddress - sizeof(FreeListNode);
+
+	FreeListNode *node = reinterpret_cast<FreeListNode *>(nodeAddress);
+
+	const size_t oldSize = node->blockSize - sizeof(FreeListNode);
+	if (size <= oldSize)
+	{
+		return oldPtr;
+	}
+
+	{
+		const size_t target = nodeAddress + node->blockSize;
+		FreeListNode *it = ad.list;
+		FreeListNode *prev = NULL;
+		while (it != NULL)
+		{
+			if (reinterpret_cast<size_t>(it) != target)
+			{
+				prev = it;
+				it = it->next;
+				continue;
+			}
+			// Extend current block size if possible
+			const size_t combinedSize = node->blockSize + it->blockSize;
+			const size_t newBlockSize = size + sizeof(FreeListNode);
+			if (combinedSize == newBlockSize)
+			{
+				ad.used -= node->blockSize;
+				ad.used += newBlockSize;
+				node->blockSize = newBlockSize;
+				FreeListNode::remove(ad.list, prev, it);
+				return oldPtr;
+			}
+			else if (newBlockSize < combinedSize)
+			{
+				ad.used -= node->blockSize;
+				ad.used += newBlockSize;
+				node->blockSize = newBlockSize;
+				FreeListNode *newNode = reinterpret_cast<FreeListNode *>(reinterpret_cast<size_t>(node) + newBlockSize);
+				newNode->blockSize = combinedSize - newBlockSize;
+				newNode->next = nullptr;
+				FreeListNode::remove(ad.list, prev, it);
+				FreeListNode::insert(ad.list, prev, newNode);
+				return oldPtr;
+			}
+			break;
+		}
+	}
+
+	T *newPtr = allocate(count);
+	memcpy(newPtr, oldPtr, oldSize);
+	deallocate(oldPtr);
+	return newPtr;
 }
 template <class T> void Allocator<T>::deallocate(T *const ptr, const size_t)
 {

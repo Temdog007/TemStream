@@ -187,17 +187,12 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 
 #if TEMSTREAM_USE_OPENCV
 	// Must copy in case other scalings use this image
-	temp.resize(s.width * s.height * 4);
-	memcpy(temp.data(), data, temp.size());
-
+	temp.clear();
+	temp.append(data, s.width * s.height * 4);
 	cv::Mat m(frame->height, frame->width, CV_8UC4, temp.data());
+	cv::Mat yuv;
 	cv::cvtColor(m, yuv, cv::COLOR_RGBA2YUV_YV12);
-	{
-		Time time("Converter::convertToFrame");
-		std::copy(yuv.data, yuv.data + (yuv.total() * yuv.elemSize()),
-				  std::inserter(frame->bytes, frame->bytes.begin()));
-		memcpy(frame->bytes.data(), yuv.data, frame->bytes.size());
-	}
+	frame->bytes.append(yuv.data, yuv.total() * yuv.elemSize());
 	return frame;
 #else
 	frame->bytes.resize((s.width * s.height) * 2, '\0');

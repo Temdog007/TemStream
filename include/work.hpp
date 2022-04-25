@@ -22,7 +22,7 @@ class Task
 	// must be copied
 	static void checkFile(TemStreamGui &, String);
 	static void sendImage(String, Message::Source);
-	static void loadSurface(Message::Source, Bytes);
+	static void loadSurface(Message::Source, ByteList);
 	static void startPlayback(const Message::Source, const std::optional<String>, const float volume);
 	static void startRecordingAudio(const Message::Source, const std::optional<String>, const float silenceThreshold);
 	static void startRecordingWindowAudio(const Message::Source, const WindowProcess, const float silenceThreshold);

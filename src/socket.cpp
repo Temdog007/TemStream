@@ -96,7 +96,7 @@ bool TcpSocket::send(const void *data, size_t size)
 	}
 	return true;
 }
-bool TcpSocket::read(const int timeout, Bytes &bytes)
+bool TcpSocket::read(const int timeout, ByteList &bytes)
 {
 	switch (pollRead(timeout))
 	{
@@ -118,7 +118,7 @@ bool TcpSocket::read(const int timeout, Bytes &bytes)
 	{
 		return false;
 	}
-	bytes.insert(bytes.end(), buffer.begin(), buffer.begin() + r);
+	bytes.append(buffer.begin(), r);
 	return true;
 }
 bool TcpSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port) const

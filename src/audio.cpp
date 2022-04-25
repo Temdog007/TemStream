@@ -26,7 +26,7 @@ void Audio::close()
 		decoder = nullptr;
 	}
 }
-void Audio::enqueueAudio(const Bytes &bytes)
+void Audio::enqueueAudio(const ByteList &bytes)
 {
 	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
 										 fbuffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
@@ -52,12 +52,12 @@ void Audio::clearAudio()
 	Lock lock(id);
 	storedAudio.clear();
 }
-void Audio::useCurrentAudio(const std::function<void(const Bytes &)> &f) const
+void Audio::useCurrentAudio(const std::function<void(const ByteList &)> &f) const
 {
 	Lock lock(id);
 	f(currentAudio);
 }
-void Audio::useCurrentAudio(const std::function<void(Bytes &&)> &f)
+void Audio::useCurrentAudio(const std::function<void(ByteList &&)> &f)
 {
 	Lock lock(id);
 	f(std::move(currentAudio));
@@ -158,7 +158,7 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 		const auto start = storedAudio.begin();
 		const auto end = storedAudio.begin() + toCopy;
 		std::copy(start, end, data);
-		currentAudio.insert(currentAudio.end(), start, end);
+		currentAudio.append(start, end);
 		storedAudio.erase(start, end);
 	}
 }
@@ -187,7 +187,7 @@ void Audio::recordAudio(uint8_t *data, const int count)
 	}
 
 	currentAudio.clear();
-	currentAudio.insert(currentAudio.end(), data, data + count);
+	currentAudio.append(data, count);
 }
 bool Audio::isRecording() const
 {
@@ -239,7 +239,7 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 
 			Message::Packet packet;
 			packet.source = source;
-			packet.payload.emplace<Message::Audio>(Message::Audio{Bytes(buffer.begin(), buffer.begin() + result)});
+			packet.payload.emplace<Message::Audio>(Message::Audio{ByteList(buffer.data(), result)});
 			packets.push_back(std::move(packet));
 		}
 	}

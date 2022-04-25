@@ -98,7 +98,7 @@ class ServerConnection : public Connection
 		~ImageSaver();
 
 		void operator()(std::monostate);
-		void operator()(const Bytes &);
+		void operator()(const ByteList &);
 		void operator()(uint64_t);
 	};
 

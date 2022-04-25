@@ -78,6 +78,7 @@ endif()
 
 set(SOURCES 
     src/addrinfo.cpp 
+    src/byteList.cpp
     src/connection.cpp 
     src/logger.cpp
     src/main.cpp

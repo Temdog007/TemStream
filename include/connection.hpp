@@ -7,7 +7,7 @@ namespace TemStream
 class Connection
 {
   private:
-	Bytes bytes;
+	ByteList bytes;
 	std::optional<uint32_t> nextMessageSize;
 
   protected:

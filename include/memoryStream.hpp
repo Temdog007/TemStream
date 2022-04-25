@@ -7,7 +7,7 @@ namespace TemStream
 class MemoryBuffer : public std::basic_streambuf<char>
 {
   private:
-	Bytes buffer;
+	ByteList byteList;
 	std::streamsize writePoint, readPoint;
 
   public:
@@ -21,11 +21,11 @@ class MemoryBuffer : public std::basic_streambuf<char>
 
 	const char *getData() const
 	{
-		return buffer.data();
+		return reinterpret_cast<const char *>(byteList.data());
 	}
 	std::size_t getSize() const
 	{
-		return buffer.size();
+		return byteList.size();
 	}
 };
 class MemoryStream : public std::iostream

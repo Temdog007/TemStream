@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-MemoryBuffer::MemoryBuffer() : std::basic_streambuf<char>(), buffer(), writePoint(0), readPoint(0)
+MemoryBuffer::MemoryBuffer() : std::basic_streambuf<char>(), byteList(), writePoint(0), readPoint(0)
 {
 }
 MemoryBuffer::~MemoryBuffer()
@@ -10,20 +10,20 @@ MemoryBuffer::~MemoryBuffer()
 }
 std::streamsize MemoryBuffer::xsgetn(char *c, const std::streamsize size)
 {
-	const auto left = static_cast<std::streamsize>(buffer.size() - readPoint);
+	const auto left = static_cast<std::streamsize>(byteList.size() - readPoint);
 	if (left == 0)
 	{
 		return 0;
 	}
 
 	const auto copy = left < size ? left : size;
-	memcpy(c, buffer.data() + readPoint, copy);
+	memcpy(c, byteList.data() + readPoint, copy);
 	readPoint += copy;
 	return copy;
 }
 std::streamsize MemoryBuffer::xsputn(const char *c, const std::streamsize size)
 {
-	buffer.insert(buffer.begin() + writePoint, c, c + size);
+	byteList.insert(reinterpret_cast<const uint8_t *>(c), size, writePoint);
 	writePoint += size;
 	return size;
 }

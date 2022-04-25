@@ -259,6 +259,7 @@
 - [x] Make thread to handle decoding (all frames must be decoded in order)
 - [x] Handle texture resizing
 - [x] Optional OpenCV
+- [x] Make byte list class
 - [ ] Webcam streaming
 
 ### Apr 25, 2022

@@ -229,6 +229,9 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 #include "TemStreamConfig.h"
 
 #include "allocator.hpp"
+
+#include "byteList.hpp"
+
 #include "memoryStream.hpp"
 
 #include "logger.hpp"

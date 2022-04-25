@@ -42,7 +42,7 @@ bool Connection::readAndHandle(const int timeout)
 				return false;
 			}
 
-			bytes.erase(bytes.begin(), bytes.begin() + sizeof(uint32_t));
+			bytes.remove(sizeof(uint32_t));
 		}
 
 		if (*nextMessageSize == bytes.size())
@@ -50,7 +50,7 @@ bool Connection::readAndHandle(const int timeout)
 			Message::Packet packet;
 			{
 				MemoryStream m;
-				m.write(bytes.data(), bytes.size());
+				m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
 				cereal::PortableBinaryInputArchive ar(m);
 
 				ar(packet);
@@ -64,14 +64,14 @@ bool Connection::readAndHandle(const int timeout)
 		else if (*nextMessageSize < bytes.size())
 		{
 			MemoryStream m;
-			m.write(bytes.data(), *nextMessageSize);
+			m.write(reinterpret_cast<const char *>(bytes.data()), *nextMessageSize);
 			cereal::PortableBinaryInputArchive ar(m);
 
 			Message::Packet packet;
 			ar(packet);
 
 			const bool result = handlePacket(std::move(packet));
-			bytes.erase(bytes.begin(), bytes.begin() + *nextMessageSize);
+			bytes.remove(*nextMessageSize);
 			nextMessageSize = std::nullopt;
 			return result;
 		}

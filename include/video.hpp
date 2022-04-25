@@ -35,7 +35,7 @@ class Video
 
 	struct Frame
 	{
-		Bytes bytes;
+		ByteList bytes;
 		uint32_t width;
 		uint32_t height;
 
@@ -82,8 +82,8 @@ class Video
 		VPX &operator=(const VPX &) = delete;
 		VPX &operator=(VPX &&);
 
-		void encodeAndSend(const Bytes &, const Message::Source &);
-		std::optional<Bytes> decode(const Bytes &);
+		void encodeAndSend(const ByteList &, const Message::Source &);
+		std::optional<ByteList> decode(const ByteList &);
 
 		Dimensions getSize() const;
 
@@ -123,8 +123,8 @@ class Video
 
 		void addFrame(shared_ptr<Frame>);
 
-		Bytes resize(const Bytes &);
-		Bytes encode(const Bytes &) const;
+		ByteList resize(const ByteList &);
+		ByteList encode(const ByteList &) const;
 
 		static void startEncodingFrames(shared_ptr<FrameEncoder> &&, FrameData);
 	};

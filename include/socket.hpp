@@ -23,7 +23,7 @@ class Socket
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
 	virtual bool send(const void *, size_t) = 0;
-	virtual bool read(const int timeout, Bytes &) = 0;
+	virtual bool read(const int timeout, ByteList &) = 0;
 
 	virtual bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const = 0;
 };
@@ -46,7 +46,7 @@ class TcpSocket : public Socket
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
 	virtual bool send(const void *, size_t) override;
-	virtual bool read(const int timeout, Bytes &) override;
+	virtual bool read(const int timeout, ByteList &) override;
 
 	virtual bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const override;
 };

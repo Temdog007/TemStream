@@ -761,7 +761,7 @@ void ServerConnection::ImageSaver::operator()(uint64_t)
 	stream->getFileName(buffer);
 	std::filesystem::remove(buffer.data());
 }
-void ServerConnection::ImageSaver::operator()(const Bytes &bytes)
+void ServerConnection::ImageSaver::operator()(const ByteList &bytes)
 {
 	auto stream = ServerConnection::getStream(source);
 	if (!stream.has_value())

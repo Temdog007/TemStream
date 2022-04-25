@@ -47,8 +47,7 @@ void StreamDisplay::updateTexture(const Video::Frame &frame)
 	int pitch;
 	if (SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0)
 	{
-		std::copy(frame.bytes.begin(), frame.bytes.end(), reinterpret_cast<char *>(pixels));
-		// memcpy(pixels, frame.bytes.data(), frame.bytes.size());
+		memcpy(pixels, frame.bytes.data(), frame.bytes.size());
 	}
 	else
 	{
@@ -141,14 +140,13 @@ StreamDisplay::ImageMessageHandler::~ImageMessageHandler()
 }
 bool StreamDisplay::ImageMessageHandler::operator()(const uint64_t size)
 {
-	Bytes bytes;
-	bytes.reserve(size);
-	display.data.emplace<Bytes>(std::move(bytes));
+	ByteList bytes(size);
+	display.data.emplace<ByteList>(std::move(bytes));
 	return true;
 }
 bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
 {
-	if (Bytes *bytes = std::get_if<Bytes>(&display.data))
+	if (ByteList *bytes = std::get_if<ByteList>(&display.data))
 	{
 		Task::addTask(std::async(TaskPolicy, Task::loadSurface, display.getSource(), std::move(*bytes)));
 		display.data.emplace<std::monostate>();
@@ -158,16 +156,16 @@ bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
 	logger->AddError("Stream display is in an invalid state");
 	return false;
 }
-bool StreamDisplay::ImageMessageHandler::operator()(Bytes &&bytes)
+bool StreamDisplay::ImageMessageHandler::operator()(ByteList &&bytes)
 {
-	auto ptr = std::get_if<Bytes>(&display.data);
+	auto ptr = std::get_if<ByteList>(&display.data);
 	if (ptr == nullptr)
 	{
 		logger->AddError("Stream display is in an invalid state");
 		return false;
 	}
 
-	ptr->insert(ptr->end(), bytes.begin(), bytes.end());
+	ptr->append(bytes);
 	return true;
 }
 bool StreamDisplay::operator()(Message::Audio &audio)
@@ -323,7 +321,7 @@ void StreamDisplay::Draw::drawPoints(const List<float> &list, const float audioW
 }
 bool StreamDisplay::Draw::operator()(CheckAudio &t)
 {
-	const auto bfunc = [&t](const Bytes &b) {
+	const auto bfunc = [&t](const ByteList &b) {
 		constexpr float speed = 0.75f;
 		if (b.empty())
 		{
@@ -393,7 +391,7 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	return operator()(t.texture);
 }
-bool StreamDisplay::Draw::operator()(Bytes &)
+bool StreamDisplay::Draw::operator()(ByteList &)
 {
 	return true;
 }
@@ -425,7 +423,7 @@ StreamDisplay::ContextMenu::~ContextMenu()
 void StreamDisplay::ContextMenu::operator()(std::monostate)
 {
 }
-void StreamDisplay::ContextMenu::operator()(Bytes &)
+void StreamDisplay::ContextMenu::operator()(ByteList &)
 {
 }
 void StreamDisplay::ContextMenu::operator()(String &s)

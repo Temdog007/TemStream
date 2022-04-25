@@ -24,7 +24,7 @@ class Audio
 	const Message::Source source;
 	String name;
 	Deque<char> storedAudio;
-	Bytes currentAudio;
+	ByteList currentAudio;
 	SDL_AudioSpec spec;
 	union {
 		OpusDecoder *decoder;
@@ -77,7 +77,7 @@ class Audio
 	Audio(Audio &&) = delete;
 	virtual ~Audio();
 
-	void enqueueAudio(const Bytes &);
+	void enqueueAudio(const ByteList &);
 
 	bool encodeAndSendAudio(ClientConnetion &);
 
@@ -131,8 +131,8 @@ class Audio
 		return name;
 	}
 
-	void useCurrentAudio(const std::function<void(const Bytes &)> &) const;
-	void useCurrentAudio(const std::function<void(Bytes &&)> &);
+	void useCurrentAudio(const std::function<void(const ByteList &)> &) const;
+	void useCurrentAudio(const std::function<void(ByteList &&)> &);
 
 	bool isLoudEnough(float *, int) const;
 

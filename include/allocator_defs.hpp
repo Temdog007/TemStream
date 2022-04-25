@@ -134,7 +134,6 @@ extern String &trim(String &);
 extern String &ltrim(String &);
 extern String &rtrim(String &);
 
-using Bytes = List<char>;
 using StringList = List<String>;
 
 extern std::ostream &printMemory(std::ostream &os, const char *label, const size_t mem);

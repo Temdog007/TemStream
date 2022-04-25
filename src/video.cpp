@@ -162,9 +162,9 @@ Video::VPX &Video::VPX::operator=(Video::VPX &&v)
 	memset(&v.image, 0, sizeof(v.image));
 	return *this;
 }
-void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source)
+void Video::VPX::encodeAndSend(const ByteList &bytes, const Message::Source &source)
 {
-	const char *ptr = bytes.data();
+	auto *ptr = bytes.data();
 	for (int plane = 0; plane < 3; ++plane)
 	{
 		unsigned char *buf = image.planes[plane];
@@ -206,7 +206,7 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 		packet.source = source;
 		Message::Video v;
 		const char *data = reinterpret_cast<const char *>(pkt->data.frame.buf);
-		v.bytes = Bytes(data, data + pkt->data.frame.sz);
+		v.bytes = ByteList(data, pkt->data.frame.sz);
 		v.width = vpx_img_plane_width(&image, 0);
 		v.height = vpx_img_plane_height(&image, 0);
 		packet.payload.emplace<Message::Video>(std::move(v));
@@ -222,7 +222,7 @@ void Video::VPX::encodeAndSend(const Bytes &bytes, const Message::Source &source
 		deallocate(packets);
 	}
 }
-std::optional<Bytes> Video::VPX::decode(const Bytes &bytes)
+std::optional<ByteList> Video::VPX::decode(const ByteList &bytes)
 {
 	vpx_codec_err_t res =
 		vpx_codec_decode(&ctx, reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size(), NULL, VPX_DL_REALTIME);
@@ -233,8 +233,7 @@ std::optional<Bytes> Video::VPX::decode(const Bytes &bytes)
 	}
 	vpx_codec_iter_t iter = NULL;
 	vpx_image_t *img = NULL;
-	Bytes rval;
-	rval.reserve(MB(8));
+	ByteList rval(MB(8));
 
 	while ((img = vpx_codec_get_frame(&ctx, &iter)) != NULL)
 	{
@@ -247,7 +246,7 @@ std::optional<Bytes> Video::VPX::decode(const Bytes &bytes)
 			const int h = vpx_img_plane_height(img, plane);
 			for (int y = 0; y < h; ++y)
 			{
-				rval.insert(rval.end(), buf, buf + w);
+				rval.append(buf, w);
 				buf += stride;
 			}
 		}
@@ -301,11 +300,10 @@ std::optional<Video::VPX> Video::VPX::createDecoder()
 	(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
 	return std::nullopt;
 }
-Bytes resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t oldHeight, const uint32_t newWidth,
-				  const uint32_t newHeight)
+ByteList resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t oldHeight, const uint32_t newWidth,
+					 const uint32_t newHeight)
 {
-	Bytes b;
-	b.resize(newWidth * newHeight);
+	ByteList b(newWidth * newHeight);
 	for (uint32_t y = 0; y < newHeight; ++y)
 	{
 		const float ypercent = (float)y / (float)newHeight;
@@ -329,18 +327,18 @@ void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 		cv::resize(m, output, cv::Size(), (double)w / (double)width, (double)h / (double)height, cv::INTER_LANCZOS4);
 	}
 	uchar *data = output.data;
-	bytes = Bytes(data, data + (output.total() * output.elemSize()));
+	bytes = ByteList(data, output.total() * output.elemSize());
 #else
 	{
-		Bytes Y = resizePlane(bytes.data(), width, height, w, h);
+		ByteList Y = resizePlane(bytes.data(), width, height, w, h);
 		frame.bytes.insert(frame.bytes.end(), Y.begin(), Y.end());
 	}
 	{
-		Bytes U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
+		ByteList U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
 		frame.bytes.insert(frame.bytes.end(), U.begin(), U.end());
 	}
 	{
-		Bytes V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
+		ByteList V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
 		frame.bytes.insert(frame.bytes.end(), V.begin(), V.end());
 	}
 #endif
