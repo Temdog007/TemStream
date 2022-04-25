@@ -17,11 +17,9 @@ ByteList::ByteList(const ByteList &list) : buffer(nullptr), used(0), total(0)
 {
 	append(list);
 }
-ByteList::ByteList(ByteList &&list) noexcept : buffer(list.buffer), used(list.used), total(list.total)
+ByteList::ByteList(ByteList &&list) noexcept : buffer(nullptr), used(0), total(0)
 {
-	list.buffer = nullptr;
-	list.used = 0;
-	list.total = 0;
+	swap(list);
 }
 ByteList::~ByteList()
 {
@@ -42,6 +40,7 @@ ByteList &ByteList::operator=(const ByteList &list)
 ByteList &ByteList::operator=(ByteList &&list)
 {
 	swap(list);
+	list.clear(true);
 	return *this;
 }
 const uint8_t &ByteList::operator[](const size_t index) const
