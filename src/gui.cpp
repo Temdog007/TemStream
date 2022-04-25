@@ -797,20 +797,40 @@ void TemStreamGui::draw()
 			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
 			auto &style = ImGui::GetStyle();
 			const bool isLight = colorIsLight(style.Colors[ImGuiCol_WindowBg]);
-			mLogger.viewLogs([&style, isLight](const Logger::Log &log) {
+			auto &filter = configuration.showLogsFilter;
+			ImGui::Checkbox("Errors", &filter.errors);
+			ImGui::SameLine();
+			ImGui::Checkbox("Warnings", &filter.warnings);
+			ImGui::SameLine();
+			ImGui::Checkbox("Basic", &filter.info);
+			ImGui::SameLine();
+			ImGui::Checkbox("Trace", &filter.trace);
+			mLogger.viewLogs([&style, isLight, &filter](const Logger::Log &log) {
 				switch (log.first)
 				{
 				case Logger::Trace:
-					ImGui::TextColored(Colors::GetCyan(isLight), "%s", log.second.c_str());
+					if (filter.trace)
+					{
+						ImGui::TextColored(Colors::GetCyan(isLight), "%s", log.second.c_str());
+					}
 					break;
 				case Logger::Info:
-					ImGui::TextColored(style.Colors[ImGuiCol_Text], "%s", log.second.c_str());
+					if (filter.info)
+					{
+						ImGui::TextColored(style.Colors[ImGuiCol_Text], "%s", log.second.c_str());
+					}
 					break;
 				case Logger::Warning:
-					ImGui::TextColored(Colors::GetYellow(isLight), "%s", log.second.c_str());
+					if (filter.warnings)
+					{
+						ImGui::TextColored(Colors::GetYellow(isLight), "%s", log.second.c_str());
+					}
 					break;
 				case Logger::Error:
-					ImGui::TextColored(Colors::GetRed(isLight), "%s", log.second.c_str());
+					if (filter.errors)
+					{
+						ImGui::TextColored(Colors::GetRed(isLight), "%s", log.second.c_str());
+					}
 					break;
 				default:
 					break;

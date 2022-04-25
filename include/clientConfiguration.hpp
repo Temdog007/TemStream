@@ -14,7 +14,7 @@
 			CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold),                      \
 			CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs), CEREAL_NVP(showStreams), CEREAL_NVP(showDisplays),            \
 			CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats),                 \
-			CEREAL_NVP(showColors), CEREAL_NVP(colors))
+			CEREAL_NVP(showColors), CEREAL_NVP(showLogsFilter), CEREAL_NVP(colors))
 namespace TemStream
 {
 class ColorList
@@ -66,6 +66,30 @@ struct Configuration
 	bool showFont;
 	bool showStats;
 	bool showColors;
+	struct ShowLogsFilter
+	{
+		bool errors;
+		bool warnings;
+		bool info;
+		bool trace;
+
+		ShowLogsFilter() : errors(true), warnings(true), info(true), trace(false)
+		{
+		}
+		~ShowLogsFilter()
+		{
+		}
+
+		template <class Archive> void save(Archive &archive) const
+		{
+			archive(CEREAL_NVP(errors), CEREAL_NVP(warnings), CEREAL_NVP(info), CEREAL_NVP(trace));
+		}
+
+		template <class Archive> void load(Archive &archive)
+		{
+			archive(CEREAL_NVP(errors), CEREAL_NVP(warnings), CEREAL_NVP(info), CEREAL_NVP(trace));
+		}
+	} showLogsFilter;
 
 	Configuration();
 	~Configuration();

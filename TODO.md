@@ -262,6 +262,7 @@
 - [ ] Webcam streaming
 
 ### Apr 25, 2022
+- [ ] Delete old C code
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
