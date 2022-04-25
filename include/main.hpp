@@ -251,6 +251,8 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 
 #include "connection.hpp"
 
+#include "time.hpp"
+
 #if TEMSTREAM_SERVER
 #include "serverConfiguration.hpp"
 #include "serverConnection.hpp"

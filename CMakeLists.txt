@@ -85,6 +85,7 @@ set(SOURCES
     src/misc.cpp
     src/stream.cpp
     src/socket.cpp
+    src/time.cpp
   )
 
 # Compile client

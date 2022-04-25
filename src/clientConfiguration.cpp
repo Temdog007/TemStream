@@ -97,35 +97,4 @@ void Configuration::fromAddress(std::string &&s)
 {
 	address.hostname = std::move(s);
 }
-std::variant<std::string, std::pair<std::string, std::string>> Configuration::toCredentials() const
-{
-	struct Foo
-	{
-		std::variant<std::string, std::pair<std::string, std::string>> operator()(const String &s)
-		{
-			return std::string(s);
-		}
-		std::variant<std::string, std::pair<std::string, std::string>> operator()(
-			const Message::UsernameAndPassword &up)
-		{
-			return std::make_pair<std::string, std::string>(std::string(up.first), std::string(up.second));
-		}
-	};
-	return std::visit(Foo(), credentials);
-}
-void Configuration::fromCredentials(std::variant<std::string, std::pair<std::string, std::string>> &&c)
-{
-	struct Foo
-	{
-		Message::Credentials operator()(std::string &&s)
-		{
-			return String(std::move(s));
-		}
-		Message::Credentials operator()(std::pair<std::string, std::string> &&up)
-		{
-			return Message::UsernameAndPassword(std::move(up.first), std::move(up.second));
-		}
-	};
-	credentials = std::visit(Foo(), std::move(c));
-}
 } // namespace TemStream

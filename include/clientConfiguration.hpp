@@ -7,14 +7,12 @@
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
 	auto cc = toCustomColors();                                                                                        \
 	auto ff = toFontFiles();                                                                                           \
-	auto cred = toCredentials();                                                                                       \
 	auto hostname = toAddress();                                                                                       \
-	archive(cereal::make_nvp("customColors", cc), cereal::make_nvp("fontFiles", ff),                                   \
-			cereal::make_nvp("credentials", cred), CEREAL_NVP(hostname), cereal::make_nvp("port", address.port),       \
-			CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold),                      \
-			CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs), CEREAL_NVP(showStreams), CEREAL_NVP(showDisplays),            \
-			CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats),                 \
-			CEREAL_NVP(showColors), CEREAL_NVP(showLogsFilter), CEREAL_NVP(colors))
+	archive(cereal::make_nvp("customColors", cc), cereal::make_nvp("fontFiles", ff), CEREAL_NVP(hostname),             \
+			cereal::make_nvp("port", address.port), CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume),                   \
+			CEREAL_NVP(defaultSilenceThreshold), CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs), CEREAL_NVP(showStreams), \
+			CEREAL_NVP(showDisplays), CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont),              \
+			CEREAL_NVP(showStats), CEREAL_NVP(showColors), CEREAL_NVP(showLogsFilter), CEREAL_NVP(colors))
 namespace TemStream
 {
 class ColorList
@@ -96,15 +94,16 @@ struct Configuration
 
 	template <class Archive> void save(Archive &archive) const
 	{
+		// Don't save credentials
 		CONFIGURATION_ARCHIVE(archive);
 	}
 
 	template <class Archive> void load(Archive &archive)
 	{
+		// Don't load credentials
 		CONFIGURATION_ARCHIVE(archive);
 		fromCustomColors(std::move(cc));
 		fromFontFiles(std::move(ff));
-		fromCredentials(std::move(cred));
 		fromAddress(std::move(hostname));
 	}
 
@@ -113,9 +112,6 @@ struct Configuration
 
 	std::vector<std::string> toFontFiles() const;
 	void fromFontFiles(std::vector<std::string> &&);
-
-	std::variant<std::string, std::pair<std::string, std::string>> toCredentials() const;
-	void fromCredentials(std::variant<std::string, std::pair<std::string, std::string>> &&);
 
 	std::string toAddress() const;
 	void fromAddress(std::string &&);
