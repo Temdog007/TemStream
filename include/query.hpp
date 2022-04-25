@@ -74,10 +74,9 @@ class QueryVideo : public IQuery
   private:
 	struct WindowSelection
 	{
-		List<int32_t> scalings;
 		Video::FrameData frameData;
 		WindowProcesses windows;
-		int32_t nextRatio;
+		int32_t scale;
 		int selected;
 	};
 	using VideoSelection = std::variant<String, WindowSelection>;

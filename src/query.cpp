@@ -181,7 +181,7 @@ bool QueryVideo::draw()
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
 			selection.emplace<WindowSelection>(
-				WindowSelection{{100}, {0, 0, 24, 10, 48}, Video::getRecordableWindows(), 50, 0});
+				WindowSelection{{0, 0, 24, 10, 48}, Video::getRecordableWindows(), 100, 0});
 			break;
 		default:
 			break;
@@ -200,32 +200,10 @@ bool QueryVideo::draw()
 			}
 			ImGui::SliderInt("Frames per second", &ws.frameData.fps, 1, 120);
 			ImGui::SliderInt("Bitrate in Mbps", &ws.frameData.bitrateInMbps, 1, 100);
+			ImGui::SliderInt("Scale", &ws.scale, 1, 100);
+#if !TEMSTREAM_USE_OPENH264
 			ImGui::SliderInt("Key Frame Interval", &ws.frameData.keyFrameInterval, 1, 1000);
-			ImGui::Separator();
-			if (ImGui::CollapsingHeader("Scalings"))
-			{
-				if (!ws.scalings.empty())
-				{
-					for (auto iter = ws.scalings.begin(); iter != ws.scalings.end();)
-					{
-						ImGui::Text("%d%%", *iter);
-						ImGui::SameLine();
-						if (ImGui::Button("Remove"))
-						{
-							iter = ws.scalings.erase(iter);
-						}
-						else
-						{
-							++iter;
-						}
-					}
-				}
-				ImGui::SliderInt("Next Scaling", &ws.nextRatio, 1, 100);
-				if (ImGui::Button("Add Scaling"))
-				{
-					ws.scalings.push_back(ws.nextRatio);
-				}
-			}
+#endif
 		}
 		void operator()(String &s)
 		{
@@ -243,16 +221,12 @@ void QueryVideo::execute() const
 		TemStreamGui &gui;
 		void operator()(const WindowSelection &ws) const
 		{
-			if (ws.scalings.empty())
-			{
-				return;
-			}
 			int i = 0;
 			for (const auto &wp : ws.windows)
 			{
 				if (i == ws.selected)
 				{
-					auto ptr = Video::recordWindow(wp, source, ws.scalings, ws.frameData);
+					auto ptr = Video::recordWindow(wp, source, ws.scale, ws.frameData);
 					gui.addVideo(std::move(ptr));
 					break;
 				}

@@ -53,8 +53,7 @@ class Video
 	};
 
 	static WindowProcesses getRecordableWindows();
-	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
-										  Video::FrameData);
+	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, int32_t, Video::FrameData);
 
 	class EncoderDecoder
 	{

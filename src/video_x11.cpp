@@ -285,8 +285,8 @@ end:
 	(*logger)(Logger::Trace) << "Ending recording of: " << data->window.name << std::endl;
 }
 
-shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
-									  const List<int32_t> &scalings, FrameData fd)
+shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, const int32_t scale,
+									  FrameData fd)
 {
 	FrameEncoders encoders;
 	{
@@ -300,12 +300,11 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 		fd.width = size->first;
 		fd.height = size->second;
 	}
-	for (const auto ratio : scalings)
-	{
-		auto encoder = tem_shared<FrameEncoder>(source, ratio);
-		encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));
-		FrameEncoder::startEncodingFrames(std::move(encoder), fd);
-	}
+
+	auto encoder = tem_shared<FrameEncoder>(source, scale);
+	encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));
+	FrameEncoder::startEncodingFrames(std::move(encoder), fd);
+
 	auto converter = tem_shared<Converter>(std::move(encoders), source);
 	auto video = tem_shared<Video>(source, wp);
 	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fd.fps);

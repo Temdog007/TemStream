@@ -154,6 +154,10 @@ if(COMPILE_CLIENT)
     target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_CUSTOM_ALLOCATOR)
   endif()
 
+  if(OPENH264_ENCODING)
+    target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_OPENH264)
+  endif()
+
   if(USE_OPEN_CV)
     find_package(OpenCV REQUIRED)
     target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_OPENCV)
