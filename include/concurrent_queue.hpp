@@ -16,6 +16,12 @@ template <typename T> class ConcurrentQueue
 		return std::unique_lock<std::mutex>(mutex);
 	}
 
+	static void clearQueue(Queue<T> &queue)
+	{
+		Queue<T> empty;
+		empty.swap(queue);
+	}
+
   public:
 	ConcurrentQueue() : queue(), cv(), mutex()
 	{
@@ -88,8 +94,7 @@ template <typename T> class ConcurrentQueue
 		if (queue.size() > size)
 		{
 			size = queue.size();
-			Queue<T> empty;
-			empty.swap(queue);
+			clearQueue(queue);
 			return size;
 		}
 		cv.notify_all();
@@ -102,6 +107,19 @@ template <typename T> class ConcurrentQueue
 		R r = f(queue);
 		cv.notify_all();
 		return r;
+	}
+
+	size_t size() const
+	{
+		auto lck = lock();
+		return queue.size();
+	}
+
+	void clear()
+	{
+		auto lck = lock();
+		clearQueue(queue);
+		cv.notify_all();
 	}
 };
 } // namespace TemStream

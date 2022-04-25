@@ -326,21 +326,12 @@ void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 		cv::Mat m(height + height / 2U, width, CV_8UC1, bytes.data());
 		cv::resize(m, output, cv::Size(), (double)w / (double)width, (double)h / (double)height, cv::INTER_LANCZOS4);
 	}
-	uchar *data = output.data;
-	bytes = ByteList(data, output.total() * output.elemSize());
+	bytes = ByteList(output.data, output.total() * output.elemSize());
 #else
-	{
-		ByteList Y = resizePlane(bytes.data(), width, height, w, h);
-		frame.bytes.insert(frame.bytes.end(), Y.begin(), Y.end());
-	}
-	{
-		ByteList U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
-		frame.bytes.insert(frame.bytes.end(), U.begin(), U.end());
-	}
-	{
-		ByteList V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
-		frame.bytes.insert(frame.bytes.end(), V.begin(), V.end());
-	}
+	ByteList Y = resizePlane(bytes.data(), width, height, w, h);
+	ByteList U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
+	ByteList V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
+	bytes = Y + U + V;
 #endif
 	width = w;
 	height = h;

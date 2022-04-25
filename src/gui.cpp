@@ -116,9 +116,29 @@ void TemStreamGui::updatePeer()
 void TemStreamGui::decodeVideoPackets()
 {
 	Map<Message::Source, Video::VPX> map;
+	auto lastCheck = std::chrono::system_clock::now();
 	using namespace std::chrono_literals;
 	while (!appDone)
 	{
+		{
+			const auto now = std::chrono::system_clock::now();
+			if (now - lastCheck < 1s)
+			{
+				for (auto iter = map.begin(); iter != map.end();)
+				{
+					if (displays.find(iter->first) == displays.end())
+					{
+						(*logger)(Logger::Trace) << "Removed " << iter->first << " from decoding map" << std::endl;
+						iter = map.erase(iter);
+					}
+					else
+					{
+						++iter;
+					}
+				}
+			}
+			lastCheck = now;
+		}
 		if (auto result = videoPackets.clearIfGreaterThan(5))
 		{
 			(*logger)(Logger::Warning) << "Dropping " << *result << " received video frames" << std::endl;
@@ -148,6 +168,8 @@ void TemStreamGui::decodeVideoPackets()
 				continue;
 			}
 			iter = pair.first;
+			lastCheck = std::chrono::system_clock::now();
+			(*logger)(Logger::Trace) << "Added " << iter->first << " from decoding map" << std::endl;
 		}
 		if (iter->second.getHeight() != packet.height || iter->second.getWidth() != packet.width)
 		{

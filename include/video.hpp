@@ -39,13 +39,6 @@ class Video
 		uint32_t width;
 		uint32_t height;
 
-		template <typename T> uint8_t getPixel(T x, T y) const
-		{
-			x = std::clamp(x, 0, width - 1);
-			y = std::clamp(y, 0, height - 1);
-			return bytes[x + y * width];
-		}
-
 		void resize(uint32_t ratio);
 		void resizeTo(uint32_t, uint32_t);
 	};
@@ -201,6 +194,6 @@ template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV
 	{
 		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;
 	}
-	(*logger)(Logger::Trace) << "Ending converter thread" << std::endl;
+	(*logger)(Logger::Trace) << "Ending converter thread: " << ptr->source << std::endl;
 }
 } // namespace TemStream

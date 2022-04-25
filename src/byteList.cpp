@@ -28,6 +28,7 @@ ByteList::~ByteList()
 void ByteList::deepClear()
 {
 	deallocate(buffer);
+	buffer = nullptr;
 	used = 0;
 	total = 0;
 }
