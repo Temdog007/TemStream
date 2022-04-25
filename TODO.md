@@ -258,7 +258,7 @@
 - [x] Window streaming
 - [x] Make thread to handle decoding (all frames must be decoded in order)
 - [x] Handle texture resizing
-- [ ] Optional OpenCV
+- [x] Optional OpenCV
 - [ ] Webcam streaming
 
 ### Apr 25, 2022

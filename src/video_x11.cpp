@@ -191,7 +191,7 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 	temp.insert(temp.end(), data, data + (s.width * s.height * 4));
 	cv::Mat m(frame->height, frame->width, CV_8UC4, temp.data());
 	cv::Mat yuv;
-	cv::cvtColor(m, yuv, cv::COLOR_RGBA2YUV_I420);
+	cv::cvtColor(m, yuv, cv::COLOR_RGBA2YUV_YV12);
 	uchar *bytes = yuv.data;
 	frame->bytes = Bytes(bytes, bytes + (yuv.total() * yuv.elemSize()));
 	return frame;
