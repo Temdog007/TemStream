@@ -115,7 +115,7 @@ void TemStreamGui::updatePeer()
 
 void TemStreamGui::decodeVideoPackets()
 {
-	Map<Message::Source, Video::VPX> map;
+	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> map;
 	auto lastCheck = std::chrono::system_clock::now();
 	using namespace std::chrono_literals;
 	while (!appDone)
@@ -155,14 +155,14 @@ void TemStreamGui::decodeVideoPackets()
 		auto iter = map.find(source);
 		if (iter == map.end())
 		{
-			auto vpx = Video::VPX::createDecoder();
-			if (!vpx)
+			auto decoder = Video::createDecoder();
+			if (!decoder)
 			{
 				continue;
 			}
-			vpx->setWidth(packet.width);
-			vpx->setHeight(packet.height);
-			auto pair = map.try_emplace(source, std::move(*vpx));
+			decoder->setWidth(packet.width);
+			decoder->setHeight(packet.height);
+			auto pair = map.try_emplace(source, std::move(decoder));
 			if (!pair.second)
 			{
 				continue;
@@ -171,19 +171,19 @@ void TemStreamGui::decodeVideoPackets()
 			lastCheck = std::chrono::system_clock::now();
 			(*logger)(Logger::Trace) << "Added " << iter->first << " from decoding map" << std::endl;
 		}
-		if (iter->second.getHeight() != packet.height || iter->second.getWidth() != packet.width)
+		if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
 		{
-			auto vpx = Video::VPX::createDecoder();
-			if (!vpx)
+			auto decoder = Video::createDecoder();
+			if (!decoder)
 			{
 				continue;
 			}
-			vpx->setWidth(packet.width);
-			vpx->setHeight(packet.height);
-			iter->second = std::move(*vpx);
+			decoder->setWidth(packet.width);
+			decoder->setHeight(packet.height);
+			iter->second.swap(decoder);
 		}
 
-		auto output = iter->second.decode(packet.bytes);
+		auto output = iter->second->decode(packet.bytes);
 		if (!output)
 		{
 			continue;

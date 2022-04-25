@@ -56,50 +56,26 @@ class Video
 	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, const List<int32_t> &,
 										  Video::FrameData);
 
-	class VPX
+	class EncoderDecoder
 	{
-	  private:
-		vpx_codec_ctx_t ctx;
-		vpx_image_t image;
-		int frameCount;
-		int keyFrameInterval;
-		int width;
-		int height;
-
 	  public:
-		VPX();
-		VPX(const VPX &) = delete;
-		VPX(VPX &&);
-		~VPX();
-
-		VPX &operator=(const VPX &) = delete;
-		VPX &operator=(VPX &&);
-
-		void encodeAndSend(const ByteList &, const Message::Source &);
-		std::optional<ByteList> decode(const ByteList &);
-
-		Dimensions getSize() const;
-
-		int getWidth() const
+		~EncoderDecoder()
 		{
-			return width;
-		}
-		void setWidth(int w)
-		{
-			width = w;
-		}
-		int getHeight() const
-		{
-			return height;
-		}
-		void setHeight(int h)
-		{
-			height = h;
 		}
 
-		static std::optional<VPX> createEncoder(FrameData);
-		static std::optional<VPX> createDecoder();
+		virtual void encodeAndSend(const ByteList &, const Message::Source &) = 0;
+		virtual std::optional<ByteList> decode(const ByteList &) = 0;
+
+		virtual Dimensions getSize() const = 0;
+
+		virtual int getWidth() const = 0;
+		virtual void setWidth(int) = 0;
+		virtual int getHeight() const = 0;
+		virtual void setHeight(int) = 0;
 	};
+
+	static unique_ptr<EncoderDecoder> createEncoder(Video::FrameData);
+	static unique_ptr<EncoderDecoder> createDecoder();
 
 	class FrameEncoder
 	{

@@ -11,6 +11,7 @@ option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
 option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
 option(XCB_RECORD "Record windows with XCB" ON)
+option(VPX_ENCODING "Use libvpx to encode video" ON)
 option(USE_OPEN_CV "Use OpenCV library" ON)
 
 set(BUILD_SANDBOX OFF)
@@ -76,6 +77,10 @@ if(XCB_RECORD)
   set(VIDEO_SOURCE src/video_x11.cpp)
 endif()
 
+if(VPX_ENCODING)
+  set(ENCODING_SOURCE src/vpx.cpp)
+endif()
+
 set(SOURCES 
     src/addrinfo.cpp 
     src/byteList.cpp
@@ -91,7 +96,12 @@ set(SOURCES
 
 # Compile client
 if(COMPILE_CLIENT)
-  add_executable(TemStream ${SOURCES} ${CLIENT_SOURCES} ${AUDIO_SOURCE} ${VIDEO_SOURCE})
+  add_executable(TemStream 
+    ${SOURCES} 
+    ${CLIENT_SOURCES} 
+    ${AUDIO_SOURCE} 
+    ${VIDEO_SOURCE} 
+    ${ENCODING_SOURCE})
 
   if(XCB_RECORD)
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
