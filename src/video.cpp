@@ -76,6 +76,8 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 			auto size = encoder->getSize();
 			if (data->width != size->first || data->height != size->second)
 			{
+				(*logger)(Logger::Trace) << "Resizing vidoe encoder to " << data->width << 'x' << data->height
+										 << std::endl;
 				FrameData fd = frameData;
 				fd.width = data->width;
 				fd.height = data->height;
@@ -115,7 +117,7 @@ void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 #else
 	ByteList Y = resizePlane(bytes.data(), width, height, w, h);
 	ByteList U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
-	ByteList V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
+	ByteList V = resizePlane(U + (width * height / 4), width / 2, height / 2, w / 2, h / 2);
 	bytes = Y + U + V;
 #endif
 	width = w;
@@ -123,6 +125,10 @@ void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 }
 void Video::Frame::resize(uint32_t ratio)
 {
-	resizeTo(width * ratio / 100, height * ratio / 100);
+	uint32_t w = width * ratio / 100;
+	w -= w % 2;
+	uint32_t h = height * ratio / 100;
+	h -= h % 2;
+	resizeTo(w, h);
 }
 } // namespace TemStream
