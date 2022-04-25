@@ -260,6 +260,7 @@
 - [x] Handle texture resizing
 - [x] Optional OpenCV
 - [x] Make byte list class
+- [ ] Make logs scroll to bottom
 - [ ] Implement OpenH264 for video
 
 ### Apr 25, 2022

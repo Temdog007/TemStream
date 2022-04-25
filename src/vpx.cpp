@@ -37,10 +37,10 @@ int vpx_img_plane_height(const vpx_image_t *img, const int plane)
 
 namespace TemStream
 {
-VPX::VPX() : ctx({}), image({}), frameCount(0), keyFrameInterval(120), width(800), height(600)
+VPX::VPX() : ctx({}), image({}), frameCount(0), keyFrameInterval(120)
 {
 }
-VPX::VPX(VPX &&v) : ctx({}), image({}), frameCount(), keyFrameInterval(), width(0), height(0)
+VPX::VPX(VPX &&v) : ctx({}), image({}), frameCount(), keyFrameInterval()
 {
 	swap(v);
 }
@@ -65,7 +65,7 @@ void VPX::swap(VPX &v)
 	std::swap(width, v.width);
 	std::swap(height, v.height);
 }
-void VPX::encodeAndSend(const ByteList &bytes, const Message::Source &source)
+void VPX::encodeAndSend(ByteList &bytes, const Message::Source &source)
 {
 	auto *ptr = bytes.data();
 	for (int plane = 0; plane < 3; ++plane)
@@ -125,22 +125,22 @@ void VPX::encodeAndSend(const ByteList &bytes, const Message::Source &source)
 		deallocate(packets);
 	}
 }
-std::optional<ByteList> VPX::decode(const ByteList &bytes)
+bool VPX::decode(ByteList &bytes)
 {
 	vpx_codec_err_t res =
 		vpx_codec_decode(&ctx, reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size(), NULL, VPX_DL_REALTIME);
 	if (res != VPX_CODEC_OK)
 	{
 		(*logger)(Logger::Error) << "Failed to decode video: " << vpx_codec_err_to_string(res) << std::endl;
-		return std::nullopt;
+		return false;
 	}
 	vpx_codec_iter_t iter = NULL;
 	vpx_image_t *img = NULL;
-	ByteList rval(MB(8));
+	bytes.reallocate(MB(8));
 
 	while ((img = vpx_codec_get_frame(&ctx, &iter)) != NULL)
 	{
-		rval.clear();
+		bytes.clear();
 		for (int plane = 0; plane < 3; ++plane)
 		{
 			const char *buf = reinterpret_cast<const char *>(img->planes[plane]);
@@ -149,14 +149,14 @@ std::optional<ByteList> VPX::decode(const ByteList &bytes)
 			const int h = vpx_img_plane_height(img, plane);
 			for (int y = 0; y < h; ++y)
 			{
-				rval.append(buf, w);
+				bytes.append(buf, w);
 				buf += stride;
 			}
 		}
 	}
-	return rval;
+	return true;
 }
-unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd)
+unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, const bool)
 {
 	VPX vpx;
 	vpx_codec_enc_cfg_t cfg;
@@ -193,12 +193,12 @@ unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd)
 }
 unique_ptr<Video::EncoderDecoder> Video::createDecoder()
 {
-	auto vpx = tem_unique<VPX>();
+	VPX vpx;
 	struct vpx_codec_dec_cfg cfg;
 	cfg.threads = std::thread::hardware_concurrency();
-	if (vpx_codec_dec_init(&vpx->ctx, codec_decoder_interface(), &cfg, 0) == 0)
+	if (vpx_codec_dec_init(&vpx.ctx, codec_decoder_interface(), &cfg, 0) == 0)
 	{
-		return vpx;
+		return tem_unique<VPX>(std::move(vpx));
 	}
 	(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
 	return nullptr;

@@ -150,7 +150,7 @@ void TemStreamGui::decodeVideoPackets()
 			continue;
 		}
 
-		const auto &[source, packet] = *result;
+		auto &[source, packet] = *result;
 
 		auto iter = map.find(source);
 		if (iter == map.end())
@@ -183,8 +183,7 @@ void TemStreamGui::decodeVideoPackets()
 			iter->second.swap(decoder);
 		}
 
-		auto output = iter->second->decode(packet.bytes);
-		if (!output)
+		if (!iter->second->decode(packet.bytes))
 		{
 			continue;
 		}
@@ -194,7 +193,7 @@ void TemStreamGui::decodeVideoPackets()
 		e.user.code = TemStreamEvent::HandleFrame;
 
 		auto frame = allocate<Video::Frame>();
-		frame->bytes = std::move(*output);
+		frame->bytes = std::move(packet.bytes);
 		frame->width = packet.width;
 		frame->height = packet.height;
 		e.user.data1 = frame;

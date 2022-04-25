@@ -12,8 +12,11 @@ option(JSON_CONFIG "Serialize client configurations to JSON" ON)
 option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
 option(XCB_RECORD "Record windows with XCB" ON)
 option(VPX_ENCODING "Use libvpx to encode video" ON)
+option(OPENH264_ENCODING "Use OpenH264 to encode video" OFF)
 option(USE_OPEN_CV "Use OpenCV library" ON)
 
+set(OPENH264_ENCODING ON)
+set(VPX_ENCODING OFF)
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)
 set(SUPPORT_PNG ON)
@@ -81,6 +84,18 @@ if(VPX_ENCODING)
   set(ENCODING_SOURCE src/vpx.cpp)
 endif()
 
+if(OPENH264_ENCODING)
+  set(ENCODING_SOURCE 
+    openh264/libcommon.a
+    openh264/libconsole_common.a
+    openh264/libdecoder.a
+    openh264/libencoder.a
+    openh264/libopenh264.a
+    openh264/libprocessing.a
+    src/openH264.cpp
+  )
+endif()
+
 set(SOURCES 
     src/addrinfo.cpp 
     src/byteList.cpp
@@ -111,7 +126,13 @@ if(COMPILE_CLIENT)
     target_link_libraries(TemStream PRIVATE XCB::XCB)
   endif()
 
-  target_link_libraries(TemStream PRIVATE vpx)
+  if(VPX_ENCODING)
+    target_link_libraries(TemStream PRIVATE vpx)
+  endif()
+
+  if(OPENH264_ENCODING)
+    target_include_directories(TemStream PRIVATE ${PROJECT_SOURCE_DIR})
+  endif()
 
   if(MSVC)
     target_compile_options(TemStream PRIVATE /W4 /WX)

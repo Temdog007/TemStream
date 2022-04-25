@@ -58,23 +58,46 @@ class Video
 
 	class EncoderDecoder
 	{
-	  public:
-		~EncoderDecoder()
+	  protected:
+		int width;
+		int height;
+
+		EncoderDecoder() : width(0), height(0)
 		{
 		}
 
-		virtual void encodeAndSend(const ByteList &, const Message::Source &) = 0;
-		virtual std::optional<ByteList> decode(const ByteList &) = 0;
+	  public:
+		virtual ~EncoderDecoder()
+		{
+		}
 
-		virtual Dimensions getSize() const = 0;
+		virtual void encodeAndSend(ByteList &, const Message::Source &) = 0;
+		virtual bool decode(ByteList &) = 0;
 
-		virtual int getWidth() const = 0;
-		virtual void setWidth(int) = 0;
-		virtual int getHeight() const = 0;
-		virtual void setHeight(int) = 0;
+		virtual Dimensions getSize() const
+		{
+			return std::make_pair(width, height);
+		}
+
+		int getWidth() const
+		{
+			return width;
+		}
+		void setWidth(int w)
+		{
+			width = w;
+		}
+		int getHeight() const
+		{
+			return height;
+		}
+		void setHeight(int h)
+		{
+			height = h;
+		}
 	};
 
-	static unique_ptr<EncoderDecoder> createEncoder(Video::FrameData);
+	static unique_ptr<EncoderDecoder> createEncoder(Video::FrameData, const bool forCamera = false);
 	static unique_ptr<EncoderDecoder> createDecoder();
 
 	class FrameEncoder

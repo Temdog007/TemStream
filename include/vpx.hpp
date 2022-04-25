@@ -1,5 +1,10 @@
 #include <main.hpp>
 
+#include <vpx/vp8cx.h>
+#include <vpx/vp8dx.h>
+#include <vpx/vpx_decoder.h>
+#include <vpx/vpx_encoder.h>
+
 namespace TemStream
 {
 class VPX : public Video::EncoderDecoder
@@ -9,43 +14,25 @@ class VPX : public Video::EncoderDecoder
 	vpx_image_t image;
 	int frameCount;
 	int keyFrameInterval;
-	int width;
-	int height;
+
+	VPX();
 
   public:
-	VPX();
+	~VPX();
 	VPX(const VPX &) = delete;
 	VPX(VPX &&);
-	~VPX();
 
 	VPX &operator=(const VPX &) = delete;
 	VPX &operator=(VPX &&);
 
-	void encodeAndSend(const ByteList &, const Message::Source &) override;
-	std::optional<ByteList> decode(const ByteList &) override;
+	void encodeAndSend(ByteList &, const Message::Source &) override;
+	bool decode(ByteList &) override;
 
 	Dimensions getSize() const override;
 
-	int getWidth() const override
-	{
-		return width;
-	}
-	void setWidth(int w) override
-	{
-		width = w;
-	}
-	int getHeight() const override
-	{
-		return height;
-	}
-	void setHeight(int h) override
-	{
-		height = h;
-	}
-
 	void swap(VPX &);
 
-	friend unique_ptr<EncoderDecoder> Video::createEncoder(Video::FrameData);
+	friend unique_ptr<EncoderDecoder> Video::createEncoder(Video::FrameData, bool);
 	friend unique_ptr<EncoderDecoder> Video::createDecoder();
 };
 } // namespace TemStream
