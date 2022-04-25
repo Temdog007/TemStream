@@ -264,7 +264,7 @@
 ### Apr 25, 2022
 - [ ] Make logs scroll to bottom
 - [x] Implement OpenH264 for video
-- [ ] Delete old C code
+- [x] Delete old C code
 - [ ] Test on laptop
 - [ ] Webcam streaming
 
