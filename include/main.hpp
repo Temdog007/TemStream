@@ -60,6 +60,10 @@ namespace fs = std::filesystem;
 #endif
 #include <cereal/archives/portable_binary.hpp>
 
+#if TEMSTREAM_USE_OPENCV
+#include <opencv4/opencv2/opencv.hpp>
+#endif
+
 namespace std
 {
 template <class Archive, typename T1, typename T2> void save(Archive &archive, const std::pair<T1, T2> &pair)

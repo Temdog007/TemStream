@@ -52,11 +52,12 @@ struct Screenshot
 class Converter : public Video::RGBA2YUV<Screenshot>
 {
   private:
-	shared_ptr<Video::Frame> convertToFrame(Screenshot &&) const override;
+	std::vector<uint8_t> temp;
+	shared_ptr<Video::Frame> convertToFrame(Screenshot &&) override;
 
   public:
 	Converter(Video::FrameEncoders &&frames, const Message::Source &source)
-		: Video::RGBA2YUV<Screenshot>(std::move(frames), source)
+		: Video::RGBA2YUV<Screenshot>(std::move(frames), source), temp()
 	{
 	}
 	~Converter()

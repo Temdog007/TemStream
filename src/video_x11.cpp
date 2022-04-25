@@ -177,13 +177,25 @@ WindowProcesses Video::getRecordableWindows()
 	return getAllX11Windows(con, screenNum);
 }
 
-shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s) const
+shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 {
-	void *data = xcb_get_image_data(s.reply.get());
+	uint8_t *data = xcb_get_image_data(s.reply.get());
 
 	auto frame = tem_shared<Video::Frame>();
-	frame->width = s.width;
-	frame->height = s.height;
+	frame->width = (s.width - (s.width % 2));
+	frame->height = (s.height - (s.height % 2));
+
+#if TEMSTREAM_USE_OPENCV
+	// Must copy in case other scalings use this image
+	temp.clear();
+	temp.insert(temp.end(), data, data + (s.width * s.height * 4));
+	cv::Mat m(frame->height, frame->width, CV_8UC4, temp.data());
+	cv::Mat yuv;
+	cv::cvtColor(m, yuv, cv::COLOR_RGBA2YUV_I420);
+	uchar *bytes = yuv.data;
+	frame->bytes = Bytes(bytes, bytes + (yuv.total() * yuv.elemSize()));
+	return frame;
+#else
 	frame->bytes.resize((s.width * s.height) * 2, '\0');
 	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_RGBA32, data, s.width * 4, SDL_PIXELFORMAT_YV12,
 						  frame->bytes.data(), s.width) == 0)
@@ -195,6 +207,7 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s) const
 		logSDLError("Failed to convert pixels");
 		return nullptr;
 	}
+#endif
 }
 Dimensions Screenshotter::getSize(xcb_connection_t *con)
 {
@@ -282,7 +295,7 @@ end:
 }
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source,
-									  const List<int32_t> &ratios, FrameData fd)
+									  const List<int32_t> &scalings, FrameData fd)
 {
 	FrameEncoders encoders;
 	{
@@ -296,7 +309,7 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 		fd.width = size->first;
 		fd.height = size->second;
 	}
-	for (const auto ratio : ratios)
+	for (const auto ratio : scalings)
 	{
 		auto encoder = tem_shared<FrameEncoder>(source, ratio);
 		encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));

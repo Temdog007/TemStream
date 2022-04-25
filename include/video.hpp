@@ -31,6 +31,8 @@ class Video
 		return source;
 	}
 
+	static void logDroppedPackets(size_t, const Message::Source &);
+
 	struct Frame
 	{
 		Bytes bytes;
@@ -44,8 +46,8 @@ class Video
 			return bytes[x + y * width];
 		}
 
-		Frame resize(uint32_t ratio) const;
-		Frame resizeTo(uint32_t, uint32_t) const;
+		void resize(uint32_t ratio);
+		void resizeTo(uint32_t, uint32_t);
 	};
 
 	struct FrameData
@@ -138,7 +140,7 @@ class Video
 
 		static void convertFrames(shared_ptr<RGBA2YUV> &&);
 
-		virtual shared_ptr<Frame> convertToFrame(T &&) const = 0;
+		virtual shared_ptr<Frame> convertToFrame(T &&) = 0;
 
 	  public:
 		RGBA2YUV(FrameEncoders &&frames, const Message::Source &source)
@@ -163,34 +165,41 @@ class Video
 template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV> &&ptr)
 {
 	(*logger)(Logger::Trace) << "Starting converter thread" << std::endl;
-	using namespace std::chrono_literals;
-	const auto maxWaitTime = 3s;
-	while (!appDone)
+	try
 	{
-		auto result = ptr->frames.clearIfGreaterThan(5);
-		if (result)
+		using namespace std::chrono_literals;
+		const auto maxWaitTime = 3s;
+		while (!appDone)
 		{
-			(*logger)(Logger::Warning) << "Dropping " << *result << " video frames from " << ptr->source << std::endl;
-		}
-
-		auto data = ptr->frames.pop(maxWaitTime);
-		if (!data)
-		{
-			break;
-		}
-
-		auto frame = ptr->convertToFrame(std::move(*data));
-		if (!frame)
-		{
-			continue;
-		}
-		for (auto &encoder : ptr->encoders)
-		{
-			if (auto e = encoder.lock())
+			auto result = ptr->frames.clearIfGreaterThan(5);
+			if (result)
 			{
-				e->addFrame(frame);
+				logDroppedPackets(*result, ptr->source);
+			}
+
+			auto data = ptr->frames.pop(maxWaitTime);
+			if (!data)
+			{
+				break;
+			}
+
+			auto frame = ptr->convertToFrame(std::move(*data));
+			if (!frame)
+			{
+				continue;
+			}
+			for (auto &encoder : ptr->encoders)
+			{
+				if (auto e = encoder.lock())
+				{
+					e->addFrame(frame);
+				}
 			}
 		}
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;
 	}
 	(*logger)(Logger::Trace) << "Ending converter thread" << std::endl;
 }

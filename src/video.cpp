@@ -40,6 +40,10 @@ Video::Video(const Message::Source &source, const WindowProcess &wp) : source(so
 Video::~Video()
 {
 }
+void Video::logDroppedPackets(const size_t count, const Message::Source &source)
+{
+	(*logger)(Logger::Warning) << "Dropping " << count << " video frames from " << source << std::endl;
+}
 Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio) : frames(), source(), ratio(ratio)
 {
 	this->source.author = source.author;
@@ -78,6 +82,11 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 	const auto maxWaitTime = 3s;
 	while (!appDone)
 	{
+		if (auto result = ptr->frames.clearIfGreaterThan(5))
+		{
+			logDroppedPackets(*result, ptr->source);
+		}
+
 		auto result = ptr->frames.pop(maxWaitTime);
 		if (!result)
 		{
@@ -90,14 +99,9 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 			continue;
 		}
 
-		Frame frame;
-		if (ptr->ratio == 100)
+		if (ptr->ratio != 100)
 		{
-			frame = *data;
-		}
-		else
-		{
-			frame = std::move(data->resize(ptr->ratio));
+			data->resize(ptr->ratio);
 		}
 
 		{
@@ -297,10 +301,6 @@ std::optional<Video::VPX> Video::VPX::createDecoder()
 	(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
 	return std::nullopt;
 }
-Video::Frame Video::Frame::resize(uint32_t ratio) const
-{
-	return resizeTo(width * ratio / 100, height * ratio / 100);
-}
 Bytes resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t oldHeight, const uint32_t newWidth,
 				  const uint32_t newHeight)
 {
@@ -320,12 +320,17 @@ Bytes resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t old
 	}
 	return b;
 }
-Video::Frame Video::Frame::resizeTo(const uint32_t w, const uint32_t h) const
+void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 {
-	Frame frame;
-	frame.width = w;
-	frame.height = h;
-
+#if TEMSTREAM_USE_OPENCV
+	cv::Mat output;
+	{
+		cv::Mat m(height + height / 2U, width, CV_8UC1, bytes.data());
+		cv::resize(m, output, cv::Size(), (double)w / (double)width, (double)h / (double)height);
+	}
+	uchar *data = output.data;
+	bytes = Bytes(data, data + (output.total() * output.elemSize()));
+#else
 	{
 		Bytes Y = resizePlane(bytes.data(), width, height, w, h);
 		frame.bytes.insert(frame.bytes.end(), Y.begin(), Y.end());
@@ -338,6 +343,12 @@ Video::Frame Video::Frame::resizeTo(const uint32_t w, const uint32_t h) const
 		Bytes V = resizePlane(bytes.data() + (width * height * 5 / 4), width / 2, height / 2, w / 2, h / 2);
 		frame.bytes.insert(frame.bytes.end(), V.begin(), V.end());
 	}
-	return frame;
+#endif
+	width = w;
+	height = h;
+}
+void Video::Frame::resize(uint32_t ratio)
+{
+	resizeTo(width * ratio / 100, height * ratio / 100);
 }
 } // namespace TemStream

@@ -74,7 +74,7 @@ class QueryVideo : public IQuery
   private:
 	struct WindowSelection
 	{
-		List<int32_t> ratios;
+		List<int32_t> scalings;
 		Video::FrameData frameData;
 		WindowProcesses windows;
 		int32_t nextRatio;

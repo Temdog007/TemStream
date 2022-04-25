@@ -11,6 +11,7 @@ option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
 option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
 option(XCB_RECORD "Record windows with XCB" ON)
+option(USE_OPEN_CV "Use OpenCV library" ON)
 
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)
@@ -117,6 +118,12 @@ if(COMPILE_CLIENT)
 
   if(CUSTOM_ALLOCATOR)
     target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_CUSTOM_ALLOCATOR)
+  endif()
+
+  if(USE_OPEN_CV)
+    find_package(OpenCV REQUIRED)
+    target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_OPENCV)
+    target_link_libraries(TemStream PRIVATE ${OpenCV_LIBS})
   endif()
 
   target_link_libraries(TemStream PRIVATE 
