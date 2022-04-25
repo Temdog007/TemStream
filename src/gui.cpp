@@ -1502,15 +1502,14 @@ int runApp(Configuration &configuration)
 				break;
 				case TemStreamEvent::SetSurfaceToStreamDisplay: {
 					SDL_Surface *surface = reinterpret_cast<SDL_Surface *>(event.user.data1);
-					Message::Source *source = reinterpret_cast<Message::Source *>(event.user.data2);
-
+					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
+					auto source = unique_ptr<Message::Source>(sourcePtr);
 					auto iter = gui.displays.find(*source);
 					if (iter != gui.displays.end())
 					{
 						iter->second.setSurface(surface);
 					}
 					SDL_FreeSurface(surface);
-					deallocate(source);
 				}
 				break;
 				case TemStreamEvent::AddAudio: {

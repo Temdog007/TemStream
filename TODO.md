@@ -260,10 +260,12 @@
 - [x] Handle texture resizing
 - [x] Optional OpenCV
 - [x] Make byte list class
-- [ ] Webcam streaming
+- [ ] Implement OpenH264 for video
 
 ### Apr 25, 2022
 - [ ] Delete old C code
+- [ ] Test on laptop
+- [ ] Webcam streaming
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
@@ -291,7 +293,7 @@
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
-- [?] Potential memory leak when loading images (clear doesn't free buffer for maps or sets; Logs are never cleared. Might not be an issue)
+- [ ] Potential memory leak when loading images (clear doesn't free buffer for maps or sets)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
