@@ -74,7 +74,7 @@ class Video
 		virtual void encodeAndSend(ByteList &, const Message::Source &) = 0;
 		virtual bool decode(ByteList &) = 0;
 
-		virtual Dimensions getSize() const
+		Dimensions getSize() const
 		{
 			return std::make_pair(width, height);
 		}

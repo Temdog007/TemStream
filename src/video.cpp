@@ -35,6 +35,11 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 		return;
 	}
 
+	frameData.width -= frameData.width % 2;
+	frameData.width = frameData.width * ptr->ratio / 100;
+
+	frameData.height -= frameData.height % 2;
+	frameData.height = frameData.height * ptr->ratio / 100;
 	auto encoder = createEncoder(frameData);
 	if (!encoder)
 	{

@@ -86,12 +86,6 @@ endif()
 
 if(OPENH264_ENCODING)
   set(ENCODING_SOURCE 
-    openh264/libcommon.a
-    openh264/libconsole_common.a
-    openh264/libdecoder.a
-    openh264/libencoder.a
-    openh264/libopenh264.a
-    openh264/libprocessing.a
     src/openH264.cpp
   )
 endif()
@@ -132,6 +126,13 @@ if(COMPILE_CLIENT)
 
   if(OPENH264_ENCODING)
     target_include_directories(TemStream PRIVATE ${PROJECT_SOURCE_DIR})
+    target_link_libraries(TemStream PRIVATE
+    ${PROJECT_SOURCE_DIR}/openh264/libcommon.a
+    ${PROJECT_SOURCE_DIR}/openh264/libconsole_common.a
+    ${PROJECT_SOURCE_DIR}/openh264/libdecoder.a
+    ${PROJECT_SOURCE_DIR}/openh264/libencoder.a
+    ${PROJECT_SOURCE_DIR}/openh264/libopenh264.a
+    ${PROJECT_SOURCE_DIR}/openh264/libprocessing.a)
   endif()
 
   if(MSVC)

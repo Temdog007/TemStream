@@ -122,7 +122,7 @@ void TemStreamGui::decodeVideoPackets()
 	{
 		{
 			const auto now = std::chrono::system_clock::now();
-			if (now - lastCheck < 1s)
+			if (now - lastCheck > 1s)
 			{
 				for (auto iter = map.begin(); iter != map.end();)
 				{

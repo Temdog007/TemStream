@@ -28,8 +28,6 @@ class VPX : public Video::EncoderDecoder
 	void encodeAndSend(ByteList &, const Message::Source &) override;
 	bool decode(ByteList &) override;
 
-	Dimensions getSize() const override;
-
 	void swap(VPX &);
 
 	friend unique_ptr<EncoderDecoder> Video::createEncoder(Video::FrameData, bool);

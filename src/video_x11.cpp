@@ -27,14 +27,6 @@ Dimensions getWindowSize(xcb_connection_t *con, const xcb_window_t id)
 
 	if (error || !geom)
 	{
-		if (error)
-		{
-			printf("%u\n", error->error_code);
-		}
-		if (!geom)
-		{
-			printf("No geometry\n");
-		}
 		return std::nullopt;
 	}
 	return std::make_pair(geom->width, geom->height);

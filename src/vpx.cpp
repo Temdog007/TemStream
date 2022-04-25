@@ -221,10 +221,4 @@ ByteList resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t 
 	}
 	return b;
 }
-Dimensions VPX::getSize() const
-{
-	int w = vpx_img_plane_width(&image, 0);
-	int h = vpx_img_plane_height(&image, 0);
-	return std::make_pair(w, h);
-}
 } // namespace TemStream

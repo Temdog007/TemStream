@@ -6,8 +6,8 @@ namespace TemStream
 {
 OpenH264::OpenH264(Encoder &&e, int width, int height) : data(std::move(e))
 {
-	setWidth(width);
-	setHeight(height);
+	setWidth(width - (width % 2));
+	setHeight(height - (height % 2));
 }
 OpenH264::OpenH264(Decoder &&d) : data(std::move(d))
 {
@@ -95,7 +95,7 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 
 		pic.pData[0] = reinterpret_cast<unsigned char *>(bytes.data());
 		pic.pData[1] = reinterpret_cast<unsigned char *>(bytes.data() + (pic.iPicWidth * pic.iPicHeight));
-		pic.pData[2] = reinterpret_cast<unsigned char *>(bytes.data() + ((pic.iPicWidth * pic.iPicHeight) / 4));
+		pic.pData[2] = reinterpret_cast<unsigned char *>(pic.pData[1] + ((pic.iPicWidth * pic.iPicHeight) / 4));
 
 		SFrameBSInfo info{};
 		const int rv = encoder->EncodeFrame(&pic, &info);
@@ -118,17 +118,16 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 			}
 		}
 
-		ByteList bytes;
+		Message::Video v;
+		v.width = getWidth();
+		v.height = getHeight();
 		for (int layerNum = 0; layerNum < info.iLayerNum; ++layerNum)
 		{
-			bytes.append(info.sLayerInfo[layerNum].pBsBuf, layerSize[layerNum]);
+			v.bytes.append(info.sLayerInfo[layerNum].pBsBuf, layerSize[layerNum]);
 		}
 
 		Message::Packet *packet = allocate<Message::Packet>();
 		packet->source = source;
-		Message::Video v;
-		v.width = getWidth();
-		v.height = getHeight();
 		packet->payload.emplace<Message::Video>(std::move(v));
 
 		SDL_Event e;
@@ -159,6 +158,18 @@ unique_ptr<Video::EncoderDecoder> Video::createDecoder()
 	if (decoder->Initialize(&param) != cmResultSuccess)
 	{
 		(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
+		return nullptr;
+	}
+
+#if _DEBUG
+	int log_level = WELS_LOG_INFO;
+#else
+	int log_level = WELS_LOG_WARNING;
+#endif
+
+	const bool result = decoder->SetOption(DECODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess;
+	if (!result)
+	{
 		return nullptr;
 	}
 
