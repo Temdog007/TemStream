@@ -262,13 +262,16 @@
 - [x] Make byte list class
 
 ### Apr 25, 2022
-- [ ] Make logs scroll to bottom
+- [x] Make logs scroll to bottom
 - [x] Implement OpenH264 for video
 - [x] Delete old C code
+- [ ] Only have one scaling for video stream
+- [ ] Don't send encoded video stream to streaming. Just use raw image.
 - [ ] Test on laptop
 - [ ] Webcam streaming
 
 ### Apr 26, 2022
+- [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
