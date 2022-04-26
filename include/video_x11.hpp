@@ -53,11 +53,11 @@ class Converter : public Video::RGBA2YUV<Screenshot>
 {
   private:
 	ByteList temp;
-	shared_ptr<Video::Frame> convertToFrame(Screenshot &&) override;
+	std::optional<Video::Frame> convertToFrame(Screenshot &&) override;
 
   public:
-	Converter(Video::FrameEncoders &&frames, const Message::Source &source)
-		: Video::RGBA2YUV<Screenshot>(std::move(frames), source), temp()
+	Converter(std::shared_ptr<Video::FrameEncoder> encoder, const Message::Source &source)
+		: Video::RGBA2YUV<Screenshot>(encoder, source), temp()
 	{
 	}
 	~Converter()
@@ -74,11 +74,10 @@ class Screenshotter
 	uint32_t fps;
 
 	Dimensions getSize(xcb_connection_t *);
-	static void takeScreenshots(shared_ptr<Screenshotter> &&);
+	static void takeScreenshots(shared_ptr<Screenshotter>);
 
   public:
-	Screenshotter(const WindowProcess &w, const shared_ptr<Converter> &ptr, const shared_ptr<Video> &v,
-				  const uint32_t fps)
+	Screenshotter(const WindowProcess &w, shared_ptr<Converter> ptr, shared_ptr<Video> v, const uint32_t fps)
 		: converter(ptr), window(w), video(v), fps(fps)
 	{
 	}
@@ -86,6 +85,6 @@ class Screenshotter
 	{
 	}
 
-	static void startTakingScreenshots(shared_ptr<Screenshotter> &&ss);
+	static void startTakingScreenshots(shared_ptr<Screenshotter>);
 };
 } // namespace TemStream

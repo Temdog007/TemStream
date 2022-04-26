@@ -12,6 +12,9 @@ struct WindowProcess
 		uint32_t windowId;
 	};
 
+	WindowProcess() : name(), id(0)
+	{
+	}
 	WindowProcess(const String &name, const int32_t id) : name(name), id(id)
 	{
 	}

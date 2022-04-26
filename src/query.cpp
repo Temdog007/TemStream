@@ -162,7 +162,7 @@ void QueryAudio::execute() const
 		break;
 	}
 }
-QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection("/dev/video0")
+QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection(WebCamSelection())
 {
 }
 QueryVideo::~QueryVideo()
@@ -176,12 +176,12 @@ bool QueryVideo::draw()
 	{
 		switch (s)
 		{
-		case variant_index<VideoSelection, String>():
-			selection.emplace<String>("/dev/video0");
+		case variant_index<VideoSelection, WebCamSelection>():
+			selection.emplace<WebCamSelection>(WebCamSelection{Video::FrameData(), 0, 100});
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
 			selection.emplace<WindowSelection>(
-				WindowSelection{{0, 0, 24, 10, 48}, Video::getRecordableWindows(), 100, 0});
+				WindowSelection{Video::FrameData(), Video::getRecordableWindows(), 100, 0});
 			break;
 		default:
 			break;
@@ -198,20 +198,36 @@ bool QueryVideo::draw()
 				snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.windowId);
 				ImGui::RadioButton(buffer, &ws.selected, i++);
 			}
-			ImGui::SliderInt("Frames per second", &ws.frameData.fps, 1, 120);
-			ImGui::SliderInt("Bitrate in Mbps", &ws.frameData.bitrateInMbps, 1, 100);
+			ws.frameData.draw();
 			ImGui::SliderInt("Scale", &ws.scale, 1, 100);
-#if !TEMSTREAM_USE_OPENH264
-			ImGui::SliderInt("Key Frame Interval", &ws.frameData.keyFrameInterval, 1, 1000);
-#endif
 		}
-		void operator()(String &s)
+		void operator()(WebCamSelection &w)
 		{
-			ImGui::InputText("Webcam location", &s);
+			ImGui::InputInt("Index", &w.index, 1, 10);
+			w.frameData.draw();
+			ImGui::SliderInt("Scale", &w.scale, 1, 100);
 		}
 	};
 	std::visit(Foo(), selection);
 	return IQuery::draw();
+}
+void Video::FrameData::draw()
+{
+	if (ImGui::InputInt("Frames per second", &fps, 1, 120))
+	{
+		fps = std::clamp(fps, 1, 120);
+	}
+	if (ImGui::InputInt("Bitrate in Mbps", &bitrateInMbps, 1, 100))
+	{
+		bitrateInMbps = std::clamp(bitrateInMbps, 1, 100);
+	}
+
+#if !TEMSTREAM_USE_OPENH264
+	if (ImGui::InputInt("Key Frame Interval", &keyFrameInterval, 1, 1000))
+	{
+		keyFrameInterval = std::clamp(keyFrameInterval, 1, 100);
+	}
+#endif
 }
 void QueryVideo::execute() const
 {
@@ -227,15 +243,30 @@ void QueryVideo::execute() const
 				if (i == ws.selected)
 				{
 					auto ptr = Video::recordWindow(wp, source, ws.scale, ws.frameData);
-					gui.addVideo(std::move(ptr));
+					if (ptr == nullptr)
+					{
+						(*logger)(Logger::Error) << "Failed to start recording window " << wp.name << std::endl;
+					}
+					else
+					{
+						gui.addVideo(std::move(ptr));
+					}
 					break;
 				}
 				++i;
 			}
 		}
-		void operator()(const String &) const
+		void operator()(const WebCamSelection wb) const
 		{
-			(*logger)(Logger::Error) << "Webcam not implemented..." << std::endl;
+			auto ptr = Video::recordWebcam(wb.index, source, wb.scale, wb.frameData);
+			if (ptr == nullptr)
+			{
+				(*logger)(Logger::Error) << "Failed to start recording webcam " << wb.index << std::endl;
+			}
+			else
+			{
+				gui.addVideo(std::move(ptr));
+			}
 		}
 	};
 	std::visit(Foo{getSource(), gui}, selection);

@@ -15,8 +15,9 @@ class Video
 
   private:
 	Message::Source source;
-	WindowProcess windowProcress;
+	const WindowProcess windowProcress;
 
+	Video(const Message::Source &);
 	Video(const Message::Source &, const WindowProcess &);
 	~Video();
 
@@ -51,10 +52,20 @@ class Video
 		int fps;
 		int bitrateInMbps;
 		int keyFrameInterval;
+
+		FrameData() : width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(48)
+		{
+		}
+		~FrameData()
+		{
+		}
+
+		void draw();
 	};
 
 	static WindowProcesses getRecordableWindows();
 	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, int32_t, Video::FrameData);
+	static shared_ptr<Video> recordWebcam(int index, const Message::Source &, int32_t, Video::FrameData);
 
 	class EncoderDecoder
 	{
@@ -103,40 +114,38 @@ class Video
 	class FrameEncoder
 	{
 	  private:
-		ConcurrentQueue<shared_ptr<Frame>> frames;
+		ConcurrentQueue<Frame> frames;
 		Message::Source source;
 		const int32_t ratio;
 
-		static void encodeFrames(shared_ptr<FrameEncoder> &&, FrameData);
+		static void encodeFrames(shared_ptr<FrameEncoder>, FrameData);
 
 	  public:
 		FrameEncoder(const Message::Source &, int32_t);
 		virtual ~FrameEncoder();
 
-		void addFrame(shared_ptr<Frame>);
+		void addFrame(Frame &&);
 
 		ByteList resize(const ByteList &);
 		ByteList encode(const ByteList &) const;
 
-		static void startEncodingFrames(shared_ptr<FrameEncoder> &&, FrameData);
+		static void startEncodingFrames(shared_ptr<FrameEncoder>, FrameData);
 	};
-
-	using FrameEncoders = std::vector<std::weak_ptr<FrameEncoder>>;
 
 	template <typename T> class RGBA2YUV
 	{
 	  private:
 		ConcurrentQueue<T> frames;
-		FrameEncoders encoders;
 		const Message::Source source;
+		std::weak_ptr<FrameEncoder> encoder;
 
-		static void convertFrames(shared_ptr<RGBA2YUV> &&);
+		static void convertFrames(shared_ptr<RGBA2YUV>);
 
-		virtual shared_ptr<Frame> convertToFrame(T &&) = 0;
+		virtual std::optional<Frame> convertToFrame(T &&) = 0;
 
 	  public:
-		RGBA2YUV(FrameEncoders &&frames, const Message::Source &source)
-			: frames(), encoders(std::move(frames)), source(source)
+		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, const Message::Source &source)
+			: frames(), source(source), encoder(encoder)
 		{
 		}
 		virtual ~RGBA2YUV()
@@ -148,13 +157,13 @@ class Video
 			frames.push(std::move(t));
 		}
 
-		static void startConverteringFrames(shared_ptr<RGBA2YUV> &&ptr)
+		static void startConverteringFrames(shared_ptr<RGBA2YUV> ptr)
 		{
-			Task::addTask(std::async(TaskPolicy, convertFrames, std::move(ptr)));
+			Task::addTask(std::async(TaskPolicy, convertFrames, ptr));
 		}
 	};
 };
-template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV> &&ptr)
+template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV> ptr)
 {
 	(*logger)(Logger::Trace) << "Starting converter thread" << std::endl;
 	try
@@ -180,12 +189,13 @@ template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV
 			{
 				continue;
 			}
-			for (auto &encoder : ptr->encoders)
+			if (auto e = ptr->encoder.lock())
 			{
-				if (auto e = encoder.lock())
-				{
-					e->addFrame(frame);
-				}
+				e->addFrame(std::move(*frame));
+			}
+			else
+			{
+				break;
 			}
 		}
 	}

@@ -169,22 +169,22 @@ WindowProcesses Video::getRecordableWindows()
 	return getAllX11Windows(con, screenNum);
 }
 
-shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s)
+std::optional<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 {
 	uint8_t *data = xcb_get_image_data(s.reply.get());
 
-	auto frame = tem_shared<Video::Frame>();
-	frame->width = (s.width - (s.width % 2));
-	frame->height = (s.height - (s.height % 2));
+	Video::Frame frame;
+	frame.width = (s.width - (s.width % 2));
+	frame.height = (s.height - (s.height % 2));
 
 #if TEMSTREAM_USE_OPENCV
 	// Must copy in case other scalings use this image
 	temp.clear();
 	temp.append(data, s.width * s.height * 4);
-	cv::Mat m(frame->height, frame->width, CV_8UC4, temp.data());
+	cv::Mat m(frame.height, frame.width, CV_8UC4, temp.data());
 	cv::Mat yuv;
 	cv::cvtColor(m, yuv, cv::COLOR_BGRA2YUV_IYUV);
-	frame->bytes.append(yuv.data, yuv.total() * yuv.elemSize());
+	frame.bytes.append(yuv.data, yuv.total() * yuv.elemSize());
 	return frame;
 #else
 	frame->bytes.resize((s.width * s.height) * 2, '\0');
@@ -204,11 +204,11 @@ Dimensions Screenshotter::getSize(xcb_connection_t *con)
 {
 	return getWindowSize(con, window.windowId);
 }
-void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> &&ss)
+void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> ss)
 {
-	Task::addTask(std::async(TaskPolicy, takeScreenshots, std::move(ss)));
+	Task::addTask(std::async(TaskPolicy, takeScreenshots, ss));
 }
-void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
+void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 {
 	(*logger)(Logger::Trace) << "Starting to record: " << data->window.name << ' ' << data->fps << " FPS" << std::endl;
 	int unused;
@@ -309,7 +309,6 @@ end:
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, const int32_t scale,
 									  FrameData fd)
 {
-	FrameEncoders encoders;
 	{
 		int s;
 		auto con = getXCBConnection(s);
@@ -323,14 +322,13 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	}
 
 	auto encoder = tem_shared<FrameEncoder>(source, scale);
-	encoders.push_back(std::weak_ptr<FrameEncoder>(encoder));
-	FrameEncoder::startEncodingFrames(std::move(encoder), fd);
+	FrameEncoder::startEncodingFrames(encoder, fd);
 
-	auto converter = tem_shared<Converter>(std::move(encoders), source);
+	auto converter = tem_shared<Converter>(encoder, source);
 	auto video = tem_shared<Video>(source, wp);
 	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fd.fps);
-	Converter::startConverteringFrames(std::move(converter));
-	Screenshotter::startTakingScreenshots(std::move(screenshotter));
+	Converter::startConverteringFrames(converter);
+	Screenshotter::startTakingScreenshots(screenshotter);
 	return video;
 }
 } // namespace TemStream

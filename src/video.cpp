@@ -2,6 +2,9 @@
 
 namespace TemStream
 {
+Video::Video(const Message::Source &source) : source(source), windowProcress()
+{
+}
 Video::Video(const Message::Source &source, const WindowProcess &wp) : source(source), windowProcress(wp)
 {
 }
@@ -12,23 +15,76 @@ void Video::logDroppedPackets(const size_t count, const Message::Source &source)
 {
 	(*logger)(Logger::Warning) << "Dropping " << count << " video frames from " << source << std::endl;
 }
+shared_ptr<Video> Video::recordWebcam(const int index, const Message::Source &source, const int32_t scale, FrameData fd)
+{
+#if TEMSTREAM_USE_OPENCV
+	cv::VideoCapture cap(index);
+	if (!cap.isOpened())
+	{
+		return nullptr;
+	}
+
+	cv::Mat image;
+	if (!cap.read(image))
+	{
+		return nullptr;
+	}
+	fd.width = image.cols;
+	fd.height = image.rows;
+
+	auto video = tem_shared<Video>(source);
+	std::weak_ptr<FrameEncoder> encoder;
+	{
+		auto e = tem_shared<FrameEncoder>(source, scale);
+		FrameEncoder::startEncodingFrames(e, fd);
+		encoder = e;
+	}
+	auto weak = std::weak_ptr(video);
+
+	Task::addTask(std::async(
+		TaskPolicy, [cap = std::move(cap), image = std::move(image), weak, source, scale, fd, encoder]() mutable {
+			while (!appDone)
+			{
+				if (weak.expired())
+				{
+					break;
+				}
+				if (!cap.read(image))
+				{
+					break;
+				}
+
+				Video::Frame frame;
+				frame.width = image.cols;
+				frame.height = image.rows;
+				frame.bytes.append(image.data, image.elemSize() * image.total());
+				if (auto e = encoder.lock())
+				{
+					e->addFrame(std::move(frame));
+				}
+				else
+				{
+					break;
+				}
+			}
+		}));
+	return video;
+#else
+#endif
+	return nullptr;
+}
 Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio)
 	: frames(), source(source), ratio(ratio)
 {
-	// this->source.author = source.author;
-	// char buffer[KB(1)];
-	// snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), ratio);
-	// this->source.destination = buffer;
 }
 Video::FrameEncoder::~FrameEncoder()
 {
 }
-void Video::FrameEncoder::addFrame(shared_ptr<Frame> frame)
+void Video::FrameEncoder::addFrame(Frame &&frame)
 {
-	frames.push(frame);
+	frames.push(std::move(frame));
 }
-
-void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, FrameData frameData)
+void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, FrameData frameData)
 {
 	(*logger)(Logger::Trace) << "Starting encoding thread: " << ptr->source << std::endl;
 	if (!TemStreamGui::sendCreateMessage<Message::Video>(ptr->source))
@@ -56,32 +112,26 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 			logDroppedPackets(*result, ptr->source);
 		}
 
-		auto result = ptr->frames.pop(maxWaitTime);
-		if (!result)
+		auto frame = ptr->frames.pop(maxWaitTime);
+		if (!frame)
 		{
 			break;
 		}
 
-		auto data = *result;
-		if (!data)
-		{
-			continue;
-		}
-
 		if (ptr->ratio != 100)
 		{
-			data->resize(ptr->ratio);
+			frame->resize(ptr->ratio);
 		}
 
 		{
 			auto size = encoder->getSize();
-			if (data->width != size->first || data->height != size->second)
+			if (frame->width != size->first || frame->height != size->second)
 			{
-				(*logger)(Logger::Trace) << "Resizing vidoe encoder to " << data->width << 'x' << data->height
+				(*logger)(Logger::Trace) << "Resizing vidoe encoder to " << frame->width << 'x' << frame->height
 										 << std::endl;
 				FrameData fd = frameData;
-				fd.width = data->width;
-				fd.height = data->height;
+				fd.width = frame->width;
+				fd.height = frame->height;
 				auto newVpx = createEncoder(fd);
 				if (newVpx)
 				{
@@ -89,7 +139,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 				}
 			}
 		}
-		encoder->encodeAndSend(data->bytes, ptr->source);
+		encoder->encodeAndSend(frame->bytes, ptr->source);
 	}
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
 	SDL_Event e;
@@ -102,9 +152,9 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 		destroyAndDeallocate(source);
 	}
 }
-void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr, FrameData frameData)
+void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr, FrameData frameData)
 {
-	Task::addTask(std::async(TaskPolicy, encodeFrames, std::move(ptr), frameData));
+	Task::addTask(std::async(TaskPolicy, encodeFrames, ptr, frameData));
 }
 void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 {
