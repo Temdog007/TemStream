@@ -183,12 +183,12 @@ shared_ptr<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 	temp.append(data, s.width * s.height * 4);
 	cv::Mat m(frame->height, frame->width, CV_8UC4, temp.data());
 	cv::Mat yuv;
-	cv::cvtColor(m, yuv, cv::COLOR_RGBA2YUV_YV12);
+	cv::cvtColor(m, yuv, cv::COLOR_BGRA2YUV_IYUV);
 	frame->bytes.append(yuv.data, yuv.total() * yuv.elemSize());
 	return frame;
 #else
 	frame->bytes.resize((s.width * s.height) * 2, '\0');
-	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_RGBA32, data, s.width * 4, SDL_PIXELFORMAT_YV12,
+	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_BGRA32, data, s.width * 4, SDL_PIXELFORMAT_YV12,
 						  frame->bytes.data(), s.width) == 0)
 	{
 		return frame;
@@ -272,6 +272,33 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 		{
 			(*logger)(Logger::Info) << "Window is visible again" << std::endl;
 			data->windowHidden = false;
+		}
+
+		try
+		{
+			auto frame = tem_unique<Video::Frame>();
+			frame->width = dim->first;
+			frame->height = dim->second;
+			frame->format = SDL_PIXELFORMAT_BGRA32;
+			uint8_t *data = xcb_get_image_data(reply.get());
+			frame->bytes.append(data, frame->width * frame->height * 4);
+
+			auto sourcePtr = tem_unique<Message::Source>(source);
+
+			SDL_Event e;
+			e.type = SDL_USEREVENT;
+			e.user.code = TemStreamEvent::HandleFrame;
+			e.user.data1 = frame.get();
+			e.user.data2 = sourcePtr.get();
+			if (tryPushEvent(e))
+			{
+				// Pointers are now owned by the event
+				frame.release();
+				sourcePtr.release();
+			}
+		}
+		catch (const std::exception &)
+		{
 		}
 
 		Screenshot s;

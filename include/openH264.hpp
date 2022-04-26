@@ -25,7 +25,7 @@ class OpenH264 : public Video::EncoderDecoder
 	OpenH264(Encoder &&, int, int);
 	OpenH264(Decoder &&);
 
-	template <typename T, typename... Args> friend T *allocate(Args &&...args);
+	friend class Allocator<OpenH264>;
 
   public:
 	~OpenH264();

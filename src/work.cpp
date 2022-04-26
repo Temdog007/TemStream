@@ -29,20 +29,20 @@ void Task::waitForAll()
 	{
 		f.wait();
 	}
-	workList.clear();
+	cleanSwap(workList);
 }
 void Task::checkFile(TemStreamGui &gui, String filename)
 {
 	IQuery *data = nullptr;
 	if (isImage(filename.c_str()))
 	{
-		data = allocate<QueryImage>(gui, filename);
+		data = allocateAndConstruct<QueryImage>(gui, filename);
 	}
 	else
 	{
 		std::ifstream file(filename.c_str());
 		String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-		data = allocate<QueryText>(gui, std::move(s));
+		data = allocateAndConstruct<QueryText>(gui, std::move(s));
 	}
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
@@ -50,7 +50,7 @@ void Task::checkFile(TemStreamGui &gui, String filename)
 	e.user.data1 = data;
 	if (!tryPushEvent(e))
 	{
-		deallocate(data);
+		destroyAndDeallocate(data);
 	}
 }
 void Task::sendImage(String filename, Message::Source source)
@@ -67,7 +67,7 @@ void Task::sendImage(String filename, Message::Source source)
 		return;
 	}
 
-	MessagePackets *packets = allocate<MessagePackets>();
+	MessagePackets *packets = allocateAndConstruct<MessagePackets>();
 	Message::prepareImageBytes(file, source,
 							   [packets](Message::Packet &&packet) { packets->emplace_back(std::move(packet)); });
 	SDL_Event e;
@@ -77,7 +77,7 @@ void Task::sendImage(String filename, Message::Source source)
 	e.user.data2 = &e;
 	if (!tryPushEvent(e))
 	{
-		deallocate(packets);
+		destroyAndDeallocate(packets);
 	}
 }
 void Task::loadSurface(Message::Source source, ByteList bytes)
@@ -100,12 +100,12 @@ void Task::loadSurface(Message::Source source, ByteList bytes)
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SetSurfaceToStreamDisplay;
 	e.user.data1 = surface;
-	auto ptr = allocate<Message::Source>(source);
+	auto ptr = allocateAndConstruct<Message::Source>(source);
 	e.user.data2 = ptr;
 	if (!tryPushEvent(e))
 	{
 		SDL_FreeSurface(surface);
-		deallocate(ptr);
+		destroyAndDeallocate(ptr);
 	}
 }
 

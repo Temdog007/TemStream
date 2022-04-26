@@ -27,7 +27,8 @@ ByteList::~ByteList()
 }
 void ByteList::deepClear()
 {
-	deallocate(buffer);
+	Allocator<uint8_t> a;
+	a.deallocate(buffer);
 	buffer = nullptr;
 	used = 0;
 	total = 0;

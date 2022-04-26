@@ -44,7 +44,7 @@ void QueryText::execute() const
 		return;
 	}
 
-	Message::Packet *packet = allocate<Message::Packet>();
+	Message::Packet *packet = allocateAndConstruct<Message::Packet>();
 	packet->payload.emplace<Message::Text>(text);
 	packet->source = std::move(source);
 
@@ -55,7 +55,7 @@ void QueryText::execute() const
 	e.user.data2 = &e;
 	if (!tryPushEvent(e))
 	{
-		deallocate(packet);
+		destroyAndDeallocate(packet);
 	}
 }
 // Query Image

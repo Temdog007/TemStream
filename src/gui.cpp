@@ -192,18 +192,19 @@ void TemStreamGui::decodeVideoPackets()
 		e.type = SDL_USEREVENT;
 		e.user.code = TemStreamEvent::HandleFrame;
 
-		auto frame = allocate<Video::Frame>();
+		Video::Frame *frame = allocateAndConstruct<Video::Frame>();
 		frame->bytes = std::move(packet.bytes);
 		frame->width = packet.width;
 		frame->height = packet.height;
+		frame->format = SDL_PIXELFORMAT_IYUV;
 		e.user.data1 = frame;
 
-		auto *newSource = allocate<Message::Source>(source);
+		Message::Source *newSource = allocateAndConstruct<Message::Source>(source);
 		e.user.data2 = newSource;
 		if (!tryPushEvent(e))
 		{
-			deallocate(frame);
-			deallocate(newSource);
+			destroyAndDeallocate(frame);
+			destroyAndDeallocate(newSource);
 		}
 	}
 }
@@ -891,6 +892,7 @@ void TemStreamGui::draw()
 				const auto totalStr = printMemory(total);
 				const auto usedStr = printMemory(used);
 				ImGui::Text("%s / %s", usedStr.c_str(), totalStr.c_str());
+				ImGui::Text("Allocations: %zu", globalAllocatorData.getNum());
 			}
 #endif
 		}
@@ -1176,7 +1178,7 @@ bool TemStreamGui::sendCreateMessage(const Message::Source &source, const uint32
 	su.type = type;
 	(*logger)(Logger::Trace) << "Creating stream " << su << std::endl;
 
-	Message::Packet *newPacket = allocate<Message::Packet>();
+	Message::Packet *newPacket = allocateAndConstruct<Message::Packet>();
 	newPacket->source = source;
 	newPacket->payload.emplace<Message::StreamUpdate>(std::move(su));
 
@@ -1191,7 +1193,7 @@ bool TemStreamGui::sendCreateMessage(const Message::Source &source, const uint32
 	}
 	else
 	{
-		deallocate(newPacket);
+		destroyAndDeallocate(newPacket);
 		return false;
 	}
 }
@@ -1475,20 +1477,20 @@ int runApp(Configuration &configuration)
 					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
 					const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
 					gui.sendPacket(std::move(*packet), b);
-					deallocate(packet);
+					destroyAndDeallocate(packet);
 				}
 				break;
 				case TemStreamEvent::HandleMessagePacket: {
 					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
 					gui.handleMessage(std::move(*packet));
-					deallocate(packet);
+					destroyAndDeallocate(packet);
 				}
 				break;
 				case TemStreamEvent::SendMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
 					const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
 					gui.sendPackets(std::move(*packets), b);
-					deallocate(packets);
+					destroyAndDeallocate(packets);
 				}
 				break;
 				case TemStreamEvent::HandleMessagePackets: {
@@ -1496,7 +1498,7 @@ int runApp(Configuration &configuration)
 					auto pair = toMoveIterator(std::move(*packets));
 					std::for_each(pair.first, pair.second,
 								  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
-					deallocate(packets);
+					destroyAndDeallocate(packets);
 				}
 				break;
 				case TemStreamEvent::ReloadFont:
@@ -1681,10 +1683,10 @@ int runApp(Configuration &configuration)
 			}
 			else
 			{
-				gui.displays.clear();
-				gui.audio.clear();
-				gui.streams.clear();
-				gui.subscriptions.clear();
+				cleanSwap(gui.displays);
+				cleanSwap(gui.audio);
+				cleanSwap(gui.streams);
+				cleanSwap(gui.subscriptions);
 			}
 			gui.dirty = false;
 		}
@@ -1775,7 +1777,7 @@ void FileDisplay::loadFiles()
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << e.what() << std::endl;
-		files.clear();
+		cleanSwap(files);
 	}
 }
 SDL_MemoryFunctions::SDL_MemoryFunctions()

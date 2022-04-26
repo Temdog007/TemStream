@@ -48,6 +48,7 @@ class AllocatorData
 	void *data;
 	size_t used;
 	size_t len;
+	size_t allocationNum;
 	PlacementPolicy policy;
 
 	template <class T> friend class Allocator;
@@ -143,7 +144,8 @@ class AllocatorData
 	}
 
   public:
-	AllocatorData() : mutex(), list(nullptr), data(nullptr), used(0), len(0), policy(PlacementPolicy::Best)
+	AllocatorData()
+		: mutex(), list(nullptr), data(nullptr), used(0), len(0), allocationNum(0), policy(PlacementPolicy::Best)
 	{
 	}
 	AllocatorData(const AllocatorData &) = delete;
@@ -162,6 +164,11 @@ class AllocatorData
 	size_t getUsed() const
 	{
 		return used;
+	}
+
+	size_t getNum() const
+	{
+		return allocationNum;
 	}
 
 	void init(const size_t len, PlacementPolicy policy = PlacementPolicy::Best)
@@ -214,6 +221,16 @@ template <class T> class Allocator
 	T *reallocate(T *, const size_t newSize);
 	void deallocate(T *const p, const size_t count = 1);
 
+	template <typename... Args> void construct(T *t, Args &&...args)
+	{
+		new (t) T(std::forward<Args>(args)...);
+	}
+
+	void destroy(T *p)
+	{
+		p->~T();
+	}
+
 	size_t getBlockSize(const T *const p) const;
 };
 
@@ -263,6 +280,7 @@ template <class T> T *Allocator<T>::allocate(const size_t requestedCount)
 
 	const size_t dataAddress = reinterpret_cast<size_t>(affectedNode) + sizeof(FreeListNode);
 	T *ptr = reinterpret_cast<T *>(dataAddress);
+	++ad.allocationNum;
 	return ptr;
 }
 template <class T> T *Allocator<T>::reallocate(T *oldPtr, const size_t count)
@@ -363,6 +381,7 @@ template <class T> void Allocator<T>::deallocate(T *const ptr, const size_t)
 
 	ad.used -= freeNode->blockSize;
 	ad.coalescence(prev, freeNode);
+	--ad.allocationNum;
 }
 template <class T> size_t Allocator<T>::getBlockSize(const T *const ptr) const
 {

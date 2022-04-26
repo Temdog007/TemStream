@@ -98,7 +98,7 @@ void VPX::encodeAndSend(ByteList &bytes, const Message::Source &source)
 	}
 	vpx_codec_iter_t iter = NULL;
 	const vpx_codec_cx_pkt_t *pkt = NULL;
-	MessagePackets *packets = allocate<MessagePackets>();
+	MessagePackets *packets = allocateAndConstruct<MessagePackets>();
 	while ((pkt = vpx_codec_get_cx_data(&ctx, &iter)) != nullptr)
 	{
 		if (pkt->kind != VPX_CODEC_CX_FRAME_PKT)
@@ -119,10 +119,10 @@ void VPX::encodeAndSend(ByteList &bytes, const Message::Source &source)
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendMessagePackets;
 	e.user.data1 = packets;
-	e.user.data2 = &e;
+	e.user.data2 = nullptr;
 	if (!tryPushEvent(e))
 	{
-		deallocate(packets);
+		destroyAndDeallocate(packets);
 	}
 }
 bool VPX::decode(ByteList &bytes)

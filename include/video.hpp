@@ -38,6 +38,7 @@ class Video
 		ByteList bytes;
 		uint32_t width;
 		uint32_t height;
+		uint32_t format;
 
 		void resize(uint32_t ratio);
 		void resizeTo(uint32_t, uint32_t);

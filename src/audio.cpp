@@ -73,7 +73,7 @@ SDL_AudioSpec Audio::getAudioSpec()
 }
 unique_ptr<Audio> Audio::startRecording(const Message::Source &source, const char *name, const float silenceThresold)
 {
-	Audio *a = allocate<Audio>(source, Type::Record, silenceThresold);
+	Audio *a = allocateAndConstruct<Audio>(source, Type::Record, silenceThresold);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return startRecording(a, OPUS_APPLICATION_VOIP);
 }

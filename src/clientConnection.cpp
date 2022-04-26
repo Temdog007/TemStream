@@ -41,12 +41,12 @@ void ClientConnetion::addPacket(Message::Packet &&m)
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::HandleMessagePacket;
-	auto packet = allocate<Message::Packet>(std::move(m));
+	auto packet = allocateAndConstruct<Message::Packet>(std::move(m));
 	e.user.data1 = packet;
 	e.user.data2 = nullptr;
 	if (!tryPushEvent(e))
 	{
-		deallocate(packet);
+		destroyAndDeallocate(packet);
 	}
 }
 void ClientConnetion::addPackets(MessagePackets &&m)
@@ -54,12 +54,12 @@ void ClientConnetion::addPackets(MessagePackets &&m)
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::HandleMessagePackets;
-	auto packets = allocate<MessagePackets>(std::move(m));
+	auto packets = allocateAndConstruct<MessagePackets>(std::move(m));
 	e.user.data1 = packets;
 	e.user.data2 = nullptr;
 	if (!tryPushEvent(e))
 	{
-		deallocate(packets);
+		destroyAndDeallocate(packets);
 	}
 }
 } // namespace TemStream

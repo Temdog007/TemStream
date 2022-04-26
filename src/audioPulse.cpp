@@ -340,8 +340,8 @@ unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, con
 	std::this_thread::sleep_for(1s);
 
 	snprintf(commandBuffer, sizeof(commandBuffer), "%s_remapped", sinkName);
-	SinkInputAudio *audio = allocate<SinkInputAudio>(source, silenceThreshold, std::move(nullSink),
-													 std::move(comboSink), std::move(remapSink));
+	SinkInputAudio *audio = allocateAndConstruct<SinkInputAudio>(source, silenceThreshold, std::move(nullSink),
+																 std::move(comboSink), std::move(remapSink));
 	audio->name = commandBuffer;
 	return Audio::startRecording(audio, OPUS_APPLICATION_AUDIO);
 }

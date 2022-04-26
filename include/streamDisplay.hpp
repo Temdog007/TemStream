@@ -5,25 +5,6 @@
 namespace TemStream
 {
 class TemStreamGui;
-class SDL_TextureWrapper
-{
-  protected:
-	SDL_Texture *texture;
-
-  public:
-	SDL_TextureWrapper(SDL_Texture *);
-	SDL_TextureWrapper(const SDL_TextureWrapper &) = delete;
-	SDL_TextureWrapper(SDL_TextureWrapper &&);
-	~SDL_TextureWrapper();
-
-	SDL_TextureWrapper &operator=(const SDL_TextureWrapper &) = delete;
-	SDL_TextureWrapper &operator=(SDL_TextureWrapper &&);
-
-	SDL_Texture *&getTexture()
-	{
-		return texture;
-	}
-};
 struct CheckAudio
 {
 	List<float> left;

@@ -126,7 +126,7 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 			v.bytes.append(info.sLayerInfo[layerNum].pBsBuf, layerSize[layerNum]);
 		}
 
-		Message::Packet *packet = allocate<Message::Packet>();
+		Message::Packet *packet = allocateAndConstruct<Message::Packet>();
 		packet->source = source;
 		packet->payload.emplace<Message::Video>(std::move(v));
 
@@ -134,10 +134,10 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 		e.type = SDL_USEREVENT;
 		e.user.code = TemStreamEvent::SendSingleMessagePacket;
 		e.user.data1 = packet;
-		e.user.data2 = &e;
+		e.user.data2 = nullptr;
 		if (!tryPushEvent(e))
 		{
-			deallocate(packet);
+			destroyAndDeallocate(packet);
 		}
 	}
 }

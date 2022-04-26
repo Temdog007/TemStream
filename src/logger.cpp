@@ -13,8 +13,7 @@ void Logger::flush()
 	LOCK(mutex);
 	const auto s = os.str();
 	Add(streamLevel, s, false);
-	os.str("");
-	os.clear();
+	cleanSwap(os);
 	streamLevel = Level::Info;
 }
 void Logger::Add(const Level level, const String &s)

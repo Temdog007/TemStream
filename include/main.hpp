@@ -179,10 +179,6 @@ extern void initialLogs();
 
 extern bool isSpace(char);
 
-template <typename T, typename... Args> static inline T *allocate(Args &&...);
-
-template <typename T> static inline void deallocate(T *const);
-
 extern int64_t getTimestamp();
 
 class Configuration;
@@ -217,6 +213,12 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 	{
 		return variant_index<VariantType, T, index + 1>();
 	}
+}
+
+template <typename T> void cleanSwap(T &t)
+{
+	T newT;
+	t.swap(newT);
 }
 
 } // namespace TemStream
@@ -256,6 +258,8 @@ template <typename VariantType, typename T, std::size_t index = 0> constexpr std
 #include "serverConnection.hpp"
 #else
 #include "work.hpp"
+
+#include "sdl.hpp"
 
 #include "audio.hpp"
 #include "video.hpp"

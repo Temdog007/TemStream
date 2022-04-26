@@ -23,12 +23,12 @@ void StreamDisplay::updateTexture(const Video::Frame &frame)
 	if (!std::holds_alternative<SDL_TextureWrapper>(data))
 	{
 		(*logger)(Logger::Trace) << "Resized video texture " << frame.width << 'x' << frame.height << std::endl;
-		SDL_Texture *texture = SDL_CreateTexture(gui.getRenderer(), SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING,
-												 frame.width, frame.height);
+		SDL_Texture *texture =
+			SDL_CreateTexture(gui.getRenderer(), frame.format, SDL_TEXTUREACCESS_STREAMING, frame.width, frame.height);
 		data.emplace<SDL_TextureWrapper>(texture);
 	}
 	auto &wrapper = std::get<SDL_TextureWrapper>(data);
-	auto &texture = wrapper.getTexture();
+	auto &texture = *wrapper;
 	{
 		int w, h;
 		if (SDL_QueryTexture(texture, 0, 0, &w, &h) != 0)
@@ -273,7 +273,7 @@ bool StreamDisplay::Draw::operator()(String &s)
 }
 bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 {
-	auto &texture = t.getTexture();
+	auto &texture = *t;
 	if (texture == nullptr)
 	{
 		return true;
@@ -361,7 +361,7 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	const int audioWidth = 2048;
 	const int audioHeight = 512;
-	auto &texture = t.texture.getTexture();
+	auto &texture = *t.texture;
 	if (texture == nullptr)
 	{
 		SDL_DestroyTexture(texture);
@@ -395,25 +395,6 @@ bool StreamDisplay::Draw::operator()(ByteList &)
 {
 	return true;
 }
-SDL_TextureWrapper::SDL_TextureWrapper(SDL_Texture *texture) : texture(texture)
-{
-}
-SDL_TextureWrapper::SDL_TextureWrapper(SDL_TextureWrapper &&w) : texture(w.texture)
-{
-	w.texture = nullptr;
-}
-SDL_TextureWrapper::~SDL_TextureWrapper()
-{
-	SDL_DestroyTexture(texture);
-	texture = nullptr;
-}
-SDL_TextureWrapper &SDL_TextureWrapper::operator=(SDL_TextureWrapper &&w)
-{
-	SDL_DestroyTexture(texture);
-	texture = w.texture;
-	w.texture = nullptr;
-	return *this;
-}
 StreamDisplay::ContextMenu::ContextMenu(StreamDisplay &d) : display(d)
 {
 }
@@ -442,7 +423,7 @@ void StreamDisplay::ContextMenu::operator()(String &s)
 }
 void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 {
-	auto texture = w.getTexture();
+	auto &texture = *w;
 	if (texture != nullptr && ImGui::Button("Screenshot"))
 	{
 		int w, h;

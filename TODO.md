@@ -266,7 +266,7 @@
 - [x] Implement OpenH264 for video
 - [x] Delete old C code
 - [x] Only have one scaling for video stream
-- [ ] Don't send encoded video stream to streaming. Just use raw image.
+- [x] Don't send encoded video stream to streaming. Just use raw image.
 - [ ] Test on laptop
 - [ ] Webcam streaming
 

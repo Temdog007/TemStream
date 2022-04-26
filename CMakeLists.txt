@@ -68,6 +68,7 @@ set(CLIENT_SOURCES
   src/clientMisc.cpp
   src/gui.cpp
   src/query.cpp
+  src/sdl.cpp
   src/streamDisplay.cpp
   src/video.cpp
   src/work.cpp

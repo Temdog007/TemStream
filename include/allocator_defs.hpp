@@ -16,15 +16,18 @@ using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<s
 
 template <typename T> using LinkedList = std::list<T, Allocator<T>>;
 template <typename T> using Queue = std::queue<T, LinkedList<T>>;
-template <typename T, typename... Args> T *allocate(Args &&...args)
+
+template <typename T, typename... Args> T *allocateAndConstruct(Args &&...args)
 {
 	Allocator<T> a;
-	T *t = a.allocate();
-	return new (t) T(std::forward<Args>(args)...);
+	T *t = a.allocate(1);
+	a.construct(t, std::forward<Args>(args)...);
+	return t;
 }
-template <typename T> void deallocate(T *const t)
+template <typename T> void destroyAndDeallocate(T *const t)
 {
 	Allocator<T> a;
+	a.destroy(t);
 	a.deallocate(t);
 }
 
@@ -36,8 +39,7 @@ template <typename T> struct Deleter
 	}
 	void operator()(T *t) const
 	{
-		t->~T();
-		deallocate(t);
+		destroyAndDeallocate(t);
 	}
 };
 
@@ -47,12 +49,12 @@ template <typename T> using shared_ptr = std::shared_ptr<T>;
 
 template <typename T, typename... Args> static inline unique_ptr<T> tem_unique(Args &&...args)
 {
-	return unique_ptr<T>(allocate<T>(std::forward<Args>(args)...), Deleter<T>());
+	return unique_ptr<T>(allocateAndConstruct<T>(std::forward<Args>(args)...), Deleter<T>());
 }
 
 template <typename T, typename... Args> static inline shared_ptr<T> tem_shared(Args &&...args)
 {
-	return shared_ptr<T>(allocate<T>(std::forward<Args>(args)...), Deleter<T>());
+	return shared_ptr<T>(allocateAndConstruct<T>(std::forward<Args>(args)...), Deleter<T>());
 }
 
 template <typename T> static inline shared_ptr<T> tem_shared(T *t)
@@ -101,11 +103,11 @@ template <typename K, typename V> using Map = std::unordered_map<K, V>;
 
 template <typename T> using LinkedList = std::list<T>;
 template <typename T> using Queue = std::queue<T>;
-template <typename T, typename... Args> T *allocate(Args &&...args)
+template <typename T, typename... Args> T *allocateAndConstruct(Args &&...args)
 {
 	return new T(std::forward<Args>(args)...);
 }
-template <typename T> void deallocate(T *const t)
+template <typename T> void destroyAndDeallocate(T *const t)
 {
 	delete t;
 }
@@ -116,12 +118,12 @@ template <typename T> using shared_ptr = std::shared_ptr<T>;
 
 template <typename T, typename... Args> static inline unique_ptr<T> tem_unique(Args &&...args)
 {
-	return unique_ptr<T>(allocate<T>(std::forward<Args>(args)...));
+	return unique_ptr<T>(allocateAndConstruct<T>(std::forward<Args>(args)...));
 }
 
 template <typename T, typename... Args> static inline shared_ptr<T> tem_shared(Args &&...args)
 {
-	return shared_ptr<T>(allocate<T>(std::forward<Args>(args)...));
+	return shared_ptr<T>(allocateAndConstruct<T>(std::forward<Args>(args)...));
 }
 
 template <typename T> static inline shared_ptr<T> tem_shared(T *t)

@@ -12,12 +12,13 @@ void Video::logDroppedPackets(const size_t count, const Message::Source &source)
 {
 	(*logger)(Logger::Warning) << "Dropping " << count << " video frames from " << source << std::endl;
 }
-Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio) : frames(), source(), ratio(ratio)
+Video::FrameEncoder::FrameEncoder(const Message::Source &source, const int32_t ratio)
+	: frames(), source(source), ratio(ratio)
 {
-	this->source.author = source.author;
-	char buffer[KB(1)];
-	snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), ratio);
-	this->source.destination = buffer;
+	// this->source.author = source.author;
+	// char buffer[KB(1)];
+	// snprintf(buffer, sizeof(buffer), "%s (%d%%)", source.destination.c_str(), ratio);
+	// this->source.destination = buffer;
 }
 Video::FrameEncoder::~FrameEncoder()
 {
@@ -94,11 +95,11 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> &&ptr, Fr
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::StopVideoStream;
-	auto source = allocate<Message::Source>(ptr->source);
+	auto source = allocateAndConstruct<Message::Source>(ptr->source);
 	e.user.data1 = source;
 	if (!tryPushEvent(e))
 	{
-		deallocate(source);
+		destroyAndDeallocate(source);
 	}
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> &&ptr, FrameData frameData)
