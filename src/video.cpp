@@ -48,7 +48,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 			const uint32_t delay = 1000U / fd.fps;
 			uint32_t last = SDL_GetTicks();
 			cv::Mat yuv;
-			while (!appDone)
+			while (!appDone && cap.isOpened())
 			{
 				const uint32_t now = SDL_GetTicks();
 				const uint32_t diff = now - last;
@@ -70,22 +70,21 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 				// Need a better way that will always work
 				switch (image.channels())
 				{
-				case 1:
-				case 2:
-					break;
 				case 3:
-					cv::cvtColor(image, yuv, cv::COLOR_RGB2YUV_IYUV);
+					cv::cvtColor(image, yuv, cv::COLOR_BGR2YUV_IYUV);
 					break;
 				case 4:
-					cv::cvtColor(image, yuv, cv::COLOR_RGBA2YUV_IYUV);
+					cv::cvtColor(image, yuv, cv::COLOR_BGRA2YUV_IYUV);
 					break;
 				default:
-					continue;
+					(*logger)(Logger::Error) << "Unknown image type" << std::endl;
+					return;
 				}
 
 				Video::Frame frame;
 				frame.width = image.cols;
 				frame.height = image.rows;
+				frame.format = SDL_PIXELFORMAT_IYUV;
 				frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
 
 				{

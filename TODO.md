@@ -268,7 +268,7 @@
 - [x] Only have one scaling for video stream
 - [x] Don't send encoded video stream to streaming. Just use raw image.
 - [x] Webcam streaming
-- [ ] Video file streaming
+- [x] Video file streaming
 
 ### Apr 26, 2022
 - [ ] Test on laptop
