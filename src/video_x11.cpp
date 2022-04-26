@@ -252,9 +252,8 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 		dim = data->getSize(con.get());
 		if (!dim)
 		{
-			(*logger)(Logger::Warning) << "Window " << source << " is hidden" << std::endl;
-			data->windowHidden = true;
-			continue;
+			(*logger)(Logger::Error) << "Window " << source << " is not visible. Ending stream" << std::endl;
+			break;
 		}
 
 		xcb_get_image_cookie_t cookie = xcb_get_image(con.get(), XCB_IMAGE_FORMAT_Z_PIXMAP, data->window.windowId, 0, 0,
@@ -265,13 +264,8 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> &&data)
 		auto reply = makeXCB(replyPtr);
 		if (error || !reply)
 		{
+			(*logger)(Logger::Error) << "Window " << source << " is is not visible. Ending stream" << std::endl;
 			break;
-		}
-
-		if (data->windowHidden)
-		{
-			(*logger)(Logger::Info) << "Window is visible again" << std::endl;
-			data->windowHidden = false;
 		}
 
 		try

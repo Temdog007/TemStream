@@ -72,7 +72,6 @@ class Screenshotter
 	WindowProcess window;
 	std::weak_ptr<Video> video;
 	uint32_t fps;
-	bool windowHidden;
 
 	Dimensions getSize(xcb_connection_t *);
 	static void takeScreenshots(shared_ptr<Screenshotter> &&);
@@ -80,7 +79,7 @@ class Screenshotter
   public:
 	Screenshotter(const WindowProcess &w, const shared_ptr<Converter> &ptr, const shared_ptr<Video> &v,
 				  const uint32_t fps)
-		: converter(ptr), window(w), video(v), fps(fps), windowHidden(false)
+		: converter(ptr), window(w), video(v), fps(fps)
 	{
 	}
 	~Screenshotter()
