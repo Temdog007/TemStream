@@ -33,34 +33,42 @@ void Task::waitForAll()
 }
 void Task::checkFile(TemStreamGui &gui, String filename)
 {
-	IQuery *data = nullptr;
-	if (isImage(filename.c_str()))
+	try
 	{
-		data = allocateAndConstruct<QueryImage>(gui, filename);
-		goto end;
-	}
+		IQuery *data = nullptr;
+		if (isImage(filename.c_str()))
+		{
+			printf("%s is image\n", filename.c_str());
+			data = allocateAndConstruct<QueryImage>(gui, filename);
+			goto end;
+		}
 
 #if TEMSTREAM_USE_OPENCV
-	if (cv::VideoCapture(cv::String(filename)).isOpened())
-	{
-		data = allocateAndConstruct<QueryVideo>(gui, filename);
-		goto end;
-	}
+		if (cv::VideoCapture(cv::String(filename)).isOpened())
+		{
+			data = allocateAndConstruct<QueryVideo>(gui, filename);
+			goto end;
+		}
 #endif
-	{
-		std::ifstream file(filename.c_str());
-		String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-		data = allocateAndConstruct<QueryText>(gui, std::move(s));
-		goto end;
+		{
+			std::ifstream file(filename.c_str());
+			String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+			data = allocateAndConstruct<QueryText>(gui, std::move(s));
+			goto end;
+		}
+	end:
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::SetQueryData;
+		e.user.data1 = data;
+		if (!tryPushEvent(e))
+		{
+			destroyAndDeallocate(data);
+		}
 	}
-end:
-	SDL_Event e;
-	e.type = SDL_USEREVENT;
-	e.user.code = TemStreamEvent::SetQueryData;
-	e.user.data1 = data;
-	if (!tryPushEvent(e))
+	catch (const std::exception &e)
 	{
-		destroyAndDeallocate(data);
+		(*logger)(Logger::Error) << "Failed to check file: " << filename << std::endl;
 	}
 }
 void Task::sendImage(String filename, Message::Source source)

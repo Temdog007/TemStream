@@ -57,11 +57,7 @@ void allocatorImGuiFree(uint8_t *ptr, void *)
 uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
 {
 	TemStream::Allocator<uint8_t> a;
-	const size_t oldSize = a.getBlockSize(old);
-	uint8_t *data = allocatorMalloc(newSize);
-	memcpy(data, old, oldSize);
-	a.deallocate(old, 1);
-	return data;
+	return a.reallocate(old, newSize);
 }
 
 namespace TemStream
