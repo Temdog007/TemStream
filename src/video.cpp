@@ -15,17 +15,18 @@ void Video::logDroppedPackets(const size_t count, const Message::Source &source)
 {
 	(*logger)(Logger::Warning) << "Dropping " << count << " video frames from " << source << std::endl;
 }
-shared_ptr<Video> Video::recordWebcam(const int index, const Message::Source &source, const int32_t scale, FrameData fd)
+shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source, const int32_t scale,
+									  FrameData fd)
 {
 #if TEMSTREAM_USE_OPENCV
-	cv::VideoCapture cap(index);
+	cv::VideoCapture cap(std::visit(MakeVideoCapture{}, arg));
 	if (!cap.isOpened())
 	{
 		return nullptr;
 	}
 
 	cv::Mat image;
-	if (!cap.read(image))
+	if (!cap.read(image) || image.empty())
 	{
 		return nullptr;
 	}
@@ -43,21 +44,47 @@ shared_ptr<Video> Video::recordWebcam(const int index, const Message::Source &so
 
 	Task::addTask(std::async(
 		TaskPolicy, [cap = std::move(cap), image = std::move(image), weak, source, scale, fd, encoder]() mutable {
+			const uint32_t delay = 1000U / fd.fps;
+			uint32_t last = SDL_GetTicks();
 			while (!appDone)
 			{
+				const uint32_t now = SDL_GetTicks();
+				const uint32_t diff = now - last;
+				if (diff < delay)
+				{
+					SDL_Delay(diff);
+					continue;
+				}
+				last = now;
 				if (weak.expired())
 				{
 					break;
 				}
-				if (!cap.read(image))
+				if (!cap.read(image) || image.empty())
 				{
-					break;
+					continue;
 				}
 
 				Video::Frame frame;
 				frame.width = image.cols;
 				frame.height = image.rows;
 				frame.bytes.append(image.data, image.elemSize() * image.total());
+
+				{
+					auto ptr = allocateAndConstruct<Video::Frame>(frame);
+					auto sourcePtr = allocateAndConstruct<Message::Source>(source);
+
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::HandleFrame;
+					e.user.data1 = ptr;
+					e.user.data2 = sourcePtr;
+					if (!tryPushEvent(e))
+					{
+						destroyAndDeallocate(ptr);
+						destroyAndDeallocate(sourcePtr);
+					}
+				}
 				if (auto e = encoder.lock())
 				{
 					e->addFrame(std::move(frame));

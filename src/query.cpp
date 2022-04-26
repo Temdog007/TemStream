@@ -162,7 +162,11 @@ void QueryAudio::execute() const
 		break;
 	}
 }
-QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection(WebCamSelection())
+QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection(WebCamSelection{})
+{
+}
+QueryVideo::QueryVideo(TemStreamGui &gui, const String &s)
+	: IQuery(gui), selection(WebCamSelection{Video::FrameData(), s, 100})
 {
 }
 QueryVideo::~QueryVideo()
@@ -199,17 +203,68 @@ bool QueryVideo::draw()
 				ImGui::RadioButton(buffer, &ws.selected, i++);
 			}
 			ws.frameData.draw();
-			ImGui::SliderInt("Scale", &ws.scale, 1, 100);
+			if (ImGui::InputInt("Scale (%)", &ws.scale))
+			{
+				ws.scale = std::clamp(ws.scale, 1, 100);
+			}
 		}
 		void operator()(WebCamSelection &w)
 		{
-			ImGui::InputInt("Index", &w.index, 1, 10);
+			struct Bar
+			{
+				bool operator()(String &s)
+				{
+					return ImGui::InputText("Filename", &s);
+				}
+				bool operator()(int32_t &index)
+				{
+					return ImGui::InputInt("Index", &index, 1, 10);
+				}
+			};
+			static const char *selections[]{"Index", "Filename"};
+			int selected = w.arg.index();
+			if (ImGui::Combo("Type", &selected, selections, IM_ARRAYSIZE(selections)))
+			{
+				switch (selected)
+				{
+				case variant_index<VideoCaptureArg, int32_t>():
+					w.arg.emplace<int32_t>(0);
+					break;
+				case variant_index<VideoCaptureArg, String>():
+					w.arg.emplace<String>("/dev/video0");
+					break;
+				default:
+					break;
+				}
+			}
+			std::visit(Bar(), w.arg);
 			w.frameData.draw();
-			ImGui::SliderInt("Scale", &w.scale, 1, 100);
+			if (ImGui::InputInt("Scale (%)", &w.scale))
+			{
+				w.scale = std::clamp(w.scale, 1, 100);
+			}
 		}
 	};
 	std::visit(Foo(), selection);
 	return IQuery::draw();
+}
+std::ostream &operator<<(std::ostream &os, const VideoCaptureArg &arg)
+{
+	struct Foo
+	{
+		std::ostream &os;
+		std::ostream &operator()(const String &s)
+		{
+			os << s;
+			return os;
+		}
+		std::ostream &operator()(const int32_t index)
+		{
+			os << index;
+			return os;
+		}
+	};
+	return std::visit(Foo{os}, arg);
 }
 void Video::FrameData::draw()
 {
@@ -258,10 +313,10 @@ void QueryVideo::execute() const
 		}
 		void operator()(const WebCamSelection wb) const
 		{
-			auto ptr = Video::recordWebcam(wb.index, source, wb.scale, wb.frameData);
+			auto ptr = Video::recordWebcam(wb.arg, source, wb.scale, wb.frameData);
 			if (ptr == nullptr)
 			{
-				(*logger)(Logger::Error) << "Failed to start recording webcam " << wb.index << std::endl;
+				(*logger)(Logger::Error) << "Failed to start recording webcam " << wb.arg << std::endl;
 			}
 			else
 			{

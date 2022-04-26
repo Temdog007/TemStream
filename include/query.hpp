@@ -82,7 +82,7 @@ class QueryVideo : public IQuery
 	struct WebCamSelection
 	{
 		Video::FrameData frameData;
-		int index;
+		VideoCaptureArg arg;
 		int32_t scale;
 	};
 	using VideoSelection = std::variant<WebCamSelection, WindowSelection>;
@@ -90,6 +90,7 @@ class QueryVideo : public IQuery
 
   public:
 	QueryVideo(TemStreamGui &);
+	QueryVideo(TemStreamGui &, const String &);
 	~QueryVideo();
 
 	bool draw() override;

@@ -577,11 +577,23 @@ void TemStreamGui::draw()
 				ImGui::TableHeadersRow();
 				for (auto iter = video.begin(); iter != video.end();)
 				{
+					String name;
 					const auto &data = iter->second->getInfo();
-					ImGui::PushID(data.name.c_str());
+					if (data.name.empty())
+					{
+						StringStream ss;
+						ss << iter->second->getSource();
+						name = ss.str();
+					}
+					else
+					{
+						name = data.name;
+					}
+
+					ImGui::PushID(name.c_str());
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", data.name.c_str());
+					ImGui::Text("%s", name.c_str());
 
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Stop"))

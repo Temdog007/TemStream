@@ -34,6 +34,13 @@ void Task::waitForAll()
 void Task::checkFile(TemStreamGui &gui, String filename)
 {
 	IQuery *data = nullptr;
+#if TEMSTREAM_USE_OPENCV
+	if (cv::VideoCapture(cv::String(filename)).isOpened())
+	{
+		data = allocateAndConstruct<QueryVideo>(gui, filename);
+		goto end;
+	}
+#endif
 	if (isImage(filename.c_str()))
 	{
 		data = allocateAndConstruct<QueryImage>(gui, filename);
@@ -44,6 +51,8 @@ void Task::checkFile(TemStreamGui &gui, String filename)
 		String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 		data = allocateAndConstruct<QueryText>(gui, std::move(s));
 	}
+	goto end;
+end:
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SetQueryData;

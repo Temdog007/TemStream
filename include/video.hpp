@@ -5,6 +5,21 @@
 namespace TemStream
 {
 using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
+#if TEMSTREAM_USE_OPENCV
+using VideoCaptureArg = std::variant<int32_t, String>;
+struct MakeVideoCapture
+{
+	cv::VideoCapture operator()(const String &s)
+	{
+		return cv::VideoCapture(cv::String(s));
+	}
+	cv::VideoCapture operator()(const int32_t index)
+	{
+		return cv::VideoCapture(index);
+	}
+};
+extern std::ostream &operator<<(std::ostream &, const VideoCaptureArg &);
+#endif
 class Video
 {
 	friend class Allocator<Video>;
@@ -65,7 +80,7 @@ class Video
 
 	static WindowProcesses getRecordableWindows();
 	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, int32_t, Video::FrameData);
-	static shared_ptr<Video> recordWebcam(int index, const Message::Source &, int32_t, Video::FrameData);
+	static shared_ptr<Video> recordWebcam(const VideoCaptureArg &, const Message::Source &, int32_t, Video::FrameData);
 
 	class EncoderDecoder
 	{
