@@ -96,7 +96,7 @@ end:
 	logger = nullptr;
 	return result;
 }
-void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> &&peer)
+void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> peer)
 {
 	*logger << "Handling connection: " << peer->getAddress() << std::endl;
 	peer->maxMessageSize = configuration.maxMessageSize;

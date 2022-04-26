@@ -36,7 +36,7 @@ class ServerConnection : public Connection
 
 	static std::optional<Stream> getStream(const Message::Source &);
 
-	static void runPeerConnection(shared_ptr<ServerConnection> &&);
+	static void runPeerConnection(shared_ptr<ServerConnection>);
 
 	static Message::PeerInformationSet getPeers();
 

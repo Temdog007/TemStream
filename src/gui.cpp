@@ -1307,9 +1307,9 @@ bool TemStreamGui::addAudio(unique_ptr<Audio> &&ptr)
 	return pair.second;
 }
 
-bool TemStreamGui::addVideo(shared_ptr<Video> &&ptr)
+bool TemStreamGui::addVideo(shared_ptr<Video> ptr)
 {
-	auto pair = video.emplace(ptr->getSource(), std::move(ptr));
+	auto pair = video.emplace(ptr->getSource(), ptr);
 	return pair.second;
 }
 

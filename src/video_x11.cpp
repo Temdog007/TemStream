@@ -182,9 +182,8 @@ std::optional<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 	temp.clear();
 	temp.append(data, s.width * s.height * 4);
 	cv::Mat m(frame.height, frame.width, CV_8UC4, temp.data());
-	cv::Mat yuv;
-	cv::cvtColor(m, yuv, cv::COLOR_BGRA2YUV_IYUV);
-	frame.bytes.append(yuv.data, yuv.total() * yuv.elemSize());
+	cv::cvtColor(m, m, cv::COLOR_BGRA2YUV_IYUV);
+	frame.bytes.append(m.data, m.total() * m.elemSize());
 	return frame;
 #else
 	frame->bytes.resize((s.width * s.height) * 2, '\0');

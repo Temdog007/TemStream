@@ -267,10 +267,11 @@
 - [x] Delete old C code
 - [x] Only have one scaling for video stream
 - [x] Don't send encoded video stream to streaming. Just use raw image.
-- [ ] Test on laptop
-- [ ] Webcam streaming
+- [x] Webcam streaming
+- [ ] Video file streaming
 
 ### Apr 26, 2022
+- [ ] Test on laptop
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
@@ -299,7 +300,7 @@
 - [x] Deadlock when switching between ui and no ui quickly while watching video stream with audio
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
-- [ ] Potential memory leak when loading images (clear doesn't free buffer for maps or sets)
+- [x] Memory leak when streams (removed shared pointers so most likely that was the issue)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

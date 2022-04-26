@@ -30,6 +30,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	{
 		return nullptr;
 	}
+	printf("image %d\n", image.channels());
 	fd.width = image.cols;
 	fd.height = image.rows;
 
@@ -46,6 +47,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 		TaskPolicy, [cap = std::move(cap), image = std::move(image), weak, source, scale, fd, encoder]() mutable {
 			const uint32_t delay = 1000U / fd.fps;
 			uint32_t last = SDL_GetTicks();
+			cv::Mat yuv;
 			while (!appDone)
 			{
 				const uint32_t now = SDL_GetTicks();
@@ -62,13 +64,29 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 				}
 				if (!cap.read(image) || image.empty())
 				{
+					break;
+				}
+
+				// Need a better way that will always work
+				switch (image.channels())
+				{
+				case 1:
+				case 2:
+					break;
+				case 3:
+					cv::cvtColor(image, yuv, cv::COLOR_RGB2YUV_IYUV);
+					break;
+				case 4:
+					cv::cvtColor(image, yuv, cv::COLOR_RGBA2YUV_IYUV);
+					break;
+				default:
 					continue;
 				}
 
 				Video::Frame frame;
 				frame.width = image.cols;
 				frame.height = image.rows;
-				frame.bytes.append(image.data, image.elemSize() * image.total());
+				frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
 
 				{
 					auto ptr = allocateAndConstruct<Video::Frame>(frame);

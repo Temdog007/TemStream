@@ -152,7 +152,7 @@ class TemStreamGui
 	bool addAudio(unique_ptr<Audio> &&);
 	bool useAudio(const Message::Source &, const std::function<void(Audio &)> &f);
 
-	bool addVideo(shared_ptr<Video> &&);
+	bool addVideo(shared_ptr<Video>);
 
 	bool isConnected();
 
