@@ -45,6 +45,12 @@ bool Connection::readAndHandle(const int timeout)
 			bytes.remove(sizeof(uint32_t));
 		}
 
+		if (*nextMessageSize == 0)
+		{
+			nextMessageSize = std::nullopt;
+			bytes.clear();
+			return true;
+		}
 		if (*nextMessageSize == bytes.size())
 		{
 			Message::Packet packet;

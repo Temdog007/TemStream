@@ -271,26 +271,29 @@
 - [x] Video file streaming
 
 ### Apr 26, 2022
+- [ ] Make refresh button for clients, streams, servers, etc
 - [ ] Test on laptop
     - [ ] Playing audio on laptop doesn't work
-    - [ ] Plyaing video stream on laptop doesn't work
+    - [ ] Need to restart encoder everytime a client joins (need to figure out better solution)
+
+### Apr 27, 2022
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
-### Apr 27, 2022
+### Apr 28, 2022
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time stamp
 
-### Apr 28, 2022
+### Apr 29, 2022
 - [ ] Validate stream names/client names
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts
 
-### Apr 29, 2022
+### Apr 30, 2022
 - [ ] Add comments to code
 - [ ] Implement SSL socket
 - [ ] Implement web socket

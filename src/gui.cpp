@@ -132,8 +132,8 @@ void TemStreamGui::decodeVideoPackets()
 						++iter;
 					}
 				}
+				lastCheck = now;
 			}
-			lastCheck = now;
 		}
 		if (auto result = videoPackets.clearIfGreaterThan(5))
 		{

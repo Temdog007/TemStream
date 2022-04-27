@@ -133,7 +133,7 @@ class Video
 		Message::Source source;
 		const int32_t ratio;
 
-		static void encodeFrames(shared_ptr<FrameEncoder>, FrameData);
+		static void encodeFrames(shared_ptr<FrameEncoder>, FrameData, const bool forCamera);
 
 	  public:
 		FrameEncoder(const Message::Source &, int32_t);
@@ -144,7 +144,7 @@ class Video
 		ByteList resize(const ByteList &);
 		ByteList encode(const ByteList &) const;
 
-		static void startEncodingFrames(shared_ptr<FrameEncoder>, FrameData);
+		static void startEncodingFrames(shared_ptr<FrameEncoder>, FrameData, const bool forCamera);
 	};
 
 	template <typename T> class RGBA2YUV

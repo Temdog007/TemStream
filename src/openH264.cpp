@@ -45,9 +45,9 @@ unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, cons
 	param.iTemporalLayerNum = true;
 	param.iSpatialLayerNum = true;
 	param.bEnableDenoise = 0;
-	param.bEnableBackgroundDetection = true;
-	param.bEnableAdaptiveQuant = true;
-	param.bEnableFrameSkip = false;
+	param.bEnableBackgroundDetection = false;
+	param.bEnableAdaptiveQuant = false;
+	param.bEnableFrameSkip = true;
 	param.bEnableLongTermReference = 0;
 	param.iLtrMarkPeriod = 30;
 	param.iMultipleThreadIdc = std::thread::hardware_concurrency();
@@ -186,6 +186,7 @@ bool OpenH264::decode(ByteList &bytes)
 
 		if (state != dsErrorFree)
 		{
+			(*logger)(Logger::Warning) << "Failed to decode video frame" << std::endl;
 			return false;
 		}
 		if (info.iBufferStatus != 1)

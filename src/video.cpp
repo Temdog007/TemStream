@@ -112,7 +112,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	std::weak_ptr<FrameEncoder> encoder;
 	{
 		auto e = tem_shared<FrameEncoder>(source, scale);
-		FrameEncoder::startEncodingFrames(e, fd);
+		FrameEncoder::startEncodingFrames(e, fd, true);
 		encoder = e;
 	}
 	auto weak = std::weak_ptr(video);
@@ -135,7 +135,7 @@ void Video::FrameEncoder::addFrame(Frame &&frame)
 {
 	frames.push(std::move(frame));
 }
-void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, FrameData frameData)
+void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, FrameData frameData, const bool forCamera)
 {
 	(*logger)(Logger::Trace) << "Starting encoding thread: " << ptr->source << std::endl;
 	using namespace std::chrono_literals;
@@ -151,7 +151,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 
 	frameData.height -= frameData.height % 2;
 	frameData.height = frameData.height * ptr->ratio / 100;
-	encoder = createEncoder(frameData);
+	encoder = createEncoder(frameData, forCamera);
 	if (!encoder)
 	{
 		goto end;
@@ -197,9 +197,9 @@ end:
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
 	stopVideoStream(ptr->source);
 }
-void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr, FrameData frameData)
+void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr, FrameData frameData, const bool forCamera)
 {
-	Task::addTask(std::async(TaskPolicy, encodeFrames, ptr, frameData));
+	Task::addTask(std::async(TaskPolicy, encodeFrames, ptr, frameData, forCamera));
 }
 void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 {

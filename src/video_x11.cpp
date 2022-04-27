@@ -321,7 +321,7 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	}
 
 	auto encoder = tem_shared<FrameEncoder>(source, scale);
-	FrameEncoder::startEncodingFrames(encoder, fd);
+	FrameEncoder::startEncodingFrames(encoder, fd, false);
 
 	auto converter = tem_shared<Converter>(encoder, source);
 	auto video = tem_shared<Video>(source, wp);
