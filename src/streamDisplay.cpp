@@ -31,12 +31,14 @@ void StreamDisplay::updateTexture(const Video::Frame &frame)
 	auto &texture = *wrapper;
 	{
 		int w, h;
-		if (SDL_QueryTexture(texture, 0, 0, &w, &h) != 0)
+		uint32_t format;
+		if (SDL_QueryTexture(texture, &format, 0, &w, &h) != 0)
 		{
 			logSDLError("Failed to query texture");
 			return;
 		}
-		if (frame.width != static_cast<uint32_t>(w) || frame.height != static_cast<uint32_t>(h))
+		if (format != frame.format || frame.width != static_cast<uint32_t>(w) ||
+			frame.height != static_cast<uint32_t>(h))
 		{
 			data.emplace<std::monostate>();
 			updateTexture(frame);

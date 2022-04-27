@@ -187,7 +187,7 @@ template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV
 		const auto maxWaitTime = 3s;
 		while (!appDone)
 		{
-			auto result = ptr->frames.clearIfGreaterThan(5);
+			auto result = ptr->frames.clearIfGreaterThan(20);
 			if (result)
 			{
 				logDroppedPackets(*result, ptr->source);

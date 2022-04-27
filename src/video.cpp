@@ -159,7 +159,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 
 	while (!appDone)
 	{
-		if (auto result = ptr->frames.clearIfGreaterThan(5))
+		if (auto result = ptr->frames.clearIfGreaterThan(20))
 		{
 			logDroppedPackets(*result, ptr->source);
 		}

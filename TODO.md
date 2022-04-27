@@ -271,9 +271,9 @@
 - [x] Video file streaming
 
 ### Apr 26, 2022 - Apr 27, 2022
-- [ ] Test on laptop
-    - [ ] Playing audio on laptop doesn't work (allocations goes up but doesn't go down)
-    - [ ] Need to restart encoder everytime a client joins (need to figure out better solution)
+- [ ] Fix issues found when testing on laptop
+    - [ ] Playing audio on laptop causes unknown crash (allocations goes up but doesn't go down)
+    - [ ] Need to restart encoder everytime a client joins (use OpenCV to create video file, then stream video file. Ensure audio stays sync with window if also recording audio)
 
 ### Apr 28, 2022
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
