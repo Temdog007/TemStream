@@ -205,7 +205,7 @@ Dimensions Screenshotter::getSize(xcb_connection_t *con)
 }
 void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> ss)
 {
-	Task::addTask(std::async(TaskPolicy, takeScreenshots, ss));
+	WorkPool::workPool.addWork([ss]() { takeScreenshots(ss); });
 }
 void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 {

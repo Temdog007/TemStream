@@ -273,16 +273,16 @@ bool TemStreamGui::init()
 		return false;
 	}
 
-	Task::addTask(std::async(TaskPolicy, [this]() {
+	WorkPool::workPool.addWork([this]() {
 		using namespace std::chrono_literals;
 		while (!appDone)
 		{
 			this->updatePeer();
 			std::this_thread::sleep_for(1ms);
 		}
-	}));
+	});
 
-	Task::addTask(std::async(TaskPolicy, [this]() { this->decodeVideoPackets(); }));
+	WorkPool::workPool.addWork([this]() { this->decodeVideoPackets(); });
 
 	return true;
 }
@@ -1474,7 +1474,7 @@ int runApp(Configuration &configuration)
 				else
 				{
 					String s(event.drop.file);
-					Task::addTask(std::async(TaskPolicy, [&gui, s = std::move(s)]() { Task::checkFile(gui, s); }));
+					WorkPool::workPool.addWork([&gui, s = std::move(s)]() { Work::checkFile(gui, s); });
 				}
 				SDL_free(event.drop.file);
 			}
@@ -1735,7 +1735,7 @@ int runApp(Configuration &configuration)
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
-	Task::waitForAll();
+	WorkPool::workPool.waitForAll();
 	logger = nullptr;
 	return EXIT_SUCCESS;
 }

@@ -115,10 +115,11 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 		FrameEncoder::startEncodingFrames(e, fd, true);
 		encoder = e;
 	}
-	auto weak = std::weak_ptr(video);
 
-	Task::addTask(std::async(TaskPolicy, handleVideoCapture, std::move(cap), std::move(image), fd, std::move(arg),
-							 std::weak_ptr(video), source, encoder));
+	WorkPool::workPool.addWork([cap = std::move(cap), image = std::move(image), fd, arg = std::move(arg), video, source,
+								encoder]() mutable {
+		handleVideoCapture(std::move(cap), std::move(image), fd, std::move(arg), std::weak_ptr(video), source, encoder);
+	});
 	return video;
 #else
 #endif
@@ -199,7 +200,7 @@ end:
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr, FrameData frameData, const bool forCamera)
 {
-	Task::addTask(std::async(TaskPolicy, encodeFrames, ptr, frameData, forCamera));
+	WorkPool::workPool.addWork([ptr, frameData, forCamera]() { encodeFrames(ptr, frameData, forCamera); });
 }
 void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 {

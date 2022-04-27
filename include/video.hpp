@@ -174,7 +174,7 @@ class Video
 
 		static void startConverteringFrames(shared_ptr<RGBA2YUV> ptr)
 		{
-			Task::addTask(std::async(TaskPolicy, convertFrames, ptr));
+			WorkPool::workPool.addWork([ptr]() { convertFrames(ptr); });
 		}
 	};
 };

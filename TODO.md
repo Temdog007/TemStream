@@ -271,6 +271,7 @@
 - [x] Video file streaming
 
 ### Apr 26, 2022 - Apr 27, 2022
+- [x] Add Thread pool
 - [ ] Fix issues found when testing on laptop
     - [ ] Playing audio on laptop causes unknown crash (allocations goes up but doesn't go down)
     - [ ] Need to restart encoder everytime a client joins (use OpenCV to create video file, then stream video file. Ensure audio stays sync with window if also recording audio)

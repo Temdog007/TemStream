@@ -2,36 +2,62 @@
 
 namespace TemStream
 {
-const std::launch TaskPolicy = std::launch::async;
-WorkList Task::workList;
-void Task::addTask(std::future<void> &&f)
+WorkPool WorkPool::workPool;
+WorkPool::WorkPool() : threads(), workList(), ready(0)
 {
-	workList.push_back(std::move(f));
 }
-void Task::cleanupTasks()
+WorkPool::~WorkPool()
+{
+	waitForAll();
+}
+void WorkPool::addWork(std::function<void()> &&f)
 {
 	using namespace std::chrono_literals;
-	for (auto iter = workList.begin(); iter != workList.end();)
+	if (ready == 0)
 	{
-		if (iter->wait_for(0ms) == std::future_status::ready)
-		{
-			iter = workList.erase(iter);
-		}
-		else
-		{
-			++iter;
-		}
+		threads.emplace_back([this]() { WorkPool::handleWork(*this); });
 	}
+	workList.push(std::move(f));
 }
-void Task::waitForAll()
+void WorkPool::waitForAll()
 {
-	for (auto &f : workList)
+	for (auto &t : threads)
 	{
-		f.wait();
+		t.join();
 	}
-	cleanSwap(workList);
+	threads.clear();
+	workList.clear();
 }
-void Task::checkFile(TemStreamGui &gui, String filename)
+WorkPool::Readiness::Readiness(std::atomic_int32_t &ready) : ready(ready)
+{
+	++ready;
+}
+WorkPool::Readiness::~Readiness()
+{
+	--ready;
+}
+void WorkPool::handleWork(WorkPool &p)
+{
+	using namespace std::chrono_literals;
+
+	std::optional<std::function<void()>> work;
+	while (!appDone)
+	{
+		{
+			Readiness r(p.ready);
+			work = p.workList.pop(500ms);
+			if (!work)
+			{
+				continue;
+			}
+		}
+
+		(*work)();
+	}
+}
+namespace Work
+{
+void checkFile(TemStreamGui &gui, String filename)
 {
 	try
 	{
@@ -70,7 +96,7 @@ void Task::checkFile(TemStreamGui &gui, String filename)
 		(*logger)(Logger::Error) << "Failed to check file: " << filename << std::endl;
 	}
 }
-void Task::sendImage(String filename, Message::Source source)
+void sendImage(String filename, Message::Source source)
 {
 	std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open())
@@ -97,7 +123,7 @@ void Task::sendImage(String filename, Message::Source source)
 		destroyAndDeallocate(packets);
 	}
 }
-void Task::loadSurface(Message::Source source, ByteList bytes)
+void loadSurface(Message::Source source, ByteList bytes)
 {
 	(*logger)(Logger::Trace) << "Loading image data: " << bytes.size() / KB(1) << "KB" << std::endl;
 	SDL_RWops *src = SDL_RWFromConstMem(bytes.data(), bytes.size());
@@ -126,7 +152,7 @@ void Task::loadSurface(Message::Source source, ByteList bytes)
 	}
 }
 
-void Task::startPlayback(Message::Source source, const std::optional<String> name, const float volume)
+void startPlayback(Message::Source source, const std::optional<String> name, const float volume)
 {
 	auto ptr = Audio::startPlayback(source, name.has_value() ? name->c_str() : nullptr, volume);
 	if (ptr == nullptr)
@@ -146,8 +172,7 @@ void Task::startPlayback(Message::Source source, const std::optional<String> nam
 	// Pointer will deleted if not released
 }
 
-void Task::startRecordingAudio(const Message::Source source, const std::optional<String> name,
-							   const float silenceThreshold)
+void startRecordingAudio(const Message::Source source, const std::optional<String> name, const float silenceThreshold)
 {
 	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);
 	if (ptr == nullptr)
@@ -171,8 +196,8 @@ void Task::startRecordingAudio(const Message::Source source, const std::optional
 
 	// Pointer will deleted if not released
 }
-void Task::startRecordingWindowAudio(const Message::Source source, const WindowProcess windowProcess,
-									 const float silenceThreshold)
+void startRecordingWindowAudio(const Message::Source source, const WindowProcess windowProcess,
+							   const float silenceThreshold)
 {
 	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);
 	if (ptr == nullptr)
@@ -196,4 +221,5 @@ void Task::startRecordingWindowAudio(const Message::Source source, const WindowP
 
 	// Pointer will deleted if not released
 }
+} // namespace Work
 } // namespace TemStream
