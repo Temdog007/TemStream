@@ -56,25 +56,30 @@ class ByteList
 
 	bool reallocate(size_t);
 
-	void append(uint8_t);
+	bool append(uint8_t);
 
-	void append(const uint8_t *, const size_t);
+	bool append(const uint8_t *, const size_t);
 
-	void insert(const uint8_t *, const size_t, const size_t offset);
+	bool insert(const uint8_t *, const size_t, const size_t offset);
 
-	void append(const ByteList &);
+	bool append(const ByteList &);
+	bool append(const ByteList &, uint32_t);
 
-	template <typename Iterator> void append(Iterator start, Iterator end)
+	template <typename Iterator> bool append(Iterator start, Iterator end)
 	{
 		for (auto iter = start; start != end; ++iter)
 		{
-			append(static_cast<uint8_t>(*iter));
+			if (!append(static_cast<uint8_t>(*iter)))
+			{
+				return false;
+			}
 		}
+		return true;
 	}
 
-	template <typename T> void append(const T *t, const size_t count = 1)
+	template <typename T> bool append(const T *t, const size_t count = 1)
 	{
-		append(reinterpret_cast<const uint8_t *>(t), sizeof(T) * count);
+		return append(reinterpret_cast<const uint8_t *>(t), sizeof(T) * count);
 	}
 
 	ByteList &operator+=(const ByteList &);

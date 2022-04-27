@@ -382,7 +382,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 		{
 			if (ImGui::MenuItem("Connect to server", "", nullptr, !connectedToServer))
 			{
-				connectToServer = configuration.address;
+				connectToServer.emplace(configuration.address);
 			}
 			if (ImGui::MenuItem("Disconnect from server", "", nullptr, connectedToServer))
 			{
@@ -662,6 +662,7 @@ void TemStreamGui::draw()
 			std::visit(RenderCredentials(), configuration.credentials);
 			if (ImGui::Button("Connect"))
 			{
+				configuration.address = *connectToServer;
 				connect(*connectToServer);
 				opened = false;
 			}

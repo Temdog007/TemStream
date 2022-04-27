@@ -20,10 +20,10 @@ class Audio
 		std::array<float, MB(1) / sizeof(float)> fbuffer;
 		std::array<char, MB(1)> buffer;
 	};
-	List<char> recordBuffer;
 	const Message::Source source;
 	String name;
-	Deque<char> storedAudio;
+	ByteList recordBuffer;
+	ByteList storedAudio;
 	ByteList currentAudio;
 	SDL_AudioSpec spec;
 	union {

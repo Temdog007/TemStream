@@ -59,6 +59,23 @@ void logSDLError(const char *str)
 {
 	(*logger)(Logger::Error) << str << ": " << SDL_GetError() << std::endl;
 }
+bool stopVideoStream(const Message::Source &origSource)
+{
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::StopVideoStream;
+	auto source = allocateAndConstruct<Message::Source>(origSource);
+	e.user.data1 = source;
+	if (tryPushEvent(e))
+	{
+		return true;
+	}
+	else
+	{
+		destroyAndDeallocate(source);
+		return false;
+	}
+}
 } // namespace TemStream
 
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR

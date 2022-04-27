@@ -38,7 +38,6 @@ void Task::checkFile(TemStreamGui &gui, String filename)
 		IQuery *data = nullptr;
 		if (isImage(filename.c_str()))
 		{
-			printf("%s is image\n", filename.c_str());
 			data = allocateAndConstruct<QueryImage>(gui, filename);
 			goto end;
 		}

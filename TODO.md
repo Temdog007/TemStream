@@ -272,6 +272,8 @@
 
 ### Apr 26, 2022
 - [ ] Test on laptop
+    - [ ] Playing audio on laptop doesn't work
+    - [ ] Plyaing video stream on laptop doesn't work
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 

@@ -3,7 +3,7 @@
 namespace TemStream
 {
 Audio::Audio(const Message::Source &source, const Type type, const float volume)
-	: buffer(), recordBuffer(), source(source), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
+	: buffer(), source(source), name(), recordBuffer(), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
 	  code(SDLK_UNKNOWN), volume(volume), type(type)
 {
 }
@@ -44,7 +44,7 @@ void Audio::enqueueAudio(const ByteList &bytes)
 			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
 		}
 		Lock lock(id);
-		storedAudio.insert(storedAudio.end(), buffer.begin(), buffer.begin() + bytesRead);
+		storedAudio.append(buffer.data(), bytesRead);
 	}
 }
 void Audio::clearAudio()
@@ -155,11 +155,9 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 	currentAudio.clear();
 	if (toCopy > 0)
 	{
-		const auto start = storedAudio.begin();
-		const auto end = storedAudio.begin() + toCopy;
-		std::copy(start, end, data);
-		currentAudio.append(start, end);
-		storedAudio.erase(start, end);
+		memcpy(data, storedAudio.data(), toCopy);
+		currentAudio.append(storedAudio, toCopy);
+		storedAudio.remove(toCopy);
 	}
 }
 bool Audio::isLoudEnough(float *data, const int count) const
@@ -177,7 +175,7 @@ void Audio::recordAudio(uint8_t *data, const int count)
 	{
 		memset(data, 0, count);
 	}
-	storedAudio.insert(storedAudio.end(), data, data + count);
+	storedAudio.append(data, count);
 	if (storedAudio.size() > MB(1))
 	{
 		(*logger)(Logger::Warning) << "Audio delay is occurring for recording. Audio packets will be dropped."
@@ -222,11 +220,9 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 			frameSize = closestValidFrameCount(spec.freq, frameSize);
 			const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
 
-			const auto start = storedAudio.begin();
-			const auto end = storedAudio.begin() + bytesUsed;
 			recordBuffer.clear();
-			recordBuffer.insert(recordBuffer.end(), start, end);
-			storedAudio.erase(start, end);
+			recordBuffer.append(storedAudio, bytesUsed);
+			storedAudio.remove(bytesUsed);
 
 			const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
 												 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());

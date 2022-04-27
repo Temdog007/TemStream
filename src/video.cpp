@@ -15,6 +15,81 @@ void Video::logDroppedPackets(const size_t count, const Message::Source &source)
 {
 	(*logger)(Logger::Warning) << "Dropping " << count << " video frames from " << source << std::endl;
 }
+void handleVideoCapture(cv::VideoCapture &&cap, cv::Mat &&image, Video::FrameData fd, VideoCaptureArg &&arg,
+						std::weak_ptr<Video> video, const Message::Source &source,
+						std::weak_ptr<Video::FrameEncoder> encoder)
+{
+	(*logger) << "Starting video capture stream " << arg << std::endl;
+	const uint32_t delay = 1000U / fd.fps;
+	uint32_t last = SDL_GetTicks();
+	cv::Mat yuv;
+	while (!appDone && cap.isOpened())
+	{
+		const uint32_t now = SDL_GetTicks();
+		const uint32_t diff = now - last;
+		if (diff < delay)
+		{
+			SDL_Delay(diff);
+			continue;
+		}
+		last = now;
+		if (video.expired())
+		{
+			break;
+		}
+		if (!cap.read(image) || image.empty())
+		{
+			break;
+		}
+
+		// Need a better way that will always work
+		switch (image.channels())
+		{
+		case 3:
+			cv::cvtColor(image, yuv, cv::COLOR_BGR2YUV_IYUV);
+			break;
+		case 4:
+			cv::cvtColor(image, yuv, cv::COLOR_BGRA2YUV_IYUV);
+			break;
+		default:
+			(*logger)(Logger::Error) << "Unknown image type" << std::endl;
+			goto end;
+		}
+
+		Video::Frame frame;
+		frame.width = yuv.cols;
+		frame.height = yuv.rows;
+		frame.format = SDL_PIXELFORMAT_IYUV;
+		frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
+
+		{
+			auto ptr = allocateAndConstruct<Video::Frame>(frame);
+			auto sourcePtr = allocateAndConstruct<Message::Source>(source);
+
+			SDL_Event e;
+			e.type = SDL_USEREVENT;
+			e.user.code = TemStreamEvent::HandleFrame;
+			e.user.data1 = ptr;
+			e.user.data2 = sourcePtr;
+			if (!tryPushEvent(e))
+			{
+				destroyAndDeallocate(ptr);
+				destroyAndDeallocate(sourcePtr);
+			}
+		}
+		if (auto e = encoder.lock())
+		{
+			e->addFrame(std::move(frame));
+		}
+		else
+		{
+			break;
+		}
+	}
+end:
+	(*logger) << "Stopping video capture stream " << arg << std::endl;
+	stopVideoStream(source);
+}
 shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source, const int32_t scale,
 									  FrameData fd)
 {
@@ -30,7 +105,6 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	{
 		return nullptr;
 	}
-	printf("image %d\n", image.channels());
 	fd.width = image.cols;
 	fd.height = image.rows;
 
@@ -43,75 +117,8 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	}
 	auto weak = std::weak_ptr(video);
 
-	Task::addTask(std::async(
-		TaskPolicy, [cap = std::move(cap), image = std::move(image), weak, source, scale, fd, encoder]() mutable {
-			const uint32_t delay = 1000U / fd.fps;
-			uint32_t last = SDL_GetTicks();
-			cv::Mat yuv;
-			while (!appDone && cap.isOpened())
-			{
-				const uint32_t now = SDL_GetTicks();
-				const uint32_t diff = now - last;
-				if (diff < delay)
-				{
-					SDL_Delay(diff);
-					continue;
-				}
-				last = now;
-				if (weak.expired())
-				{
-					break;
-				}
-				if (!cap.read(image) || image.empty())
-				{
-					break;
-				}
-
-				// Need a better way that will always work
-				switch (image.channels())
-				{
-				case 3:
-					cv::cvtColor(image, yuv, cv::COLOR_BGR2YUV_IYUV);
-					break;
-				case 4:
-					cv::cvtColor(image, yuv, cv::COLOR_BGRA2YUV_IYUV);
-					break;
-				default:
-					(*logger)(Logger::Error) << "Unknown image type" << std::endl;
-					return;
-				}
-
-				Video::Frame frame;
-				frame.width = image.cols;
-				frame.height = image.rows;
-				frame.format = SDL_PIXELFORMAT_IYUV;
-				frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
-
-				{
-					auto ptr = allocateAndConstruct<Video::Frame>(frame);
-					auto sourcePtr = allocateAndConstruct<Message::Source>(source);
-
-					SDL_Event e;
-					e.type = SDL_USEREVENT;
-					e.user.code = TemStreamEvent::HandleFrame;
-					e.user.data1 = ptr;
-					e.user.data2 = sourcePtr;
-					if (!tryPushEvent(e))
-					{
-						destroyAndDeallocate(ptr);
-						destroyAndDeallocate(sourcePtr);
-					}
-				}
-				if (auto e = encoder.lock())
-				{
-					e->addFrame(std::move(frame));
-				}
-				else
-				{
-					break;
-				}
-			}
-		}));
+	Task::addTask(std::async(TaskPolicy, handleVideoCapture, std::move(cap), std::move(image), fd, std::move(arg),
+							 std::weak_ptr(video), source, encoder));
 	return video;
 #else
 #endif
@@ -131,9 +138,12 @@ void Video::FrameEncoder::addFrame(Frame &&frame)
 void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, FrameData frameData)
 {
 	(*logger)(Logger::Trace) << "Starting encoding thread: " << ptr->source << std::endl;
+	using namespace std::chrono_literals;
+	const auto maxWaitTime = 3s;
+	unique_ptr<EncoderDecoder> encoder = nullptr;
 	if (!TemStreamGui::sendCreateMessage<Message::Video>(ptr->source))
 	{
-		return;
+		goto end;
 	}
 
 	frameData.width -= frameData.width % 2;
@@ -141,14 +151,12 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 
 	frameData.height -= frameData.height % 2;
 	frameData.height = frameData.height * ptr->ratio / 100;
-	auto encoder = createEncoder(frameData);
+	encoder = createEncoder(frameData);
 	if (!encoder)
 	{
-		return;
+		goto end;
 	}
 
-	using namespace std::chrono_literals;
-	const auto maxWaitTime = 3s;
 	while (!appDone)
 	{
 		if (auto result = ptr->frames.clearIfGreaterThan(5))
@@ -171,7 +179,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 			auto size = encoder->getSize();
 			if (frame->width != size->first || frame->height != size->second)
 			{
-				(*logger)(Logger::Trace) << "Resizing vidoe encoder to " << frame->width << 'x' << frame->height
+				(*logger)(Logger::Trace) << "Resizing video encoder to " << frame->width << 'x' << frame->height
 										 << std::endl;
 				FrameData fd = frameData;
 				fd.width = frame->width;
@@ -185,16 +193,9 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 		}
 		encoder->encodeAndSend(frame->bytes, ptr->source);
 	}
+end:
 	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
-	SDL_Event e;
-	e.type = SDL_USEREVENT;
-	e.user.code = TemStreamEvent::StopVideoStream;
-	auto source = allocateAndConstruct<Message::Source>(ptr->source);
-	e.user.data1 = source;
-	if (!tryPushEvent(e))
-	{
-		destroyAndDeallocate(source);
-	}
+	stopVideoStream(ptr->source);
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr, FrameData frameData)
 {
