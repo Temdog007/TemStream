@@ -54,30 +54,26 @@ class ByteList
 		return used == 0 || buffer == nullptr || total == 0;
 	}
 
-	bool reallocate(size_t);
+	void reallocate(size_t);
 
-	bool append(uint8_t);
+	void append(uint8_t);
 
-	bool append(const uint8_t *, const size_t);
+	void append(const uint8_t *, const size_t);
 
-	bool insert(const uint8_t *, const size_t, const size_t offset);
+	void insert(const uint8_t *, const size_t, const size_t offset);
 
-	bool append(const ByteList &);
-	bool append(const ByteList &, uint32_t);
+	void append(const ByteList &);
+	void append(const ByteList &, uint32_t);
 
-	template <typename Iterator> bool append(Iterator start, Iterator end)
+	template <typename Iterator> void append(Iterator start, Iterator end)
 	{
 		for (auto iter = start; start != end; ++iter)
 		{
-			if (!append(static_cast<uint8_t>(*iter)))
-			{
-				return false;
-			}
+			append(static_cast<uint8_t>(*iter));
 		}
-		return true;
 	}
 
-	template <typename T> bool append(const T *t, const size_t count = 1)
+	template <typename T> void append(const T *t, const size_t count = 1)
 	{
 		return append(reinterpret_cast<const uint8_t *>(t), sizeof(T) * count);
 	}

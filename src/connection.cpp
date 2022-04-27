@@ -37,7 +37,7 @@ bool Connection::readAndHandle(const int timeout)
 				v.data[i] = bytes[i];
 			}
 			nextMessageSize = ntohl(v.value);
-			if (nextMessageSize > maxMessageSize)
+			if (nextMessageSize > maxMessageSize || nextMessageSize == 0)
 			{
 				return false;
 			}
@@ -45,13 +45,7 @@ bool Connection::readAndHandle(const int timeout)
 			bytes.remove(sizeof(uint32_t));
 		}
 
-		if (*nextMessageSize == 0)
-		{
-			nextMessageSize = std::nullopt;
-			bytes.clear();
-			return true;
-		}
-		if (*nextMessageSize == bytes.size())
+		if (nextMessageSize == bytes.size())
 		{
 			Message::Packet packet;
 			{
@@ -67,7 +61,7 @@ bool Connection::readAndHandle(const int timeout)
 			nextMessageSize = std::nullopt;
 			return result;
 		}
-		else if (*nextMessageSize < bytes.size())
+		else if (nextMessageSize < bytes.size())
 		{
 			MemoryStream m;
 			m.write(reinterpret_cast<const char *>(bytes.data()), *nextMessageSize);

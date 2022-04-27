@@ -53,75 +53,61 @@ uint8_t &ByteList::operator[](const size_t index)
 {
 	return buffer[index];
 }
-bool ByteList::reallocate(const size_t newSize)
+void ByteList::reallocate(const size_t newSize)
 {
 	Allocator<uint8_t> a;
+	if (total == 0 || buffer == nullptr || total < newSize)
+	{
+		buffer = a.reallocate(buffer, newSize);
+		total = newSize;
+	}
+}
+void ByteList::append(uint8_t d)
+{
 	if (total == 0 || buffer == nullptr)
 	{
-		buffer = a.allocate(newSize);
-		total = newSize;
-		return true;
+		reallocate(KB(1));
 	}
-	if (newSize <= total)
+	else if (used == total)
 	{
-		return false;
-	}
-
-	buffer = a.reallocate(buffer, newSize);
-	total = newSize;
-	return true;
-}
-bool ByteList::append(uint8_t d)
-{
-	if (used == total)
-	{
-		if (!reallocate(total * 2))
-		{
-			return false;
-		}
+		reallocate(total * 2);
 	}
 
 	buffer[used] = d;
 	++used;
-	return true;
 }
-bool ByteList::append(const uint8_t *data, const size_t count)
+void ByteList::append(const uint8_t *data, const size_t count)
 {
-	if (count == 0)
+	if (count == 0 || data == nullptr)
 	{
-		return false;
+		return;
 	}
 	if (used + count >= total)
 	{
-		if (!reallocate(total + used + count))
-		{
-			return false;
-		}
+		reallocate(total + used + count);
 	}
 
 	memcpy(&buffer[used], data, count);
 	used += count;
-	return true;
 }
-bool ByteList::append(const ByteList &list)
+void ByteList::append(const ByteList &list)
 {
-	return append(list.buffer, list.used);
+	append(list.buffer, list.used);
 }
-bool ByteList::append(const ByteList &list, const uint32_t count)
+void ByteList::append(const ByteList &list, const uint32_t count)
 {
-	return append(list.buffer, std::min(list.used, count));
+	append(list.buffer, std::min(list.used, count));
 }
-bool ByteList::insert(const uint8_t *data, const size_t count, const size_t offset)
+void ByteList::insert(const uint8_t *data, const size_t count, const size_t offset)
 {
 	if (offset >= used)
 	{
-		return append(data, count);
+		append(data, count);
 	}
 	ByteList first(this->buffer, offset);
 	ByteList middle(data, count);
 	ByteList last(this->buffer + offset, used - offset);
 	*this = first + middle + last;
-	return true;
 }
 ByteList ByteList::operator+(const ByteList &other) const
 {
