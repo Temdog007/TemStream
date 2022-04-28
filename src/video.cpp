@@ -138,13 +138,26 @@ void Video::FrameEncoder::addFrame(Frame &&frame)
 }
 void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, FrameData frameData, const bool forCamera)
 {
-	(*logger)(Logger::Trace) << "Starting encoding thread: " << ptr->source << std::endl;
-	using namespace std::chrono_literals;
-	const auto maxWaitTime = 3s;
+	struct RecordLog
+	{
+		Video::FrameEncoder &encoder;
+		RecordLog(Video::FrameEncoder &encoder) : encoder(encoder)
+		{
+			(*logger)(Logger::Trace) << "Starting encoding thread: " << encoder.source << std::endl;
+		}
+		~RecordLog()
+		{
+			(*logger)(Logger::Trace) << "Ending encoding thread: " << encoder.source << std::endl;
+			stopVideoStream(encoder.source);
+		}
+	};
+
+	RecordLog recordLog(*ptr);
+
 	unique_ptr<EncoderDecoder> encoder = nullptr;
 	if (!TemStreamGui::sendCreateMessage<Message::Video>(ptr->source))
 	{
-		goto end;
+		return;
 	}
 
 	frameData.width -= frameData.width % 2;
@@ -155,9 +168,11 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 	encoder = createEncoder(frameData, forCamera);
 	if (!encoder)
 	{
-		goto end;
+		return;
 	}
 
+	auto lastReset = std::chrono::system_clock::now();
+	using namespace std::chrono_literals;
 	while (!appDone)
 	{
 		if (auto result = ptr->frames.clearIfGreaterThan(20))
@@ -165,7 +180,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 			logDroppedPackets(*result, ptr->source);
 		}
 
-		auto frame = ptr->frames.pop(maxWaitTime);
+		auto frame = ptr->frames.pop(3s);
 		if (!frame)
 		{
 			break;
@@ -176,27 +191,35 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 			frame->resize(ptr->ratio);
 		}
 
+		auto size = encoder->getSize();
+		if (frame->width != size->first || frame->height != size->second)
 		{
-			auto size = encoder->getSize();
-			if (frame->width != size->first || frame->height != size->second)
+			(*logger)(Logger::Trace) << "Resizing video encoder to " << frame->width << 'x' << frame->height
+									 << std::endl;
+			FrameData fd = frameData;
+			fd.width = frame->width;
+			fd.height = frame->height;
+			auto newVpx = createEncoder(fd);
+			if (newVpx)
 			{
-				(*logger)(Logger::Trace) << "Resizing video encoder to " << frame->width << 'x' << frame->height
-										 << std::endl;
-				FrameData fd = frameData;
-				fd.width = frame->width;
-				fd.height = frame->height;
-				auto newVpx = createEncoder(fd);
-				if (newVpx)
-				{
-					encoder.swap(newVpx);
-				}
+				encoder.swap(newVpx);
+				lastReset = std::chrono::system_clock::now();
 			}
 		}
+
+		auto now = std::chrono::system_clock::now();
+		if (now - lastReset > 3s)
+		{
+			auto newVpx = createEncoder(frameData);
+			if (newVpx)
+			{
+				encoder.swap(newVpx);
+				lastReset = std::chrono::system_clock::now();
+			}
+		}
+
 		encoder->encodeAndSend(frame->bytes, ptr->source);
 	}
-end:
-	(*logger)(Logger::Trace) << "Ending encoding thread: " << ptr->source << std::endl;
-	stopVideoStream(ptr->source);
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr, FrameData frameData, const bool forCamera)
 {
