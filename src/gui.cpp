@@ -418,6 +418,38 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			}
 			ImGui::EndMenu();
 		}
+		ImGui::Separator();
+
+		if (ImGui::BeginMenu("Memory"))
+		{
+			static int m = 256;
+			if (ImGui::InputInt("Change Memory (in MB)", &m, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				const SDL_MessageBoxButtonData buttons[] = {
+					{/* .flags, .buttonid, .text */ 0, 0, "No"},
+					{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 1, "Yes"},
+				};
+				SDL_MessageBoxData data{};
+				data.flags = SDL_MESSAGEBOX_INFORMATION;
+				data.window = window;
+				data.title = "Do you want to reset the app?";
+				data.message = "Changing the memory size requires reseting the application. Do you want to reset?";
+				data.buttons = buttons;
+				data.numbuttons = SDL_arraysize(buttons);
+				int i;
+				if (SDL_ShowMessageBox(&data, &i) == 0)
+				{
+					const auto s = std::to_string(m);
+					int i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
+					(*logger)(Logger::Error) << "Failed to reset the application: " << i << std::endl;
+				}
+				else
+				{
+					logSDLError("Failed to show message box");
+				}
+			}
+			ImGui::EndMenu();
+		}
 
 		size = ImGui::GetWindowSize();
 		ImGui::EndMainMenuBar();
@@ -1015,7 +1047,7 @@ void TemStreamGui::draw()
 			ImGui::SameLine();
 
 			String dir = fileDirectory->getDirectory();
-			if (ImGui::InputText("Directory", &dir))
+			if (ImGui::InputText("Directory", &dir, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				if (fs::is_directory(dir))
 				{

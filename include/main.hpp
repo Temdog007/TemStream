@@ -185,6 +185,8 @@ extern Configuration loadConfiguration(int, const char **);
 extern void saveConfiguration(const Configuration &);
 extern int runApp(Configuration &);
 
+extern const char *ApplicationPath;
+
 template <typename T> T lerp(T min, T max, float percent)
 {
 	return min + (max - min) * percent;

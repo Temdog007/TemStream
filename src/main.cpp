@@ -5,12 +5,14 @@ using namespace TemStream;
 bool TemStream::appDone = false;
 AllocatorData TemStream::globalAllocatorData;
 unique_ptr<Logger> TemStream::logger = nullptr;
+const char *TemStream::ApplicationPath = nullptr;
 
 void signalHandler(int s);
 void parseMemory(int, const char **, size_t);
 
 int main(const int argc, const char **argv)
 {
+	TemStream::ApplicationPath = argv[0];
 	{
 		struct sigaction action;
 		action.sa_handler = &signalHandler;
