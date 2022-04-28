@@ -172,6 +172,8 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 	}
 
 	auto lastReset = std::chrono::system_clock::now();
+	const auto resetRate =
+		std::chrono::duration<double, std::milli>((1000.0 / frameData.fps) * frameData.keyFrameInterval);
 	using namespace std::chrono_literals;
 	while (!appDone)
 	{
@@ -207,14 +209,14 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 			}
 		}
 
-		auto now = std::chrono::system_clock::now();
-		if (now - lastReset > 3s)
+		const auto now = std::chrono::system_clock::now();
+		if (now - lastReset > resetRate)
 		{
 			auto newVpx = createEncoder(frameData);
 			if (newVpx)
 			{
 				encoder.swap(newVpx);
-				lastReset = std::chrono::system_clock::now();
+				lastReset = now;
 			}
 		}
 

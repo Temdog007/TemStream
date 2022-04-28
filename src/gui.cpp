@@ -1260,7 +1260,7 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 
 bool TemStreamGui::MessageHandler::operator()(Message::VerifyLogin &login)
 {
-	gui.peerInfo = std::move(login.info);
+	gui.peerInfo.swap(login.info);
 	*logger << "Logged in as " << gui.peerInfo.name << std::endl;
 	gui.dirty = true;
 	return true;
@@ -1268,7 +1268,7 @@ bool TemStreamGui::MessageHandler::operator()(Message::VerifyLogin &login)
 
 bool TemStreamGui::MessageHandler::operator()(Message::PeerInformationSet &set)
 {
-	gui.otherPeers = std::move(set);
+	gui.otherPeers.swap(set);
 	*logger << "Got " << set.size() << " peers from server" << std::endl;
 	gui.dirty = true;
 	return true;
@@ -1276,7 +1276,7 @@ bool TemStreamGui::MessageHandler::operator()(Message::PeerInformationSet &set)
 
 bool TemStreamGui::MessageHandler::operator()(Message::Streams &s)
 {
-	gui.streams = std::move(s);
+	gui.streams.swap(s);
 	*logger << "Got " << gui.streams.size() << " streams from server" << std::endl;
 	gui.dirty = true;
 	return true;
@@ -1284,7 +1284,7 @@ bool TemStreamGui::MessageHandler::operator()(Message::Streams &s)
 
 bool TemStreamGui::MessageHandler::operator()(Message::Subscriptions &s)
 {
-	gui.subscriptions = std::move(s);
+	gui.subscriptions.swap(s);
 	*logger << "Got " << gui.subscriptions.size() << " subscriptions from server" << std::endl;
 	gui.dirty = true;
 	return true;

@@ -276,17 +276,14 @@ void Video::FrameData::draw()
 	{
 		fps = std::clamp(fps, 1, 120);
 	}
-	if (ImGui::InputInt("Bitrate in Mbps", &bitrateInMbps, 1, 100))
+	if (ImGui::InputInt("Bitrate in Mbps", &bitrateInMbps, 1))
 	{
 		bitrateInMbps = std::clamp(bitrateInMbps, 1, 100);
 	}
-
-#if !TEMSTREAM_USE_OPENH264
-	if (ImGui::InputInt("Key Frame Interval", &keyFrameInterval, 1, 1000))
+	if (ImGui::InputInt("Key Frame Interval", &keyFrameInterval, 1))
 	{
-		keyFrameInterval = std::clamp(keyFrameInterval, 1, 100);
+		keyFrameInterval = std::clamp(keyFrameInterval, 1, fps * 30);
 	}
-#endif
 }
 void QueryVideo::execute() const
 {

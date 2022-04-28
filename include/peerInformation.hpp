@@ -9,6 +9,13 @@ struct PeerInformation
 	String name;
 	bool isServer;
 
+	PeerInformation &swap(PeerInformation &info)
+	{
+		std::swap(name, info.name);
+		std::swap(isServer, info.isServer);
+		return *this;
+	}
+
 	bool operator==(const PeerInformation &info) const
 	{
 		return isServer == info.isServer && name == info.name;

@@ -68,7 +68,7 @@ class Video
 		int bitrateInMbps;
 		int keyFrameInterval;
 
-		FrameData() : width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(48)
+		FrameData() : width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(120)
 		{
 		}
 		~FrameData()

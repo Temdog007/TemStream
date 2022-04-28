@@ -12,6 +12,11 @@ using Credentials = std::variant<String, UsernameAndPassword>;
 struct VerifyLogin
 {
 	PeerInformation info;
+	VerifyLogin &swap(VerifyLogin &login)
+	{
+		std::swap(info, login.info);
+		return *this;
+	}
 	template <class Archive> void save(Archive &ar) const
 	{
 		ar(info);
