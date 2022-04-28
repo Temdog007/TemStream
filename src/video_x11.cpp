@@ -205,11 +205,35 @@ Dimensions Screenshotter::getSize(xcb_connection_t *con)
 }
 void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> ss)
 {
-	WorkPool::workPool.addWork([ss]() { takeScreenshots(ss); });
+	WorkPool::workPool.addWork([ss]() {
+		// Ensure the video pointer is added to this list. Otherwise, stream
+		// will end immediately
+		SDL_Delay(100u);
+		takeScreenshots(ss);
+	});
 }
 void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 {
-	(*logger)(Logger::Trace) << "Starting to record: " << data->window.name << ' ' << data->fps << " FPS" << std::endl;
+	struct RecordLog
+	{
+		Screenshotter &data;
+		RecordLog(Screenshotter &data) : data(data)
+		{
+			(*logger)(Logger::Trace) << "Starting to record: " << data.window.name << ' ' << data.fps << " FPS"
+									 << std::endl;
+		}
+		~RecordLog()
+		{
+			(*logger)(Logger::Trace) << "Ending recording of: " << data.window.name << std::endl;
+			if (auto ptr = data.video.lock())
+			{
+				stopVideoStream(ptr->getSource());
+			}
+		}
+	};
+
+	RecordLog recordLog(*data);
+
 	int unused;
 	auto con = getXCBConnection(unused);
 
@@ -220,7 +244,7 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 	if (!dim)
 	{
 		(*logger)(Logger::Error) << "Failed to get size of window: " << data->window.name << std::endl;
-		goto end;
+		return;
 	}
 
 	while (!appDone)
@@ -237,6 +261,7 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 		auto video = data->video.lock();
 		if (!video)
 		{
+			(*logger)(Logger::Trace) << "Video state removed. Ending recording..." << std::endl;
 			break;
 		}
 
@@ -245,6 +270,7 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 		auto converter = data->converter.lock();
 		if (!converter)
 		{
+			(*logger)(Logger::Trace) << "Video converter removed. Ending recording..." << std::endl;
 			break;
 		}
 
@@ -289,20 +315,17 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 				frame.release();
 				sourcePtr.release();
 			}
+
+			Screenshot s;
+			s.reply = std::move(reply);
+			s.width = dim->first;
+			s.height = dim->second;
+			converter->addFrame(std::move(s));
 		}
 		catch (const std::exception &)
 		{
 		}
-
-		Screenshot s;
-		s.reply = std::move(reply);
-		s.width = dim->first;
-		s.height = dim->second;
-		converter->addFrame(std::move(s));
 	}
-
-end:
-	(*logger)(Logger::Trace) << "Ending recording of: " << data->window.name << std::endl;
 }
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, const int32_t scale,
