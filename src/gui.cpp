@@ -1473,6 +1473,13 @@ int runApp(Configuration &configuration)
 
 	gui.LoadFonts();
 
+	const bool multiThread = std::thread::hardware_concurrency() > 1;
+	(*logger)(Logger::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
+	if (multiThread)
+	{
+		WorkPool::handleWorkInAnotherThread();
+	}
+
 	while (!appDone)
 	{
 		SDL_Event event;
@@ -1736,6 +1743,12 @@ int runApp(Configuration &configuration)
 				cleanSwap(gui.subscriptions);
 			}
 			gui.dirty = false;
+		}
+
+		if (!multiThread)
+		{
+			using namespace std::chrono_literals;
+			WorkPool::workPool.handleWork(0ms);
 		}
 
 		ImGui_ImplSDLRenderer_NewFrame();

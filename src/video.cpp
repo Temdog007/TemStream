@@ -212,7 +212,10 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 
 		if (now - lastReset > resetRate)
 		{
-			auto newVpx = createEncoder(frameData);
+			FrameData fd = frameData;
+			fd.width = frame->width;
+			fd.height = frame->height;
+			auto newVpx = createEncoder(fd);
 			if (newVpx)
 			{
 				encoder.swap(newVpx);

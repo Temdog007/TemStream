@@ -273,8 +273,9 @@
 ### Apr 26, 2022 - Apr 28, 2022
 - [x] Add Thread pool
 - [x] Allow memory size to be reset during runtime
+- [x] Make work pool usuable for single threaded use
 - [ ] Fix issues found when testing on laptop
-    - [ ] Playing audio on laptop causes unknown crash (allocations goes up but doesn't go down)
+    - [ ] Playing audio and video at the same time on laptop causes disconnection (allocations goes up but doesn't go down. Connection to server is lost for seemingly no reason.)
     - [x] Restart encoder periodically
 
 ### Apr 29, 2022

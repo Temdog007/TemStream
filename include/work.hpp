@@ -8,16 +8,6 @@ class WorkPool
   private:
 	List<std::thread> threads;
 	ConcurrentQueue<std::function<void()>> workList;
-	std::atomic_int32_t ready;
-
-	static void handleWork(WorkPool &);
-
-	struct Readiness
-	{
-		std::atomic_int32_t &ready;
-		Readiness(std::atomic_int32_t &);
-		~Readiness();
-	};
 
   public:
 	WorkPool();
@@ -28,6 +18,20 @@ class WorkPool
 	void waitForAll();
 
 	void addWork(std::function<void()> &&);
+
+	static void handleWorkInAnotherThread();
+
+	template <typename _Rep, typename _Period> bool handleWork(const std::chrono::duration<_Rep, _Period> &maxWaitTime)
+	{
+		std::optional<std::function<void()>> work;
+		work = workList.pop(maxWaitTime);
+		if (!work)
+		{
+			return false;
+		}
+		(*work)();
+		return true;
+	}
 };
 namespace Work
 {

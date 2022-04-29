@@ -3,7 +3,7 @@
 namespace TemStream
 {
 WorkPool WorkPool::workPool;
-WorkPool::WorkPool() : threads(), workList(), ready(0)
+WorkPool::WorkPool() : threads(), workList()
 {
 }
 WorkPool::~WorkPool()
@@ -12,11 +12,6 @@ WorkPool::~WorkPool()
 }
 void WorkPool::addWork(std::function<void()> &&f)
 {
-	using namespace std::chrono_literals;
-	if (ready == 0)
-	{
-		threads.emplace_back([this]() { WorkPool::handleWork(*this); });
-	}
 	workList.push(std::move(f));
 }
 void WorkPool::waitForAll()
@@ -28,31 +23,18 @@ void WorkPool::waitForAll()
 	threads.clear();
 	workList.clear();
 }
-WorkPool::Readiness::Readiness(std::atomic_int32_t &ready) : ready(ready)
+void WorkPool::handleWorkInAnotherThread()
 {
-	++ready;
-}
-WorkPool::Readiness::~Readiness()
-{
-	--ready;
-}
-void WorkPool::handleWork(WorkPool &p)
-{
-	using namespace std::chrono_literals;
-
-	std::optional<std::function<void()>> work;
-	while (!appDone)
+	for (size_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
 	{
-		{
-			Readiness r(p.ready);
-			work = p.workList.pop(500ms);
-			if (!work)
+		std::thread thread([]() {
+			using namespace std::chrono_literals;
+			while (!appDone)
 			{
-				continue;
+				WorkPool::workPool.handleWork(500ms);
 			}
-		}
-
-		(*work)();
+		});
+		thread.detach();
 	}
 }
 namespace Work
