@@ -152,26 +152,6 @@ void loadSurface(Message::Source source, ByteList bytes)
 	}
 }
 
-void startPlayback(Message::Source source, const std::optional<String> name, const float volume)
-{
-	auto ptr = Audio::startPlayback(source, name.has_value() ? name->c_str() : nullptr, volume);
-	if (ptr == nullptr)
-	{
-		return;
-	}
-
-	SDL_Event e;
-	e.type = SDL_USEREVENT;
-	e.user.code = TemStreamEvent::AddAudio;
-	e.user.data1 = ptr.get();
-	if (tryPushEvent(e))
-	{
-		ptr.release();
-	}
-
-	// Pointer will deleted if not released
-}
-
 void startRecordingAudio(const Message::Source source, const std::optional<String> name, const float silenceThreshold)
 {
 	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);

@@ -131,7 +131,6 @@ unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char
 
 	SDL_PauseAudioDevice(a->id, SDL_FALSE);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
-	*logger << "Playing audio from device: " << a->name << std::endl;
 	return a;
 }
 void Audio::recordCallback(Audio *a, uint8_t *data, const int count)
@@ -144,6 +143,10 @@ void Audio::playbackCallback(Audio *a, uint8_t *data, const int count)
 }
 void Audio::playbackAudio(uint8_t *data, const int count)
 {
+	if (count < 1)
+	{
+		return;
+	}
 	memset(data, spec.silence, count);
 	if (storedAudio.size() > MB(1))
 	{
@@ -173,7 +176,7 @@ void Audio::recordAudio(uint8_t *data, const int count)
 {
 	if (!isLoudEnough(reinterpret_cast<float *>(data), count / sizeof(float)))
 	{
-		memset(data, 0, count);
+		memset(data, spec.silence, count);
 	}
 	storedAudio.append(data, count);
 	if (storedAudio.size() > MB(1))

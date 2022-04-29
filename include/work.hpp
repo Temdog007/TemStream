@@ -36,7 +36,6 @@ namespace Work
 extern void checkFile(TemStreamGui &, String);
 extern void sendImage(String, Message::Source);
 extern void loadSurface(Message::Source, ByteList);
-extern void startPlayback(const Message::Source, const std::optional<String>, const float volume);
 extern void startRecordingAudio(const Message::Source, const std::optional<String>, const float silenceThreshold);
 extern void startRecordingWindowAudio(const Message::Source, const WindowProcess, const float silenceThreshold);
 } // namespace Work

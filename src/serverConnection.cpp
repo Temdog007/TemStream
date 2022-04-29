@@ -164,6 +164,7 @@ bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target
 			return true;
 		}
 		// If type doesn't match, don't send packet.
+		expected = stream->getType();
 		validPayload = stream->getType() == packet.payload.index();
 	}
 	for (auto iter = peers.begin(); iter != peers.end();)

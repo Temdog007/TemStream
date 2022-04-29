@@ -439,6 +439,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				int i;
 				if (SDL_ShowMessageBox(&data, &i) == 0)
 				{
+					disconnect();
 					const auto s = std::to_string(m);
 					int i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
 					(*logger)(Logger::Error) << "Failed to reset the application: " << i << std::endl;
@@ -858,19 +859,20 @@ void TemStreamGui::draw()
 		if (ImGui::Begin("Logs", &configuration.showLogs))
 		{
 			ImGui::Checkbox("Auto Scroll", &configuration.autoScrollLogs);
+
+			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
+			auto &style = ImGui::GetStyle();
+			const bool isLight = colorIsLight(style.Colors[ImGuiCol_WindowBg]);
+			auto &filter = configuration.showLogsFilter;
+			ImGui::Checkbox("Errors", &filter.errors);
+			ImGui::SameLine();
+			ImGui::Checkbox("Warnings", &filter.warnings);
+			ImGui::SameLine();
+			ImGui::Checkbox("Basic", &filter.info);
+			ImGui::SameLine();
+			ImGui::Checkbox("Trace", &filter.trace);
 			if (ImGui::BeginChild("Logs"))
 			{
-				InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
-				auto &style = ImGui::GetStyle();
-				const bool isLight = colorIsLight(style.Colors[ImGuiCol_WindowBg]);
-				auto &filter = configuration.showLogsFilter;
-				ImGui::Checkbox("Errors", &filter.errors);
-				ImGui::SameLine();
-				ImGui::Checkbox("Warnings", &filter.warnings);
-				ImGui::SameLine();
-				ImGui::Checkbox("Basic", &filter.info);
-				ImGui::SameLine();
-				ImGui::Checkbox("Trace", &filter.trace);
 				mLogger.viewLogs([&style, isLight, &filter](const Logger::Log &log) {
 					switch (log.first)
 					{
@@ -1165,7 +1167,7 @@ void TemStreamGui::draw()
 				}
 				if (newAudio != nullptr)
 				{
-					a = std::move(newAudio);
+					a.swap(newAudio);
 				}
 			}
 		}
@@ -1332,13 +1334,13 @@ bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
 
 bool TemStreamGui::addAudio(unique_ptr<Audio> &&ptr)
 {
-	auto pair = audio.emplace(ptr->getSource(), std::move(ptr));
+	auto pair = audio.try_emplace(ptr->getSource(), std::move(ptr));
 	return pair.second;
 }
 
 bool TemStreamGui::addVideo(shared_ptr<Video> ptr)
 {
-	auto pair = video.emplace(ptr->getSource(), ptr);
+	auto pair = video.try_emplace(ptr->getSource(), ptr);
 	return pair.second;
 }
 
@@ -1566,7 +1568,11 @@ int runApp(Configuration &configuration)
 				case TemStreamEvent::AddAudio: {
 					Audio *audio = reinterpret_cast<Audio *>(event.user.data1);
 					auto ptr = unique_ptr<Audio>(audio);
-					gui.addAudio(std::move(ptr));
+					String name = ptr->getName();
+					if (gui.addAudio(std::move(ptr)))
+					{
+						*logger << "Using audio device: " << name << std::endl;
+					}
 				}
 				break;
 				case TemStreamEvent::HandleFrame: {

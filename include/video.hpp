@@ -184,7 +184,6 @@ template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV
 	try
 	{
 		using namespace std::chrono_literals;
-		const auto maxWaitTime = 3s;
 		while (!appDone)
 		{
 			auto result = ptr->frames.clearIfGreaterThan(20);
@@ -193,7 +192,7 @@ template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV
 				logDroppedPackets(*result, ptr->source);
 			}
 
-			auto data = ptr->frames.pop(maxWaitTime);
+			auto data = ptr->frames.pop(3s);
 			if (!data)
 			{
 				break;

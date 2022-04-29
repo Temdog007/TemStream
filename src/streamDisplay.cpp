@@ -186,9 +186,11 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 			}
 		}))
 	{
-		WorkPool::workPool.addWork([source = source, volume = gui.getConfiguration().defaultVolume]() {
-			Work::startPlayback(source, std::nullopt, volume / 100.f);
-		});
+		auto ptr = Audio::startPlayback(source, nullptr, gui.getConfiguration().defaultVolume / 100.f);
+		if (ptr && gui.addAudio(std::move(ptr)))
+		{
+			*logger << "Started playback on default audio device" << std::endl;
+		}
 	}
 	return true;
 }

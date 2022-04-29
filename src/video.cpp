@@ -193,6 +193,7 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 			frame->resize(ptr->ratio);
 		}
 
+		const auto now = std::chrono::system_clock::now();
 		auto size = encoder->getSize();
 		if (frame->width != size->first || frame->height != size->second)
 		{
@@ -205,11 +206,10 @@ void Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr, Fram
 			if (newVpx)
 			{
 				encoder.swap(newVpx);
-				lastReset = std::chrono::system_clock::now();
+				lastReset = now;
 			}
 		}
 
-		const auto now = std::chrono::system_clock::now();
 		if (now - lastReset > resetRate)
 		{
 			auto newVpx = createEncoder(frameData);

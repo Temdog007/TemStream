@@ -237,8 +237,7 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 	int unused;
 	auto con = getXCBConnection(unused);
 
-	const uint32_t delay = 1000 / data->fps;
-	uint32_t last = 0;
+	const auto delay = std::chrono::duration<double, std::milli>(1000.0 / data->fps);
 
 	Dimensions dim = data->getSize(con.get());
 	if (!dim)
@@ -249,14 +248,7 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 
 	while (!appDone)
 	{
-		const uint32_t now = SDL_GetTicks();
-		const uint32_t diff = now - last;
-		if (diff < delay)
-		{
-			SDL_Delay(diff);
-			continue;
-		}
-		last = now;
+		const auto nextFrame = std::chrono::system_clock::now() + delay;
 
 		auto video = data->video.lock();
 		if (!video)
@@ -325,6 +317,8 @@ void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
 		catch (const std::exception &)
 		{
 		}
+
+		std::this_thread::sleep_until(nextFrame);
 	}
 }
 
