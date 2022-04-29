@@ -162,6 +162,12 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 		currentAudio.append(storedAudio, toCopy);
 		storedAudio.remove(toCopy);
 	}
+	// else if (!currentAudio.empty())
+	// {
+	// 	// Make echo effect rather than random intervals of silence if possible
+	// 	SDL_MixAudioFormat(data, currentAudio.data(), this->spec.format, std::min((size_t)count, currentAudio.size()),
+	// 					   SDL_MIX_MAXVOLUME / 2);
+	// }
 }
 bool Audio::isLoudEnough(float *data, const int count) const
 {

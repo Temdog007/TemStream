@@ -2,6 +2,7 @@
 
 namespace TemStream
 {
+const size_t Video::MaxVideoPackets = 20;
 Video::Video(const Message::Source &source) : source(source), windowProcress(), running(true)
 {
 }
@@ -11,9 +12,9 @@ Video::Video(const Message::Source &source, const WindowProcess &wp) : source(so
 Video::~Video()
 {
 }
-void Video::logDroppedPackets(const size_t count, const Message::Source &source)
+void Video::logDroppedPackets(const size_t count, const Message::Source &source, const char *target)
 {
-	(*logger)(Logger::Warning) << "Dropping " << count << " video frames from " << source << std::endl;
+	(*logger)(Logger::Warning) << target << " is dropping " << count << " video frames from " << source << std::endl;
 }
 bool WebCamCapture::execute()
 {
@@ -180,11 +181,16 @@ bool Video::FrameEncoder::encodeFrames()
 		return false;
 	}
 
-	while (true)
+	while (!appDone)
 	{
-		if (auto result = frames.clearIfGreaterThan(20))
+		if (auto result = frames.clearIfGreaterThan(MaxVideoPackets))
 		{
-			logDroppedPackets(*result, video->getSource());
+#if TEMSTREAM_USE_OPENH264
+			static const char *encoderName = "OpenH264 encoder";
+#else
+			static const char *encoderName = "VPX encoder";
+#endif
+			logDroppedPackets(*result, video->getSource(), encoderName);
 		}
 
 		using namespace std::chrono_literals;

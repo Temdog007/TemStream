@@ -148,8 +148,10 @@ bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target
 	const bool toClients = (target & Target::Client) != 0;
 
 	MemoryStream m;
-	cereal::PortableBinaryOutputArchive ar(m);
-	ar(packet);
+	{
+		cereal::PortableBinaryOutputArchive ar(m);
+		ar(packet);
+	}
 
 	LOCK(peersMutex);
 	uint32_t expected = 0;

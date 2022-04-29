@@ -26,6 +26,7 @@ class Video
 	~Video();
 
   public:
+	const static size_t MaxVideoPackets;
 	const WindowProcess &getInfo() const
 	{
 		return windowProcress;
@@ -45,7 +46,7 @@ class Video
 		return running;
 	}
 
-	static void logDroppedPackets(size_t, const Message::Source &);
+	static void logDroppedPackets(size_t, const Message::Source &, const char *);
 
 	struct Frame
 	{
@@ -202,12 +203,12 @@ template <typename T> bool Video::RGBA2YUV<T>::convertFrames()
 	try
 	{
 		using namespace std::chrono_literals;
-		while (true)
+		while (!appDone)
 		{
-			auto result = frames.clearIfGreaterThan(20);
+			auto result = frames.clearIfGreaterThan(MaxVideoPackets);
 			if (result)
 			{
-				logDroppedPackets(*result, video->getSource());
+				logDroppedPackets(*result, video->getSource(), "BGRA to YUV converter");
 			}
 
 			auto data = frames.pop(0s);

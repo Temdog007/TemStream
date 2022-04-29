@@ -16,7 +16,7 @@ std::streamsize MemoryBuffer::xsgetn(char *c, const std::streamsize size)
 		return 0;
 	}
 
-	const auto copy = left < size ? left : size;
+	const auto copy = std::min(left, size);
 	memcpy(c, byteList.data() + readPoint, copy);
 	readPoint += copy;
 	return copy;

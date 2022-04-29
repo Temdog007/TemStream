@@ -103,6 +103,7 @@ void ByteList::insert(const uint8_t *data, const size_t count, const size_t offs
 	if (offset >= used)
 	{
 		append(data, count);
+		return;
 	}
 	ByteList first(this->buffer, offset);
 	ByteList middle(data, count);

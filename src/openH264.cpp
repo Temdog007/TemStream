@@ -6,6 +6,10 @@ namespace TemStream
 {
 void onWelsLog(void *, const int level, const char *string)
 {
+	if (appDone || logger == nullptr)
+	{
+		return;
+	}
 	switch (level)
 	{
 	case WELS_LOG_ERROR:
