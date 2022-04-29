@@ -145,7 +145,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 Video::FrameEncoder::FrameEncoder(shared_ptr<Video> v, const int32_t ratio, const FrameData frameData,
 								  const bool forCamera)
 	: frames(), frameData(frameData), lastReset(std::chrono::system_clock::now()), encoder(nullptr), video(v),
-	  ratio(ratio)
+	  ratio(ratio), first(true)
 {
 	TemStreamGui::sendCreateMessage<Message::Video>(v->getSource());
 
@@ -164,78 +164,83 @@ void Video::FrameEncoder::addFrame(Frame &&frame)
 {
 	frames.push(std::move(frame));
 }
-bool Video::FrameEncoder::encodeFrames(shared_ptr<Video::FrameEncoder> ptr)
+bool Video::FrameEncoder::encodeFrames()
 {
-	if (!ptr->video->isRunning())
+	if (first)
+	{
+		*logger << "Starting encoding: " << video->getSource() << std::endl;
+		first = false;
+	}
+	if (!video->isRunning())
 	{
 		return false;
 	}
-	if (!ptr->encoder)
+	if (!encoder)
 	{
 		return false;
 	}
 
 	while (true)
 	{
-		if (auto result = ptr->frames.clearIfGreaterThan(20))
+		if (auto result = frames.clearIfGreaterThan(20))
 		{
-			logDroppedPackets(*result, ptr->video->getSource());
+			logDroppedPackets(*result, video->getSource());
 		}
 
 		using namespace std::chrono_literals;
-		auto frame = ptr->frames.pop(0s);
+		auto frame = frames.pop(0s);
 		if (!frame)
 		{
 			return true;
 		}
 
-		if (ptr->ratio != 100)
+		if (ratio != 100)
 		{
-			frame->resize(ptr->ratio);
+			frame->resize(ratio);
 		}
 
 		const auto now = std::chrono::system_clock::now();
-		auto size = ptr->encoder->getSize();
+		auto size = encoder->getSize();
 		if (frame->width != size->first || frame->height != size->second)
 		{
 			(*logger)(Logger::Trace) << "Resizing video encoder to " << frame->width << 'x' << frame->height
 									 << std::endl;
-			FrameData fd = ptr->frameData;
+			FrameData fd = frameData;
 			fd.width = frame->width;
 			fd.height = frame->height;
 			auto newVpx = createEncoder(fd);
 			if (newVpx)
 			{
-				ptr->encoder.swap(newVpx);
-				ptr->lastReset = now;
+				encoder.swap(newVpx);
+				lastReset = now;
 			}
 		}
 
 		const auto resetRate =
-			std::chrono::duration<double, std::milli>((1000.0 / ptr->frameData.fps) * ptr->frameData.keyFrameInterval);
-		if (now - ptr->lastReset > resetRate)
+			std::chrono::duration<double, std::milli>((1000.0 / frameData.fps) * frameData.keyFrameInterval);
+		if (now - lastReset > resetRate)
 		{
-			FrameData fd = ptr->frameData;
+			FrameData fd = frameData;
 			fd.width = frame->width;
 			fd.height = frame->height;
 			auto newVpx = createEncoder(fd);
 			if (newVpx)
 			{
-				ptr->encoder.swap(newVpx);
-				ptr->lastReset = now;
+				encoder.swap(newVpx);
+				lastReset = now;
 			}
 		}
 
-		ptr->encoder->encodeAndSend(frame->bytes, ptr->video->getSource());
+		encoder->encodeAndSend(frame->bytes, video->getSource());
 	}
 	return true;
 }
 void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr)
 {
 	WorkPool::workPool.addWork([ptr]() {
-		if (!encodeFrames(ptr))
+		if (!ptr->encodeFrames())
 		{
-			(*logger) << "Ending encoding " << ptr->video->getSource() << std::endl;
+			(*logger) << "Ending encoding: " << ptr->video->getSource() << std::endl;
 			return false;
 		}
 		return true;

@@ -81,6 +81,27 @@ TemStreamGui::~TemStreamGui()
 	SDL_Quit();
 }
 
+void TemStreamGui::refresh()
+{
+	LOCK(peerMutex);
+	if (peer == nullptr)
+	{
+		return;
+	}
+	{
+		Message::Packet packet;
+		packet.source.author = peerInfo.name;
+		packet.payload.emplace<Message::GetSubscriptions>();
+		sendPacket(std::move(packet), false);
+	}
+	{
+		Message::Packet packet;
+		packet.source.author = peerInfo.name;
+		packet.payload.emplace<Message::GetStreams>();
+		sendPacket(std::move(packet), false);
+	}
+}
+
 void TemStreamGui::updatePeer()
 {
 	LOCK(peerMutex);
@@ -111,18 +132,17 @@ void TemStreamGui::updatePeer()
 
 void TemStreamGui::decodeVideoPackets()
 {
-	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> map;
 	using namespace std::chrono_literals;
 
 	const auto now = std::chrono::system_clock::now();
 	if (now - lastVideoCheck > 1s)
 	{
-		for (auto iter = map.begin(); iter != map.end();)
+		for (auto iter = decodingMap.begin(); iter != decodingMap.end();)
 		{
 			if (displays.find(iter->first) == displays.end())
 			{
 				(*logger)(Logger::Trace) << "Removed " << iter->first << " from decoding map" << std::endl;
-				iter = map.erase(iter);
+				iter = decodingMap.erase(iter);
 			}
 			else
 			{
@@ -144,8 +164,8 @@ void TemStreamGui::decodeVideoPackets()
 
 	auto &[source, packet] = *result;
 
-	auto iter = map.find(source);
-	if (iter == map.end())
+	auto iter = decodingMap.find(source);
+	if (iter == decodingMap.end())
 	{
 		auto decoder = Video::createDecoder();
 		if (!decoder)
@@ -154,14 +174,14 @@ void TemStreamGui::decodeVideoPackets()
 		}
 		decoder->setWidth(packet.width);
 		decoder->setHeight(packet.height);
-		auto pair = map.try_emplace(source, std::move(decoder));
+		auto pair = decodingMap.try_emplace(source, std::move(decoder));
 		if (!pair.second)
 		{
 			return;
 		}
 		iter = pair.first;
 		lastVideoCheck = std::chrono::system_clock::now();
-		(*logger)(Logger::Trace) << "Added " << iter->first << " from decoding map" << std::endl;
+		(*logger)(Logger::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
 	}
 	if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
 	{
@@ -401,6 +421,12 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 						const auto &addr = peer->getAddress();
 						ImGui::TextColored(Colors::GetYellow(isLight), "Address: %s:%d\n", addr.hostname.c_str(),
 										   addr.port);
+					}
+
+					ImGui::Separator();
+					if (ImGui::MenuItem("Refresh", "Ctrl+R"))
+					{
+						refresh();
 					}
 
 					ImGui::Separator();
@@ -1653,6 +1679,9 @@ int runApp(Configuration &configuration)
 					break;
 				case SDLK_i:
 					gui.configuration.showStats = !gui.configuration.showStats;
+					break;
+				case SDLK_r:
+					gui.refresh();
 					break;
 				case SDLK_t:
 					gui.configuration.showColors = !gui.configuration.showColors;

@@ -53,6 +53,7 @@ class TemStreamGui
 	Map<Message::Source, StreamDisplay> displays;
 	Map<Message::Source, unique_ptr<Audio>> audio;
 	Map<Message::Source, shared_ptr<Video>> video;
+	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> decodingMap;
 	ConcurrentQueue<VideoPacket> videoPackets;
 	Message::Streams streams;
 	Message::Subscriptions subscriptions;
@@ -94,6 +95,7 @@ class TemStreamGui
 	void updatePeer();
 	void decodeVideoPackets();
 	void draw();
+	void refresh();
 
 	struct MessageHandler
 	{

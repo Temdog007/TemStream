@@ -236,13 +236,16 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 		*logger << "Starting recording " << data->window.name << std::endl;
 		data->first = false;
 	}
-	const auto now = std::chrono::system_clock::now();
-	if (now < data->nextFrame)
 	{
-		return true;
-	}
+		const auto now = std::chrono::system_clock::now();
+		if (now < data->nextFrame)
+		{
+			return true;
+		}
 
-	const auto delay = std::chrono::duration<double, std::milli>(1000.0 / data->fps);
+		const auto delay = std::chrono::duration<double, std::milli>(1000.0 / data->fps);
+		data->nextFrame = now + delay;
+	}
 
 	Dimensions dim = data->getSize(data->con.get());
 	if (!dim)
@@ -318,7 +321,6 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 		return false;
 	}
 
-	data->nextFrame = now + delay;
 	return true;
 }
 

@@ -186,11 +186,16 @@ bool OpenH264::decode(ByteList &bytes)
 
 		if (state != dsErrorFree)
 		{
-			(*logger)(Logger::Warning) << "Failed to decode video frame" << std::endl;
+			++decodingFails;
+			if (decodingFails == 1)
+			{
+				(*logger)(Logger::Warning) << "Failed to decode video frame" << std::endl;
+			}
 			return false;
 		}
 		if (info.iBufferStatus != 1)
 		{
+			++decodingFails;
 			return false;
 		}
 
@@ -227,6 +232,7 @@ bool OpenH264::decode(ByteList &bytes)
 				buf += stride;
 			}
 		}
+		decodingFails = 0;
 		return true;
 	}
 

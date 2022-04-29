@@ -133,8 +133,9 @@ class Video
 		unique_ptr<EncoderDecoder> encoder;
 		shared_ptr<Video> video;
 		const int32_t ratio;
+		bool first;
 
-		static bool encodeFrames(shared_ptr<FrameEncoder>);
+		bool encodeFrames();
 
 	  public:
 		FrameEncoder(shared_ptr<Video> v, int32_t, FrameData, const bool forCamera);

@@ -342,7 +342,7 @@ bool ServerConnection::MessageHandler::processCurrentMessage(const Target target
 	// If connected to a client, author should match peer name
 	if (!connection.isServer() && packet.source.author != connection.info.name)
 	{
-		PEER_ERROR("Got message with no author");
+		PEER_ERROR("Got message with invalid author");
 	}
 
 	// Don't send packet if server has already received it

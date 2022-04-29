@@ -21,6 +21,7 @@ class OpenH264 : public Video::EncoderDecoder
 	using Encoder = std::unique_ptr<ISVCEncoder, EncoderDeleter>;
 
 	std::variant<Decoder, Encoder> data;
+	int32_t decodingFails;
 
 	OpenH264(Encoder &&, int, int);
 	OpenH264(Decoder &&);
