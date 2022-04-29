@@ -7,18 +7,6 @@ namespace TemStream
 using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
 #if TEMSTREAM_USE_OPENCV
 using VideoCaptureArg = std::variant<int32_t, String>;
-struct MakeVideoCapture
-{
-	cv::VideoCapture operator()(const String &s)
-	{
-		return cv::VideoCapture(cv::String(s));
-	}
-	cv::VideoCapture operator()(const int32_t index)
-	{
-		return cv::VideoCapture(index);
-	}
-};
-extern std::ostream &operator<<(std::ostream &, const VideoCaptureArg &);
 #endif
 class Video
 {
@@ -31,6 +19,7 @@ class Video
   private:
 	Message::Source source;
 	const WindowProcess windowProcress;
+	bool running;
 
 	Video(const Message::Source &);
 	Video(const Message::Source &, const WindowProcess &);
@@ -45,6 +34,15 @@ class Video
 	const Message::Source &getSource() const
 	{
 		return source;
+	}
+
+	void setRunning(const bool b)
+	{
+		running = b;
+	}
+	bool isRunning() const
+	{
+		return running;
 	}
 
 	static void logDroppedPackets(size_t, const Message::Source &);
@@ -130,13 +128,16 @@ class Video
 	{
 	  private:
 		ConcurrentQueue<Frame> frames;
-		Message::Source source;
+		FrameData frameData;
+		TimePoint lastReset;
+		unique_ptr<EncoderDecoder> encoder;
+		shared_ptr<Video> video;
 		const int32_t ratio;
 
-		static void encodeFrames(shared_ptr<FrameEncoder>, FrameData, const bool forCamera);
+		static bool encodeFrames(shared_ptr<FrameEncoder>);
 
 	  public:
-		FrameEncoder(const Message::Source &, int32_t);
+		FrameEncoder(shared_ptr<Video> v, int32_t, FrameData, const bool forCamera);
 		virtual ~FrameEncoder();
 
 		void addFrame(Frame &&);
@@ -144,23 +145,24 @@ class Video
 		ByteList resize(const ByteList &);
 		ByteList encode(const ByteList &) const;
 
-		static void startEncodingFrames(shared_ptr<FrameEncoder>, FrameData, const bool forCamera);
+		static void startEncodingFrames(shared_ptr<FrameEncoder>);
 	};
 
 	template <typename T> class RGBA2YUV
 	{
 	  private:
 		ConcurrentQueue<T> frames;
-		const Message::Source source;
+		std::shared_ptr<Video> video;
 		std::weak_ptr<FrameEncoder> encoder;
+		bool first;
 
-		static void convertFrames(shared_ptr<RGBA2YUV>);
+		bool convertFrames();
 
 		virtual std::optional<Frame> convertToFrame(T &&) = 0;
 
 	  public:
-		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, const Message::Source &source)
-			: frames(), source(source), encoder(encoder)
+		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, shared_ptr<Video> video)
+			: frames(), video(video), encoder(encoder), first(true)
 		{
 		}
 		virtual ~RGBA2YUV()
@@ -174,49 +176,93 @@ class Video
 
 		static void startConverteringFrames(shared_ptr<RGBA2YUV> ptr)
 		{
-			WorkPool::workPool.addWork([ptr]() { convertFrames(ptr); });
+			WorkPool::workPool.addWork([ptr]() {
+				if (!ptr->convertFrames())
+				{
+					*logger << "Ending converting: " << ptr->video->getSource() << std::endl;
+					return false;
+				}
+				return true;
+			});
 		}
 	};
 };
-template <typename T> void Video::RGBA2YUV<T>::convertFrames(shared_ptr<RGBA2YUV> ptr)
+template <typename T> bool Video::RGBA2YUV<T>::convertFrames()
 {
-	(*logger)(Logger::Trace) << "Starting converter thread" << std::endl;
+	if (first)
+	{
+		*logger << "Starting converting: " << video->getSource() << std::endl;
+		first = false;
+	}
+	if (!video->isRunning())
+	{
+		return false;
+	}
 	try
 	{
 		using namespace std::chrono_literals;
-		while (!appDone)
+		while (true)
 		{
-			auto result = ptr->frames.clearIfGreaterThan(20);
+			auto result = frames.clearIfGreaterThan(20);
 			if (result)
 			{
-				logDroppedPackets(*result, ptr->source);
+				logDroppedPackets(*result, video->getSource());
 			}
 
-			auto data = ptr->frames.pop(3s);
+			auto data = frames.pop(0s);
 			if (!data)
 			{
-				break;
+				return true;
 			}
 
-			auto frame = ptr->convertToFrame(std::move(*data));
+			auto frame = convertToFrame(std::move(*data));
 			if (!frame)
 			{
-				continue;
+				return true;
 			}
-			if (auto e = ptr->encoder.lock())
+			if (auto e = encoder.lock())
 			{
 				e->addFrame(std::move(*frame));
 			}
 			else
 			{
-				break;
+				return false;
 			}
 		}
 	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;
+		return false;
 	}
-	(*logger)(Logger::Trace) << "Ending converter thread: " << ptr->source << std::endl;
+	return true;
 }
+#if TEMSTREAM_USE_OPENCV
+struct MakeVideoCapture
+{
+	cv::VideoCapture operator()(const String &s)
+	{
+		return cv::VideoCapture(cv::String(s));
+	}
+	cv::VideoCapture operator()(const int32_t index)
+	{
+		return cv::VideoCapture(index);
+	}
+};
+extern std::ostream &operator<<(std::ostream &, const VideoCaptureArg &);
+struct WebCamCapture
+{
+	cv::VideoCapture cap;
+	cv::Mat image;
+	Video::FrameData frameData;
+	VideoCaptureArg arg;
+	Message::Source source;
+	std::chrono::_V2::system_clock::time_point nextFrame;
+	std::shared_ptr<Video> video;
+	std::weak_ptr<Video::FrameEncoder> encoder;
+	bool first;
+
+	bool execute();
+};
+#endif
 } // namespace TemStream

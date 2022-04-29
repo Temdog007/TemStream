@@ -66,8 +66,8 @@ namespace TemStream
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: connectToServer(), peerMutex(), peer(nullptr), queryData(nullptr), allUTF32(getAllUTF32()), io(io),
-	  configuration(c), window(nullptr), renderer(nullptr)
+	: connectToServer(), peerMutex(), peer(nullptr), queryData(nullptr), allUTF32(getAllUTF32()),
+	  lastVideoCheck(std::chrono::system_clock::now()), io(io), configuration(c), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -112,96 +112,91 @@ void TemStreamGui::updatePeer()
 void TemStreamGui::decodeVideoPackets()
 {
 	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> map;
-	auto lastCheck = std::chrono::system_clock::now();
 	using namespace std::chrono_literals;
-	while (!appDone)
+
+	const auto now = std::chrono::system_clock::now();
+	if (now - lastVideoCheck > 1s)
 	{
+		for (auto iter = map.begin(); iter != map.end();)
 		{
-			const auto now = std::chrono::system_clock::now();
-			if (now - lastCheck > 1s)
+			if (displays.find(iter->first) == displays.end())
 			{
-				for (auto iter = map.begin(); iter != map.end();)
-				{
-					if (displays.find(iter->first) == displays.end())
-					{
-						(*logger)(Logger::Trace) << "Removed " << iter->first << " from decoding map" << std::endl;
-						iter = map.erase(iter);
-					}
-					else
-					{
-						++iter;
-					}
-				}
-				lastCheck = now;
+				(*logger)(Logger::Trace) << "Removed " << iter->first << " from decoding map" << std::endl;
+				iter = map.erase(iter);
+			}
+			else
+			{
+				++iter;
 			}
 		}
-		if (auto result = videoPackets.clearIfGreaterThan(5))
+		lastVideoCheck = now;
+	}
+	if (auto result = videoPackets.clearIfGreaterThan(5))
+	{
+		(*logger)(Logger::Warning) << "Dropping " << *result << " received video frames" << std::endl;
+	}
+
+	auto result = videoPackets.pop(0ms);
+	if (!result)
+	{
+		return;
+	}
+
+	auto &[source, packet] = *result;
+
+	auto iter = map.find(source);
+	if (iter == map.end())
+	{
+		auto decoder = Video::createDecoder();
+		if (!decoder)
 		{
-			(*logger)(Logger::Warning) << "Dropping " << *result << " received video frames" << std::endl;
+			return;
 		}
-
-		auto result = videoPackets.pop(100ms);
-		if (!result)
+		decoder->setWidth(packet.width);
+		decoder->setHeight(packet.height);
+		auto pair = map.try_emplace(source, std::move(decoder));
+		if (!pair.second)
 		{
-			continue;
+			return;
 		}
-
-		auto &[source, packet] = *result;
-
-		auto iter = map.find(source);
-		if (iter == map.end())
+		iter = pair.first;
+		lastVideoCheck = std::chrono::system_clock::now();
+		(*logger)(Logger::Trace) << "Added " << iter->first << " from decoding map" << std::endl;
+	}
+	if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
+	{
+		auto decoder = Video::createDecoder();
+		if (!decoder)
 		{
-			auto decoder = Video::createDecoder();
-			if (!decoder)
-			{
-				continue;
-			}
-			decoder->setWidth(packet.width);
-			decoder->setHeight(packet.height);
-			auto pair = map.try_emplace(source, std::move(decoder));
-			if (!pair.second)
-			{
-				continue;
-			}
-			iter = pair.first;
-			lastCheck = std::chrono::system_clock::now();
-			(*logger)(Logger::Trace) << "Added " << iter->first << " from decoding map" << std::endl;
+			return;
 		}
-		if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
-		{
-			auto decoder = Video::createDecoder();
-			if (!decoder)
-			{
-				continue;
-			}
-			decoder->setWidth(packet.width);
-			decoder->setHeight(packet.height);
-			iter->second.swap(decoder);
-		}
+		decoder->setWidth(packet.width);
+		decoder->setHeight(packet.height);
+		iter->second.swap(decoder);
+	}
 
-		if (!iter->second->decode(packet.bytes))
-		{
-			continue;
-		}
+	if (!iter->second->decode(packet.bytes))
+	{
+		return;
+	}
 
-		SDL_Event e;
-		e.type = SDL_USEREVENT;
-		e.user.code = TemStreamEvent::HandleFrame;
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::HandleFrame;
 
-		Video::Frame *frame = allocateAndConstruct<Video::Frame>();
-		frame->bytes = std::move(packet.bytes);
-		frame->width = packet.width;
-		frame->height = packet.height;
-		frame->format = SDL_PIXELFORMAT_IYUV;
-		e.user.data1 = frame;
+	Video::Frame *frame = allocateAndConstruct<Video::Frame>();
+	frame->bytes = std::move(packet.bytes);
+	frame->width = packet.width;
+	frame->height = packet.height;
+	frame->format = SDL_PIXELFORMAT_IYUV;
+	e.user.data1 = frame;
 
-		Message::Source *newSource = allocateAndConstruct<Message::Source>(source);
-		e.user.data2 = newSource;
-		if (!tryPushEvent(e))
-		{
-			destroyAndDeallocate(frame);
-			destroyAndDeallocate(newSource);
-		}
+	Message::Source *newSource = allocateAndConstruct<Message::Source>(source);
+	e.user.data2 = newSource;
+	if (!tryPushEvent(e))
+	{
+		destroyAndDeallocate(frame);
+		destroyAndDeallocate(newSource);
 	}
 }
 
@@ -274,15 +269,14 @@ bool TemStreamGui::init()
 	}
 
 	WorkPool::workPool.addWork([this]() {
-		using namespace std::chrono_literals;
-		while (!appDone)
-		{
-			this->updatePeer();
-			std::this_thread::sleep_for(1ms);
-		}
+		this->updatePeer();
+		return true;
 	});
 
-	WorkPool::workPool.addWork([this]() { this->decodeVideoPackets(); });
+	WorkPool::workPool.addWork([this]() {
+		this->decodeVideoPackets();
+		return true;
+	});
 
 	return true;
 }
@@ -606,6 +600,11 @@ void TemStreamGui::draw()
 				ImGui::TableHeadersRow();
 				for (auto iter = video.begin(); iter != video.end();)
 				{
+					if (!iter->second->isRunning())
+					{
+						iter = video.erase(iter);
+						continue;
+					}
 					String name;
 					const auto &data = iter->second->getInfo();
 					if (data.name.empty())
@@ -627,6 +626,7 @@ void TemStreamGui::draw()
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Stop"))
 					{
+						iter->second->setRunning(false);
 						iter = video.erase(iter);
 					}
 					else
@@ -1515,7 +1515,10 @@ int runApp(Configuration &configuration)
 				else
 				{
 					String s(event.drop.file);
-					WorkPool::workPool.addWork([&gui, s = std::move(s)]() { Work::checkFile(gui, s); });
+					WorkPool::workPool.addWork([&gui, s = std::move(s)]() {
+						Work::checkFile(gui, s);
+						return false;
+					});
 				}
 				SDL_free(event.drop.file);
 			}
@@ -1587,6 +1590,10 @@ int runApp(Configuration &configuration)
 					auto frame = unique_ptr<Video::Frame>(framePtr);
 					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
 					auto source = unique_ptr<Message::Source>(sourcePtr);
+					if (gui.streams.find(*source) == gui.streams.end())
+					{
+						break;
+					}
 					auto iter = gui.displays.find(*source);
 					if (iter == gui.displays.end())
 					{
@@ -1598,27 +1605,6 @@ int runApp(Configuration &configuration)
 						iter = newIter;
 					}
 					iter->second.updateTexture(*frame);
-				}
-				break;
-				case TemStreamEvent::StopVideoStream: {
-					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data1);
-					auto source = unique_ptr<Message::Source>(sourcePtr);
-					gui.displays.erase(*source);
-					gui.dirty = true;
-					// Remove video packets belonging to source
-					gui.videoPackets.use([&source](Queue<VideoPacket> &queue) {
-						Queue<VideoPacket> newQueue;
-						while (!queue.empty())
-						{
-							VideoPacket packet = std::move(queue.front());
-							queue.pop();
-							if (packet.first != *source)
-							{
-								newQueue.push(std::move(packet));
-							}
-						}
-						queue.swap(newQueue);
-					});
 				}
 				break;
 				default:
@@ -1714,7 +1700,7 @@ int runApp(Configuration &configuration)
 				}
 				for (auto iter = gui.audio.begin(); iter != gui.audio.end();)
 				{
-					if (gui.audio.find(iter->first) == gui.audio.end())
+					if (gui.streams.find(iter->first) == gui.streams.end())
 					{
 						iter = gui.audio.erase(iter);
 					}
@@ -1725,8 +1711,13 @@ int runApp(Configuration &configuration)
 				}
 				for (auto iter = gui.video.begin(); iter != gui.video.end();)
 				{
-					if (gui.video.find(iter->first) == gui.video.end())
+					if (!iter->second->isRunning())
 					{
+						iter = gui.video.erase(iter);
+					}
+					else if (gui.streams.find(iter->first) == gui.streams.end())
+					{
+						iter->second->setRunning(false);
 						iter = gui.video.erase(iter);
 					}
 					else
@@ -1782,11 +1773,15 @@ int runApp(Configuration &configuration)
 	}
 
 	gui.audio.clear();
+	for (auto &pair : gui.video)
+	{
+		pair.second->setRunning(false);
+	}
 	gui.video.clear();
+	WorkPool::workPool.clear();
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
-	WorkPool::workPool.waitForAll();
 	logger = nullptr;
 	return EXIT_SUCCESS;
 }

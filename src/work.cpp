@@ -3,24 +3,19 @@
 namespace TemStream
 {
 WorkPool WorkPool::workPool;
-WorkPool::WorkPool() : threads(), workList()
+WorkPool::WorkPool() : workList()
 {
 }
 WorkPool::~WorkPool()
 {
-	waitForAll();
+	clear();
 }
-void WorkPool::addWork(std::function<void()> &&f)
+void WorkPool::addWork(std::function<bool()> &&f)
 {
 	workList.push(std::move(f));
 }
-void WorkPool::waitForAll()
+void WorkPool::clear()
 {
-	for (auto &t : threads)
-	{
-		t.join();
-	}
-	threads.clear();
 	workList.clear();
 }
 void WorkPool::handleWorkInAnotherThread()
@@ -39,24 +34,50 @@ void WorkPool::handleWorkInAnotherThread()
 }
 namespace Work
 {
+bool fileIsBinary(const String &filename)
+{
+	const int check = 8000;
+	const char nulChar = '\0';
+	int i = 0;
+	int count = 0;
+	std::ifstream file(filename.c_str());
+	for (auto iter = std::istreambuf_iterator<char>(file), end = std::istreambuf_iterator<char>();
+		 iter != end && i < check; ++iter, ++i)
+	{
+		const char c = *iter;
+		if (c == nulChar)
+		{
+			++count;
+			if (count > 1)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
 void checkFile(TemStreamGui &gui, String filename)
 {
 	try
 	{
 		IQuery *data = nullptr;
-		if (isImage(filename.c_str()))
+		if (fileIsBinary(filename))
 		{
-			data = allocateAndConstruct<QueryImage>(gui, filename);
-			goto end;
-		}
+			if (isImage(filename.c_str()))
+			{
+				data = allocateAndConstruct<QueryImage>(gui, filename);
+				goto end;
+			}
 
 #if TEMSTREAM_USE_OPENCV
-		if (cv::VideoCapture(cv::String(filename)).isOpened())
-		{
-			data = allocateAndConstruct<QueryVideo>(gui, filename);
-			goto end;
-		}
+			if (cv::VideoCapture(cv::String(filename)).isOpened())
+			{
+				data = allocateAndConstruct<QueryVideo>(gui, filename);
+				goto end;
+			}
 #endif
+		}
+		else
 		{
 			std::ifstream file(filename.c_str());
 			String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());

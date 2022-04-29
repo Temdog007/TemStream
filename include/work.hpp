@@ -7,7 +7,7 @@ class WorkPool
 {
   private:
 	List<std::thread> threads;
-	ConcurrentQueue<std::function<void()>> workList;
+	ConcurrentQueue<std::function<bool()>> workList;
 
   public:
 	WorkPool();
@@ -15,21 +15,25 @@ class WorkPool
 
 	static WorkPool workPool;
 
-	void waitForAll();
+	void clear();
 
-	void addWork(std::function<void()> &&);
+	void addWork(std::function<bool()> &&);
 
 	static void handleWorkInAnotherThread();
 
 	template <typename _Rep, typename _Period> bool handleWork(const std::chrono::duration<_Rep, _Period> &maxWaitTime)
 	{
-		std::optional<std::function<void()>> work;
+		std::optional<std::function<bool()>> work;
 		work = workList.pop(maxWaitTime);
 		if (!work)
 		{
 			return false;
 		}
-		(*work)();
+		bool canPutBack = (*work)();
+		if (canPutBack)
+		{
+			workList.push(std::move(*work));
+		}
 		return true;
 	}
 };

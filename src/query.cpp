@@ -75,7 +75,10 @@ bool QueryImage::draw()
 }
 void QueryImage::execute() const
 {
-	WorkPool::workPool.addWork([image = image, source = getSource()]() { Work::sendImage(image, source); });
+	WorkPool::workPool.addWork([image = image, source = getSource()]() {
+		Work::sendImage(image, source);
+		return false;
+	});
 }
 QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), windowNames(), source(Source::Device), selected(-1)
 {
@@ -142,6 +145,7 @@ void QueryAudio::execute() const
 		WorkPool::workPool.addWork(
 			[s, source = getSource(), silence = gui.getConfiguration().defaultSilenceThreshold]() {
 				Work::startRecordingAudio(source, s, silence / 100.f);
+				return false;
 			});
 	}
 	break;
@@ -155,6 +159,7 @@ void QueryAudio::execute() const
 				WorkPool::workPool.addWork(
 					[wp, source = getSource(), silence = gui.getConfiguration().defaultSilenceThreshold]() {
 						Work::startRecordingWindowAudio(source, wp, silence / 100.f);
+						return false;
 					});
 				break;
 			}
@@ -166,7 +171,7 @@ void QueryAudio::execute() const
 		break;
 	}
 }
-QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection(WebCamSelection{})
+QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection(WebCamSelection{Video::FrameData(), 0, 100})
 {
 }
 QueryVideo::QueryVideo(TemStreamGui &gui, const String &s)
@@ -305,7 +310,7 @@ void QueryVideo::execute() const
 					}
 					else
 					{
-						gui.addVideo(std::move(ptr));
+						gui.addVideo(ptr);
 					}
 					break;
 				}

@@ -102,8 +102,7 @@ enum TemStreamEvent : int32_t
 	SetQueryData,
 	SetSurfaceToStreamDisplay,
 	AddAudio,
-	HandleFrame,
-	StopVideoStream
+	HandleFrame
 };
 class SDL_MutexWrapper
 {
@@ -179,6 +178,8 @@ extern void initialLogs();
 extern bool isSpace(char);
 
 extern int64_t getTimestamp();
+
+using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
 
 class Configuration;
 extern Configuration loadConfiguration(int, const char **);

@@ -199,6 +199,14 @@ std::optional<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 	}
 #endif
 }
+Screenshotter::Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr,
+							 shared_ptr<Video> v, const uint32_t fps)
+	: converter(ptr), window(w), video(v), con(std::move(con)), fps(fps), first(true)
+{
+}
+Screenshotter::~Screenshotter()
+{
+}
 Dimensions Screenshotter::getSize(xcb_connection_t *con)
 {
 	return getWindowSize(con, window.windowId);
@@ -209,140 +217,132 @@ void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> ss)
 		// Ensure the video pointer is added to this list. Otherwise, stream
 		// will end immediately
 		SDL_Delay(100u);
-		takeScreenshots(ss);
+		WorkPool::workPool.addWork([ss]() {
+			if (!takeScreenshot(ss))
+			{
+				*logger << "Ending recording " << ss->window.name << std::endl;
+				ss->video->setRunning(false);
+				return false;
+			}
+			return true;
+		});
+		return false;
 	});
 }
-void Screenshotter::takeScreenshots(shared_ptr<Screenshotter> data)
+bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 {
-	struct RecordLog
+	if (data->first)
 	{
-		Screenshotter &data;
-		RecordLog(Screenshotter &data) : data(data)
-		{
-			(*logger)(Logger::Trace) << "Starting to record: " << data.window.name << ' ' << data.fps << " FPS"
-									 << std::endl;
-		}
-		~RecordLog()
-		{
-			(*logger)(Logger::Trace) << "Ending recording of: " << data.window.name << std::endl;
-			if (auto ptr = data.video.lock())
-			{
-				stopVideoStream(ptr->getSource());
-			}
-		}
-	};
-
-	RecordLog recordLog(*data);
-
-	int unused;
-	auto con = getXCBConnection(unused);
+		*logger << "Starting recording " << data->window.name << std::endl;
+		data->first = false;
+	}
+	const auto now = std::chrono::system_clock::now();
+	if (now < data->nextFrame)
+	{
+		return true;
+	}
 
 	const auto delay = std::chrono::duration<double, std::milli>(1000.0 / data->fps);
 
-	Dimensions dim = data->getSize(con.get());
+	Dimensions dim = data->getSize(data->con.get());
 	if (!dim)
 	{
 		(*logger)(Logger::Error) << "Failed to get size of window: " << data->window.name << std::endl;
-		return;
+		return false;
 	}
 
-	while (!appDone)
+	if (!data->video->isRunning())
 	{
-		const auto nextFrame = std::chrono::system_clock::now() + delay;
-
-		auto video = data->video.lock();
-		if (!video)
-		{
-			(*logger)(Logger::Trace) << "Video state removed. Ending recording..." << std::endl;
-			break;
-		}
-
-		const auto &source = video->getSource();
-
-		auto converter = data->converter.lock();
-		if (!converter)
-		{
-			(*logger)(Logger::Trace) << "Video converter removed. Ending recording..." << std::endl;
-			break;
-		}
-
-		dim = data->getSize(con.get());
-		if (!dim)
-		{
-			(*logger)(Logger::Error) << "Window " << source << " is not visible. Ending stream" << std::endl;
-			break;
-		}
-
-		xcb_get_image_cookie_t cookie = xcb_get_image(con.get(), XCB_IMAGE_FORMAT_Z_PIXMAP, data->window.windowId, 0, 0,
-													  dim->first, dim->second, ~0U);
-		xcb_generic_error_t *errorPtr = nullptr;
-		auto replyPtr = xcb_get_image_reply(con.get(), cookie, &errorPtr);
-		auto error = makeXCB(errorPtr);
-		auto reply = makeXCB(replyPtr);
-		if (error || !reply)
-		{
-			(*logger)(Logger::Error) << "Window " << source << " is is not visible. Ending stream" << std::endl;
-			break;
-		}
-
-		try
-		{
-			auto frame = tem_unique<Video::Frame>();
-			frame->width = dim->first;
-			frame->height = dim->second;
-			frame->format = SDL_PIXELFORMAT_BGRA32;
-			uint8_t *data = xcb_get_image_data(reply.get());
-			frame->bytes.append(data, frame->width * frame->height * 4);
-
-			auto sourcePtr = tem_unique<Message::Source>(source);
-
-			SDL_Event e;
-			e.type = SDL_USEREVENT;
-			e.user.code = TemStreamEvent::HandleFrame;
-			e.user.data1 = frame.get();
-			e.user.data2 = sourcePtr.get();
-			if (tryPushEvent(e))
-			{
-				// Pointers are now owned by the event
-				frame.release();
-				sourcePtr.release();
-			}
-
-			Screenshot s;
-			s.reply = std::move(reply);
-			s.width = dim->first;
-			s.height = dim->second;
-			converter->addFrame(std::move(s));
-		}
-		catch (const std::exception &)
-		{
-		}
-
-		std::this_thread::sleep_until(nextFrame);
+		return false;
 	}
+
+	const auto &source = data->video->getSource();
+
+	auto converter = data->converter.lock();
+	if (!converter)
+	{
+		return false;
+	}
+
+	dim = data->getSize(data->con.get());
+	if (!dim)
+	{
+		(*logger)(Logger::Error) << "Window " << source << " is not visible. Ending stream" << std::endl;
+		return false;
+	}
+
+	xcb_get_image_cookie_t cookie = xcb_get_image(data->con.get(), XCB_IMAGE_FORMAT_Z_PIXMAP, data->window.windowId, 0,
+												  0, dim->first, dim->second, ~0U);
+	xcb_generic_error_t *errorPtr = nullptr;
+	auto replyPtr = xcb_get_image_reply(data->con.get(), cookie, &errorPtr);
+	auto error = makeXCB(errorPtr);
+	auto reply = makeXCB(replyPtr);
+	if (error || !reply)
+	{
+		(*logger)(Logger::Error) << "Window " << source << " is is not visible. Ending stream" << std::endl;
+		return false;
+	}
+
+	try
+	{
+		auto frame = tem_unique<Video::Frame>();
+		frame->width = dim->first;
+		frame->height = dim->second;
+		frame->format = SDL_PIXELFORMAT_BGRA32;
+		uint8_t *data = xcb_get_image_data(reply.get());
+		frame->bytes.append(data, frame->width * frame->height * 4);
+
+		auto sourcePtr = tem_unique<Message::Source>(source);
+
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::HandleFrame;
+		e.user.data1 = frame.get();
+		e.user.data2 = sourcePtr.get();
+		if (tryPushEvent(e))
+		{
+			// Pointers are now owned by the event
+			frame.release();
+			sourcePtr.release();
+		}
+
+		Screenshot s;
+		s.reply = std::move(reply);
+		s.width = dim->first;
+		s.height = dim->second;
+		converter->addFrame(std::move(s));
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Error: " << e.what() << std::endl;
+		return false;
+	}
+
+	data->nextFrame = now + delay;
+	return true;
 }
 
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, const int32_t scale,
 									  FrameData fd)
 {
+
+	int s;
+	auto con = getXCBConnection(s);
+	auto size = getWindowSize(con.get(), wp.windowId);
+	if (!size)
 	{
-		int s;
-		auto con = getXCBConnection(s);
-		auto size = getWindowSize(con.get(), wp.windowId);
-		if (!size)
-		{
-			return nullptr;
-		}
-		fd.width = size->first;
-		fd.height = size->second;
+		return nullptr;
 	}
+	fd.width = size->first;
+	fd.height = size->second;
 
-	auto encoder = tem_shared<FrameEncoder>(source, scale);
-	FrameEncoder::startEncodingFrames(encoder, fd, false);
-
-	auto converter = tem_shared<Converter>(encoder, source);
 	auto video = tem_shared<Video>(source, wp);
-	auto screenshotter = tem_shared<Screenshotter>(wp, converter, video, fd.fps);
+	auto encoder = tem_shared<FrameEncoder>(video, scale, fd, false);
+	FrameEncoder::startEncodingFrames(encoder);
+
+	auto converter = tem_shared<Converter>(encoder, video);
+
+	auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
 	Converter::startConverteringFrames(converter);
 	Screenshotter::startTakingScreenshots(screenshotter);
 	return video;

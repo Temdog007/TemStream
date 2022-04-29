@@ -64,6 +64,7 @@ class TemStreamGui
 	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
 	const String32 allUTF32;
+	std::chrono::_V2::system_clock::time_point lastVideoCheck;
 	ImGuiIO &io;
 	Configuration &configuration;
 	SDL_Window *window;
@@ -92,7 +93,6 @@ class TemStreamGui
 	bool connect(const Address &);
 	void updatePeer();
 	void decodeVideoPackets();
-	void doWork();
 	void draw();
 
 	struct MessageHandler

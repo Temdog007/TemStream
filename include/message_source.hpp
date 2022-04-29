@@ -57,7 +57,6 @@ struct Source
 	}
 };
 } // namespace Message
-extern bool stopVideoStream(const Message::Source &);
 } // namespace TemStream
 namespace std
 {

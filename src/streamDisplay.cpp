@@ -152,6 +152,7 @@ bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
 	{
 		WorkPool::workPool.addWork([source = display.getSource(), bytes = std::move(*bytes)]() {
 			Work::loadSurface(source, std::move(bytes));
+			return false;
 		});
 		display.data.emplace<std::monostate>();
 		return true;
