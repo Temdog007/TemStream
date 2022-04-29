@@ -59,4 +59,14 @@ void InMemoryLogger::viewLogs(const std::function<void(const Log &)> &f)
 		f(log);
 	}
 }
+void InMemoryLogger::clear()
+{
+	LOCK(mutex);
+	logs.clear();
+}
+size_t InMemoryLogger::size()
+{
+	LOCK(mutex);
+	return logs.size();
+}
 } // namespace TemStream

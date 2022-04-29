@@ -9,11 +9,11 @@
 	auto ff = toFontFiles();                                                                                           \
 	auto hostname = toAddress();                                                                                       \
 	archive(cereal::make_nvp("customColors", cc), cereal::make_nvp("fontFiles", ff), CEREAL_NVP(hostname),             \
-			cereal::make_nvp("port", address.port), CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume),                   \
-			CEREAL_NVP(defaultSilenceThreshold), CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs),                          \
-			CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showStreams), CEREAL_NVP(showDisplays), CEREAL_NVP(showAudio),      \
-			CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats), CEREAL_NVP(showColors),                \
-			CEREAL_NVP(showLogsFilter), CEREAL_NVP(colors))
+			cereal::make_nvp("port", address.port), CEREAL_NVP(maxLogs), CEREAL_NVP(fontSize),                         \
+			CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold), CEREAL_NVP(fontIndex),                     \
+			CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showStreams), CEREAL_NVP(showDisplays),       \
+			CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats),                 \
+			CEREAL_NVP(showColors), CEREAL_NVP(showLogsFilter), CEREAL_NVP(colors))
 namespace TemStream
 {
 class ColorList
@@ -57,6 +57,7 @@ struct Configuration
 	int defaultVolume;
 	int defaultSilenceThreshold;
 	int fontIndex;
+	int maxLogs;
 	bool showLogs;
 	bool autoScrollLogs;
 	bool showStreams;

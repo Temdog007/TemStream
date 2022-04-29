@@ -4,6 +4,21 @@
 
 namespace TemStream
 {
+void onWelsLog(void *, const int level, const char *string)
+{
+	switch (level)
+	{
+	case WELS_LOG_ERROR:
+		(*logger)(Logger::Error) << string << std::endl;
+		break;
+	case WELS_LOG_WARNING:
+		(*logger)(Logger::Warning) << string << std::endl;
+		break;
+	default:
+		(*logger)(Logger::Trace) << string << std::endl;
+		break;
+	}
+}
 OpenH264::OpenH264(Encoder &&e, int width, int height) : data(std::move(e))
 {
 	setWidth(width - (width % 2));
@@ -65,14 +80,11 @@ unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, cons
 		return nullptr;
 	}
 
-#if _DEBUG
-	int log_level = WELS_LOG_INFO;
-#else
-	int log_level = WELS_LOG_WARNING;
-#endif
-
+	WelsTraceCallback callback = onWelsLog;
+	int log_level = WELS_LOG_DETAIL;
 	int videoFormat = videoFormatI420;
-	const bool result = encoder->SetOption(ENCODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess &&
+	const bool result = encoder->SetOption(ENCODER_OPTION_TRACE_CALLBACK, &callback) == cmResultSuccess &&
+						encoder->SetOption(ENCODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess &&
 						encoder->SetOption(ENCODER_OPTION_DATAFORMAT, &videoFormat) == cmResultSuccess;
 	if (!result)
 	{
@@ -161,13 +173,10 @@ unique_ptr<Video::EncoderDecoder> Video::createDecoder()
 		return nullptr;
 	}
 
-#if _DEBUG
-	int log_level = WELS_LOG_INFO;
-#else
-	int log_level = WELS_LOG_WARNING;
-#endif
-
-	const bool result = decoder->SetOption(DECODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess;
+	int log_level = WELS_LOG_DETAIL;
+	WelsTraceCallback callback = onWelsLog;
+	const bool result = decoder->SetOption(DECODER_OPTION_TRACE_CALLBACK, (void *)&callback) == cmResultSuccess &&
+						decoder->SetOption(DECODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess;
 	if (!result)
 	{
 		return nullptr;

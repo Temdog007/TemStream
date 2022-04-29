@@ -214,19 +214,13 @@ Dimensions Screenshotter::getSize(xcb_connection_t *con)
 void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> ss)
 {
 	WorkPool::workPool.addWork([ss]() {
-		// Ensure the video pointer is added to this list. Otherwise, stream
-		// will end immediately
-		SDL_Delay(100u);
-		WorkPool::workPool.addWork([ss]() {
-			if (!takeScreenshot(ss))
-			{
-				*logger << "Ending recording " << ss->window.name << std::endl;
-				ss->video->setRunning(false);
-				return false;
-			}
-			return true;
-		});
-		return false;
+		if (!takeScreenshot(ss))
+		{
+			*logger << "Ending recording " << ss->window.name << std::endl;
+			ss->video->setRunning(false);
+			return false;
+		}
+		return true;
 	});
 }
 bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)

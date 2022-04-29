@@ -13,7 +13,7 @@ Connection::~Connection()
 
 bool Connection::readAndHandle(const int timeout)
 {
-	if (mSocket == nullptr || !mSocket->read(timeout, bytes) || bytes.size() > maxMessageSize)
+	if (mSocket == nullptr || !mSocket->read(timeout, bytes))
 	{
 		return false;
 	}
@@ -39,6 +39,8 @@ bool Connection::readAndHandle(const int timeout)
 			nextMessageSize = ntohl(v.value);
 			if (nextMessageSize > maxMessageSize || nextMessageSize == 0)
 			{
+				(*logger)(Logger::Error) << "Got message larger than max acceptable size. Got " << *nextMessageSize
+										 << "; Expected " << maxMessageSize << std::endl;
 				return false;
 			}
 

@@ -135,6 +135,8 @@ class InMemoryLogger : public Logger
 	virtual ~InMemoryLogger();
 
 	void viewLogs(const std::function<void(const Log &)> &);
+	void clear();
+	size_t size();
 };
 
 extern unique_ptr<Logger> logger;

@@ -113,7 +113,7 @@ void TemStreamGui::updatePeer()
 
 	if (!peer->readAndHandle(0))
 	{
-		(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
+		(*logger)(Logger::Trace) << "TemStreamGui::update: read error" << std::endl;
 		onDisconnect(peer->gotServerInformation());
 		peer = nullptr;
 		return;
@@ -122,7 +122,7 @@ void TemStreamGui::updatePeer()
 	{
 		if (!a.second->encodeAndSendAudio(*peer))
 		{
-			(*logger)(Logger::Trace) << "TemStreamGui::update: error" << std::endl;
+			(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
 			onDisconnect(peer->gotServerInformation());
 			peer = nullptr;
 			break;
@@ -885,6 +885,7 @@ void TemStreamGui::draw()
 		if (ImGui::Begin("Logs", &configuration.showLogs))
 		{
 			ImGui::Checkbox("Auto Scroll", &configuration.autoScrollLogs);
+			ImGui::InputInt("Max Logs", &configuration.maxLogs);
 
 			InMemoryLogger &mLogger = static_cast<InMemoryLogger &>(*logger);
 			auto &style = ImGui::GetStyle();
@@ -1499,7 +1500,7 @@ int runApp(Configuration &configuration)
 
 	gui.LoadFonts();
 
-	const bool multiThread = std::thread::hardware_concurrency() > 1;
+	const bool multiThread = std::thread::hardware_concurrency() > 2;
 	(*logger)(Logger::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
 	if (multiThread)
 	{
@@ -1511,6 +1512,13 @@ int runApp(Configuration &configuration)
 		SDL_Event event;
 		while (SDL_PollEvent(&event))
 		{
+			if (!multiThread)
+			{
+				// Need to ensure that the connection stays alive even
+				// when there are a lot of SDL events enqueued. If multi-threaded,
+				// another thread should be handling this.
+				gui.updatePeer();
+			}
 			ImGui_ImplSDL2_ProcessEvent(&event);
 			switch (event.type)
 			{
@@ -1757,6 +1765,11 @@ int runApp(Configuration &configuration)
 			}
 			else
 			{
+				for (auto pair : gui.video)
+				{
+					pair.second->setRunning(false);
+				}
+				cleanSwap(gui.video);
 				cleanSwap(gui.displays);
 				cleanSwap(gui.audio);
 				cleanSwap(gui.streams);
@@ -1819,15 +1832,24 @@ TemStreamGuiLogger::TemStreamGuiLogger(TemStreamGui &gui) : gui(gui)
 }
 TemStreamGuiLogger::~TemStreamGuiLogger()
 {
+	saveLogs();
+}
+void TemStreamGuiLogger::saveLogs()
+{
 	char buffer[KB(1)];
 	snprintf(buffer, sizeof(buffer), "TemStream_log_%zu.txt", time(nullptr));
 	std::ofstream file(buffer);
 	viewLogs([&file](const Log &log) { file << log.first << ": " << log.second; });
+	clear();
 }
 void TemStreamGuiLogger::Add(const Level level, const String &s, const bool b)
 {
 	checkError(level);
 	InMemoryLogger::Add(level, s, b);
+	if (size() > static_cast<size_t>(gui.configuration.maxLogs))
+	{
+		saveLogs();
+	}
 }
 void TemStreamGuiLogger::checkError(const Level level)
 {

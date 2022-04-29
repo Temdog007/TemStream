@@ -198,6 +198,8 @@ class TemStreamGuiLogger : public InMemoryLogger
   public:
 	TemStreamGuiLogger(TemStreamGui &);
 	~TemStreamGuiLogger();
+
+	void saveLogs();
 };
 } // namespace TemStream
 
