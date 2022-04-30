@@ -39,12 +39,10 @@ class WorkPool
 };
 namespace Work
 {
-// Since work can be in another thread, all arguments (expect GUI since its basically global)
-// must be copied
-extern void checkFile(TemStreamGui &, String);
-extern void sendImage(String, Message::Source);
-extern void loadSurface(Message::Source, ByteList);
-extern void startRecordingAudio(const Message::Source, const std::optional<String>, const float silenceThreshold);
-extern void startRecordingWindowAudio(const Message::Source, const WindowProcess, const float silenceThreshold);
+extern void checkFile(TemStreamGui &, const String &);
+extern void sendImage(const String &, const Message::Source &);
+extern void loadSurface(const Message::Source &, const ByteList &);
+extern void startRecordingAudio(const Message::Source &, const std::optional<String> &, const float silenceThreshold);
+extern void startRecordingWindowAudio(const Message::Source &, const WindowProcess &, const float silenceThreshold);
 } // namespace Work
 } // namespace TemStream

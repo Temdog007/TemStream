@@ -317,7 +317,73 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 
 	return true;
 }
+bool Converter::convertToJpeg()
+{
+#if TEMSTREAM_USE_OPENCV
+	if (first)
+	{
+		if (!TemStreamGui::sendCreateMessage<Message::Video>(video->getSource()))
+		{
+			return false;
+		}
+		*logger << "Starting JPEG converter: " << video->getSource() << std::endl;
+		first = false;
+	}
+	if (!video->isRunning())
+	{
+		return false;
+	}
+	try
+	{
+		using namespace std::chrono_literals;
+		while (!appDone)
+		{
+			auto result = frames.clearIfGreaterThan(Video::MaxVideoPackets);
+			if (result)
+			{
+				Video::logDroppedPackets(*result, video->getSource(), "JPEG converter");
+			}
 
+			auto data = frames.pop(0s);
+			if (!data)
+			{
+				return true;
+			}
+
+			cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
+			jpegBytes.clear();
+			if (!cv::imencode(".jpg", image, jpegBytes, params))
+			{
+				(*logger)(Logger::Error) << "Failed to convert screenshot to JPEG" << std::endl;
+				return false;
+			}
+			ByteList bytes(jpegBytes.data(), jpegBytes.size());
+
+			Message::Packet *packet = allocateAndConstruct<Message::Packet>();
+			packet->source = video->getSource();
+			packet->payload.emplace<Message::Video>(std::move(bytes));
+
+			SDL_Event e;
+			e.type = SDL_USEREVENT;
+			e.user.code = TemStreamEvent::SendSingleMessagePacket;
+			e.user.data1 = packet;
+			e.user.data2 = &e;
+			if (!tryPushEvent(e))
+			{
+				destroyAndDeallocate(packet);
+			}
+		}
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;
+		return false;
+	}
+	return true;
+#else
+	return false;
+#endif
+}
 shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, const int32_t scale,
 									  FrameData fd)
 {
@@ -331,16 +397,25 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	}
 	fd.width = size->first;
 	fd.height = size->second;
-
 	auto video = tem_shared<Video>(source, wp);
-	auto encoder = tem_shared<FrameEncoder>(video, scale, fd, false);
-	FrameEncoder::startEncodingFrames(encoder);
+	if (fd.jpegCapture)
+	{
+		auto converter = tem_shared<Converter>(nullptr, video);
+		auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
+		Converter::startConverteringFrames(converter);
+		Screenshotter::startTakingScreenshots(screenshotter);
+	}
+	else
+	{
+		auto encoder = tem_shared<FrameEncoder>(video, scale, fd, false);
+		FrameEncoder::startEncodingFrames(encoder);
 
-	auto converter = tem_shared<Converter>(encoder, video);
+		auto converter = tem_shared<Converter>(encoder, video);
 
-	auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
-	Converter::startConverteringFrames(converter);
-	Screenshotter::startTakingScreenshots(screenshotter);
+		auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
+		Converter::startConverteringFrames(converter);
+		Screenshotter::startTakingScreenshots(screenshotter);
+	}
 	return video;
 }
 } // namespace TemStream

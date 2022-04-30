@@ -16,7 +16,19 @@ void prepareImageBytes(std::ifstream &file, const Source &source, const std::fun
 	prepareImageBytes(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), size, source, func);
 }
 } // namespace Message
-
+const char *getExtension(const char *filename)
+{
+	size_t len = strlen(filename);
+	const char *c = filename + (len - 1);
+	for (; *c != *filename; --c)
+	{
+		if (*c == '.')
+		{
+			return c + 1;
+		}
+	}
+	return filename;
+}
 std::ostream &printMemory(std::ostream &os, const char *label, const size_t mem)
 {
 	os << label << ": " << printMemory(mem);

@@ -66,8 +66,9 @@ class Video
 		int fps;
 		int bitrateInMbps;
 		int keyFrameInterval;
+		bool jpegCapture;
 
-		FrameData() : width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(120)
+		FrameData() : width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(120), jpegCapture(false)
 		{
 		}
 		~FrameData()
@@ -152,14 +153,14 @@ class Video
 
 	template <typename T> class RGBA2YUV
 	{
-	  private:
+	  protected:
 		ConcurrentQueue<T> frames;
 		std::shared_ptr<Video> video;
 		std::weak_ptr<FrameEncoder> encoder;
 		bool first;
 
 		bool convertFrames();
-
+		virtual bool convertToJpeg() = 0;
 		virtual std::optional<Frame> convertToFrame(T &&) = 0;
 
 	  public:
@@ -178,14 +179,28 @@ class Video
 
 		static void startConverteringFrames(shared_ptr<RGBA2YUV> ptr)
 		{
-			WorkPool::workPool.addWork([ptr]() {
-				if (!ptr->convertFrames())
-				{
-					*logger << "Ending converting: " << ptr->video->getSource() << std::endl;
-					return false;
-				}
-				return true;
-			});
+			if (ptr->encoder.expired())
+			{
+				WorkPool::workPool.addWork([ptr]() {
+					if (!ptr->convertToJpeg())
+					{
+						*logger << "Ending converting: " << ptr->video->getSource() << std::endl;
+						return false;
+					}
+					return true;
+				});
+			}
+			else
+			{
+				WorkPool::workPool.addWork([ptr]() {
+					if (!ptr->convertFrames())
+					{
+						*logger << "Ending RGBA to YUV converter: " << ptr->video->getSource() << std::endl;
+						return false;
+					}
+					return true;
+				});
+			}
 		}
 	};
 };
@@ -193,7 +208,7 @@ template <typename T> bool Video::RGBA2YUV<T>::convertFrames()
 {
 	if (first)
 	{
-		*logger << "Starting converting: " << video->getSource() << std::endl;
+		*logger << "Starting RGBA to YUV converter: " << video->getSource() << std::endl;
 		first = false;
 	}
 	if (!video->isRunning())

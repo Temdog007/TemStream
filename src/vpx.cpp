@@ -107,7 +107,7 @@ void VPX::encodeAndSend(ByteList &bytes, const Message::Source &source)
 		}
 		Message::Packet packet;
 		packet.source = source;
-		Message::Video v;
+		Message::Frame v;
 		const char *data = reinterpret_cast<const char *>(pkt->data.frame.buf);
 		v.bytes = ByteList(data, pkt->data.frame.sz);
 		v.width = vpx_img_plane_width(&image, 0);

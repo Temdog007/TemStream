@@ -133,12 +133,19 @@ void ServerConnection::handleInput()
 
 	std::thread thread(&ServerConnection::handleOutput, this);
 
-	while (!appDone && stayConnected)
+	try
 	{
-		if (!readAndHandle(1000))
+		while (!appDone && stayConnected)
 		{
-			break;
+			if (!readAndHandle(1000))
+			{
+				break;
+			}
 		}
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
 	}
 
 	stayConnected = false;

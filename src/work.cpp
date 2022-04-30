@@ -56,7 +56,7 @@ bool fileIsBinary(const String &filename)
 	}
 	return false;
 }
-void checkFile(TemStreamGui &gui, String filename)
+void checkFile(TemStreamGui &gui, const String &filename)
 {
 	try
 	{
@@ -99,7 +99,7 @@ void checkFile(TemStreamGui &gui, String filename)
 		(*logger)(Logger::Error) << "Failed to check file: " << filename << std::endl;
 	}
 }
-void sendImage(String filename, Message::Source source)
+void sendImage(const String &filename, const Message::Source &source)
 {
 	std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open())
@@ -126,9 +126,10 @@ void sendImage(String filename, Message::Source source)
 		destroyAndDeallocate(packets);
 	}
 }
-void loadSurface(Message::Source source, ByteList bytes)
+void loadSurface(const Message::Source &source, const ByteList &bytes)
 {
 	(*logger)(Logger::Trace) << "Loading image data: " << bytes.size() / KB(1) << "KB" << std::endl;
+
 	SDL_RWops *src = SDL_RWFromConstMem(bytes.data(), bytes.size());
 	if (src == nullptr)
 	{
@@ -155,7 +156,7 @@ void loadSurface(Message::Source source, ByteList bytes)
 	}
 }
 
-void startRecordingAudio(const Message::Source source, const std::optional<String> name, const float silenceThreshold)
+void startRecordingAudio(const Message::Source &source, const std::optional<String> &name, const float silenceThreshold)
 {
 	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);
 	if (ptr == nullptr)
@@ -179,7 +180,7 @@ void startRecordingAudio(const Message::Source source, const std::optional<Strin
 
 	// Pointer will deleted if not released
 }
-void startRecordingWindowAudio(const Message::Source source, const WindowProcess windowProcess,
+void startRecordingWindowAudio(const Message::Source &source, const WindowProcess &windowProcess,
 							   const float silenceThreshold)
 {
 	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);

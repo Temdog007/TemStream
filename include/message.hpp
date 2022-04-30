@@ -37,7 +37,7 @@ using Image = std::variant<std::monostate, uint64_t, ByteList>;
 		{                                                                                                              \
 		}                                                                                                              \
 	}
-struct Video
+struct Frame
 {
 	uint16_t width;
 	uint16_t height;
@@ -51,6 +51,7 @@ struct Video
 		ar(width, height, bytes);
 	}
 };
+using Video = std::variant<Frame, ByteList>;
 struct Audio
 {
 	ByteList bytes;

@@ -162,62 +162,79 @@ void TemStreamGui::decodeVideoPackets()
 		return;
 	}
 
+	struct DecodePacket
+	{
+		const Message::Source &source;
+		Map<Message::Source, unique_ptr<Video::EncoderDecoder>> &decodingMap;
+		std::chrono::_V2::system_clock::time_point &lastVideoCheck;
+		void operator()(Message::Frame &packet)
+		{
+			auto iter = decodingMap.find(source);
+			if (iter == decodingMap.end())
+			{
+				auto decoder = Video::createDecoder();
+				if (!decoder)
+				{
+					return;
+				}
+				decoder->setWidth(packet.width);
+				decoder->setHeight(packet.height);
+				auto pair = decodingMap.try_emplace(source, std::move(decoder));
+				if (!pair.second)
+				{
+					return;
+				}
+				iter = pair.first;
+				lastVideoCheck = std::chrono::system_clock::now();
+				(*logger)(Logger::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
+			}
+			if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
+			{
+				auto decoder = Video::createDecoder();
+				if (!decoder)
+				{
+					return;
+				}
+				decoder->setWidth(packet.width);
+				decoder->setHeight(packet.height);
+				iter->second.swap(decoder);
+			}
+
+			if (!iter->second->decode(packet.bytes))
+			{
+				return;
+			}
+
+			SDL_Event e;
+			e.type = SDL_USEREVENT;
+			e.user.code = TemStreamEvent::HandleFrame;
+
+			Video::Frame *frame = allocateAndConstruct<Video::Frame>();
+			frame->bytes = std::move(packet.bytes);
+			frame->width = packet.width;
+			frame->height = packet.height;
+			frame->format = SDL_PIXELFORMAT_IYUV;
+			e.user.data1 = frame;
+
+			Message::Source *newSource = allocateAndConstruct<Message::Source>(source);
+			e.user.data2 = newSource;
+			if (!tryPushEvent(e))
+			{
+				destroyAndDeallocate(frame);
+				destroyAndDeallocate(newSource);
+			}
+		}
+		void operator()(ByteList &jpegBytes)
+		{
+			WorkPool::workPool.addWork([source = source, bytes = std::move(jpegBytes)]() {
+				Work::loadSurface(source, bytes);
+				return false;
+			});
+		}
+	};
+
 	auto &[source, packet] = *result;
-
-	auto iter = decodingMap.find(source);
-	if (iter == decodingMap.end())
-	{
-		auto decoder = Video::createDecoder();
-		if (!decoder)
-		{
-			return;
-		}
-		decoder->setWidth(packet.width);
-		decoder->setHeight(packet.height);
-		auto pair = decodingMap.try_emplace(source, std::move(decoder));
-		if (!pair.second)
-		{
-			return;
-		}
-		iter = pair.first;
-		lastVideoCheck = std::chrono::system_clock::now();
-		(*logger)(Logger::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
-	}
-	if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
-	{
-		auto decoder = Video::createDecoder();
-		if (!decoder)
-		{
-			return;
-		}
-		decoder->setWidth(packet.width);
-		decoder->setHeight(packet.height);
-		iter->second.swap(decoder);
-	}
-
-	if (!iter->second->decode(packet.bytes))
-	{
-		return;
-	}
-
-	SDL_Event e;
-	e.type = SDL_USEREVENT;
-	e.user.code = TemStreamEvent::HandleFrame;
-
-	Video::Frame *frame = allocateAndConstruct<Video::Frame>();
-	frame->bytes = std::move(packet.bytes);
-	frame->width = packet.width;
-	frame->height = packet.height;
-	frame->format = SDL_PIXELFORMAT_IYUV;
-	e.user.data1 = frame;
-
-	Message::Source *newSource = allocateAndConstruct<Message::Source>(source);
-	e.user.data2 = newSource;
-	if (!tryPushEvent(e))
-	{
-		destroyAndDeallocate(frame);
-		destroyAndDeallocate(newSource);
-	}
+	std::visit(DecodePacket{source, decodingMap, lastVideoCheck}, packet);
 }
 
 void TemStreamGui::onDisconnect(const bool gotInformation)
@@ -266,7 +283,11 @@ bool TemStreamGui::init()
 		return false;
 	}
 
+#if TEMSTREAM_USE_OPENCV
+	const int flags = IMG_INIT_PNG | IMG_INIT_WEBP;
+#else
 	const int flags = IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_WEBP;
+#endif
 	if (IMG_Init(flags) != flags)
 	{
 		(*logger)(Logger::Error) << "Image error: " << IMG_GetError() << std::endl;
@@ -1233,20 +1254,6 @@ int TemStreamGui::getSelectedQuery() const
 		return 3;
 	}
 	return -1;
-}
-
-const char *getExtension(const char *filename)
-{
-	size_t len = strlen(filename);
-	const char *c = filename + (len - 1);
-	for (; *c != *filename; --c)
-	{
-		if (*c == '.')
-		{
-			return c + 1;
-		}
-	}
-	return filename;
 }
 
 bool TemStreamGui::sendCreateMessage(const Message::Source &source, const uint32_t type)

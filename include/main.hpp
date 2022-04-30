@@ -179,6 +179,8 @@ extern bool isSpace(char);
 
 extern int64_t getTimestamp();
 
+extern const char *getExtension(const char *filename);
+
 using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
 
 class Configuration;

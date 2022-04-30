@@ -134,7 +134,7 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 			}
 		}
 
-		Message::Video v;
+		Message::Frame v;
 		v.width = getWidth();
 		v.height = getHeight();
 		for (int layerNum = 0; layerNum < info.iLayerNum; ++layerNum)

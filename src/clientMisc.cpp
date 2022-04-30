@@ -25,16 +25,19 @@ void SDL_MutexWrapper::unlock()
 }
 bool isTTF(const char *filename)
 {
-	const size_t len = strlen(filename);
-	const char *c = filename + (len - 1);
-	while (c != filename && *c != '.')
-	{
-		--c;
-	}
-	return strcmp(c + 1, "ttf") == 0;
+	return strcmp(getExtension(filename), "ttf") == 0;
+}
+bool isJpeg(const char *filename)
+{
+	const char *ext = getExtension(filename);
+	return strcmp(ext, "jpg") == 0 || strcmp(ext, "jpeg") == 0;
 }
 bool isImage(const char *filename)
 {
+	if (isJpeg(filename))
+	{
+		return true;
+	}
 	SDL_Surface *surface = IMG_Load(filename);
 	const bool isImage = surface != nullptr;
 	SDL_FreeSurface(surface);

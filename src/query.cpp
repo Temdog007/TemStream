@@ -281,13 +281,18 @@ void Video::FrameData::draw()
 	{
 		fps = std::clamp(fps, 1, 120);
 	}
-	if (ImGui::InputInt("Bitrate in Mbps", &bitrateInMbps, 1))
+	ImGui::Checkbox("Use MJPEG", &jpegCapture);
+	if (!jpegCapture)
 	{
-		bitrateInMbps = std::clamp(bitrateInMbps, 1, 100);
-	}
-	if (ImGui::InputInt("Key Frame Interval", &keyFrameInterval, 1))
-	{
-		keyFrameInterval = std::clamp(keyFrameInterval, 1, fps * 30);
+		if (ImGui::InputInt("Bitrate in Mbps", &bitrateInMbps, 1))
+		{
+			bitrateInMbps = std::clamp(bitrateInMbps, 1, 100);
+		}
+
+		if (ImGui::InputInt("Key Frame Interval", &keyFrameInterval, 1))
+		{
+			keyFrameInterval = std::clamp(keyFrameInterval, 1, fps * 30);
+		}
 	}
 }
 void QueryVideo::execute() const
