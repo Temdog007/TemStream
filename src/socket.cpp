@@ -91,6 +91,10 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 				return false;
 			}
 			written += sent;
+			if (written != sizeof(uint32_t))
+			{
+				printf("Wrote %zu out of 4 bytes\n", written);
+			}
 		}
 	}
 	size_t written = 0;
@@ -107,6 +111,10 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 			return false;
 		}
 		written += sent;
+		if (written != size)
+		{
+			printf("Wrote %zu out of %zu bytes\n", written, size);
+		}
 	}
 	return true;
 }

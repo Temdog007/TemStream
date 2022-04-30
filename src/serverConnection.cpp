@@ -693,11 +693,6 @@ bool ServerConnection::MessageHandler::sendPayloadForStream(const Message::Sourc
 
 	std::array<char, KB(1)> buffer;
 	stream->getFileName(buffer);
-	std::ifstream file(buffer.data());
-	if (!file.is_open())
-	{
-		return true;
-	}
 
 	switch (stream->getType())
 	{
@@ -705,8 +700,15 @@ bool ServerConnection::MessageHandler::sendPayloadForStream(const Message::Sourc
 		try
 		{
 			Message::Payload payload;
-			cereal::PortableBinaryInputArchive ar(file);
-			ar(payload);
+			{
+				std::ifstream file(buffer.data());
+				if (!file.is_open())
+				{
+					return true;
+				}
+				cereal::PortableBinaryInputArchive ar(file);
+				ar(payload);
+			}
 			Message::Packet packet;
 			packet.source = stream->getSource();
 			packet.payload = std::move(payload);

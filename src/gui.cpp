@@ -460,9 +460,18 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				if (SDL_ShowMessageBox(&data, &i) == 0)
 				{
 					disconnect();
-					const auto s = std::to_string(m);
-					int i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
-					(*logger)(Logger::Error) << "Failed to reset the application: " << i << std::endl;
+					int pid = fork();
+					if (pid < 0)
+					{
+						perror("fork");
+					}
+					else if (pid == 0)
+					{
+						const auto s = std::to_string(m);
+						int i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
+						(*logger)(Logger::Error) << "Failed to reset the application: " << i << std::endl;
+					}
+					appDone = true;
 				}
 				else
 				{

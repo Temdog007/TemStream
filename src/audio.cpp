@@ -52,15 +52,10 @@ void Audio::clearAudio()
 	Lock lock(id);
 	storedAudio.clear();
 }
-void Audio::useCurrentAudio(const std::function<void(const ByteList &)> &f) const
+ByteList Audio::getCurrentAudio() const
 {
 	Lock lock(id);
-	f(currentAudio);
-}
-void Audio::useCurrentAudio(const std::function<void(ByteList &&)> &f)
-{
-	Lock lock(id);
-	f(std::move(currentAudio));
+	return currentAudio;
 }
 SDL_AudioSpec Audio::getAudioSpec()
 {
@@ -216,11 +211,13 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
 	MessagePackets packets;
+
+	while (true)
 	{
-		Lock lock(id);
-		while (!storedAudio.empty())
+		int frameSize;
 		{
-			int frameSize = storedAudio.size() / (spec.channels * sizeof(float));
+			Lock lock(id);
+			frameSize = storedAudio.size() / (spec.channels * sizeof(float));
 			if (frameSize < minDuration)
 			{
 				break;
@@ -232,22 +229,23 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 			recordBuffer.clear();
 			recordBuffer.append(storedAudio, bytesUsed);
 			storedAudio.remove(bytesUsed);
-
-			const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
-												 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
-			if (result < 0)
-			{
-				(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
-										 << "; Frame size: " << frameSize << std::endl;
-				break;
-			}
-
-			Message::Packet packet;
-			packet.source = source;
-			packet.payload.emplace<Message::Audio>(Message::Audio{ByteList(buffer.data(), result)});
-			packets.push_back(std::move(packet));
 		}
+
+		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
+											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
+		if (result < 0)
+		{
+			(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
+									 << "; Frame size: " << frameSize << std::endl;
+			break;
+		}
+
+		Message::Packet packet;
+		packet.source = source;
+		packet.payload.emplace<Message::Audio>(Message::Audio{ByteList(buffer.data(), result)});
+		packets.push_back(std::move(packet));
 	}
+
 	for (const auto &packet : packets)
 	{
 		if (!peer->sendPacket(packet))

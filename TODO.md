@@ -274,7 +274,7 @@
 - [x] Add Thread pool
 - [x] Allow memory size to be reset during runtime
 - [x] Make work pool usuable for single threaded use
-- [ ] Connection is randomly lost when sending too much data (Message size is sent wrong or read wrong. Need mutex around send/receive)
+- [x] Connection is randomly lost when sending too much data (Message size is sent wrong or read wrong. Handle issue without ending connection)
 - [x] Fix issues found when testing on laptop
     - [x] Playing audio and video at the same time on laptop causes disconnection (see above)
     - [x] Restart encoder periodically
@@ -309,7 +309,7 @@
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
 - [x] Memory leak when streams (removed shared pointers so most likely that was the issue)
-- [ ] Audio clipping when network issue (don't know how to fix)
+- [?] Audio clipping when network issue (don't know how to fix)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

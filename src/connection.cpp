@@ -32,15 +32,19 @@ bool Connection::readAndHandle(const int timeout)
 
 				uint32_t value = 0;
 				memcpy(&value, bytes.data(), sizeof(uint32_t));
-				nextMessageSize.emplace(ntohl(value));
-				if (*nextMessageSize > maxMessageSize)
+				bytes.remove(sizeof(uint32_t));
+				value = ntohl(value);
+				if (value > maxMessageSize || value == 0)
 				{
-					(*logger)(Logger::Error) << "Got message larger than max acceptable size. Got " << *nextMessageSize
-											 << "; Expected " << maxMessageSize << std::endl;
-					return false;
+					// Something is happening where the value is incorrect sometimes. Until it is determined why and
+					// fixed, this error will be handled by clearing the bytes received and dropping packet(s).
+					(*logger)(Logger::Warning) << "Got message with unacceptable size. Got " << value
+											   << "; Max size allowed " << maxMessageSize << std::endl;
+					bytes.clear();
+					return true;
 				}
 
-				bytes.remove(sizeof(uint32_t));
+				nextMessageSize = value;
 			}
 
 			if (*nextMessageSize == bytes.size())

@@ -1,5 +1,7 @@
 #include <main.hpp>
 
+#include <netinet/tcp.h>
+
 namespace TemStream
 {
 AddrInfo::AddrInfo() : res(nullptr)
@@ -42,6 +44,12 @@ bool AddrInfo::makeSocket(int &sockfd) const
 	int yes = 1;
 	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
+	{
+		perror("setsockopt");
+		return false;
+	}
+	yes = 1;
+	if (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(yes)) < 0)
 	{
 		perror("setsockopt");
 		return false;
