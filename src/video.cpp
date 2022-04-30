@@ -20,7 +20,7 @@ bool WebCamCapture::execute()
 {
 	if (first)
 	{
-		*logger << "Ending webcam recording: " << arg << std::endl;
+		*logger << "Starting webcam recording: " << arg << "; FPS:" << frameData.fps << std::endl;
 		first = false;
 	}
 	if (!cap.isOpened())
@@ -43,50 +43,40 @@ bool WebCamCapture::execute()
 	const auto delay = std::chrono::duration_cast<std::chrono::nanoseconds>(
 		std::chrono::duration<double, std::milli>(1000.0 / frameData.fps));
 
-	cv::Mat yuv;
-
 	if (!cap.read(image) || image.empty())
 	{
 		return false;
 	}
 
-	// Need a better way that will always work
-	switch (image.channels())
 	{
-	case 3:
-		cv::cvtColor(image, yuv, cv::COLOR_BGR2YUV_IYUV);
-		break;
-	case 4:
-		cv::cvtColor(image, yuv, cv::COLOR_BGRA2YUV_IYUV);
-		break;
-	default:
-		(*logger)(Logger::Error) << "Unknown image type" << std::endl;
-		return false;
-	}
+		auto frame = allocateAndConstruct<Video::Frame>();
+		frame->width = image.cols;
+		frame->height = image.rows;
+		frame->format = SDL_PIXELFORMAT_BGR24;
+		frame->bytes.append(image.data, image.elemSize() * image.total());
 
-	Video::Frame frame;
-	frame.width = yuv.cols;
-	frame.height = yuv.rows;
-	frame.format = SDL_PIXELFORMAT_IYUV;
-	frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
-
-	{
-		auto ptr = allocateAndConstruct<Video::Frame>(frame);
 		auto sourcePtr = allocateAndConstruct<Message::Source>(source);
 
 		SDL_Event e;
 		e.type = SDL_USEREVENT;
 		e.user.code = TemStreamEvent::HandleFrame;
-		e.user.data1 = ptr;
+		e.user.data1 = frame;
 		e.user.data2 = sourcePtr;
 		if (!tryPushEvent(e))
 		{
-			destroyAndDeallocate(ptr);
+			destroyAndDeallocate(frame);
 			destroyAndDeallocate(sourcePtr);
 		}
 	}
+
 	if (auto e = encoder.lock())
 	{
+		cv::Mat yuv;
+		cv::cvtColor(image, yuv, cv::COLOR_BGR2YUV_IYUV);
+		Video::Frame frame;
+		frame.width = image.cols;
+		frame.height = image.rows;
+		frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
 		e->addFrame(std::move(frame));
 		nextFrame = now + delay;
 		return true;
@@ -101,16 +91,19 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	cv::VideoCapture cap(std::visit(MakeVideoCapture{}, arg));
 	if (!cap.isOpened())
 	{
+		(*logger)(Logger::Error) << "Failed to start video capture" << std::endl;
 		return nullptr;
 	}
 
 	cv::Mat image;
 	if (!cap.read(image) || image.empty())
 	{
+		(*logger)(Logger::Error) << "Failed to read initial image from video capture" << std::endl;
 		return nullptr;
 	}
 	fd.width = image.cols;
 	fd.height = image.rows;
+	fd.fps = static_cast<int>(cap.get(cv::CAP_PROP_FPS));
 
 	auto video = tem_shared<Video>(source);
 	std::weak_ptr<FrameEncoder> encoder;

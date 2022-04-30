@@ -1500,7 +1500,7 @@ int runApp(Configuration &configuration)
 
 	gui.LoadFonts();
 
-	const bool multiThread = std::thread::hardware_concurrency() > 2;
+	const bool multiThread = std::thread::hardware_concurrency() > 1;
 	(*logger)(Logger::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
 	if (multiThread)
 	{
