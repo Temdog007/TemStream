@@ -274,9 +274,9 @@
 - [x] Add Thread pool
 - [x] Allow memory size to be reset during runtime
 - [x] Make work pool usuable for single threaded use
-- [ ] Connection is randomly lost when sending too much data (Message size is either sent wrong or read wrong)
-- [ ] Fix issues found when testing on laptop
-    - [ ] Playing audio and video at the same time on laptop causes disconnection (see above)
+- [ ] Connection is randomly lost when sending too much data (Message size is sent wrong or read wrong. Need mutex around send/receive)
+- [x] Fix issues found when testing on laptop
+    - [x] Playing audio and video at the same time on laptop causes disconnection (see above)
     - [x] Restart encoder periodically
 
 ### Apr 29, 2022

@@ -35,6 +35,7 @@ class Socket
 class TcpSocket : public Socket
 {
   private:
+	Mutex mutex;
 	int fd;
 
 	void close();

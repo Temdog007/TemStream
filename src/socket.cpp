@@ -13,8 +13,10 @@ bool Socket::sendPacket(const Message::Packet &packet)
 	try
 	{
 		MemoryStream m;
-		cereal::PortableBinaryOutputArchive in(m);
-		in(packet);
+		{
+			cereal::PortableBinaryOutputArchive in(m);
+			in(packet);
+		}
 		return send(m.getData(), m.getSize());
 	}
 	catch (const std::exception &e)
@@ -29,13 +31,13 @@ bool Socket::connectWithAddress(const Address &addr, const bool isServer)
 	snprintf(port, sizeof(port), "%d", addr.port);
 	return connect(addr.hostname.c_str(), port, isServer);
 }
-TcpSocket::TcpSocket() : Socket(), fd(-1)
+TcpSocket::TcpSocket() : Socket(), mutex(), fd(-1)
 {
 }
-TcpSocket::TcpSocket(const int fd) : Socket(), fd(fd)
+TcpSocket::TcpSocket(const int fd) : Socket(), mutex(), fd(fd)
 {
 }
-TcpSocket::TcpSocket(TcpSocket &&s) noexcept : Socket(s), fd(s.fd)
+TcpSocket::TcpSocket(TcpSocket &&s) noexcept : Socket(s), mutex(), fd(s.fd)
 {
 	s.fd = -1;
 }
@@ -70,6 +72,7 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 	default:
 		return false;
 	}
+	LOCK(mutex);
 	{
 		uint32_t u = static_cast<uint32_t>(size);
 		u = htonl(u);
@@ -119,6 +122,7 @@ bool TcpSocket::read(const int timeout, ByteList &bytes)
 		return true;
 	}
 
+	LOCK(mutex);
 	const ssize_t r = ::read(fd, buffer.data(), buffer.size());
 	if (r < 0)
 	{
