@@ -68,7 +68,7 @@ SDL_AudioSpec Audio::getAudioSpec()
 	desired.channels = 2;
 	desired.format = AUDIO_F32;
 	desired.freq = 48000;
-	desired.samples = 4096;
+	desired.samples = 2048;
 	return desired;
 }
 unique_ptr<Audio> Audio::startRecording(const Message::Source &source, const char *name, const float silenceThresold)

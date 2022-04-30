@@ -55,9 +55,9 @@ uint8_t &ByteList::operator[](const size_t index)
 }
 void ByteList::reallocate(const size_t newSize)
 {
-	Allocator<uint8_t> a;
 	if (total == 0 || buffer == nullptr || total < newSize)
 	{
+		Allocator<uint8_t> a;
 		buffer = a.reallocate(buffer, newSize);
 		total = newSize;
 	}
@@ -84,7 +84,7 @@ void ByteList::append(const uint8_t *data, const size_t count)
 	}
 	if (used + count >= total)
 	{
-		reallocate(total + used + count);
+		reallocate(total + used + count + 1);
 	}
 
 	memcpy(&buffer[used], data, count);

@@ -61,7 +61,7 @@ PollState TcpSocket::pollWrite(const int timeout) const
 {
 	return pollSocket(fd, timeout, POLLOUT);
 }
-bool TcpSocket::send(const void *data, size_t size)
+bool TcpSocket::send(const uint8_t *data, size_t size)
 {
 	switch (pollWrite(-1))
 	{
@@ -73,16 +73,27 @@ bool TcpSocket::send(const void *data, size_t size)
 	{
 		uint32_t u = static_cast<uint32_t>(size);
 		u = htonl(u);
-		if (::send(fd, &u, sizeof(u), 0) != sizeof(u))
+		const uint8_t *uSize = reinterpret_cast<const uint8_t *>(&u);
+		size_t written = 0;
+		while (written < sizeof(uint32_t))
 		{
-			perror("send");
-			return false;
+			const ssize_t sent = ::send(fd, uSize + written, sizeof(uint32_t) - written, 0);
+			if (sent < 0)
+			{
+				perror("send");
+				return false;
+			}
+			if (sent == 0)
+			{
+				return false;
+			}
+			written += sent;
 		}
 	}
 	size_t written = 0;
 	while (written < size)
 	{
-		const ssize_t sent = ::send(fd, data, size, 0);
+		const ssize_t sent = ::send(fd, data + written, size - written, 0);
 		if (sent < 0)
 		{
 			perror("send");
