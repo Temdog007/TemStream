@@ -120,28 +120,32 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 }
 bool TcpSocket::read(const int timeout, ByteList &bytes)
 {
-	switch (pollRead(timeout))
+	int reads = 0;
+	do
 	{
-	case PollState::Error:
-		return false;
-	case PollState::GotData:
-		break;
-	default:
-		return true;
-	}
+		switch (pollRead(timeout))
+		{
+		case PollState::Error:
+			return false;
+		case PollState::GotData:
+			break;
+		default:
+			return true;
+		}
 
-	LOCK(mutex);
-	const ssize_t r = ::read(fd, buffer.data(), buffer.size());
-	if (r < 0)
-	{
-		perror("read");
-		return false;
-	}
-	if (r == 0)
-	{
-		return false;
-	}
-	bytes.append(buffer.begin(), r);
+		LOCK(mutex);
+		const ssize_t r = ::read(fd, buffer.data(), buffer.size());
+		if (r < 0)
+		{
+			perror("read");
+			return false;
+		}
+		if (r == 0)
+		{
+			return false;
+		}
+		bytes.append(buffer.begin(), r);
+	} while (timeout == 0 && ++reads < 100);
 	return true;
 }
 bool TcpSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port) const

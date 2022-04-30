@@ -264,7 +264,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	dim = data->getSize(data->con.get());
 	if (!dim)
 	{
-		(*logger)(Logger::Error) << "Window " << source << " is not visible. Ending stream" << std::endl;
+		(*logger)(Logger::Error) << "Window '" << data->window.name << "' is not visible. Ending stream" << std::endl;
 		return false;
 	}
 
@@ -276,7 +276,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	auto reply = makeXCB(replyPtr);
 	if (error || !reply)
 	{
-		(*logger)(Logger::Error) << "Window " << source << " is is not visible. Ending stream" << std::endl;
+		(*logger)(Logger::Error) << "Window '" << data->window.name << "' is not visible. Ending stream" << std::endl;
 		return false;
 	}
 

@@ -98,33 +98,56 @@ end:
 }
 void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> peer)
 {
-	*logger << "Handling connection: " << peer->getAddress() << std::endl;
-	peer->maxMessageSize = configuration.maxMessageSize;
 	{
 		LOCK(peersMutex);
 		peers.emplace_back(peer);
 	}
+	peer->handleInput();
+	--ServerConnection::runningThreads;
+}
+void ServerConnection::handleInput()
+{
+	struct ConnectionLog
+	{
+		ServerConnection &connection;
+		ConnectionLog(ServerConnection &connection) : connection(connection)
+		{
+			*logger << "Handling connection: " << connection.getAddress() << std::endl;
+		}
+		~ConnectionLog()
+		{
+			*logger << "Ending connection: " << connection.getAddress() << std::endl;
+		}
+	};
+	ConnectionLog cl(*this);
+
+	maxMessageSize = configuration.maxMessageSize;
 	{
 		Message::Packet packet;
 		packet.payload.emplace<PeerInformation>(ServerConnection::configuration.getInfo());
-		if (!(*peer)->sendPacket(packet))
+		if (!mSocket->sendPacket(packet))
 		{
-			goto end;
+			return;
 		}
 	}
 
-	while (!appDone)
+	std::thread thread(&ServerConnection::handleOutput, this);
+
+	while (!appDone && stayConnected)
 	{
-		if (!peer->readAndHandle(1000))
+		if (!readAndHandle(1000))
 		{
 			break;
 		}
 	}
 
+	stayConnected = false;
+	thread.join();
+
 	{
 		LOCK(peersMutex);
 		auto &streams = ServerConnection::streams;
-		const auto &name = peer->getInfo().name;
+		const auto &name = getInfo().name;
 		for (auto iter = streams.begin(); iter != streams.end();)
 		{
 			if (iter->first.author == name)
@@ -137,10 +160,19 @@ void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> peer)
 			}
 		}
 	}
-
-end:
-	--ServerConnection::runningThreads;
-	*logger << "Ending connection: " << peer->getAddress() << std::endl;
+}
+void ServerConnection::handleOutput()
+{
+	using namespace std::chrono_literals;
+	while (!appDone && stayConnected)
+	{
+		auto packet = incomingPackets.pop(100ms);
+		if (!packet)
+		{
+			continue;
+		}
+		stayConnected = ServerConnection::MessageHandler(*this, std::move(*packet))();
+	}
 }
 bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)
 {
@@ -312,7 +344,8 @@ shared_ptr<ServerConnection> ServerConnection::getPointer() const
 	return nullptr;
 }
 ServerConnection::ServerConnection(const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), subscriptions(), informationAcquired(false)
+	: Connection(address, std::move(s)), incomingPackets(), subscriptions(), stayConnected(true),
+	  informationAcquired(false)
 {
 }
 ServerConnection::~ServerConnection()
@@ -320,7 +353,8 @@ ServerConnection::~ServerConnection()
 }
 bool ServerConnection::handlePacket(Message::Packet &&packet)
 {
-	return ServerConnection::MessageHandler(*this, std::move(packet))();
+	incomingPackets.push(std::move(packet));
+	return true;
 }
 ServerConnection::MessageHandler::MessageHandler(ServerConnection &connection, Message::Packet &&packet)
 	: connection(connection), packet(std::move(packet))

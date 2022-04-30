@@ -1455,31 +1455,8 @@ String32 TemStreamGui::getAllUTF32()
 	return s;
 }
 
-void guiSignalHandler(int s)
-{
-	switch (s)
-	{
-	case SIGPIPE:
-		(*logger)(Logger::Error) << "Broken pipe error occurred" << std::endl;
-		break;
-	default:
-		break;
-	}
-}
-
 int runApp(Configuration &configuration)
 {
-	{
-		struct sigaction action;
-		action.sa_handler = &guiSignalHandler;
-		sigfillset(&action.sa_mask);
-		if (sigaction(SIGPIPE, &action, nullptr) == -1)
-		{
-			perror("sigaction");
-			return EXIT_FAILURE;
-		}
-	}
-
 	IMGUI_CHECKVERSION();
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 	ImGui::SetAllocatorFunctions((ImGuiMemAllocFunc)allocatorImGuiAlloc, (ImGuiMemFreeFunc)allocatorImGuiFree, nullptr);

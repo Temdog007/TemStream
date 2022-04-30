@@ -9,7 +9,9 @@ class ServerConnection : public Connection
 	friend int runApp(Configuration &configuration);
 
   private:
+	ConcurrentQueue<Message::Packet> incomingPackets;
 	Message::Subscriptions subscriptions;
+	bool stayConnected;
 	bool informationAcquired;
 
 	static std::atomic_int32_t runningThreads;
@@ -43,6 +45,9 @@ class ServerConnection : public Connection
 	static std::optional<PeerInformation> getPeerFromCredentials(Message::Credentials &&);
 
 	shared_ptr<ServerConnection> getPointer() const;
+
+	void handleInput();
+	void handleOutput();
 
 	typedef bool (*VerifyToken)(const char *, char *, bool *);
 	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, bool *);

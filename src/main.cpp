@@ -17,7 +17,7 @@ int main(const int argc, const char **argv)
 		struct sigaction action;
 		action.sa_handler = &signalHandler;
 		sigfillset(&action.sa_mask);
-		if (sigaction(SIGINT, &action, nullptr) == -1)
+		if (sigaction(SIGINT, &action, nullptr) == -1 || sigaction(SIGPIPE, &action, nullptr) == -1)
 		{
 			perror("sigaction");
 			return EXIT_FAILURE;
@@ -72,6 +72,9 @@ void signalHandler(int s)
 	case SIGINT:
 		TemStream::appDone = true;
 		logger->AddInfo("Received end signal");
+		break;
+	case SIGPIPE:
+		(*logger)(Logger::Error) << "Broken pipe error occurred" << std::endl;
 		break;
 	default:
 		break;
