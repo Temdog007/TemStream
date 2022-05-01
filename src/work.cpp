@@ -27,6 +27,7 @@ void WorkPool::handleWorkInAnotherThread()
 			while (!appDone)
 			{
 				WorkPool::workPool.handleWork(500ms);
+				std::this_thread::sleep_for(1ms);
 			}
 		});
 		thread.detach();
