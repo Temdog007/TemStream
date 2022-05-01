@@ -27,6 +27,15 @@ class MemoryBuffer : public std::basic_streambuf<char>
 	{
 		return byteList.size();
 	}
+
+	std::streamsize getReadPoint() const
+	{
+		return readPoint;
+	}
+	std::streamsize getWritePoint() const
+	{
+		return writePoint;
+	}
 };
 class MemoryStream : public std::iostream
 {
@@ -37,13 +46,13 @@ class MemoryStream : public std::iostream
 	MemoryStream();
 	virtual ~MemoryStream();
 
-	const char *getData() const
+	MemoryBuffer &operator*()
 	{
-		return buffer.getData();
+		return buffer;
 	}
-	std::size_t getSize() const
+	MemoryBuffer *operator->()
 	{
-		return buffer.getSize();
+		return &buffer;
 	}
 };
 } // namespace TemStream

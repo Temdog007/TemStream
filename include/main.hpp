@@ -230,6 +230,8 @@ template <typename T> void cleanSwap(T &t)
 
 #include "TemStreamConfig.h"
 
+#include "guid.hpp"
+
 #include "allocator.hpp"
 
 #include "byteList.hpp"

@@ -258,7 +258,7 @@ bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target
 					}
 				}
 			}
-			if ((*ptr)->send(m.getData(), m.getSize()))
+			if ((*ptr)->send(m->getData(), m->getSize()))
 			{
 				++iter;
 			}

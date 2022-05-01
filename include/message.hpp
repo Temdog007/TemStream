@@ -6,6 +6,23 @@ namespace TemStream
 {
 namespace Message
 {
+extern const Guid MagicGuid;
+struct Header
+{
+	Guid id;
+	uint64_t size;
+
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(id, size);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(id, size);
+	}
+
+	friend std::ostream &operator<<(std::ostream &, const Header &);
+};
 using Text = String;
 using UsernameAndPassword = std::pair<String, String>;
 using Credentials = std::variant<String, UsernameAndPassword>;

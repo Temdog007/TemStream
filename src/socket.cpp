@@ -17,7 +17,7 @@ bool Socket::sendPacket(const Message::Packet &packet)
 			cereal::PortableBinaryOutputArchive in(m);
 			in(packet);
 		}
-		return send(m.getData(), m.getSize());
+		return send(m->getData(), m->getSize());
 	}
 	catch (const std::exception &e)
 	{
@@ -74,13 +74,18 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 	}
 	LOCK(mutex);
 	{
-		uint32_t u = static_cast<uint32_t>(size);
-		u = htonl(u);
-		const uint8_t *uSize = reinterpret_cast<const uint8_t *>(&u);
-		size_t written = 0;
-		while (written < sizeof(uint32_t))
+		Message::Header header;
+		header.size = static_cast<uint64_t>(size);
+		header.id = Message::MagicGuid;
+		MemoryStream m;
 		{
-			const ssize_t sent = ::send(fd, uSize + written, sizeof(uint32_t) - written, 0);
+			cereal::PortableBinaryOutputArchive ar(m);
+			ar(header);
+		}
+		std::streampos written = 0;
+		while (written < m->getWritePoint())
+		{
+			const ssize_t sent = ::send(fd, m->getData() + written, m->getWritePoint() - written, 0);
 			if (sent < 0)
 			{
 				perror("send");
@@ -91,10 +96,6 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 				return false;
 			}
 			written += sent;
-			if (written != sizeof(uint32_t))
-			{
-				printf("Wrote %zu out of 4 bytes\n", written);
-			}
 		}
 	}
 	size_t written = 0;
@@ -111,10 +112,6 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 			return false;
 		}
 		written += sent;
-		if (written != size)
-		{
-			printf("Wrote %zu out of %zu bytes\n", written, size);
-		}
 	}
 	return true;
 }

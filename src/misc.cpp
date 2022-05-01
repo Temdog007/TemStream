@@ -4,6 +4,12 @@ namespace TemStream
 {
 namespace Message
 {
+std::ostream &operator<<(std::ostream &os, const Header &header)
+{
+	os << "ID: " << header.id << "; Size: " << header.size;
+	return os;
+}
+const Guid MagicGuid(0x2abe3059992u, 0xa589a5bbc5u);
 void prepareImageBytes(std::ifstream &file, const Source &source, const std::function<void(Packet &&)> &func)
 {
 	auto size = file.tellg();

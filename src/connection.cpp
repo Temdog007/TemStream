@@ -25,36 +25,47 @@ bool Connection::readAndHandle(const int timeout)
 		{
 			if (!nextMessageSize.has_value())
 			{
-				if (bytes.size() < sizeof(uint32_t))
+				if (bytes.size() < sizeof(Message::Header))
 				{
 					return true;
 				}
 
-				uint32_t value = 0;
-				memcpy(&value, bytes.data(), sizeof(uint32_t));
-				bytes.remove(sizeof(uint32_t));
-				value = ntohl(value);
-				if (value > maxMessageSize || value == 0)
+				Message::Header header;
+				MemoryStream m;
+				m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+				{
+					cereal::PortableBinaryInputArchive ar(m);
+					ar(header);
+				}
+				if (header.size > maxMessageSize || header.size == 0 || header.id != Message::MagicGuid)
 				{
 					// Something is happening where the value is incorrect sometimes. Until it is determined why and
 					// fixed, this error will be handled by clearing the bytes received and dropping packet(s).
-					(*logger)(Logger::Warning) << "Got message with unacceptable size. Got " << value
-											   << "; Max size allowed " << maxMessageSize << std::endl;
+					(*logger)(Logger::Warning) << "Got invalid message header: " << header << "; Max size allowed "
+											   << maxMessageSize << "; Magic Guid: " << Message::MagicGuid << std::endl;
 					bytes.clear();
 					return true;
 				}
 
-				nextMessageSize = value;
+				nextMessageSize = header.size;
+				bytes.remove(m->getReadPoint());
 			}
 
 			if (*nextMessageSize == bytes.size())
 			{
 				Message::Packet packet;
+				MemoryStream m;
 				{
-					MemoryStream m;
+
 					m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
 					cereal::PortableBinaryInputArchive ar(m);
 					ar(packet);
+				}
+				if (static_cast<size_t>(m->getReadPoint()) != bytes.size())
+				{
+					(*logger)(Logger::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
+											 << bytes.size() << " bytes" << std::endl;
+					return false;
 				}
 
 				packets.push(std::move(packet));
@@ -65,11 +76,17 @@ bool Connection::readAndHandle(const int timeout)
 			else if (*nextMessageSize < bytes.size())
 			{
 				Message::Packet packet;
+				MemoryStream m;
 				{
-					MemoryStream m;
-					m.write(reinterpret_cast<const char *>(bytes.data()), *nextMessageSize);
+					m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
 					cereal::PortableBinaryInputArchive ar(m);
 					ar(packet);
+				}
+				if (static_cast<size_t>(m->getReadPoint()) != *nextMessageSize)
+				{
+					(*logger)(Logger::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
+											 << bytes.size() << " bytes" << std::endl;
+					return false;
 				}
 
 				packets.push(std::move(packet));

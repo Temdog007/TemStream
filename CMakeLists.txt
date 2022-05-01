@@ -96,6 +96,7 @@ set(SOURCES
     src/addrinfo.cpp 
     src/byteList.cpp
     src/connection.cpp 
+    src/guid.cpp
     src/logger.cpp
     src/main.cpp
     src/memoryStream.cpp 

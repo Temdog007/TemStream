@@ -283,6 +283,7 @@
 - [x] Read from socket a number of times before leaving read function
 - [x] Add optional MJPEG video streaming
 - [x] Make OpenCV and SDL_Image use the same version of libjpeg9
+- [x] Add header to all packets sent
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
@@ -312,8 +313,8 @@
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
 - [x] Memory leak when streams (removed shared pointers so most likely that was the issue)
-- [?] Audio clipping when network issue (don't know how to fix)
-- [ ] Message size is sometimes wrong when server sends data to client (don't know what causes this issue)
+- [?] Audio clipping when network issue (don't know how to fix; Test in release mode)
+- [?] Message size is sometimes wrong when server sends data to client (don't know what causes this issue)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
