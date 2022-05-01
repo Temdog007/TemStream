@@ -16,3 +16,6 @@ url = https://github.com/libsdl-org/SDL_image.git
 [submodule "openh264"]
 	path = openh264
 	url = https://github.com/cisco/openh264.git
+[submodule "libjpeg"]
+	path = libjpeg
+	url = https://github.com/winlibs/libjpeg.git
