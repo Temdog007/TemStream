@@ -9,7 +9,7 @@ class ByteList
   private:
 	uint8_t *buffer;
 	uint32_t used;
-	uint32_t total;
+	size_t total;
 
 	void deepClear();
 
@@ -63,7 +63,7 @@ class ByteList
 	void insert(const uint8_t *, const size_t, const size_t offset);
 
 	void append(const ByteList &);
-	void append(const ByteList &, uint32_t);
+	void append(const ByteList &, const uint32_t);
 
 	template <typename Iterator> void append(Iterator start, Iterator end)
 	{
@@ -187,11 +187,20 @@ class ByteList
 
 	auto begin() const
 	{
-		return Iterator(&buffer[0]);
+		return ConstIterator(&buffer[0]);
 	}
 	auto end() const
 	{
-		return Iterator(&buffer[used]);
+		return ConstIterator(&buffer[used]);
+	}
+
+	auto cbegin() const
+	{
+		return ConstIterator(&buffer[0]);
+	}
+	auto cend() const
+	{
+		return ConstIterator(&buffer[used]);
 	}
 
 	template <class Archive> void save(Archive &archive) const

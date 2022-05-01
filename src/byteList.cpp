@@ -123,6 +123,10 @@ ByteList &ByteList::operator+=(const ByteList &other)
 }
 void ByteList::remove(const size_t count)
 {
+	if (count == 0 || empty())
+	{
+		return;
+	}
 	if (count >= used)
 	{
 		clear();

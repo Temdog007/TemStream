@@ -74,11 +74,11 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 	// }
 	LOCK(mutex);
 	{
-		Message::Header header;
-		header.size = static_cast<uint64_t>(size);
-		header.id = Message::MagicGuid;
 		MemoryStream m;
 		{
+			Message::Header header;
+			header.size = static_cast<uint64_t>(size);
+			header.id = Message::MagicGuid;
 			cereal::PortableBinaryOutputArchive ar(m);
 			ar(header);
 		}

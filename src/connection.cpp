@@ -25,7 +25,7 @@ bool Connection::readAndHandle(const int timeout)
 		{
 			if (!nextMessageSize.has_value())
 			{
-				if (bytes.size() < sizeof(Message::Header))
+				if (bytes.size() < sizeof(Message::Header) + 1)
 				{
 					return true;
 				}
