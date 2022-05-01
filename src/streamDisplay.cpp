@@ -176,14 +176,9 @@ bool StreamDisplay::ImageMessageHandler::operator()(ByteList &&bytes)
 bool StreamDisplay::operator()(Message::Audio &audio)
 {
 	if (!gui.useAudio(source, [this, &audio](Audio &a) {
-			const bool isRecording = a.isRecording();
-			if (!isRecording)
-			{
-				a.enqueueAudio(audio.bytes);
-			}
 			if (!std::holds_alternative<CheckAudio>(data))
 			{
-				data.emplace<CheckAudio>(nullptr, isRecording);
+				data.emplace<CheckAudio>(nullptr, a.isRecording());
 			}
 		}))
 	{

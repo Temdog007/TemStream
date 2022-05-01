@@ -28,6 +28,7 @@ void Audio::close()
 }
 void Audio::enqueueAudio(const ByteList &bytes)
 {
+	Lock lock(id);
 	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
 										 fbuffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
 	if (result < 0)
@@ -43,7 +44,6 @@ void Audio::enqueueAudio(const ByteList &bytes)
 		{
 			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
 		}
-		Lock lock(id);
 		storedAudio.append(buffer.data(), bytesRead);
 	}
 }

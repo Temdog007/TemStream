@@ -8,6 +8,7 @@ class Connection
 {
   private:
 	ByteList bytes;
+	ConcurrentQueue<Message::Packet> packets;
 	std::optional<uint32_t> nextMessageSize;
 
   protected:
@@ -20,7 +21,7 @@ class Connection
 	Connection(const Address &, unique_ptr<Socket>);
 	Connection(const Connection &) = delete;
 	Connection(Connection &&) = delete;
-	~Connection();
+	virtual ~Connection();
 
 	const PeerInformation &getInfo() const
 	{
@@ -37,14 +38,17 @@ class Connection
 		return mSocket.get();
 	}
 
+	ConcurrentQueue<Message::Packet> &getPackets()
+	{
+		return packets;
+	}
+
 	bool readAndHandle(const int);
 
 	bool isServer() const
 	{
 		return info.isServer;
 	}
-
-	virtual bool handlePacket(Message::Packet &&) = 0;
 };
 
 } // namespace TemStream

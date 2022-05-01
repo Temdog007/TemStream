@@ -313,6 +313,7 @@
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
 - [x] Memory leak when streams (removed shared pointers so most likely that was the issue)
 - [?] Audio clipping when network issue (don't know how to fix)
+- [ ] Message size is sometimes wrong when server sends data to client (don't know what causes this issue)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

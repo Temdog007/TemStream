@@ -4,19 +4,21 @@
 
 namespace TemStream
 {
+class TemStreamGui;
 using MessagePackets = List<Message::Packet>;
 class ClientConnetion : public Connection
 {
   private:
+	TemStreamGui &gui;
 	bool acquiredServerInformation;
 
   public:
-	ClientConnetion(const Address &, unique_ptr<Socket>);
+	ClientConnetion(TemStreamGui &, const Address &, unique_ptr<Socket>);
 	ClientConnetion(const ClientConnetion &) = delete;
 	ClientConnetion(ClientConnetion &&) = delete;
 	virtual ~ClientConnetion();
 
-	bool handlePacket(Message::Packet &&) override;
+	bool flushPackets();
 	void addPacket(Message::Packet &&);
 	void addPackets(MessagePackets &&);
 

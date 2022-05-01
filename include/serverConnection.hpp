@@ -9,7 +9,6 @@ class ServerConnection : public Connection
 	friend int runApp(Configuration &configuration);
 
   private:
-	ConcurrentQueue<Message::Packet> incomingPackets;
 	Message::Subscriptions subscriptions;
 	bool stayConnected;
 	bool informationAcquired;
@@ -115,7 +114,5 @@ class ServerConnection : public Connection
 	{
 		return informationAcquired;
 	}
-
-	bool handlePacket(Message::Packet &&) override;
 };
 } // namespace TemStream

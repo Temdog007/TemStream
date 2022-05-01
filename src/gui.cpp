@@ -315,6 +315,19 @@ bool TemStreamGui::init()
 	});
 
 	WorkPool::workPool.addWork([this]() {
+		LOCK(this->peerMutex);
+		if (this->peer == nullptr)
+		{
+			return true;
+		}
+		if (!this->peer->flushPackets())
+		{
+			peer = nullptr;
+		}
+		return true;
+	});
+
+	WorkPool::workPool.addWork([this]() {
 		this->decodeVideoPackets();
 		return true;
 	});
@@ -333,7 +346,7 @@ bool TemStreamGui::connect(const Address &address)
 	}
 
 	LOCK(peerMutex);
-	peer = tem_unique<ClientConnetion>(address, std::move(s));
+	peer = tem_unique<ClientConnetion>(*this, address, std::move(s));
 	*logger << "Connected to server: " << address << std::endl;
 	Message::Packet packet;
 	packet.payload.emplace<Message::Credentials>(configuration.credentials);

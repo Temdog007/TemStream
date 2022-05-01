@@ -171,9 +171,10 @@ void ServerConnection::handleInput()
 void ServerConnection::handleOutput()
 {
 	using namespace std::chrono_literals;
+	auto &packets = getPackets();
 	while (!appDone && stayConnected)
 	{
-		auto packet = incomingPackets.pop(100ms);
+		auto packet = packets.pop(100ms);
 		if (!packet)
 		{
 			continue;
@@ -358,17 +359,11 @@ shared_ptr<ServerConnection> ServerConnection::getPointer() const
 	return nullptr;
 }
 ServerConnection::ServerConnection(const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), incomingPackets(), subscriptions(), stayConnected(true),
-	  informationAcquired(false)
+	: Connection(address, std::move(s)), subscriptions(), stayConnected(true), informationAcquired(false)
 {
 }
 ServerConnection::~ServerConnection()
 {
-}
-bool ServerConnection::handlePacket(Message::Packet &&packet)
-{
-	incomingPackets.push(std::move(packet));
-	return true;
 }
 ServerConnection::MessageHandler::MessageHandler(ServerConnection &connection, Message::Packet &&packet)
 	: connection(connection), packet(std::move(packet))

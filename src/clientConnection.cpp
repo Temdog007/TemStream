@@ -2,19 +2,35 @@
 
 namespace TemStream
 {
-ClientConnetion::ClientConnetion(const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), acquiredServerInformation(false)
+ClientConnetion::ClientConnetion(TemStreamGui &gui, const Address &address, unique_ptr<Socket> s)
+	: Connection(address, std::move(s)), gui(gui), acquiredServerInformation(false)
 {
 }
 ClientConnetion::~ClientConnetion()
 {
 }
-bool ClientConnetion::handlePacket(Message::Packet &&packet)
+bool ClientConnetion::flushPackets()
 {
-	auto ptr = std::get_if<PeerInformation>(&packet.payload);
+	using namespace std::chrono_literals;
+	auto packet = getPackets().pop(0s);
+	if (!packet)
+	{
+		return true;
+	}
+	auto ptr = std::get_if<PeerInformation>(&packet->payload);
 	if (ptr == nullptr)
 	{
-		addPacket(std::move(packet));
+		// Send audio data to playback immediately to avoid audio issues
+		if (auto message = std::get_if<Message::Audio>(&packet->payload))
+		{
+			gui.useAudio(packet->source, [&message](Audio &a) {
+				if (!a.isRecording())
+				{
+					a.enqueueAudio(message->bytes);
+				}
+			});
+		}
+		addPacket(std::move(*packet));
 	}
 	else if (acquiredServerInformation)
 	{
