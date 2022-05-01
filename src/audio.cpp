@@ -36,13 +36,12 @@ void Audio::enqueueAudio(const ByteList &bytes)
 	}
 	else
 	{
-		const size_t framesRead = result * spec.channels;
-		const size_t bytesRead = framesRead * sizeof(float);
 		// (*logger)(Logger::Trace) << "Decoded bytes " << bytesRead << std::endl;
-		for (size_t i = 0; i < framesRead; ++i)
+		for (auto i = 0; i < result; ++i)
 		{
-			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
+			fbuffer[i] = std::clamp(fbuffer[i] * volume, -1.f, 1.f);
 		}
+		const size_t bytesRead = result * spec.channels * sizeof(float);
 		Lock lock(id);
 		storedAudio.append(buffer.data(), bytesRead);
 	}
