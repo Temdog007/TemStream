@@ -248,10 +248,7 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 
 	for (const auto &packet : packets)
 	{
-		if (!peer->sendPacket(packet))
-		{
-			return false;
-		}
+		peer->sendPacket(packet);
 	}
 	peer.addPackets(std::move(packets));
 	return true;

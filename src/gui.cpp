@@ -128,6 +128,13 @@ void TemStreamGui::updatePeer()
 			break;
 		}
 	}
+	if (!(*peer)->flush())
+	{
+		(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
+		onDisconnect(peer->gotServerInformation());
+		peer = nullptr;
+		return;
+	}
 }
 
 void TemStreamGui::decodeVideoPackets()
@@ -354,7 +361,8 @@ bool TemStreamGui::connect(const Address &address)
 	*logger << "Connected to server: " << address << std::endl;
 	Message::Packet packet;
 	packet.payload.emplace<Message::Credentials>(configuration.credentials);
-	return (*peer)->sendPacket(packet);
+	(*peer)->sendPacket(packet);
+	return true;
 }
 
 ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
@@ -1319,13 +1327,7 @@ void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally
 		return;
 	}
 
-	if (!(*peer)->sendPacket(packet))
-	{
-		(*logger)(Logger::Trace) << "TemStreamGui::sendPacket: error" << std::endl;
-		onDisconnect(peer->gotServerInformation());
-		peer = nullptr;
-		return;
-	}
+	(*peer)->sendPacket(packet);
 	if (handleLocally)
 	{
 		peer->addPacket(std::move(packet));
@@ -1342,13 +1344,7 @@ void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 	}
 	for (const auto &packet : packets)
 	{
-		if (!(*peer)->sendPacket(packet))
-		{
-			(*logger)(Logger::Trace) << "TemStreamGui::sendPackets: error" << std::endl;
-			onDisconnect(peer->gotServerInformation());
-			peer = nullptr;
-			return;
-		}
+		(*peer)->sendPacket(packet);
 	}
 	if (handleLocally)
 	{

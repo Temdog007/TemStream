@@ -63,7 +63,7 @@ namespace fs = std::filesystem;
 #include <opencv4/opencv2/opencv.hpp>
 #endif
 
-#define TEMSTREAM_USE_BASE64 true
+#define TEMSTREAM_USE_BASE64 false
 
 namespace std
 {

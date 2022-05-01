@@ -2,13 +2,40 @@
 
 namespace TemStream
 {
-Socket::Socket() : buffer()
+Socket::Socket() : buffer(), outgoing(KB(1)), mutex()
 {
 }
 Socket::~Socket()
 {
 }
-bool Socket::sendPacket(const Message::Packet &packet)
+void Socket::send(const uint8_t *data, const size_t size, const bool convertToBase64)
+{
+	LOCK(mutex);
+
+	if (convertToBase64)
+	{
+		ByteList bytes(data, size);
+		bytes = base64_encode(bytes);
+		outgoing.append(bytes);
+		outgoing.append('\0');
+	}
+	else
+	{
+		{
+			MemoryStream m;
+			{
+				Message::Header header;
+				header.size = static_cast<uint64_t>(size);
+				header.id = Message::MagicGuid;
+				cereal::PortableBinaryOutputArchive ar(m);
+				ar(header);
+			}
+			outgoing.append(m->getData(), m->getWritePoint());
+		}
+		outgoing.append(data, size);
+	}
+}
+void Socket::sendPacket(const Message::Packet &packet)
 {
 	try
 	{
@@ -17,7 +44,7 @@ bool Socket::sendPacket(const Message::Packet &packet)
 			cereal::PortableBinaryOutputArchive in(m);
 			in(packet);
 		}
-		return send(m->getData(), m->getSize());
+		send(m->getData(), m->getSize());
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -27,7 +54,15 @@ bool Socket::sendPacket(const Message::Packet &packet)
 	{
 		(*logger)(Logger::Error) << "Socket::sendMessage " << e.what() << std::endl;
 	}
-	return false;
+}
+bool Socket::flush()
+{
+	ByteList t;
+	{
+		LOCK(mutex);
+		t.swap(outgoing);
+	}
+	return flush(t);
 }
 bool Socket::connectWithAddress(const Address &addr, const bool isServer)
 {
@@ -35,15 +70,11 @@ bool Socket::connectWithAddress(const Address &addr, const bool isServer)
 	snprintf(port, sizeof(port), "%d", addr.port);
 	return connect(addr.hostname.c_str(), port, isServer);
 }
-TcpSocket::TcpSocket() : Socket(), mutex(), fd(-1)
+TcpSocket::TcpSocket() : Socket(), fd(-1)
 {
 }
-TcpSocket::TcpSocket(const int fd) : Socket(), mutex(), fd(fd)
+TcpSocket::TcpSocket(const int fd) : Socket(), fd(fd)
 {
-}
-TcpSocket::TcpSocket(TcpSocket &&s) noexcept : Socket(s), mutex(), fd(s.fd)
-{
-	s.fd = -1;
 }
 TcpSocket::~TcpSocket()
 {
@@ -86,47 +117,6 @@ bool sendAll(const int fd, const char *data, size_t size)
 	}
 	return true;
 }
-bool TcpSocket::send(const uint8_t *data, size_t size, const bool base64)
-{
-	// switch (pollWrite(100))
-	// {
-	// case PollState::GotData:
-	// 	break;
-	// default:
-	// 	return false;
-	// }
-	LOCK(mutex);
-	if (base64)
-	{
-		ByteList bytes(data, size);
-		bytes = base64_encode(bytes);
-		if (!sendAll(fd, bytes.data<char>(), bytes.size()))
-		{
-			return false;
-		}
-		const char c = '\0';
-		return ::send(fd, &c, 1, 0) == 1;
-	}
-	else
-	{
-		{
-			MemoryStream m;
-			{
-				Message::Header header;
-				header.size = static_cast<uint64_t>(size);
-				header.id = Message::MagicGuid;
-				cereal::PortableBinaryOutputArchive ar(m);
-				ar(header);
-			}
-			if (!sendAll(fd, m->getData(), m->getWritePoint()))
-			{
-				return false;
-			}
-		}
-		return sendAll(fd, reinterpret_cast<const char *>(data), size);
-	}
-	return true;
-}
 bool TcpSocket::read(const int timeout, ByteList &bytes)
 {
 	int reads = 0;
@@ -155,6 +145,10 @@ bool TcpSocket::read(const int timeout, ByteList &bytes)
 		bytes.append(buffer.begin(), r);
 	} while (timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
 	return true;
+}
+bool TcpSocket::flush(const ByteList &bytes)
+{
+	return sendAll(fd, reinterpret_cast<const char *>(bytes.data()), bytes.size());
 }
 bool TcpSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port) const
 {

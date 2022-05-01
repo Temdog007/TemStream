@@ -125,13 +125,18 @@ void ServerConnection::handleInput()
 	{
 		Message::Packet packet;
 		packet.payload.emplace<PeerInformation>(ServerConnection::configuration.getInfo());
-		if (!mSocket->sendPacket(packet))
-		{
-			return;
-		}
+		mSocket->sendPacket(packet);
 	}
 
 	std::thread thread(&ServerConnection::handleOutput, this);
+	std::thread sender([this]() {
+		using namespace std::chrono_literals;
+		while (!appDone && this->stayConnected)
+		{
+			stayConnected = (*this)->flush();
+			std::this_thread::sleep_for(1ms);
+		}
+	});
 
 	while (!appDone && stayConnected)
 	{
@@ -154,6 +159,7 @@ void ServerConnection::handleInput()
 
 	stayConnected = false;
 	thread.join();
+	sender.join();
 
 	{
 		LOCK(peersMutex);
@@ -266,14 +272,8 @@ bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target
 					}
 				}
 			}
-			if ((*ptr)->send(m->getData(), m->getSize()))
-			{
-				++iter;
-			}
-			else
-			{
-				iter = peers.erase(iter);
-			}
+			(*ptr)->send(m->getData(), m->getSize());
+			++iter;
 		}
 		else
 		{
@@ -460,10 +460,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 		Message::Packet packet;
 		packet.source.author = configuration.name;
 		packet.payload.emplace<Message::VerifyLogin>(Message::VerifyLogin{connection.info});
-		if (!connection->sendPacket(packet))
-		{
-			return false;
-		}
+		connection->sendPacket(packet);
 	}
 	return sendStreamsToClients();
 }
@@ -689,7 +686,8 @@ bool ServerConnection::MessageHandler::sendSubscriptionsToClient() const
 	Message::Packet packet;
 	packet.source.author = ServerConnection::configuration.name;
 	packet.payload.emplace<Message::Subscriptions>(connection.subscriptions);
-	return connection->sendPacket(packet);
+	connection->sendPacket(packet);
+	return true;
 }
 bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 {
@@ -767,10 +765,7 @@ bool ServerConnection::MessageHandler::sendPayloadForStream(const Message::Sourc
 			Message::Packet packet;
 			packet.source = stream->getSource();
 			packet.payload = std::move(payload);
-			if (!connection->sendPacket(packet))
-			{
-				return false;
-			}
+			connection->sendPacket(packet);
 		}
 		catch (const std::exception &e)
 		{
