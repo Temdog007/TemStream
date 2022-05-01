@@ -46,9 +46,9 @@ class Audio
 	static void recordCallback(Audio *, uint8_t *, int);
 	static void playbackCallback(Audio *, uint8_t *, int);
 
-	static int audioLengthToFrames(const int frequency, const int duration);
+	constexpr static int audioLengthToFrames(const int frequency, const int duration);
 
-	static int closestValidFrameCount(const int frequency, const int frames);
+	constexpr static int closestValidFrameCount(const int frequency, const int frames);
 
 	friend class Allocator<Audio>;
 

@@ -28,7 +28,6 @@ void Audio::close()
 }
 void Audio::enqueueAudio(const ByteList &bytes)
 {
-	Lock lock(id);
 	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
 										 fbuffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
 	if (result < 0)
@@ -44,6 +43,7 @@ void Audio::enqueueAudio(const ByteList &bytes)
 		{
 			fbuffer[i] = SDL_clamp(fbuffer[i] * volume, -1.f, 1.f);
 		}
+		Lock lock(id);
 		storedAudio.append(buffer.data(), bytesRead);
 	}
 }
@@ -209,27 +209,29 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 		return true;
 	}
 
-	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_10_MS);
+	ByteList outgoing;
+	{
+		Lock lock(id);
+		outgoing.swap(storedAudio);
+	}
+
+	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_2_5_MS);
 	MessagePackets packets;
 
 	while (true)
 	{
-		int frameSize;
+		int frameSize = outgoing.size() / (spec.channels * sizeof(float));
+		if (frameSize < minDuration)
 		{
-			Lock lock(id);
-			frameSize = storedAudio.size() / (spec.channels * sizeof(float));
-			if (frameSize < minDuration)
-			{
-				break;
-			}
-
-			frameSize = closestValidFrameCount(spec.freq, frameSize);
-			const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
-
-			recordBuffer.clear();
-			recordBuffer.append(storedAudio, bytesUsed);
-			storedAudio.remove(bytesUsed);
+			break;
 		}
+
+		frameSize = closestValidFrameCount(spec.freq, frameSize);
+		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
+
+		recordBuffer.clear();
+		recordBuffer.append(outgoing, bytesUsed);
+		outgoing.remove(bytesUsed);
 
 		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
 											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
@@ -251,9 +253,14 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 		peer->sendPacket(packet);
 	}
 	peer.addPackets(std::move(packets));
+	if (!outgoing.empty())
+	{
+		Lock lock(id);
+		storedAudio = outgoing + storedAudio;
+	}
 	return true;
 }
-int Audio::closestValidFrameCount(const int frequency, const int frames)
+constexpr int Audio::closestValidFrameCount(const int frequency, const int frames)
 {
 	const int values[] = {OPUS_FRAMESIZE_120_MS, OPUS_FRAMESIZE_100_MS, OPUS_FRAMESIZE_80_MS,
 						  OPUS_FRAMESIZE_60_MS,	 OPUS_FRAMESIZE_40_MS,	OPUS_FRAMESIZE_20_MS,
@@ -278,7 +285,7 @@ int Audio::closestValidFrameCount(const int frequency, const int frames)
 	}
 	return audioLengthToFrames(frequency, values[arrayLength - 1]);
 }
-int Audio::audioLengthToFrames(const int frequency, const int duration)
+constexpr int Audio::audioLengthToFrames(const int frequency, const int duration)
 {
 	switch (duration)
 	{
