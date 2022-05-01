@@ -63,6 +63,8 @@ namespace fs = std::filesystem;
 #include <opencv4/opencv2/opencv.hpp>
 #endif
 
+#define TEMSTREAM_USE_BASE64 true
+
 namespace std
 {
 template <class Archive, typename T1, typename T2> void save(Archive &archive, const std::pair<T1, T2> &pair)
@@ -235,6 +237,8 @@ template <typename T> void cleanSwap(T &t)
 #include "allocator.hpp"
 
 #include "byteList.hpp"
+
+#include "base64.hpp"
 
 #include "memoryStream.hpp"
 

@@ -94,6 +94,7 @@ endif()
 
 set(SOURCES 
     src/addrinfo.cpp 
+    src/base64.cpp
     src/byteList.cpp
     src/connection.cpp 
     src/guid.cpp

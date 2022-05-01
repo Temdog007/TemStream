@@ -35,21 +35,31 @@ class ByteList
 	const uint8_t &operator[](size_t) const;
 	uint8_t &operator[](size_t);
 
-	uint8_t *data()
+	constexpr uint8_t *data()
 	{
 		return buffer;
 	}
-	const uint8_t *data() const
+	constexpr const uint8_t *data() const
 	{
 		return buffer;
 	}
 
-	size_t size() const
+	template <typename T> constexpr const T *data() const
+	{
+		return reinterpret_cast<const T *>(buffer);
+	}
+
+	constexpr size_t size() const
 	{
 		return used;
 	}
 
-	bool empty() const
+	template <typename T> constexpr T size() const
+	{
+		return static_cast<T>(used);
+	}
+
+	constexpr bool empty() const
 	{
 		return used == 0 || buffer == nullptr || total == 0;
 	}

@@ -43,7 +43,7 @@ class Connection
 		return packets;
 	}
 
-	bool readAndHandle(const int);
+	bool readAndHandle(const int, const bool base64 = TEMSTREAM_USE_BASE64);
 
 	bool isServer() const
 	{

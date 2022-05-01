@@ -100,6 +100,10 @@ void checkFile(TemStreamGui &gui, const String &filename)
 			destroyAndDeallocate(data);
 		}
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << "Failed to check file: " << filename << std::endl;

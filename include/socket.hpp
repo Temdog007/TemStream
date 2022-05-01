@@ -22,7 +22,7 @@ class Socket
 	bool connectWithAddress(const Address &, const bool isServer);
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
-	virtual bool send(const uint8_t *, size_t) = 0;
+	virtual bool send(const uint8_t *, size_t, const bool convertToBase64 = TEMSTREAM_USE_BASE64) = 0;
 	virtual bool read(const int timeout, ByteList &) = 0;
 
 	template <typename T> bool send(const T *t, const size_t count)
@@ -51,7 +51,7 @@ class TcpSocket : public Socket
 	PollState pollWrite(const int timeout) const;
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
-	virtual bool send(const uint8_t *, size_t) override;
+	virtual bool send(const uint8_t *, size_t, bool) override;
 	virtual bool read(const int timeout, ByteList &) override;
 
 	virtual bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const override;

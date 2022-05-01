@@ -249,6 +249,11 @@ template <typename T> bool Video::RGBA2YUV<T>::convertFrames()
 			}
 		}
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory while converting frames" << std::endl;
+		return false;
+	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;

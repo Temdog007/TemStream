@@ -1904,6 +1904,10 @@ void FileDisplay::loadFiles()
 			files.emplace_back(file.path().c_str());
 		}
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << e.what() << std::endl;

@@ -40,6 +40,11 @@ int main(const int argc, const char **argv)
 		saveConfiguration(configuration);
 		return result;
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		return EXIT_FAILURE;
+	}
 	catch (const std::exception &e)
 	{
 		fprintf(stderr, "An error occurred: %s\n", e.what());

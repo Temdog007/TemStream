@@ -309,6 +309,11 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 		s.height = dim->second;
 		converter->addFrame(std::move(s));
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		return false;
+	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << "Error: " << e.what() << std::endl;
@@ -386,6 +391,11 @@ bool Converter::convertToJpeg()
 				destroyAndDeallocate(packet);
 			}
 		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		return false;
 	}
 	catch (const std::exception &e)
 	{

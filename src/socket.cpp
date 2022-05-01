@@ -19,11 +19,15 @@ bool Socket::sendPacket(const Message::Packet &packet)
 		}
 		return send(m->getData(), m->getSize());
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << "Socket::sendMessage " << e.what() << std::endl;
-		return false;
 	}
+	return false;
 }
 bool Socket::connectWithAddress(const Address &addr, const bool isServer)
 {
@@ -63,41 +67,8 @@ PollState TcpSocket::pollWrite(const int timeout) const
 {
 	return pollSocket(fd, timeout, POLLOUT);
 }
-bool TcpSocket::send(const uint8_t *data, size_t size)
+bool sendAll(const int fd, const char *data, size_t size)
 {
-	// switch (pollWrite(100))
-	// {
-	// case PollState::GotData:
-	// 	break;
-	// default:
-	// 	return false;
-	// }
-	LOCK(mutex);
-	{
-		MemoryStream m;
-		{
-			Message::Header header;
-			header.size = static_cast<uint64_t>(size);
-			header.id = Message::MagicGuid;
-			cereal::PortableBinaryOutputArchive ar(m);
-			ar(header);
-		}
-		std::streampos written = 0;
-		while (written < m->getWritePoint())
-		{
-			const ssize_t sent = ::send(fd, m->getData() + written, m->getWritePoint() - written, 0);
-			if (sent < 0)
-			{
-				perror("send");
-				return false;
-			}
-			if (sent == 0)
-			{
-				return false;
-			}
-			written += sent;
-		}
-	}
 	size_t written = 0;
 	while (written < size)
 	{
@@ -112,6 +83,47 @@ bool TcpSocket::send(const uint8_t *data, size_t size)
 			return false;
 		}
 		written += sent;
+	}
+	return true;
+}
+bool TcpSocket::send(const uint8_t *data, size_t size, const bool base64)
+{
+	// switch (pollWrite(100))
+	// {
+	// case PollState::GotData:
+	// 	break;
+	// default:
+	// 	return false;
+	// }
+	LOCK(mutex);
+	if (base64)
+	{
+		ByteList bytes(data, size);
+		bytes = base64_encode(bytes);
+		if (!sendAll(fd, bytes.data<char>(), bytes.size()))
+		{
+			return false;
+		}
+		const char c = '\0';
+		return ::send(fd, &c, 1, 0) == 1;
+	}
+	else
+	{
+		{
+			MemoryStream m;
+			{
+				Message::Header header;
+				header.size = static_cast<uint64_t>(size);
+				header.id = Message::MagicGuid;
+				cereal::PortableBinaryOutputArchive ar(m);
+				ar(header);
+			}
+			if (!sendAll(fd, m->getData(), m->getWritePoint()))
+			{
+				return false;
+			}
+		}
+		return sendAll(fd, reinterpret_cast<const char *>(data), size);
 	}
 	return true;
 }

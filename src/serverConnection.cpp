@@ -142,6 +142,10 @@ void ServerConnection::handleInput()
 				break;
 			}
 		}
+		catch (const std::bad_alloc &)
+		{
+			(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		}
 		catch (const std::exception &e)
 		{
 			(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
@@ -182,6 +186,10 @@ void ServerConnection::handleOutput()
 		try
 		{
 			stayConnected = ServerConnection::MessageHandler(*this, std::move(*packet))();
+		}
+		catch (const std::bad_alloc &)
+		{
+			(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
 		}
 		catch (const std::exception &e)
 		{
@@ -720,11 +728,15 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 
 		return true;
 	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+	}
 	catch (const std::exception &e)
 	{
 		(*logger)(Logger::Error) << "Failed to save payload for stream " << *stream << ": " << e.what() << std::endl;
-		return false;
 	}
+	return false;
 }
 bool ServerConnection::MessageHandler::sendPayloadForStream(const Message::Source &source)
 {
