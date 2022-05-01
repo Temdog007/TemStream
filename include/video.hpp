@@ -66,9 +66,11 @@ class Video
 		int fps;
 		int bitrateInMbps;
 		int keyFrameInterval;
+		int32_t scale;
 		bool jpegCapture;
 
-		FrameData() : width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(120), jpegCapture(false)
+		FrameData()
+			: width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(120), scale(100), jpegCapture(false)
 		{
 		}
 		~FrameData()
@@ -79,8 +81,8 @@ class Video
 	};
 
 	static WindowProcesses getRecordableWindows();
-	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, int32_t, Video::FrameData);
-	static shared_ptr<Video> recordWebcam(const VideoCaptureArg &, const Message::Source &, int32_t, Video::FrameData);
+	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, Video::FrameData);
+	static shared_ptr<Video> recordWebcam(const VideoCaptureArg &, const Message::Source &, Video::FrameData);
 
 	class EncoderDecoder
 	{
@@ -134,13 +136,12 @@ class Video
 		TimePoint lastReset;
 		unique_ptr<EncoderDecoder> encoder;
 		shared_ptr<Video> video;
-		const int32_t ratio;
 		bool first;
 
 		bool encodeFrames();
 
 	  public:
-		FrameEncoder(shared_ptr<Video> v, int32_t, FrameData, const bool forCamera);
+		FrameEncoder(shared_ptr<Video> v, FrameData, const bool forCamera);
 		virtual ~FrameEncoder();
 
 		void addFrame(Frame &&);
@@ -155,6 +156,7 @@ class Video
 	{
 	  protected:
 		ConcurrentQueue<T> frames;
+		FrameData frameData;
 		std::shared_ptr<Video> video;
 		std::weak_ptr<FrameEncoder> encoder;
 		bool first;
@@ -164,8 +166,8 @@ class Video
 		virtual std::optional<Frame> convertToFrame(T &&) = 0;
 
 	  public:
-		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, shared_ptr<Video> video)
-			: frames(), video(video), encoder(encoder), first(true)
+		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, shared_ptr<Video> video, FrameData frameData)
+			: frames(), frameData(frameData), video(video), encoder(encoder), first(true)
 		{
 		}
 		virtual ~RGBA2YUV()

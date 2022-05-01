@@ -76,14 +76,12 @@ class QueryVideo : public IQuery
 	{
 		Video::FrameData frameData;
 		WindowProcesses windows;
-		int32_t scale;
 		int selected;
 	};
 	struct WebCamSelection
 	{
 		Video::FrameData frameData;
 		VideoCaptureArg arg;
-		int32_t scale;
 	};
 	using VideoSelection = std::variant<WebCamSelection, WindowSelection>;
 	VideoSelection selection;

@@ -84,8 +84,7 @@ bool WebCamCapture::execute()
 
 	return false;
 }
-shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source, const int32_t scale,
-									  FrameData fd)
+shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source, FrameData fd)
 {
 #if TEMSTREAM_USE_OPENCV
 	cv::VideoCapture cap(std::visit(MakeVideoCapture{}, arg));
@@ -108,7 +107,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	auto video = tem_shared<Video>(source);
 	std::weak_ptr<FrameEncoder> encoder;
 	{
-		auto e = tem_shared<FrameEncoder>(video, scale, fd, true);
+		auto e = tem_shared<FrameEncoder>(video, fd, true);
 		FrameEncoder::startEncodingFrames(e);
 		encoder = e;
 	}
@@ -136,18 +135,17 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	return nullptr;
 #endif
 }
-Video::FrameEncoder::FrameEncoder(shared_ptr<Video> v, const int32_t ratio, const FrameData frameData,
-								  const bool forCamera)
+Video::FrameEncoder::FrameEncoder(shared_ptr<Video> v, const FrameData frameData, const bool forCamera)
 	: frames(), frameData(frameData), lastReset(std::chrono::system_clock::now()), encoder(nullptr), video(v),
-	  ratio(ratio), first(true)
+	  first(true)
 {
 	TemStreamGui::sendCreateMessage<Message::Video>(v->getSource());
 
 	this->frameData.width -= this->frameData.width % 2;
-	this->frameData.width = this->frameData.width * ratio / 100;
+	this->frameData.width = this->frameData.width * frameData.scale / 100;
 
 	this->frameData.height -= this->frameData.height % 2;
-	this->frameData.height = this->frameData.height * ratio / 100;
+	this->frameData.height = this->frameData.height * frameData.scale / 100;
 
 	encoder = createEncoder(frameData, forCamera);
 }
@@ -193,9 +191,9 @@ bool Video::FrameEncoder::encodeFrames()
 			return true;
 		}
 
-		if (ratio != 100)
+		if (frameData.scale != 100)
 		{
-			frame->resize(ratio);
+			frame->resize(frameData.scale);
 		}
 
 		const auto now = std::chrono::system_clock::now();

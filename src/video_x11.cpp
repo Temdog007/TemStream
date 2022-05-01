@@ -350,12 +350,25 @@ bool Converter::convertToJpeg()
 				return true;
 			}
 
-			cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
-			jpegBytes.clear();
-			if (!cv::imencode(".jpg", image, jpegBytes, params))
 			{
-				(*logger)(Logger::Error) << "Failed to convert screenshot to JPEG" << std::endl;
-				return false;
+				cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
+				cv::Mat output;
+				if (frameData.scale == 100)
+				{
+					output = std::move(image);
+				}
+				else
+				{
+					const double scale = frameData.scale / 100.0;
+					cv::resize(image, output, cv::Size(), scale, scale);
+				}
+				jpegBytes.clear();
+				if (!cv::imencode(".jpg", output, jpegBytes, params))
+				{
+					(*logger)(Logger::Error) << "Failed to convert screenshot to JPEG" << std::endl;
+					return false;
+				}
+				// (*logger)(Logger::Trace) << "JPEG size: " << jpegBytes.size() << std::endl;
 			}
 			ByteList bytes(jpegBytes.data(), jpegBytes.size());
 
@@ -384,8 +397,7 @@ bool Converter::convertToJpeg()
 	return false;
 #endif
 }
-shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, const int32_t scale,
-									  FrameData fd)
+shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, FrameData fd)
 {
 
 	int s;
@@ -400,17 +412,17 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	auto video = tem_shared<Video>(source, wp);
 	if (fd.jpegCapture)
 	{
-		auto converter = tem_shared<Converter>(nullptr, video);
+		auto converter = tem_shared<Converter>(nullptr, video, fd);
 		auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
 		Converter::startConverteringFrames(converter);
 		Screenshotter::startTakingScreenshots(screenshotter);
 	}
 	else
 	{
-		auto encoder = tem_shared<FrameEncoder>(video, scale, fd, false);
+		auto encoder = tem_shared<FrameEncoder>(video, fd, false);
 		FrameEncoder::startEncodingFrames(encoder);
 
-		auto converter = tem_shared<Converter>(encoder, video);
+		auto converter = tem_shared<Converter>(encoder, video, fd);
 
 		auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
 		Converter::startConverteringFrames(converter);

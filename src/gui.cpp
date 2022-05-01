@@ -1436,8 +1436,7 @@ void TemStreamGui::handleMessage(Message::Packet &&m)
 	auto iter = displays.find(m.source);
 	if (iter == displays.end())
 	{
-		StreamDisplay display(*this, m.source);
-		auto pair = displays.emplace(m.source, std::move(display));
+		auto pair = displays.try_emplace(m.source, StreamDisplay(*this, m.source));
 		if (!pair.second)
 		{
 			LOCK(peerMutex);
@@ -1595,15 +1594,26 @@ int runApp(Configuration &configuration)
 				}
 				break;
 				case TemStreamEvent::SetSurfaceToStreamDisplay: {
-					SDL_Surface *surface = reinterpret_cast<SDL_Surface *>(event.user.data1);
+					SDL_Surface *surfacePtr = reinterpret_cast<SDL_Surface *>(event.user.data1);
+					SDL_SurfaceWrapper surface(surfacePtr);
 					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
 					auto source = unique_ptr<Message::Source>(sourcePtr);
 					auto iter = gui.displays.find(*source);
-					if (iter != gui.displays.end())
+					if (iter == gui.displays.end())
 					{
-						iter->second.setSurface(surface);
+						if (gui.streams.find(*source) == gui.streams.end())
+						{
+							break;
+						}
+
+						auto [iterR, result] = gui.displays.try_emplace(*source, StreamDisplay(gui, *source));
+						if (!result)
+						{
+							break;
+						}
+						iter = iterR;
 					}
-					SDL_FreeSurface(surface);
+					iter->second.setSurface(*surface);
 				}
 				break;
 				case TemStreamEvent::AddAudio: {
@@ -1628,7 +1638,7 @@ int runApp(Configuration &configuration)
 					auto iter = gui.displays.find(*source);
 					if (iter == gui.displays.end())
 					{
-						auto [newIter, added] = gui.displays.emplace(*source, StreamDisplay(gui, *source));
+						auto [newIter, added] = gui.displays.try_emplace(*source, StreamDisplay(gui, *source));
 						if (!added)
 						{
 							break;

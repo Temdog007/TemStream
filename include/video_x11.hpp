@@ -58,11 +58,11 @@ class Converter : public Video::RGBA2YUV<Screenshot>
 	std::optional<Video::Frame> convertToFrame(Screenshot &&) override;
 
   public:
-	Converter(std::shared_ptr<Video::FrameEncoder> encoder, std::shared_ptr<Video> video)
-		: Video::RGBA2YUV<Screenshot>(encoder, video), temp(), jpegBytes(), params()
+	Converter(std::shared_ptr<Video::FrameEncoder> encoder, std::shared_ptr<Video> video, Video::FrameData frameData)
+		: Video::RGBA2YUV<Screenshot>(encoder, video, frameData), temp(), jpegBytes(), params()
 	{
-		params.push_back(cv::IMWRITE_JPEG_QUALITY);
-		params.push_back(50);
+		// params.push_back(cv::IMWRITE_JPEG_QUALITY);
+		// params.push_back(95);
 	}
 	~Converter()
 	{
