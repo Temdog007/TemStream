@@ -32,12 +32,12 @@ bool isJpeg(const char *filename)
 	const char *ext = getExtension(filename);
 	return strcmp(ext, "jpg") == 0 || strcmp(ext, "jpeg") == 0;
 }
+bool isXPM(const char *filename)
+{
+	return strcmp(getExtension(filename), "xpm") == 0;
+}
 bool isImage(const char *filename)
 {
-	if (isJpeg(filename))
-	{
-		return true;
-	}
 	SDL_Surface *surface = IMG_Load(filename);
 	const bool isImage = surface != nullptr;
 	SDL_FreeSurface(surface);

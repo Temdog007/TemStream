@@ -1115,49 +1115,53 @@ void TemStreamGui::draw()
 			}
 
 			std::optional<String> newDir;
-			if (ImGui::BeginTable("", 2, ImGuiTableFlags_Borders))
+			if (ImGui::BeginChild("Files"))
 			{
-				ImGui::TableSetupColumn("Name");
-				ImGui::TableSetupColumn("Type");
-				ImGui::TableHeadersRow();
-
-				for (const auto &file : fileDirectory->getFiles())
+				if (ImGui::BeginTable("", 2, ImGuiTableFlags_Borders))
 				{
-					if (fs::is_directory(file))
+					ImGui::TableSetupColumn("Name");
+					ImGui::TableSetupColumn("Type");
+					ImGui::TableHeadersRow();
+
+					for (const auto &file : fileDirectory->getFiles())
 					{
-						ImGui::TableNextColumn();
-						if (ImGui::Selectable(file.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
-							ImGui::IsMouseDoubleClicked(0))
+						if (fs::is_directory(file))
 						{
-							newDir.emplace(file);
-						}
-						ImGui::TableNextColumn();
-						ImGui::TextColored(Colors::Yellow, "Directory");
-					}
-					else if (fs::is_regular_file(file))
-					{
-						ImGui::TableNextColumn();
-						if (ImGui::Selectable(file.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
-							ImGui::IsMouseDoubleClicked(0))
-						{
-							SDL_Event e;
-							e.type = SDL_DROPFILE;
-							e.drop.timestamp = SDL_GetTicks();
-							e.drop.windowID = SDL_GetWindowID(window);
-							e.drop.file = reinterpret_cast<char *>(SDL_malloc(file.size() + 1));
-							strcpy(e.drop.file, file.c_str());
-							if (!tryPushEvent(e))
+							ImGui::TableNextColumn();
+							if (ImGui::Selectable(file.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
+								ImGui::IsMouseDoubleClicked(0))
 							{
-								SDL_free(e.drop.file);
+								newDir.emplace(file);
 							}
-							opened = false;
+							ImGui::TableNextColumn();
+							ImGui::TextColored(Colors::Yellow, "Directory");
 						}
-						ImGui::TableNextColumn();
-						ImGui::Text("Text");
+						else if (fs::is_regular_file(file))
+						{
+							ImGui::TableNextColumn();
+							if (ImGui::Selectable(file.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
+								ImGui::IsMouseDoubleClicked(0))
+							{
+								SDL_Event e;
+								e.type = SDL_DROPFILE;
+								e.drop.timestamp = SDL_GetTicks();
+								e.drop.windowID = SDL_GetWindowID(window);
+								e.drop.file = reinterpret_cast<char *>(SDL_malloc(file.size() + 1));
+								strcpy(e.drop.file, file.c_str());
+								if (!tryPushEvent(e))
+								{
+									SDL_free(e.drop.file);
+								}
+								opened = false;
+							}
+							ImGui::TableNextColumn();
+							ImGui::Text("Text");
+						}
 					}
+					ImGui::EndTable();
 				}
-				ImGui::EndTable();
 			}
+			ImGui::EndChild();
 			if (newDir.has_value())
 			{
 				fileDirectory.emplace(*newDir);

@@ -61,6 +61,12 @@ void checkFile(TemStreamGui &gui, const String &filename)
 	try
 	{
 		IQuery *data = nullptr;
+		if (isJpeg(filename.c_str()) || isXPM(filename.c_str()))
+		{
+			data = allocateAndConstruct<QueryImage>(gui, filename);
+			goto end;
+		}
+
 		if (fileIsBinary(filename))
 		{
 			if (isImage(filename.c_str()))

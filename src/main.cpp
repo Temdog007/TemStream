@@ -1,5 +1,7 @@
 #include <main.hpp>
 
+#include <SDL2/SDL_main.h>
+
 using namespace TemStream;
 
 bool TemStream::appDone = false;
@@ -27,7 +29,7 @@ int main(const int argc, const char **argv)
 	{
 		const size_t defaultMemory =
 #if TEMSTREAM_SERVER
-			8
+			128
 #else
 			256
 #endif

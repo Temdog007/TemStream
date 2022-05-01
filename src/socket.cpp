@@ -65,7 +65,7 @@ PollState TcpSocket::pollWrite(const int timeout) const
 }
 bool TcpSocket::send(const uint8_t *data, size_t size)
 {
-	switch (pollWrite(-1))
+	switch (pollWrite(100))
 	{
 	case PollState::GotData:
 		break;
@@ -145,7 +145,7 @@ bool TcpSocket::read(const int timeout, ByteList &bytes)
 			return false;
 		}
 		bytes.append(buffer.begin(), r);
-	} while (timeout == 0 && ++reads < 100);
+	} while (timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
 	return true;
 }
 bool TcpSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port) const

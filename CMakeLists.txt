@@ -18,28 +18,24 @@ option(USE_OPEN_CV "Use OpenCV library" ON)
 set(OPENH264_ENCODING ON)
 set(VPX_ENCODING OFF)
 set(BUILD_SANDBOX OFF)
+set(SUPPORT_JPG ON)
 set(SUPPORT_PNG ON)
 set(SUPPORT_WEBP ON)
 set(BUILD_SHARED_LIBS OFF)
 
-if(USE_OPEN_CV)
-  set(SUPPORT_JPG OFF)
-else()
-  set(SUPPORT_JPG ON)
-endif()
-
 configure_file(include/TemStreamConfig.h.in ../include/TemStreamConfig.h)
-
-find_package(Freetype REQUIRED)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
+# add_subdirectory(libjpeg)
 add_subdirectory(cereal)
 add_subdirectory(SDL)
 add_subdirectory(SDL_image)
 add_subdirectory(opus)
+
+find_package(Freetype REQUIRED)
 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 add_library(ImGui STATIC)

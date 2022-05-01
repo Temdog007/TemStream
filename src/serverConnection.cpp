@@ -133,19 +133,19 @@ void ServerConnection::handleInput()
 
 	std::thread thread(&ServerConnection::handleOutput, this);
 
-	try
+	while (!appDone && stayConnected)
 	{
-		while (!appDone && stayConnected)
+		try
 		{
 			if (!readAndHandle(1000))
 			{
 				break;
 			}
 		}
-	}
-	catch (const std::exception &e)
-	{
-		(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
+		catch (const std::exception &e)
+		{
+			(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
+		}
 	}
 
 	stayConnected = false;
@@ -178,7 +178,14 @@ void ServerConnection::handleOutput()
 		{
 			continue;
 		}
-		stayConnected = ServerConnection::MessageHandler(*this, std::move(*packet))();
+		try
+		{
+			stayConnected = ServerConnection::MessageHandler(*this, std::move(*packet))();
+		}
+		catch (const std::exception &e)
+		{
+			(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
+		}
 	}
 }
 bool ServerConnection::sendToPeers(Message::Packet &&packet, const Target target, const bool checkSubscription)

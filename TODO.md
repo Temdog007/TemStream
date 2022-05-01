@@ -281,7 +281,8 @@
 
 ### Apr 30, 2022
 - [x] Read from socket a number of times before leaving read function
-- [ ] Add optional MJPEG video streaming
+- [x] Add optional MJPEG video streaming
+- [ ] Make OpenCV and SDL_Image use the same version of libjpeg9
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 

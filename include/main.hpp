@@ -78,7 +78,6 @@ template <class Archive, typename T1, typename T2> void load(Archive &archive, s
 
 #if !TEMSTREAM_SERVER
 #include <SDL.h>
-#include <SDL_main.h>
 
 #include <SDL_image.h>
 
@@ -120,6 +119,8 @@ class SDL_MutexWrapper
 };
 
 extern bool isTTF(const char *);
+extern bool isJpeg(const char *);
+extern bool isXPM(const char *);
 
 extern bool isImage(const char *);
 
