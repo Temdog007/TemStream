@@ -65,13 +65,13 @@ PollState TcpSocket::pollWrite(const int timeout) const
 }
 bool TcpSocket::send(const uint8_t *data, size_t size)
 {
-	switch (pollWrite(100))
-	{
-	case PollState::GotData:
-		break;
-	default:
-		return false;
-	}
+	// switch (pollWrite(100))
+	// {
+	// case PollState::GotData:
+	// 	break;
+	// default:
+	// 	return false;
+	// }
 	LOCK(mutex);
 	{
 		Message::Header header;
@@ -130,11 +130,10 @@ bool TcpSocket::read(const int timeout, ByteList &bytes)
 			return true;
 		}
 
-		LOCK(mutex);
-		const ssize_t r = ::read(fd, buffer.data(), buffer.size());
+		const ssize_t r = recv(fd, buffer.data(), buffer.size(), 0);
 		if (r < 0)
 		{
-			perror("read");
+			perror("recv");
 			return false;
 		}
 		if (r == 0)
