@@ -313,7 +313,7 @@
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
 - [x] Memory leak when streams (removed shared pointers so most likely that was the issue)
-- [?] Audio clipping when network issue (don't know how to fix; Test in release mode)
+- [?] Audio clipping when network issue (don't know how to fix; Release mode doesn't fix)
 - [?] Message size is sometimes wrong when server sends data to client (don't know what causes this issue)
 
 ### Maybe

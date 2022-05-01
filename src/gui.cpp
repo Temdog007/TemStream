@@ -239,6 +239,10 @@ void TemStreamGui::decodeVideoPackets()
 
 void TemStreamGui::onDisconnect(const bool gotInformation)
 {
+	if (appDone)
+	{
+		return;
+	}
 	const char *message = nullptr;
 	if (gotInformation)
 	{

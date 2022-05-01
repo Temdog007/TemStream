@@ -69,6 +69,10 @@ void TemStream::initialLogs()
 
 void signalHandler(int s)
 {
+	if (TemStream::appDone)
+	{
+		return;
+	}
 	switch (s)
 	{
 	case SIGINT:
