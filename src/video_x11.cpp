@@ -369,6 +369,11 @@ bool Converter::handleWriter(Video::Writer &w)
 					continue;
 				}
 				cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
+				{
+					cv::Mat dst;
+					cv::cvtColor(image, dst, cv::COLOR_BGRA2BGR);
+					image = std::move(dst);
+				}
 				cv::Mat output;
 				if (frameData.scale == 100)
 				{
@@ -391,36 +396,55 @@ bool Converter::handleWriter(Video::Writer &w)
 
 			shared_ptr<cv::VideoWriter> oldVideo = tem_shared<cv::VideoWriter>();
 			oldVideo.swap(w.writer);
-			cv::String oldFilename;
 			WorkPool::workPool.addWork(
-				[oldFilename = std::move(oldFilename), video = this->video, oldVideo = std::move(oldVideo)]() {
-					oldVideo->release();
-					std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
-					// Stop eating new lines in binary mode!!!
-					file.unsetf(std::ios::skipws);
-
-					std::streampos fileSize;
-
-					file.seekg(0, std::ios::end);
-					fileSize = file.tellg();
-					file.seekg(0, std::ios::beg);
-
-					// reserve capacity
-					ByteList bytes(fileSize);
-					bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
-
-					Message::Packet *packet = allocateAndConstruct<Message::Packet>();
-					packet->source = video->getSource();
-					packet->payload.emplace<Message::Video>(std::move(bytes));
-
-					SDL_Event e;
-					e.type = SDL_USEREVENT;
-					e.user.code = TemStreamEvent::SendSingleMessagePacket;
-					e.user.data1 = packet;
-					e.user.data2 = nullptr;
-					if (!tryPushEvent(e))
+				[oldFilename = w.filename, video = this->video, oldVideo = std::move(oldVideo)]() mutable {
+					try
 					{
-						destroyAndDeallocate(packet);
+						oldVideo->release();
+						oldVideo.reset();
+
+						const auto fileSize = std::filesystem::file_size(oldFilename);
+						ByteList bytes(fileSize);
+						{
+							std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
+							// Stop eating new lines in binary mode!!!
+							file.unsetf(std::ios::skipws);
+
+							(*logger)(Logger::Trace) << "Saving file of size " << printMemory(fileSize) << std::endl;
+
+							// reserve capacity
+							bytes.reallocate(fileSize);
+							bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
+							if (fileSize != bytes.size())
+							{
+								(*logger)(Logger::Warning) << "Failed to write entire video file. Wrote "
+														   << bytes.size() << ". Expected " << fileSize << std::endl;
+							}
+						}
+
+						Message::Packet *packet = allocateAndConstruct<Message::Packet>();
+						packet->source = video->getSource();
+						packet->payload.emplace<Message::Video>(std::move(bytes));
+
+						SDL_Event e;
+						e.type = SDL_USEREVENT;
+						e.user.code = TemStreamEvent::SendSingleMessagePacket;
+						e.user.data1 = packet;
+						e.user.data2 = nullptr;
+						if (!tryPushEvent(e))
+						{
+							destroyAndDeallocate(packet);
+						}
+
+						std::filesystem::remove(oldFilename);
+					}
+					catch (const std::bad_alloc &)
+					{
+						(*logger)(Logger::Error) << "Ran out of memory saving video file" << std::endl;
+					}
+					catch (const std::exception &e)
+					{
+						(*logger)(Logger::Error) << e.what() << std::endl;
 					}
 					return false;
 				});

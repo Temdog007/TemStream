@@ -77,7 +77,7 @@ class ByteList
 
 	template <typename Iterator> void append(Iterator start, Iterator end)
 	{
-		for (auto iter = start; start != end; ++iter)
+		for (auto iter = start; iter != end; ++iter)
 		{
 			append(static_cast<uint8_t>(*iter));
 		}

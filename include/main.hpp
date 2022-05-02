@@ -93,6 +93,7 @@ template <class Archive, typename T1, typename T2> void load(Archive &archive, s
 
 namespace TemStream
 {
+extern const char *VideoExtension;
 enum TemStreamEvent : int32_t
 {
 	ReloadFont = 0xabcd,

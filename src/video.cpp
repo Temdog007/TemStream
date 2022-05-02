@@ -2,6 +2,7 @@
 
 namespace TemStream
 {
+const char *VideoExtension = ".avi";
 const size_t Video::MaxVideoPackets = 20;
 Video::Video(const Message::Source &source) : source(source), windowProcress(), running(true)
 {
@@ -285,18 +286,14 @@ Video::Writer::~Writer()
 }
 bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData frameData)
 {
-	if (!w.filename.empty())
-	{
-		std::filesystem::remove(w.filename);
-	}
 	StringStream ss;
-	ss << video->getSource() << "_" << w.vidsWritten << ".divx";
+	ss << video->getSource() << "_" << w.vidsWritten << VideoExtension;
 	w.filename = cv::String(ss.str());
 	if (w.writer == nullptr)
 	{
 		w.writer = tem_shared<cv::VideoWriter>(
 			w.filename, Video::getFourcc(), frameData.fps,
-			cv::Size(frameData.width * frameData.scale / 100.0, frameData.height * frameData.scale / 100.0));
+			cv::Size(frameData.width * frameData.scale / 100u, frameData.height * frameData.scale / 100u));
 		if (!w.writer->isOpened())
 		{
 			(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
@@ -305,7 +302,7 @@ bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData fram
 	}
 	else if (!w.writer->open(
 				 w.filename, Video::getFourcc(), frameData.fps,
-				 cv::Size(frameData.width * frameData.scale / 100.0, frameData.height * frameData.scale / 100.0)))
+				 cv::Size(frameData.width * frameData.scale / 100u, frameData.height * frameData.scale / 100u)))
 	{
 		(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
 		return false;
@@ -314,6 +311,6 @@ bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData fram
 }
 int Video::getFourcc()
 {
-	return cv::VideoWriter::fourcc('D', 'V', 'I', 'X');
+	return cv::VideoWriter::fourcc('D', 'I', 'V', 'X');
 }
 } // namespace TemStream

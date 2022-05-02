@@ -233,12 +233,13 @@ void TemStreamGui::decodeVideoPackets()
 		}
 		void operator()(ByteList &videoFile)
 		{
+			(*logger)(Logger::Trace) << "Got video file: " << printMemory(videoFile.size()) << std::endl;
 			StringStream ss;
-			ss << source << "_temp.divx";
+			ss << source << "_temp" << VideoExtension;
 			cv::String filename(ss.str());
 			{
 				std::ofstream file(filename, std::ios::binary | std::ios::out);
-				file.write(videoFile.data<char>(), videoFile.size());
+				std::copy(videoFile.begin(), videoFile.end(), std::ostreambuf_iterator<char>(file));
 			}
 			auto cap = tem_shared<cv::VideoCapture>(filename);
 			if (!cap->isOpened())
@@ -249,45 +250,48 @@ void TemStreamGui::decodeVideoPackets()
 
 			auto nextFrame = tem_shared<TimePoint>(std::chrono::system_clock::now());
 
-			WorkPool::workPool.addWork([nextFrame = std::move(nextFrame), cap = std::move(cap), source = source]() {
-				if (!cap->isOpened())
-				{
-					return false;
-				}
-				const auto now = std::chrono::system_clock::now();
-				if (now < *nextFrame)
-				{
+			WorkPool::workPool.addWork(
+				[nextFrame = std::move(nextFrame), cap = std::move(cap), source = source]() mutable {
+					if (!cap->isOpened())
+					{
+						return false;
+					}
+					const auto now = std::chrono::system_clock::now();
+					if (now < *nextFrame)
+					{
+						return true;
+					}
+					cv::Mat image;
+					if (!cap->read(image) || image.empty())
+					{
+						(*logger)(Logger::Warning) << "Stopped reading video" << std::endl;
+						return false;
+					}
+
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::HandleFrame;
+
+					auto frame = allocateAndConstruct<Video::Frame>();
+					frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
+					frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
+					frame->bytes = ByteList(image.data, image.total() * image.elemSize());
+					frame->format = SDL_PIXELFORMAT_BGR24;
+					e.user.data1 = frame;
+
+					auto sourcePtr = allocateAndConstruct<Message::Source>(source);
+					e.user.data2 = sourcePtr;
+
+					if (!tryPushEvent(e))
+					{
+						destroyAndDeallocate(frame);
+						destroyAndDeallocate(sourcePtr);
+					}
+
+					const auto delay = std::chrono::duration<double, std::milli>(1000.0 / cap->get(cv::CAP_PROP_FPS));
+					*nextFrame = now + delay;
 					return true;
-				}
-				cv::Mat image;
-				if (!cap->read(image) || image.empty())
-				{
-					return false;
-				}
-
-				SDL_Event e;
-				e.type = SDL_USEREVENT;
-				e.user.code = TemStreamEvent::HandleFrame;
-
-				auto frame = allocateAndConstruct<Video::Frame>();
-				frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
-				frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
-				frame->bytes = ByteList(image.data, image.total() * image.elemSize());
-				e.user.data1 = frame;
-
-				auto sourcePtr = allocateAndConstruct<Message::Source>(source);
-				e.user.data2 = sourcePtr;
-
-				if (!tryPushEvent(e))
-				{
-					destroyAndDeallocate(frame);
-					destroyAndDeallocate(sourcePtr);
-				}
-
-				const auto delay = std::chrono::duration<double, std::milli>(1000.0 / cap->get(cv::CAP_PROP_FPS));
-				*nextFrame = now + delay;
-				return true;
-			});
+				});
 		}
 	};
 
