@@ -365,7 +365,7 @@ bool Converter::convertToJpeg()
 				else
 				{
 					const double scale = frameData.scale / 100.0;
-					cv::resize(image, output, cv::Size(), scale, scale);
+					cv::resize(image, output, cv::Size(), scale, scale, cv::InterpolationFlags::INTER_CUBIC);
 				}
 				jpegBytes.clear();
 				if (!cv::imencode(".jpg", output, jpegBytes, params))
