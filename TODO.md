@@ -286,8 +286,6 @@
 - [x] Add header to all packets sent
 
 ### May 1, 2022
-- [ ] Make each stream its own process (with its own configuration)
-- [ ] Make video streams
 - [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
@@ -317,8 +315,8 @@
 - [x] Custom allocator deadlocks (size_t is num of objects to allocate; not size)
 - [x] Sinks not being unloaded (need to call destructor in custom deleter)
 - [x] Memory leak when streams (removed shared pointers so most likely that was the issue)
-- [?] Audio clipping when network issue (don't know how to fix; Release mode doesn't fix)
-- [?] Message size is sometimes wrong when server sends data to client (don't know what causes this issue)
+- [x] Audio clipping when network issue (issue was related to message mix ups)
+- [x] Message size is sometimes wrong when server sends data to client (ByteList needed to use memmove on removal; not memcpy)
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server

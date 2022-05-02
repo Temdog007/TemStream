@@ -133,7 +133,7 @@ void ByteList::remove(const size_t count)
 		return;
 	}
 
-	memcpy(&buffer[0], &buffer[count], used - count);
+	memmove(&buffer[0], &buffer[count], used - count);
 	used -= count;
 }
 void ByteList::clear(bool deep)
