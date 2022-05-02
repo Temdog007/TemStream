@@ -53,22 +53,22 @@ class Converter : public Video::RGBA2YUV<Screenshot>
 {
   private:
 	ByteList temp;
-	std::vector<uchar> jpegBytes;
-	cv::dnn::dnn4_v20191202::MatShape params;
 	std::optional<Video::Frame> convertToFrame(Screenshot &&) override;
+
+	bool handleWriter(Video::Writer &) override;
 
   public:
 	Converter(std::shared_ptr<Video::FrameEncoder> encoder, std::shared_ptr<Video> video, Video::FrameData frameData)
-		: Video::RGBA2YUV<Screenshot>(encoder, video, frameData), temp(), jpegBytes(), params()
+		: Video::RGBA2YUV<Screenshot>(encoder, video, frameData), temp()
 	{
-		// params.push_back(cv::IMWRITE_JPEG_QUALITY);
-		// params.push_back(95);
+	}
+	Converter(std::shared_ptr<Video> video, Video::FrameData frameData)
+		: Video::RGBA2YUV<Screenshot>(video, frameData), temp()
+	{
 	}
 	~Converter()
 	{
 	}
-
-	bool convertToJpeg() override;
 };
 
 class Screenshotter

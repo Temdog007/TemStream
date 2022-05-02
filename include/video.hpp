@@ -23,9 +23,10 @@ class Video
 
 	Video(const Message::Source &);
 	Video(const Message::Source &, const WindowProcess &);
-	~Video();
 
   public:
+	~Video();
+
 	const static size_t MaxVideoPackets;
 	const WindowProcess &getInfo() const
 	{
@@ -63,19 +64,14 @@ class Video
 	{
 		uint32_t width;
 		uint32_t height;
+		std::optional<int> delay;
 		int fps;
 		int bitrateInMbps;
 		int keyFrameInterval;
 		int32_t scale;
-		bool jpegCapture;
 
-		FrameData()
-			: width(800), height(600), fps(24), bitrateInMbps(10), keyFrameInterval(120), scale(100), jpegCapture(false)
-		{
-		}
-		~FrameData()
-		{
-		}
+		FrameData();
+		~FrameData();
 
 		void draw();
 	};
@@ -128,6 +124,8 @@ class Video
 	static unique_ptr<EncoderDecoder> createEncoder(Video::FrameData, const bool forCamera = false);
 	static unique_ptr<EncoderDecoder> createDecoder();
 
+	static int getFourcc();
+
 	class FrameEncoder
 	{
 	  private:
@@ -152,22 +150,63 @@ class Video
 		static void startEncodingFrames(shared_ptr<FrameEncoder>);
 	};
 
+	struct Writer
+	{
+		cv::String filename;
+		shared_ptr<cv::VideoWriter> writer;
+		int32_t vidsWritten;
+		int32_t framesWritten;
+
+		Writer();
+		~Writer();
+	};
+
+	static bool resetVideo(Writer &, shared_ptr<Video>, FrameData);
+
 	template <typename T> class RGBA2YUV
 	{
 	  protected:
 		ConcurrentQueue<T> frames;
 		FrameData frameData;
-		std::shared_ptr<Video> video;
-		std::weak_ptr<FrameEncoder> encoder;
+		shared_ptr<Video> video;
+
+		using Data = std::variant<Writer, std::weak_ptr<FrameEncoder>>;
+		Data data;
 		bool first;
 
-		bool convertFrames();
-		virtual bool convertToJpeg() = 0;
+		bool convertFrames(std::weak_ptr<FrameEncoder>);
 		virtual std::optional<Frame> convertToFrame(T &&) = 0;
+
+		virtual bool handleWriter(Writer &) = 0;
+
+		bool doWork()
+		{
+			if (auto ptr = std::get_if<std::weak_ptr<FrameEncoder>>(&data))
+			{
+				if (!convertFrames(*ptr))
+				{
+					*logger << "Ending RGBA to YUV converter: " << video->getSource() << std::endl;
+					return false;
+				}
+			}
+			else if (auto ptr = std::get_if<Writer>(&data))
+			{
+				if (!handleWriter(*ptr))
+				{
+					*logger << "Ending video converter: " << video->getSource() << std::endl;
+					return false;
+				}
+			}
+			return true;
+		}
 
 	  public:
 		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, shared_ptr<Video> video, FrameData frameData)
-			: frames(), frameData(frameData), video(video), encoder(encoder), first(true)
+			: frames(), frameData(frameData), video(video), data(encoder), first(true)
+		{
+		}
+		RGBA2YUV(shared_ptr<Video> video, FrameData frameData)
+			: frames(), frameData(frameData), video(video), data(Writer()), first(true)
 		{
 		}
 		virtual ~RGBA2YUV()
@@ -181,32 +220,11 @@ class Video
 
 		static void startConverteringFrames(shared_ptr<RGBA2YUV> ptr)
 		{
-			if (ptr->encoder.expired())
-			{
-				WorkPool::workPool.addWork([ptr]() {
-					if (!ptr->convertToJpeg())
-					{
-						*logger << "Ending converting: " << ptr->video->getSource() << std::endl;
-						return false;
-					}
-					return true;
-				});
-			}
-			else
-			{
-				WorkPool::workPool.addWork([ptr]() {
-					if (!ptr->convertFrames())
-					{
-						*logger << "Ending RGBA to YUV converter: " << ptr->video->getSource() << std::endl;
-						return false;
-					}
-					return true;
-				});
-			}
+			WorkPool::workPool.addWork([ptr]() { return ptr->doWork(); });
 		}
 	};
 };
-template <typename T> bool Video::RGBA2YUV<T>::convertFrames()
+template <typename T> bool Video::RGBA2YUV<T>::convertFrames(std::weak_ptr<FrameEncoder> encoder)
 {
 	if (first)
 	{

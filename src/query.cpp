@@ -276,8 +276,26 @@ void Video::FrameData::draw()
 	{
 		scale = std::clamp(scale, 1, 100);
 	}
-	ImGui::Checkbox("Use MJPEG", &jpegCapture);
-	if (!jpegCapture)
+	bool b = delay.has_value();
+	if (ImGui::Checkbox("Delayed Streaming", &b))
+	{
+		if (b)
+		{
+			delay = 5;
+		}
+		else
+		{
+			delay.reset();
+		}
+	}
+	if (delay.has_value())
+	{
+		if (ImGui::InputInt("Delay (in seconds)", &*delay))
+		{
+			delay = std::clamp(*delay, 5, 30);
+		}
+	}
+	else
 	{
 		if (ImGui::InputInt("Bitrate in Mbps", &bitrateInMbps, 1))
 		{

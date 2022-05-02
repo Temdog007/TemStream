@@ -173,7 +173,7 @@ void TemStreamGui::decodeVideoPackets()
 	{
 		const Message::Source &source;
 		Map<Message::Source, unique_ptr<Video::EncoderDecoder>> &decodingMap;
-		std::chrono::_V2::system_clock::time_point &lastVideoCheck;
+		TimePoint &lastVideoCheck;
 		void operator()(Message::Frame &packet)
 		{
 			auto iter = decodingMap.find(source);
@@ -231,11 +231,62 @@ void TemStreamGui::decodeVideoPackets()
 				destroyAndDeallocate(newSource);
 			}
 		}
-		void operator()(ByteList &jpegBytes)
+		void operator()(ByteList &videoFile)
 		{
-			WorkPool::workPool.addWork([source = source, bytes = std::move(jpegBytes)]() {
-				Work::loadSurface(source, bytes);
-				return false;
+			StringStream ss;
+			ss << source << "_temp.divx";
+			cv::String filename(ss.str());
+			{
+				std::ofstream file(filename, std::ios::binary | std::ios::out);
+				file.write(videoFile.data<char>(), videoFile.size());
+			}
+			auto cap = tem_shared<cv::VideoCapture>(filename);
+			if (!cap->isOpened())
+			{
+				(*logger)(Logger::Error) << "Failed to open video file from server" << std::endl;
+				return;
+			}
+
+			auto nextFrame = tem_shared<TimePoint>(std::chrono::system_clock::now());
+
+			WorkPool::workPool.addWork([nextFrame = std::move(nextFrame), cap = std::move(cap), source = source]() {
+				if (!cap->isOpened())
+				{
+					return false;
+				}
+				const auto now = std::chrono::system_clock::now();
+				if (now < *nextFrame)
+				{
+					return true;
+				}
+				cv::Mat image;
+				if (!cap->read(image) || image.empty())
+				{
+					return false;
+				}
+
+				SDL_Event e;
+				e.type = SDL_USEREVENT;
+				e.user.code = TemStreamEvent::HandleFrame;
+
+				auto frame = allocateAndConstruct<Video::Frame>();
+				frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
+				frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
+				frame->bytes = ByteList(image.data, image.total() * image.elemSize());
+				e.user.data1 = frame;
+
+				auto sourcePtr = allocateAndConstruct<Message::Source>(source);
+				e.user.data2 = sourcePtr;
+
+				if (!tryPushEvent(e))
+				{
+					destroyAndDeallocate(frame);
+					destroyAndDeallocate(sourcePtr);
+				}
+
+				const auto delay = std::chrono::duration<double, std::milli>(1000.0 / cap->get(cv::CAP_PROP_FPS));
+				*nextFrame = now + delay;
+				return true;
 			});
 		}
 	};

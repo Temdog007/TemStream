@@ -65,7 +65,7 @@ class TemStreamGui
 	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
 	const String32 allUTF32;
-	std::chrono::_V2::system_clock::time_point lastVideoCheck;
+	TimePoint lastVideoCheck;
 	ImGuiIO &io;
 	Configuration &configuration;
 	SDL_Window *window;

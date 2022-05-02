@@ -270,4 +270,50 @@ void Video::Frame::resize(uint32_t ratio)
 	h -= h % 2;
 	resizeTo(w, h);
 }
+Video::FrameData::FrameData()
+	: width(320), height(240), delay(std::nullopt), fps(24), bitrateInMbps(10), keyFrameInterval(300), scale(100)
+{
+}
+Video::FrameData::~FrameData()
+{
+}
+Video::Writer::Writer() : filename(), writer(), vidsWritten(0), framesWritten(0)
+{
+}
+Video::Writer::~Writer()
+{
+}
+bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData frameData)
+{
+	if (!w.filename.empty())
+	{
+		std::filesystem::remove(w.filename);
+	}
+	StringStream ss;
+	ss << video->getSource() << "_" << w.vidsWritten << ".divx";
+	w.filename = cv::String(ss.str());
+	if (w.writer == nullptr)
+	{
+		w.writer = tem_shared<cv::VideoWriter>(
+			w.filename, Video::getFourcc(), frameData.fps,
+			cv::Size(frameData.width * frameData.scale / 100.0, frameData.height * frameData.scale / 100.0));
+		if (!w.writer->isOpened())
+		{
+			(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
+			return false;
+		}
+	}
+	else if (!w.writer->open(
+				 w.filename, Video::getFourcc(), frameData.fps,
+				 cv::Size(frameData.width * frameData.scale / 100.0, frameData.height * frameData.scale / 100.0)))
+	{
+		(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
+		return false;
+	}
+	return true;
+}
+int Video::getFourcc()
+{
+	return cv::VideoWriter::fourcc('D', 'V', 'I', 'X');
+}
 } // namespace TemStream

@@ -322,16 +322,18 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 
 	return true;
 }
-bool Converter::convertToJpeg()
+bool Converter::handleWriter(Video::Writer &w)
 {
 #if TEMSTREAM_USE_OPENCV
 	if (first)
 	{
-		if (!TemStreamGui::sendCreateMessage<Message::Video>(video->getSource()))
+		if (!TemStreamGui::sendCreateMessage<Message::Video>(video->getSource()) ||
+			!Video::resetVideo(w, video, frameData))
 		{
 			return false;
 		}
-		*logger << "Starting JPEG converter: " << video->getSource() << std::endl;
+
+		*logger << "Starting video converter: " << video->getSource() << std::endl;
 		first = false;
 	}
 	if (!video->isRunning())
@@ -346,7 +348,7 @@ bool Converter::convertToJpeg()
 			auto result = frames.clearIfGreaterThan(Video::MaxVideoPackets);
 			if (result)
 			{
-				Video::logDroppedPackets(*result, video->getSource(), "JPEG converter");
+				Video::logDroppedPackets(*result, video->getSource(), "Video writer");
 			}
 
 			auto data = frames.pop(0s);
@@ -356,6 +358,16 @@ bool Converter::convertToJpeg()
 			}
 
 			{
+				if (frameData.width != data->width || frameData.height != data->height)
+				{
+					frameData.width = data->width;
+					frameData.height = data->height;
+					if (!Video::resetVideo(w, video, frameData))
+					{
+						return false;
+					}
+					continue;
+				}
 				cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
 				cv::Mat output;
 				if (frameData.scale == 100)
@@ -367,28 +379,56 @@ bool Converter::convertToJpeg()
 					const double scale = frameData.scale / 100.0;
 					cv::resize(image, output, cv::Size(), scale, scale, cv::InterpolationFlags::INTER_CUBIC);
 				}
-				jpegBytes.clear();
-				if (!cv::imencode(".jpg", output, jpegBytes, params))
-				{
-					(*logger)(Logger::Error) << "Failed to convert screenshot to JPEG" << std::endl;
-					return false;
-				}
+				*w.writer << output;
+				++w.framesWritten;
 				// (*logger)(Logger::Trace) << "JPEG size: " << jpegBytes.size() << std::endl;
 			}
-			ByteList bytes(jpegBytes.data(), jpegBytes.size());
 
-			Message::Packet *packet = allocateAndConstruct<Message::Packet>();
-			packet->source = video->getSource();
-			packet->payload.emplace<Message::Video>(std::move(bytes));
-
-			SDL_Event e;
-			e.type = SDL_USEREVENT;
-			e.user.code = TemStreamEvent::SendSingleMessagePacket;
-			e.user.data1 = packet;
-			e.user.data2 = &e;
-			if (!tryPushEvent(e))
+			if (w.framesWritten < frameData.fps * (*frameData.delay))
 			{
-				destroyAndDeallocate(packet);
+				continue;
+			}
+
+			shared_ptr<cv::VideoWriter> oldVideo = tem_shared<cv::VideoWriter>();
+			oldVideo.swap(w.writer);
+			cv::String oldFilename;
+			WorkPool::workPool.addWork(
+				[oldFilename = std::move(oldFilename), video = this->video, oldVideo = std::move(oldVideo)]() {
+					oldVideo->release();
+					std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
+					// Stop eating new lines in binary mode!!!
+					file.unsetf(std::ios::skipws);
+
+					std::streampos fileSize;
+
+					file.seekg(0, std::ios::end);
+					fileSize = file.tellg();
+					file.seekg(0, std::ios::beg);
+
+					// reserve capacity
+					ByteList bytes(fileSize);
+					bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
+
+					Message::Packet *packet = allocateAndConstruct<Message::Packet>();
+					packet->source = video->getSource();
+					packet->payload.emplace<Message::Video>(std::move(bytes));
+
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::SendSingleMessagePacket;
+					e.user.data1 = packet;
+					e.user.data2 = nullptr;
+					if (!tryPushEvent(e))
+					{
+						destroyAndDeallocate(packet);
+					}
+					return false;
+				});
+			++w.vidsWritten;
+			w.framesWritten = 0;
+			if (!Video::resetVideo(w, video, frameData))
+			{
+				return false;
 			}
 		}
 	}
@@ -420,9 +460,9 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	fd.width = size->first;
 	fd.height = size->second;
 	auto video = tem_shared<Video>(source, wp);
-	if (fd.jpegCapture)
+	if (fd.delay.has_value())
 	{
-		auto converter = tem_shared<Converter>(nullptr, video, fd);
+		auto converter = tem_shared<Converter>(video, fd);
 		auto screenshotter = tem_shared<Screenshotter>(std::move(con), wp, converter, video, fd.fps);
 		Converter::startConverteringFrames(converter);
 		Screenshotter::startTakingScreenshots(screenshotter);
