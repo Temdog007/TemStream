@@ -76,6 +76,12 @@ void StreamDisplay::drawContextMenu()
 }
 void StreamDisplay::drawFlagCheckboxes()
 {
+	{
+		StringStream ss;
+		ss << source;
+		ImGui::PushID(ss.str().c_str());
+	}
+
 	ImGui::Checkbox("Visible", &visible);
 	bool showTitleBar = (flags & ImGuiWindowFlags_NoTitleBar) == 0;
 	if (ImGui::Checkbox("Show Title Bar", &showTitleBar))
@@ -113,6 +119,8 @@ void StreamDisplay::drawFlagCheckboxes()
 			flags |= ImGuiWindowFlags_NoResize;
 		}
 	}
+
+	ImGui::PopID();
 }
 bool StreamDisplay::setSurface(SDL_Surface *surface)
 {
@@ -238,7 +246,6 @@ bool StreamDisplay::Draw::operator()(std::monostate)
 }
 bool StreamDisplay::Draw::operator()(String &s)
 {
-
 	SetWindowMinSize(display.gui.getWindow());
 	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
@@ -281,6 +288,7 @@ bool StreamDisplay::Draw::operator()(Message::ServerLinks &links)
 	SetWindowMinSize(display.gui.getWindow());
 	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
+		display.drawContextMenu();
 		if (ImGui::BeginTable("Available Servers", 3, ImGuiTableFlags_Borders))
 		{
 			ImGui::TableSetupColumn("Name");

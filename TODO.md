@@ -289,9 +289,9 @@
 - [x] Ensure streams are deleted if author disconnects (ensure disconnection is always detected. Might be a local host issue)
 - [x] Make each stream its own process
 - [x] Add links stream
+- [x] Fix Image/text not being sent on connect
 
 ### May 3, 2022
-- [ ] Fix Image/text not being sent on connect
 - [ ] Fix audio streaming
 - [ ] Retest streaming on laptop
 - [ ] Make server write all messages to hard disk when recording

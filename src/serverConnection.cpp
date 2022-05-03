@@ -434,8 +434,12 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 	if (configuration.serverType == ServerType::Link)
 	{
 		ServerConnection::sendLinks();
+		return true;
 	}
-	return true;
+	else
+	{
+		return sendStoredPayload();
+	}
 }
 bool ServerConnection::MessageHandler::operator()(Message::ServerLinks &)
 {
@@ -508,7 +512,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 
 	switch (configuration.serverType)
 	{
-	case variant_index<Message::Payload, Message::Text>():
+	case ServerType::Text:
 		try
 		{
 			Message::Payload payload;
@@ -532,7 +536,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 			return false;
 		}
 		break;
-	case variant_index<Message::Payload, Message::Image>(): {
+	case ServerType::Image: {
 		std::thread thread(MessageHandler::sendImageBytes, connection.getPointer(), connection.getSource(),
 						   String(buffer.data()));
 		thread.detach();

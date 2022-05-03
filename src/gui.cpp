@@ -710,8 +710,7 @@ void TemStreamGui::draw()
 					}
 
 					ImGui::TableNextColumn();
-					iter->first.print(strBuffer);
-					ImGui::Text("%s", strBuffer.data());
+					ImGui::Text("%s", iter->first.serverName.c_str());
 
 					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
 					if (a->isRecording())
@@ -881,8 +880,7 @@ void TemStreamGui::draw()
 		{
 			for (auto &pair : displays)
 			{
-				pair.first.print(strBuffer);
-				if (ImGui::CollapsingHeader(strBuffer.data()))
+				if (ImGui::CollapsingHeader(pair.first.serverName.c_str()))
 				{
 					pair.second.drawFlagCheckboxes();
 				}
@@ -914,15 +912,18 @@ void TemStreamGui::draw()
 
 					ImGui::TableNextColumn();
 					const auto &info = con.getInfo();
-					const auto type = info.serverType;
-					ImGui::Text("%u", type);
+					{
+						StringStream ss;
+						ss << info.serverType;
+						ImGui::Text("%s", ss.str().c_str());
+					}
 
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Upload"))
 					{
 						if (info.peerInformation.hasWriteAccess())
 						{
-							queryData = getQuery(type, source);
+							queryData = getQuery(info.serverType, source);
 						}
 						else
 						{
@@ -1498,6 +1499,10 @@ int runApp(Configuration &configuration)
 					String s(event.drop.file, event.drop.file + size);
 					ptr->setText(std::move(s));
 				}
+				else
+				{
+					(*logger)(Logger::Error) << "Text can only be sent to a text server" << std::endl;
+				}
 				SDL_free(event.drop.file);
 			}
 			break;
@@ -1513,6 +1518,7 @@ int runApp(Configuration &configuration)
 				{
 					if (gui.queryData == nullptr)
 					{
+						(*logger)(Logger::Error) << "No server to send file to..." << std::endl;
 						break;
 					}
 					Message::Source source = gui.queryData->getSource();
@@ -1826,6 +1832,7 @@ void FileDisplay::loadFiles()
 		{
 			files.emplace_back(file.path().c_str());
 		}
+		std::sort(files.begin(), files.end());
 	}
 	catch (const std::bad_alloc &)
 	{
