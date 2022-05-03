@@ -217,6 +217,11 @@ bool StreamDisplay::operator()(Message::RequestPeers &)
 {
 	BAD_MESSAGE(RequestPeers);
 }
+bool StreamDisplay::operator()(Message::ServerLinks &serverLinks)
+{
+	data.emplace<Message::ServerLinks>(std::move(serverLinks));
+	return true;
+}
 bool StreamDisplay::operator()(Message::PeerList &)
 {
 	BAD_MESSAGE(PeerList);
@@ -378,6 +383,18 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	return operator()(t.texture);
 }
+bool StreamDisplay::Draw::operator()(Message::ServerLinks &links)
+{
+	for (const auto &link : links)
+	{
+		if (ImGui::Button(link.name.c_str()))
+		{
+			display.gui.connect(link.address);
+			break;
+		}
+	}
+	return true;
+}
 bool StreamDisplay::Draw::operator()(ByteList &)
 {
 	return true;
@@ -407,6 +424,13 @@ void StreamDisplay::ContextMenu::operator()(String &s)
 			logSDLError("Failed to copy to clipboard");
 		}
 	}
+}
+void StreamDisplay::ContextMenu::operator()(CheckAudio &a)
+{
+	return operator()(a.texture);
+}
+void StreamDisplay::ContextMenu::operator()(Message::ServerLinks &)
+{
 }
 void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 {

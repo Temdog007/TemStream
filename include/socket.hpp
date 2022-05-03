@@ -8,7 +8,6 @@ namespace Message
 {
 class Packet;
 }
-class Address;
 class Socket
 {
   protected:
@@ -24,7 +23,6 @@ class Socket
 	virtual ~Socket();
 
 	void sendPacket(const Message::Packet &);
-	bool connectWithAddress(const Address &, const bool isServer);
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
 	void send(const uint8_t *, size_t, const bool convertToBase64 = TEMSTREAM_USE_BASE64);
@@ -56,6 +54,18 @@ class TcpSocket : public Socket
 
 	PollState pollRead(const int timeout) const;
 	PollState pollWrite(const int timeout) const;
+
+	template <class S> static unique_ptr<TcpSocket> create(const BaseAddress<S> &addr)
+	{
+		auto ptr = tem_unique<TcpSocket>();
+		char port[64];
+		snprintf(port, sizeof(port), "%d", addr.port);
+		if (ptr->connect(addr.hostname.c_str(), port, false))
+		{
+			return ptr;
+		}
+		return nullptr;
+	}
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
 	virtual bool read(const int timeout, ByteList &) override;

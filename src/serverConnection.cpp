@@ -365,6 +365,10 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 	}
 	return true;
 }
+bool ServerConnection::MessageHandler::operator()(Message::ServerLinks &)
+{
+	BAD_MESSAGE(ServerLinks);
+}
 bool ServerConnection::MessageHandler::operator()(Message::VerifyLogin &)
 {
 	BAD_MESSAGE(VerifyLogin);

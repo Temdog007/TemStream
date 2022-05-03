@@ -4,56 +4,51 @@
 
 namespace TemStream
 {
-struct Address
+template <class S> struct BaseAddress
 {
-	String hostname;
+	S hostname;
 	int port;
 
-	Address() : hostname("localhost"), port(10000)
+	BaseAddress() : hostname("localhost"), port(10000)
 	{
 	}
-	Address(const char *hostname, int port) : hostname(hostname), port(port)
+	BaseAddress(const char *hostname, int port) : hostname(hostname), port(port)
 	{
 	}
-	~Address()
+	~BaseAddress()
 	{
 	}
 
 	template <class Archive> void save(Archive &archive) const
 	{
-		archive(hostname, port);
+		std::string h(hostname);
+		archive(cereal::make_nvp("hostname", h), cereal::make_nvp("port", port));
 	}
 
 	template <class Archive> void load(Archive &archive)
 	{
-		archive(hostname, port);
+		std::string h(hostname);
+		archive(cereal::make_nvp("hostname", h), cereal::make_nvp("port", port));
+		hostname = h;
 	}
 
-	bool operator==(const Address &a) const
+	bool operator==(const BaseAddress &a) const
 	{
 		return port == a.port && hostname == a.hostname;
 	}
-	bool operator!=(const Address &a) const
+	bool operator!=(const BaseAddress &a) const
 	{
 		return !(*this == a);
 	}
 
-	unique_ptr<TcpSocket> makeTcpSocket() const
-	{
-		auto ptr = tem_unique<TcpSocket>();
-		if (ptr->connectWithAddress(*this, false))
-		{
-			return ptr;
-		}
-		return nullptr;
-	}
-
-	friend std::ostream &operator<<(std::ostream &os, const Address &a)
+	friend std::ostream &operator<<(std::ostream &os, const BaseAddress &a)
 	{
 		os << a.hostname << ':' << a.port;
 		return os;
 	}
 };
+using Address = BaseAddress<String>;
+using STL_Address = BaseAddress<std::string>;
 extern bool openSocket(int &, const Address &, const bool isServer);
 } // namespace TemStream
 

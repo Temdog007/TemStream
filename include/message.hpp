@@ -71,7 +71,6 @@ struct PeerInformation
 		return os;
 	}
 };
-
 struct VerifyLogin
 {
 	String serverName;
@@ -100,6 +99,22 @@ struct VerifyLogin
 		return os;
 	}
 };
+template <class S> struct BaseServerLink
+{
+	BaseAddress<S> address;
+	S name;
+	ServerType type;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(address, name, type);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(address, name, type);
+	}
+};
+using ServerLink = BaseServerLink<String>;
+using ServerLinks = List<ServerLink>;
 using LargeFile = std::variant<std::monostate, uint64_t, ByteList>;
 struct Image
 {
@@ -154,12 +169,13 @@ struct PeerList
 		ar(peers);
 	}
 };
-using Payload =
-	std::variant<std::monostate, Text, Credentials, VerifyLogin, Image, Video, Audio, RequestPeers, PeerList>;
+using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, ServerLinks, Image, Video, Audio,
+							 RequestPeers, PeerList>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
 	RVAL operator()(Message::Text &);                                                                                  \
+	RVAL operator()(Message::ServerLinks &);                                                                           \
 	RVAL operator()(Message::Credentials &);                                                                           \
 	RVAL operator()(Message::VerifyLogin &);                                                                           \
 	RVAL operator()(Message::Image &);                                                                                 \

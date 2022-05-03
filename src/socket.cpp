@@ -64,12 +64,6 @@ bool Socket::flush()
 	}
 	return flush(t);
 }
-bool Socket::connectWithAddress(const Address &addr, const bool isServer)
-{
-	char port[64];
-	snprintf(port, sizeof(port), "%d", addr.port);
-	return connect(addr.hostname.c_str(), port, isServer);
-}
 TcpSocket::TcpSocket() : Socket(), fd(-1)
 {
 }

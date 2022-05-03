@@ -250,10 +250,11 @@ template <typename T> void cleanSwap(T &t)
 
 #include "message_source.hpp"
 
-#include "message.hpp"
+#include "address.hpp"
+
 #include "socket.hpp"
 
-#include "address.hpp"
+#include "message.hpp"
 
 #include "concurrent_queue.hpp"
 

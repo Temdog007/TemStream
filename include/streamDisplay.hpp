@@ -23,7 +23,8 @@ struct CheckAudio
 	{
 	}
 };
-using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, ByteList, CheckAudio>;
+using DisplayData =
+	std::variant<std::monostate, SDL_TextureWrapper, String, ByteList, CheckAudio, Message::ServerLinks>;
 class StreamDisplay
 {
   private:
@@ -47,12 +48,9 @@ class StreamDisplay
 		void operator()(std::monostate);
 		void operator()(String &);
 		void operator()(SDL_TextureWrapper &);
+		void operator()(CheckAudio &);
 		void operator()(ByteList &);
-
-		template <typename T> void operator()(T &t)
-		{
-			operator()(t.texture);
-		}
+		void operator()(Message::ServerLinks &);
 	};
 	struct ImageMessageHandler
 	{
@@ -84,11 +82,7 @@ class StreamDisplay
 		bool operator()(SDL_TextureWrapper &);
 		bool operator()(CheckAudio &);
 		bool operator()(ByteList &);
-
-		template <typename T> bool operator()(T &t)
-		{
-			return operator()(t.texture);
-		}
+		bool operator()(Message::ServerLinks &);
 	};
 
   protected:

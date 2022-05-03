@@ -85,7 +85,7 @@ class TemStreamGui
 	};
 
 	bool init();
-	void connect(const Address &);
+
 	void decodeVideoPackets();
 	void draw();
 
@@ -147,6 +147,8 @@ class TemStreamGui
 	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &f);
 
 	bool addVideo(shared_ptr<VideoSource>);
+
+	void connect(const Address &);
 
 	void pushFont();
 

@@ -7,9 +7,8 @@
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
 	auto cc = toCustomColors();                                                                                        \
 	auto ff = toFontFiles();                                                                                           \
-	auto hostname = toAddress();                                                                                       \
-	archive(cereal::make_nvp("customColors", cc), cereal::make_nvp("fontFiles", ff), CEREAL_NVP(hostname),             \
-			cereal::make_nvp("port", address.port), CEREAL_NVP(maxLogs), CEREAL_NVP(fontSize),                         \
+	archive(cereal::make_nvp("customColors", cc), cereal::make_nvp("fontFiles", ff),                                   \
+			cereal::make_nvp("address", address), CEREAL_NVP(maxLogs), CEREAL_NVP(fontSize),                           \
 			CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold), CEREAL_NVP(fontIndex),                     \
 			CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showCredentials),                             \
 			CEREAL_NVP(showConnections), CEREAL_NVP(showDisplays), CEREAL_NVP(showAudio), CEREAL_NVP(showVideo),       \
@@ -69,6 +68,7 @@ struct Configuration
 	bool showFont;
 	bool showStats;
 	bool showColors;
+
 	struct ShowLogsFilter
 	{
 		bool errors;
@@ -109,7 +109,6 @@ struct Configuration
 		CONFIGURATION_ARCHIVE(archive);
 		fromCustomColors(std::move(cc));
 		fromFontFiles(std::move(ff));
-		fromAddress(std::move(hostname));
 	}
 
 	std::unordered_map<std::string, ColorList> toCustomColors() const;
