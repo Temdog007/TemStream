@@ -302,7 +302,6 @@ void TemStreamGui::decodeVideoPackets()
 					cv::Mat image;
 					if (!cap->read(image) || image.empty())
 					{
-						(*logger)(Logger::Warning) << "Stopped reading video" << std::endl;
 						return false;
 					}
 

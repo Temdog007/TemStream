@@ -286,7 +286,7 @@
 - [x] Add header to all packets sent
 
 ### May 1, 2022
-- [ ] Create re-stream app to subscribe to video stream, scale (based on config), and stream
+- [ ] Ensure streams are deleted if author disconnects (ensure disconnection is always detected. Might be a local host issue)
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 

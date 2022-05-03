@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-const char *VideoExtension = ".avi";
+const char *VideoExtension = ".mkv";
 const size_t Video::MaxVideoPackets = 20;
 Video::Video(const Message::Source &source) : source(source), windowProcress(), running(true)
 {
@@ -311,6 +311,6 @@ bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData fram
 }
 int Video::getFourcc()
 {
-	return cv::VideoWriter::fourcc('D', 'I', 'V', 'X');
+	return cv::VideoWriter::fourcc('H', '2', '6', '4');
 }
 } // namespace TemStream
