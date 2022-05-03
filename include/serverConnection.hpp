@@ -99,7 +99,7 @@ class ServerConnection : public Connection
 
 	template <const size_t N> static void getFilename(std::array<char, N> &arr)
 	{
-		snprintf(arr.data(), arr.size(), "%s_%u_%" PRId64 ".tsd", configuration.name.c_str(), configuration.streamType,
+		snprintf(arr.data(), arr.size(), "%s_%u_%" PRId64 ".tsd", configuration.name.c_str(), configuration.serverType,
 				 configuration.startTime);
 	}
 };

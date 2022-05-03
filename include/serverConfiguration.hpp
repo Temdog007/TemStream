@@ -4,16 +4,6 @@
 
 namespace TemStream
 {
-enum ServerType : uint8_t
-{
-	Unknown = 0,
-	Link,
-	Text,
-	Image,
-	Audio,
-	Video,
-	Count
-};
 extern const char *ServerTypeStrings[ServerType::Count];
 extern std::ostream &operator<<(std::ostream &, ServerType);
 struct Configuration
@@ -23,7 +13,7 @@ struct Configuration
 	int64_t startTime;
 	uint32_t maxClients;
 	uint32_t maxMessageSize;
-	ServerType streamType;
+	ServerType serverType;
 	bool record;
 
 	Configuration();
@@ -34,7 +24,7 @@ struct Configuration
 	friend std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
 	{
 		os << "Address: " << configuration.address << "\nName: " << configuration.name
-		   << "\nStream type: " << configuration.streamType << "\nMax Clients: " << configuration.maxClients << '\n';
+		   << "\nStream type: " << configuration.serverType << "\nMax Clients: " << configuration.maxClients << '\n';
 		printMemory(os, "Max Message Size", configuration.maxMessageSize)
 			<< "\nRecording: " << (configuration.record ? "Yes" : "No");
 		return os;

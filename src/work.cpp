@@ -169,7 +169,7 @@ void loadSurface(const Message::Source &source, const ByteList &bytes)
 
 void startRecordingAudio(const Message::Source &source, const std::optional<String> &name, const float silenceThreshold)
 {
-	auto ptr = Audio::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);
+	auto ptr = AudioSource::startRecording(source, name.has_value() ? name->c_str() : nullptr, silenceThreshold);
 	if (ptr == nullptr)
 	{
 		return;
@@ -189,7 +189,7 @@ void startRecordingAudio(const Message::Source &source, const std::optional<Stri
 void startRecordingWindowAudio(const Message::Source &source, const WindowProcess &windowProcess,
 							   const float silenceThreshold)
 {
-	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);
+	auto ptr = AudioSource::startRecordingWindow(source, windowProcess, silenceThreshold);
 	if (ptr == nullptr)
 	{
 		return;

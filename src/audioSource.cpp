@@ -2,16 +2,16 @@
 
 namespace TemStream
 {
-Audio::Audio(const Message::Source &source, const Type type, const float volume)
+AudioSource::AudioSource(const Message::Source &source, const Type type, const float volume)
 	: buffer(), source(source), name(), recordBuffer(), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
 	  code(SDLK_UNKNOWN), volume(volume), type(type)
 {
 }
-Audio::~Audio()
+AudioSource::~AudioSource()
 {
 	close();
 }
-void Audio::close()
+void AudioSource::close()
 {
 	SDL_CloseAudioDevice(id);
 	id = 0;
@@ -26,7 +26,7 @@ void Audio::close()
 		decoder = nullptr;
 	}
 }
-void Audio::enqueueAudio(const ByteList &bytes)
+void AudioSource::enqueueAudio(const ByteList &bytes)
 {
 	const int result = opus_decode_float(decoder, reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(),
 										 fbuffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
@@ -46,17 +46,17 @@ void Audio::enqueueAudio(const ByteList &bytes)
 		storedAudio.append(buffer.data(), bytesRead);
 	}
 }
-void Audio::clearAudio()
+void AudioSource::clearAudio()
 {
 	Lock lock(id);
 	storedAudio.clear();
 }
-ByteList Audio::getCurrentAudio() const
+ByteList AudioSource::getCurrentAudio() const
 {
 	Lock lock(id);
 	return currentAudio;
 }
-SDL_AudioSpec Audio::getAudioSpec()
+SDL_AudioSpec AudioSource::getAudioSpec()
 {
 	SDL_AudioSpec desired;
 	desired.channels = 2;
@@ -65,18 +65,19 @@ SDL_AudioSpec Audio::getAudioSpec()
 	desired.samples = 2048;
 	return desired;
 }
-unique_ptr<Audio> Audio::startRecording(const Message::Source &source, const char *name, const float silenceThresold)
+unique_ptr<AudioSource> AudioSource::startRecording(const Message::Source &source, const char *name,
+													const float silenceThresold)
 {
-	Audio *a = allocateAndConstruct<Audio>(source, Type::Record, silenceThresold);
+	AudioSource *a = allocateAndConstruct<AudioSource>(source, Type::Record, silenceThresold);
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return startRecording(a, OPUS_APPLICATION_VOIP);
 }
-unique_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
+unique_ptr<AudioSource> AudioSource::startRecording(AudioSource *audioPtr, const int application)
 {
-	auto a = unique_ptr<Audio>(audioPtr);
+	auto a = unique_ptr<AudioSource>(audioPtr);
 
 	SDL_AudioSpec desired = getAudioSpec();
-	desired.callback = (SDL_AudioCallback)Audio::recordCallback;
+	desired.callback = (SDL_AudioCallback)AudioSource::recordCallback;
 	desired.userdata = a.get();
 
 	a->id = SDL_OpenAudioDevice(a->name.c_str(), SDL_TRUE, &desired, &a->spec, 0);
@@ -99,12 +100,12 @@ unique_ptr<Audio> Audio::startRecording(Audio *audioPtr, const int application)
 	*logger << "Recording audio from device: " << a->name << std::endl;
 	return a;
 }
-unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char *name, const float volume)
+unique_ptr<AudioSource> AudioSource::startPlayback(const Message::Source &source, const char *name, const float volume)
 {
-	auto a = tem_unique<Audio>(source, Type::Playback, volume);
+	auto a = tem_unique<AudioSource>(source, Type::Playback, volume);
 
 	SDL_AudioSpec desired = getAudioSpec();
-	desired.callback = (SDL_AudioCallback)Audio::playbackCallback;
+	desired.callback = (SDL_AudioCallback)AudioSource::playbackCallback;
 	desired.userdata = a.get();
 
 	a->id = SDL_OpenAudioDevice(name, SDL_FALSE, &desired, &a->spec, 0);
@@ -127,15 +128,15 @@ unique_ptr<Audio> Audio::startPlayback(const Message::Source &source, const char
 	a->name = (name == nullptr ? "(Default audio device)" : name);
 	return a;
 }
-void Audio::recordCallback(Audio *a, uint8_t *data, const int count)
+void AudioSource::recordCallback(AudioSource *a, uint8_t *data, const int count)
 {
 	a->recordAudio(data, count);
 }
-void Audio::playbackCallback(Audio *a, uint8_t *data, const int count)
+void AudioSource::playbackCallback(AudioSource *a, uint8_t *data, const int count)
 {
 	a->playbackAudio(data, count);
 }
-void Audio::playbackAudio(uint8_t *data, const int count)
+void AudioSource::playbackAudio(uint8_t *data, const int count)
 {
 	if (count < 1)
 	{
@@ -144,8 +145,8 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 	memset(data, spec.silence, count);
 	if (storedAudio.size() > MB(1))
 	{
-		(*logger)(Logger::Warning) << "Audio delay is occurring for playback. Audio packets will be dropped."
-								   << std::endl;
+		(*logger)(Logger::Warning)
+			<< "AudioSource delay is occurring for playback. AudioSource packets will be dropped." << std::endl;
 		storedAudio.clear();
 	}
 	const size_t toCopy = std::min((size_t)count, storedAudio.size());
@@ -163,7 +164,7 @@ void Audio::playbackAudio(uint8_t *data, const int count)
 	// 					   SDL_MIX_MAXVOLUME / 2);
 	// }
 }
-bool Audio::isLoudEnough(float *data, const int count) const
+bool AudioSource::isLoudEnough(float *data, const int count) const
 {
 	float sum = 0.f;
 	for (int i = 0; i < count; ++i)
@@ -172,7 +173,7 @@ bool Audio::isLoudEnough(float *data, const int count) const
 	}
 	return sum / count > silenceThreshold;
 }
-void Audio::recordAudio(uint8_t *data, const int count)
+void AudioSource::recordAudio(uint8_t *data, const int count)
 {
 	if (!isLoudEnough(reinterpret_cast<float *>(data), count / sizeof(float)))
 	{
@@ -181,8 +182,8 @@ void Audio::recordAudio(uint8_t *data, const int count)
 	storedAudio.append(data, count);
 	if (storedAudio.size() > MB(1))
 	{
-		(*logger)(Logger::Warning) << "Audio delay is occurring for recording. Audio packets will be dropped."
-								   << std::endl;
+		(*logger)(Logger::Warning)
+			<< "AudioSource delay is occurring for recording. AudioSource packets will be dropped." << std::endl;
 		storedAudio.clear();
 		return;
 	}
@@ -190,7 +191,7 @@ void Audio::recordAudio(uint8_t *data, const int count)
 	currentAudio.clear();
 	currentAudio.append(data, count);
 }
-bool Audio::isRecording() const
+bool AudioSource::isRecording() const
 {
 	switch (type)
 	{
@@ -201,7 +202,7 @@ bool Audio::isRecording() const
 		return false;
 	}
 }
-bool Audio::encodeAndSendAudio(ClientConnection &peer)
+bool AudioSource::encodeAndSendAudio(ClientConnection &peer)
 {
 	if (!isRecording())
 	{
@@ -259,7 +260,7 @@ bool Audio::encodeAndSendAudio(ClientConnection &peer)
 	}
 	return true;
 }
-constexpr int Audio::closestValidFrameCount(const int frequency, const int frames)
+constexpr int AudioSource::closestValidFrameCount(const int frequency, const int frames)
 {
 	const int values[] = {OPUS_FRAMESIZE_120_MS, OPUS_FRAMESIZE_100_MS, OPUS_FRAMESIZE_80_MS,
 						  OPUS_FRAMESIZE_60_MS,	 OPUS_FRAMESIZE_40_MS,	OPUS_FRAMESIZE_20_MS,
@@ -284,7 +285,7 @@ constexpr int Audio::closestValidFrameCount(const int frequency, const int frame
 	}
 	return audioLengthToFrames(frequency, values[arrayLength - 1]);
 }
-constexpr int Audio::audioLengthToFrames(const int frequency, const int duration)
+constexpr int AudioSource::audioLengthToFrames(const int frequency, const int duration)
 {
 	switch (duration)
 	{
@@ -310,11 +311,11 @@ constexpr int Audio::audioLengthToFrames(const int frequency, const int duration
 		return 0;
 	}
 }
-Audio::Lock::Lock(const SDL_AudioDeviceID id) : id(id)
+AudioSource::Lock::Lock(const SDL_AudioDeviceID id) : id(id)
 {
 	SDL_LockAudioDevice(id);
 }
-Audio::Lock::~Lock()
+AudioSource::Lock::~Lock()
 {
 	SDL_UnlockAudioDevice(id);
 }

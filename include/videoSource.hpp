@@ -8,24 +8,24 @@ using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
 #if TEMSTREAM_USE_OPENCV
 using VideoCaptureArg = std::variant<int32_t, String>;
 #endif
-class Video
+class VideoSource
 {
-	friend class Allocator<Video>;
+	friend class Allocator<VideoSource>;
 
 	template <typename T, typename... Args> friend T *allocate(Args &&...args);
 
-	friend class Deleter<Video>;
+	friend class Deleter<VideoSource>;
 
   private:
 	Message::Source source;
 	const WindowProcess windowProcress;
 	bool running;
 
-	Video(const Message::Source &);
-	Video(const Message::Source &, const WindowProcess &);
+	VideoSource(const Message::Source &);
+	VideoSource(const Message::Source &, const WindowProcess &);
 
   public:
-	~Video();
+	~VideoSource();
 
 	const static size_t MaxVideoPackets;
 	const WindowProcess &getInfo() const
@@ -77,8 +77,9 @@ class Video
 	};
 
 	static WindowProcesses getRecordableWindows();
-	static shared_ptr<Video> recordWindow(const WindowProcess &, const Message::Source &, Video::FrameData);
-	static shared_ptr<Video> recordWebcam(const VideoCaptureArg &, const Message::Source &, Video::FrameData);
+	static shared_ptr<VideoSource> recordWindow(const WindowProcess &, const Message::Source &, VideoSource::FrameData);
+	static shared_ptr<VideoSource> recordWebcam(const VideoCaptureArg &, const Message::Source &,
+												VideoSource::FrameData);
 
 	class EncoderDecoder
 	{
@@ -121,7 +122,7 @@ class Video
 		}
 	};
 
-	static unique_ptr<EncoderDecoder> createEncoder(Video::FrameData, const bool forCamera = false);
+	static unique_ptr<EncoderDecoder> createEncoder(VideoSource::FrameData, const bool forCamera = false);
 	static unique_ptr<EncoderDecoder> createDecoder();
 
 	static int getFourcc();
@@ -133,13 +134,13 @@ class Video
 		FrameData frameData;
 		TimePoint lastReset;
 		unique_ptr<EncoderDecoder> encoder;
-		shared_ptr<Video> video;
+		shared_ptr<VideoSource> video;
 		bool first;
 
 		bool encodeFrames();
 
 	  public:
-		FrameEncoder(shared_ptr<Video> v, FrameData, const bool forCamera);
+		FrameEncoder(shared_ptr<VideoSource> v, FrameData, const bool forCamera);
 		virtual ~FrameEncoder();
 
 		void addFrame(Frame &&);
@@ -161,14 +162,14 @@ class Video
 		~Writer();
 	};
 
-	static bool resetVideo(Writer &, shared_ptr<Video>, FrameData);
+	static bool resetVideo(Writer &, shared_ptr<VideoSource>, FrameData);
 
 	template <typename T> class RGBA2YUV
 	{
 	  protected:
 		ConcurrentQueue<T> frames;
 		FrameData frameData;
-		shared_ptr<Video> video;
+		shared_ptr<VideoSource> video;
 
 		using Data = std::variant<Writer, std::weak_ptr<FrameEncoder>>;
 		Data data;
@@ -201,11 +202,11 @@ class Video
 		}
 
 	  public:
-		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, shared_ptr<Video> video, FrameData frameData)
+		RGBA2YUV(std::shared_ptr<FrameEncoder> encoder, shared_ptr<VideoSource> video, FrameData frameData)
 			: frames(), frameData(frameData), video(video), data(encoder), first(true)
 		{
 		}
-		RGBA2YUV(shared_ptr<Video> video, FrameData frameData)
+		RGBA2YUV(shared_ptr<VideoSource> video, FrameData frameData)
 			: frames(), frameData(frameData), video(video), data(Writer()), first(true)
 		{
 		}
@@ -224,7 +225,7 @@ class Video
 		}
 	};
 };
-template <typename T> bool Video::RGBA2YUV<T>::convertFrames(std::weak_ptr<FrameEncoder> encoder)
+template <typename T> bool VideoSource::RGBA2YUV<T>::convertFrames(std::weak_ptr<FrameEncoder> encoder)
 {
 	if (first)
 	{
@@ -296,12 +297,12 @@ struct WebCamCapture
 {
 	cv::VideoCapture cap;
 	cv::Mat image;
-	Video::FrameData frameData;
+	VideoSource::FrameData frameData;
 	VideoCaptureArg arg;
 	Message::Source source;
 	std::chrono::_V2::system_clock::time_point nextFrame;
-	std::shared_ptr<Video> video;
-	std::weak_ptr<Video::FrameEncoder> encoder;
+	std::shared_ptr<VideoSource> video;
+	std::weak_ptr<VideoSource::FrameEncoder> encoder;
 	bool first;
 
 	bool execute();

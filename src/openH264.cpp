@@ -34,7 +34,7 @@ OpenH264::OpenH264(Decoder &&d) : data(std::move(d))
 OpenH264::~OpenH264()
 {
 }
-unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, const bool forCamera)
+unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::FrameData fd, const bool forCamera)
 {
 	std::unique_ptr<ISVCEncoder, EncoderDeleter> encoder = nullptr;
 	{
@@ -157,7 +157,7 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 		}
 	}
 }
-unique_ptr<Video::EncoderDecoder> Video::createDecoder()
+unique_ptr<VideoSource::EncoderDecoder> VideoSource::createDecoder()
 {
 	std::unique_ptr<ISVCDecoder, DecoderDeleter> decoder = nullptr;
 	{

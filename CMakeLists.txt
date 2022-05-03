@@ -63,7 +63,7 @@ target_include_directories(ImGui PUBLIC
 target_link_libraries(ImGui PRIVATE SDL2)
 
 set(CLIENT_SOURCES
-  src/audio.cpp
+  src/audioSource.cpp
   src/clientConnection.cpp
   src/clientConfiguration.cpp
   src/clientMisc.cpp
@@ -71,7 +71,7 @@ set(CLIENT_SOURCES
   src/query.cpp
   src/sdl.cpp
   src/streamDisplay.cpp
-  src/video.cpp
+  src/videoSource.cpp
   src/work.cpp
   )
 if(RECORD_PULSE_AUDIO)

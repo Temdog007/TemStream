@@ -161,7 +161,7 @@ WindowProcesses getAllX11Windows(XCB_Connection &con, int screenNum)
 	getX11Windows(con.get(), root, set);
 	return set;
 }
-WindowProcesses Video::getRecordableWindows()
+WindowProcesses VideoSource::getRecordableWindows()
 {
 	int screenNum;
 	auto con = getXCBConnection(screenNum);
@@ -169,11 +169,11 @@ WindowProcesses Video::getRecordableWindows()
 	return getAllX11Windows(con, screenNum);
 }
 
-std::optional<Video::Frame> Converter::convertToFrame(Screenshot &&s)
+std::optional<VideoSource::Frame> Converter::convertToFrame(Screenshot &&s)
 {
 	uint8_t *data = xcb_get_image_data(s.reply.get());
 
-	Video::Frame frame;
+	VideoSource::Frame frame;
 	frame.width = (s.width - (s.width % 2));
 	frame.height = (s.height - (s.height % 2));
 
@@ -200,7 +200,7 @@ std::optional<Video::Frame> Converter::convertToFrame(Screenshot &&s)
 #endif
 }
 Screenshotter::Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr,
-							 shared_ptr<Video> v, const uint32_t fps)
+							 shared_ptr<VideoSource> v, const uint32_t fps)
 	: converter(ptr), window(w), video(v), con(std::move(con)), fps(fps), first(true)
 {
 }
@@ -282,7 +282,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 
 	try
 	{
-		auto frame = tem_unique<Video::Frame>();
+		auto frame = tem_unique<VideoSource::Frame>();
 		frame->width = dim->first;
 		frame->height = dim->second;
 		frame->format = SDL_PIXELFORMAT_BGRA32;
@@ -322,12 +322,12 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 
 	return true;
 }
-bool Converter::handleWriter(Video::Writer &w)
+bool Converter::handleWriter(VideoSource::Writer &w)
 {
 #if TEMSTREAM_USE_OPENCV
 	if (first)
 	{
-		if (!Video::resetVideo(w, video, frameData))
+		if (!VideoSource::resetVideo(w, video, frameData))
 		{
 			return false;
 		}
@@ -344,10 +344,10 @@ bool Converter::handleWriter(Video::Writer &w)
 		using namespace std::chrono_literals;
 		while (!appDone)
 		{
-			auto result = frames.clearIfGreaterThan(Video::MaxVideoPackets);
+			auto result = frames.clearIfGreaterThan(VideoSource::MaxVideoPackets);
 			if (result)
 			{
-				Video::logDroppedPackets(*result, video->getSource(), "Video writer");
+				VideoSource::logDroppedPackets(*result, video->getSource(), "VideoSource writer");
 			}
 
 			auto data = frames.pop(0s);
@@ -361,7 +361,7 @@ bool Converter::handleWriter(Video::Writer &w)
 				{
 					frameData.width = data->width;
 					frameData.height = data->height;
-					if (!Video::resetVideo(w, video, frameData))
+					if (!VideoSource::resetVideo(w, video, frameData))
 					{
 						return false;
 					}
@@ -454,7 +454,7 @@ bool Converter::handleWriter(Video::Writer &w)
 				});
 			++w.vidsWritten;
 			w.framesWritten = 0;
-			if (!Video::resetVideo(w, video, frameData))
+			if (!VideoSource::resetVideo(w, video, frameData))
 			{
 				return false;
 			}
@@ -475,7 +475,7 @@ bool Converter::handleWriter(Video::Writer &w)
 	return false;
 #endif
 }
-shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::Source &source, FrameData fd)
+shared_ptr<VideoSource> VideoSource::recordWindow(const WindowProcess &wp, const Message::Source &source, FrameData fd)
 {
 
 	int s;
@@ -487,7 +487,7 @@ shared_ptr<Video> Video::recordWindow(const WindowProcess &wp, const Message::So
 	}
 	fd.width = size->first;
 	fd.height = size->second;
-	auto video = tem_shared<Video>(source, wp);
+	auto video = tem_shared<VideoSource>(source, wp);
 	if (fd.delay.has_value())
 	{
 		auto converter = tem_shared<Converter>(video, fd);

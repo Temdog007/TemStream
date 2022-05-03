@@ -269,8 +269,8 @@ template <typename T> void cleanSwap(T &t)
 
 #include "sdl.hpp"
 
-#include "audio.hpp"
-#include "video.hpp"
+#include "audioSource.hpp"
+#include "videoSource.hpp"
 
 #include "clientConfiguration.hpp"
 #include "clientConnection.hpp"

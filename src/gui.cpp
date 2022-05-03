@@ -124,7 +124,7 @@ void TemStreamGui::decodeVideoPackets()
 			auto iter = decodingMap.find(source);
 			if (iter == decodingMap.end())
 			{
-				auto decoder = Video::createDecoder();
+				auto decoder = VideoSource::createDecoder();
 				if (!decoder)
 				{
 					return;
@@ -142,7 +142,7 @@ void TemStreamGui::decodeVideoPackets()
 			}
 			if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
 			{
-				auto decoder = Video::createDecoder();
+				auto decoder = VideoSource::createDecoder();
 				if (!decoder)
 				{
 					return;
@@ -161,7 +161,7 @@ void TemStreamGui::decodeVideoPackets()
 			e.type = SDL_USEREVENT;
 			e.user.code = TemStreamEvent::HandleFrame;
 
-			Video::Frame *frame = allocateAndConstruct<Video::Frame>();
+			auto frame = allocateAndConstruct<VideoSource::Frame>();
 			frame->bytes = std::move(packet.bytes);
 			frame->width = packet.width;
 			frame->height = packet.height;
@@ -251,7 +251,7 @@ void TemStreamGui::decodeVideoPackets()
 					e.type = SDL_USEREVENT;
 					e.user.code = TemStreamEvent::HandleFrame;
 
-					auto frame = allocateAndConstruct<Video::Frame>();
+					auto frame = allocateAndConstruct<VideoSource::Frame>();
 					frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
 					frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
 					frame->bytes = ByteList(image.data, image.total() * image.elemSize());
@@ -635,7 +635,7 @@ void TemStreamGui::draw()
 					ImGui::PushID(a->getName().c_str());
 
 					ImGui::TableNextColumn();
-					if (a->getType() == Audio::Type::RecordWindow)
+					if (a->getType() == AudioSource::Type::RecordWindow)
 					{
 						ImGui::Text("%s", a->getName().c_str());
 					}
@@ -899,7 +899,7 @@ void TemStreamGui::draw()
 
 					ImGui::TableNextColumn();
 					const auto &info = con.getInfo();
-					const auto type = info.streamType;
+					const auto type = info.serverType;
 					ImGui::Text("%u", type);
 
 					ImGui::TableNextColumn();
@@ -1237,15 +1237,15 @@ void TemStreamGui::draw()
 			if (opt.has_value())
 			{
 				const char *name = *opt;
-				unique_ptr<Audio> newAudio = nullptr;
+				unique_ptr<AudioSource> newAudio = nullptr;
 				if (recording)
 				{
-					newAudio =
-						Audio::startRecording(a->getSource(), name, configuration.defaultSilenceThreshold / 100.f);
+					newAudio = AudioSource::startRecording(a->getSource(), name,
+														   configuration.defaultSilenceThreshold / 100.f);
 				}
 				else
 				{
-					newAudio = Audio::startPlayback(a->getSource(), name, configuration.defaultVolume / 100.f);
+					newAudio = AudioSource::startPlayback(a->getSource(), name, configuration.defaultVolume / 100.f);
 				}
 				if (newAudio != nullptr)
 				{
@@ -1256,42 +1256,42 @@ void TemStreamGui::draw()
 	}
 }
 
-int TemStreamGui::getSelectedQuery(const IQuery *queryData)
+ServerType TemStreamGui::getSelectedQuery(const IQuery *queryData)
 {
 	if (queryData == nullptr)
 	{
-		return -1;
+		return ServerType::Unknown;
 	}
 	if (dynamic_cast<const QueryText *>(queryData) != nullptr)
 	{
-		return 0;
+		return ServerType::Text;
 	}
 	if (dynamic_cast<const QueryImage *>(queryData) != nullptr)
 	{
-		return 1;
+		return ServerType::Image;
 	}
 	if (dynamic_cast<const QueryAudio *>(queryData) != nullptr)
 	{
-		return 2;
+		return ServerType::Audio;
 	}
 	if (dynamic_cast<const QueryVideo *>(queryData) != nullptr)
 	{
-		return 3;
+		return ServerType::Video;
 	}
-	return -1;
+	return ServerType::Unknown;
 }
 
-unique_ptr<IQuery> TemStreamGui::getQuery(const uint32_t i, const Message::Source &source)
+unique_ptr<IQuery> TemStreamGui::getQuery(const ServerType i, const Message::Source &source)
 {
 	switch (i)
 	{
-	case 0:
+	case ServerType::Text:
 		return tem_unique<QueryText>(*this, source);
-	case 1:
+	case ServerType::Image:
 		return tem_unique<QueryImage>(*this, source);
-	case 2:
+	case ServerType::Audio:
 		return tem_unique<QueryAudio>(*this, source);
-	case 3:
+	case ServerType::Video:
 		return tem_unique<QueryVideo>(*this, source);
 	default:
 		return nullptr;
@@ -1332,19 +1332,19 @@ bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
 	return true;
 }
 
-bool TemStreamGui::addAudio(unique_ptr<Audio> &&ptr)
+bool TemStreamGui::addAudio(unique_ptr<AudioSource> &&ptr)
 {
 	auto pair = audio.try_emplace(ptr->getSource(), std::move(ptr));
 	return pair.second;
 }
 
-bool TemStreamGui::addVideo(shared_ptr<Video> ptr)
+bool TemStreamGui::addVideo(shared_ptr<VideoSource> ptr)
 {
 	auto pair = video.try_emplace(ptr->getSource(), ptr);
 	return pair.second;
 }
 
-bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(Audio &)> &f)
+bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(AudioSource &)> &f)
 {
 	auto iter = audio.find(source);
 	if (iter != audio.end())
@@ -1561,8 +1561,8 @@ int runApp(Configuration &configuration)
 				}
 				break;
 				case TemStreamEvent::AddAudio: {
-					Audio *audio = reinterpret_cast<Audio *>(event.user.data1);
-					auto ptr = unique_ptr<Audio>(audio);
+					auto audio = reinterpret_cast<AudioSource *>(event.user.data1);
+					auto ptr = unique_ptr<AudioSource>(audio);
 					String name = ptr->getName();
 					if (gui.addAudio(std::move(ptr)))
 					{
@@ -1571,8 +1571,8 @@ int runApp(Configuration &configuration)
 				}
 				break;
 				case TemStreamEvent::HandleFrame: {
-					Video::Frame *framePtr = reinterpret_cast<Video::Frame *>(event.user.data1);
-					auto frame = unique_ptr<Video::Frame>(framePtr);
+					VideoSource::Frame *framePtr = reinterpret_cast<VideoSource::Frame *>(event.user.data1);
+					auto frame = unique_ptr<VideoSource::Frame>(framePtr);
 					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
 					auto source = unique_ptr<Message::Source>(sourcePtr);
 					if (!gui.hasConnection(*source))

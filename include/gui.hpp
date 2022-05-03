@@ -50,9 +50,9 @@ class TemStreamGui
   private:
 	std::array<char, KB(1)> strBuffer;
 	Map<Message::Source, StreamDisplay> displays;
-	Map<Message::Source, unique_ptr<Audio>> audio;
-	Map<Message::Source, shared_ptr<Video>> video;
-	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> decodingMap;
+	Map<Message::Source, unique_ptr<AudioSource>> audio;
+	Map<Message::Source, shared_ptr<VideoSource>> video;
+	Map<Message::Source, unique_ptr<VideoSource::EncoderDecoder>> decodingMap;
 	Map<Message::Source, ByteList> pendingVideo;
 	Map<Message::Source, std::weak_ptr<ClientConnection>> connections;
 	Mutex connectionMutex;
@@ -143,10 +143,10 @@ class TemStreamGui
 		return configuration;
 	}
 
-	bool addAudio(unique_ptr<Audio> &&);
-	bool useAudio(const Message::Source &, const std::function<void(Audio &)> &f);
+	bool addAudio(unique_ptr<AudioSource> &&);
+	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &f);
 
-	bool addVideo(shared_ptr<Video>);
+	bool addVideo(shared_ptr<VideoSource>);
 
 	void pushFont();
 
@@ -159,8 +159,8 @@ class TemStreamGui
 		return configuration.showLogs;
 	}
 
-	static int getSelectedQuery(const IQuery *);
-	unique_ptr<IQuery> getQuery(uint32_t, const Message::Source &);
+	static ServerType getSelectedQuery(const IQuery *);
+	unique_ptr<IQuery> getQuery(ServerType, const Message::Source &);
 
 	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);

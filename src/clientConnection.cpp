@@ -21,7 +21,7 @@ bool ClientConnection::flushPackets()
 	// Send audio data to playback immediately to avoid audio delay
 	if (auto message = std::get_if<Message::Audio>(&packet->payload))
 	{
-		gui.useAudio(packet->source, [&message](Audio &a) {
+		gui.useAudio(packet->source, [&message](AudioSource &a) {
 			if (!a.isRecording())
 			{
 				a.enqueueAudio(message->bytes);

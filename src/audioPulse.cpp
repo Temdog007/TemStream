@@ -33,8 +33,9 @@ class SinkInput
 	static std::optional<String> runCommand(const char *);
 	static bool runCommand(const char *, Deque<String> &);
 
-	friend std::optional<WindowProcesses> Audio::getWindowsWithAudio();
-	friend unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &, const WindowProcess &s, float);
+	friend std::optional<WindowProcesses> AudioSource::getWindowsWithAudio();
+	friend unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source &, const WindowProcess &s,
+																	 float);
 
 	friend std::ostream &operator<<(std::ostream &os, const SinkInput &si)
 	{
@@ -73,7 +74,7 @@ class Sink
 
 	static void unloadSink(int32_t);
 };
-class SinkInputAudio : public Audio
+class SinkInputAudio : public AudioSource
 {
   private:
 	Sink nullSink;
@@ -248,7 +249,7 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 	list.erase(iter, list.end());
 	return list;
 }
-std::optional<WindowProcesses> Audio::getWindowsWithAudio()
+std::optional<WindowProcesses> AudioSource::getWindowsWithAudio()
 {
 	auto sinks = SinkInput::getSinks();
 	if (sinks.has_value())
@@ -264,8 +265,8 @@ std::optional<WindowProcesses> Audio::getWindowsWithAudio()
 	}
 	return std::nullopt;
 }
-unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, const WindowProcess &wp,
-											  const float silenceThreshold)
+unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source &source, const WindowProcess &wp,
+														  const float silenceThreshold)
 {
 	using namespace std::chrono_literals;
 
@@ -334,7 +335,7 @@ unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, con
 		return nullptr;
 	}
 
-	// Wait for Pulse Audio or SDL to update. SDL will fail to find the device if this is done too soon
+	// Wait for Pulse AudioSource or SDL to update. SDL will fail to find the device if this is done too soon
 	// (Is there a better way to do this?)
 	(*logger)(Logger::Trace) << "Waiting 1 second for audio server to update" << std::endl;
 	std::this_thread::sleep_for(1s);
@@ -343,11 +344,11 @@ unique_ptr<Audio> Audio::startRecordingWindow(const Message::Source &source, con
 	SinkInputAudio *audio = allocateAndConstruct<SinkInputAudio>(source, silenceThreshold, std::move(nullSink),
 																 std::move(comboSink), std::move(remapSink));
 	audio->name = commandBuffer;
-	return Audio::startRecording(audio, OPUS_APPLICATION_AUDIO);
+	return AudioSource::startRecording(audio, OPUS_APPLICATION_AUDIO);
 }
 SinkInputAudio::SinkInputAudio(const Message::Source &source, const float silenceThreshold, Sink &&nullSink,
 							   Sink &&comboSink, Sink &&remapSink)
-	: Audio(source, Type::RecordWindow, silenceThreshold), nullSink(std::move(nullSink)),
+	: AudioSource(source, Type::RecordWindow, silenceThreshold), nullSink(std::move(nullSink)),
 	  comboSink(std::move(comboSink)), remapSink(std::move(remapSink))
 {
 }

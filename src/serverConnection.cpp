@@ -290,7 +290,7 @@ ServerConnection::MessageHandler::~MessageHandler()
 }
 bool ServerConnection::MessageHandler::processCurrentMessage()
 {
-	if (packet.payload.index() != configuration.streamType)
+	if (packet.payload.index() != configuration.serverType)
 	{
 		return false;
 	}
@@ -360,7 +360,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 		Message::Packet packet;
 		packet.source = connection.getSource();
 		packet.payload.emplace<Message::VerifyLogin>(
-			Message::VerifyLogin{configuration.name, connection.information, configuration.streamType});
+			Message::VerifyLogin{configuration.name, connection.information, configuration.serverType});
 		connection->sendPacket(packet);
 	}
 	return true;
@@ -430,7 +430,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 	std::array<char, KB(1)> buffer;
 	ServerConnection::getFilename(buffer);
 
-	switch (configuration.streamType)
+	switch (configuration.serverType)
 	{
 	case variant_index<Message::Payload, Message::Text>():
 		try

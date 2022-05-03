@@ -25,7 +25,7 @@ std::ostream &operator<<(std::ostream &os, const ServerType type)
 
 Configuration::Configuration()
 	: address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), maxClients(UINT32_MAX),
-	  maxMessageSize(MB(1)), streamType(ServerType::Unknown), record(false)
+	  maxMessageSize(MB(1)), serverType(ServerType::Unknown), record(false)
 {
 	WRITE_SERVER_TYPE(Link);
 	WRITE_SERVER_TYPE(Text);
@@ -39,7 +39,7 @@ Configuration::~Configuration()
 #define SET_TYPE(ShortArg, LongArg, s)                                                                                 \
 	if (strcasecmp("-" #ShortArg, argv[i]) == 0 || strcasecmp("--" #LongArg, argv[i]) == 0)                            \
 	{                                                                                                                  \
-		configuration.streamType = ServerType::s;                                                                      \
+		configuration.serverType = ServerType::s;                                                                      \
 		++i;                                                                                                           \
 		continue;                                                                                                      \
 	}
@@ -115,6 +115,6 @@ void saveConfiguration(const Configuration &)
 }
 bool Configuration::valid() const
 {
-	return validServerType(streamType);
+	return validServerType(serverType);
 }
 } // namespace TemStream

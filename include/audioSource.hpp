@@ -5,7 +5,7 @@
 namespace TemStream
 {
 class ClientConnection;
-class Audio
+class AudioSource
 {
   public:
 	enum Type
@@ -43,23 +43,23 @@ class Audio
 
 	static SDL_AudioSpec getAudioSpec();
 
-	static void recordCallback(Audio *, uint8_t *, int);
-	static void playbackCallback(Audio *, uint8_t *, int);
+	static void recordCallback(AudioSource *, uint8_t *, int);
+	static void playbackCallback(AudioSource *, uint8_t *, int);
 
 	constexpr static int audioLengthToFrames(const int frequency, const int duration);
 
 	constexpr static int closestValidFrameCount(const int frequency, const int frames);
 
-	friend class Allocator<Audio>;
+	friend class Allocator<AudioSource>;
 
 	template <typename T, typename... Args> friend T *allocate(Args &&...args);
 
   protected:
-	Audio(const Message::Source &, Type, float);
+	AudioSource(const Message::Source &, Type, float);
 
 	void close();
 
-	static unique_ptr<Audio> startRecording(Audio *, int);
+	static unique_ptr<AudioSource> startRecording(AudioSource *, int);
 
 	class Lock
 	{
@@ -72,10 +72,10 @@ class Audio
 	};
 
   public:
-	Audio() = delete;
-	Audio(const Audio &) = delete;
-	Audio(Audio &&) = delete;
-	virtual ~Audio();
+	AudioSource() = delete;
+	AudioSource(const AudioSource &) = delete;
+	AudioSource(AudioSource &&) = delete;
+	virtual ~AudioSource();
 
 	void enqueueAudio(const ByteList &);
 
@@ -136,9 +136,9 @@ class Audio
 	bool isLoudEnough(float *, int) const;
 
 	static std::optional<WindowProcesses> getWindowsWithAudio();
-	static unique_ptr<Audio> startRecordingWindow(const Message::Source &, const WindowProcess &, float);
+	static unique_ptr<AudioSource> startRecordingWindow(const Message::Source &, const WindowProcess &, float);
 
-	static unique_ptr<Audio> startRecording(const Message::Source &, const char *, float);
-	static unique_ptr<Audio> startPlayback(const Message::Source &, const char *, float);
+	static unique_ptr<AudioSource> startRecording(const Message::Source &, const char *, float);
+	static unique_ptr<AudioSource> startPlayback(const Message::Source &, const char *, float);
 };
 } // namespace TemStream

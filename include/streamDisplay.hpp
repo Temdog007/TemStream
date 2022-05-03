@@ -119,7 +119,7 @@ class StreamDisplay
 		return source;
 	}
 
-	void updateTexture(const Video::Frame &);
+	void updateTexture(const VideoSource::Frame &);
 
 	bool setSurface(SDL_Surface *);
 

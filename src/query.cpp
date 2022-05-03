@@ -85,7 +85,7 @@ bool QueryAudio::draw()
 		source = static_cast<Source>(s);
 		if (source == Source::Window)
 		{
-			auto opt = Audio::getWindowsWithAudio();
+			auto opt = AudioSource::getWindowsWithAudio();
 			if (opt.has_value())
 			{
 				windowNames = std::move(*opt);
@@ -162,11 +162,11 @@ void QueryAudio::execute() const
 	}
 }
 QueryVideo::QueryVideo(TemStreamGui &gui, const Message::Source &source)
-	: IQuery(gui, source), selection(WebCamSelection{Video::FrameData(), 0})
+	: IQuery(gui, source), selection(WebCamSelection{VideoSource::FrameData(), 0})
 {
 }
 QueryVideo::QueryVideo(TemStreamGui &gui, const Message::Source &source, const String &s)
-	: IQuery(gui, source), selection(WebCamSelection{Video::FrameData(), s})
+	: IQuery(gui, source), selection(WebCamSelection{VideoSource::FrameData(), s})
 {
 }
 QueryVideo::~QueryVideo()
@@ -181,10 +181,11 @@ bool QueryVideo::draw()
 		switch (s)
 		{
 		case variant_index<VideoSelection, WebCamSelection>():
-			selection.emplace<WebCamSelection>(WebCamSelection{Video::FrameData(), 0});
+			selection.emplace<WebCamSelection>(WebCamSelection{VideoSource::FrameData(), 0});
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
-			selection.emplace<WindowSelection>(WindowSelection{Video::FrameData(), Video::getRecordableWindows(), 0});
+			selection.emplace<WindowSelection>(
+				WindowSelection{VideoSource::FrameData(), VideoSource::getRecordableWindows(), 0});
 			break;
 		default:
 			break;
@@ -257,7 +258,7 @@ std::ostream &operator<<(std::ostream &os, const VideoCaptureArg &arg)
 	};
 	return std::visit(Foo{os}, arg);
 }
-void Video::FrameData::draw()
+void VideoSource::FrameData::draw()
 {
 	if (ImGui::InputInt("Frames per second", &fps, 1, 120))
 	{
@@ -312,7 +313,7 @@ void QueryVideo::execute() const
 			{
 				if (i == ws.selected)
 				{
-					auto ptr = Video::recordWindow(wp, source, ws.frameData);
+					auto ptr = VideoSource::recordWindow(wp, source, ws.frameData);
 					if (ptr == nullptr)
 					{
 						(*logger)(Logger::Error) << "Failed to start recording window " << wp.name << std::endl;
@@ -328,7 +329,7 @@ void QueryVideo::execute() const
 		}
 		void operator()(const WebCamSelection wb) const
 		{
-			auto ptr = Video::recordWebcam(wb.arg, source, wb.frameData);
+			auto ptr = VideoSource::recordWebcam(wb.arg, source, wb.frameData);
 			if (ptr == nullptr)
 			{
 				(*logger)(Logger::Error) << "Failed to start recording webcam " << wb.arg << std::endl;

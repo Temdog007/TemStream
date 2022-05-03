@@ -3,17 +3,18 @@
 namespace TemStream
 {
 const char *VideoExtension = ".mkv";
-const size_t Video::MaxVideoPackets = 20;
-Video::Video(const Message::Source &source) : source(source), windowProcress(), running(true)
+const size_t VideoSource::MaxVideoPackets = 20;
+VideoSource::VideoSource(const Message::Source &source) : source(source), windowProcress(), running(true)
 {
 }
-Video::Video(const Message::Source &source, const WindowProcess &wp) : source(source), windowProcress(wp), running(true)
+VideoSource::VideoSource(const Message::Source &source, const WindowProcess &wp)
+	: source(source), windowProcress(wp), running(true)
 {
 }
-Video::~Video()
+VideoSource::~VideoSource()
 {
 }
-void Video::logDroppedPackets(const size_t count, const Message::Source &source, const char *target)
+void VideoSource::logDroppedPackets(const size_t count, const Message::Source &source, const char *target)
 {
 	(*logger)(Logger::Warning) << target << " is dropping " << count << " video frames from " << source << std::endl;
 }
@@ -50,7 +51,7 @@ bool WebCamCapture::execute()
 	}
 
 	{
-		auto frame = allocateAndConstruct<Video::Frame>();
+		auto frame = allocateAndConstruct<VideoSource::Frame>();
 		frame->width = image.cols;
 		frame->height = image.rows;
 		frame->format = SDL_PIXELFORMAT_BGR24;
@@ -74,7 +75,7 @@ bool WebCamCapture::execute()
 	{
 		cv::Mat yuv;
 		cv::cvtColor(image, yuv, cv::COLOR_BGR2YUV_IYUV);
-		Video::Frame frame;
+		VideoSource::Frame frame;
 		frame.width = image.cols;
 		frame.height = image.rows;
 		frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
@@ -85,7 +86,8 @@ bool WebCamCapture::execute()
 
 	return false;
 }
-shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source, FrameData fd)
+shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source,
+												  FrameData fd)
 {
 #if TEMSTREAM_USE_OPENCV
 	cv::VideoCapture cap(std::visit(MakeVideoCapture{}, arg));
@@ -105,7 +107,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	fd.height = image.rows;
 	fd.fps = static_cast<int>(cap.get(cv::CAP_PROP_FPS));
 
-	auto video = tem_shared<Video>(source);
+	auto video = tem_shared<VideoSource>(source);
 	std::weak_ptr<FrameEncoder> encoder;
 	{
 		auto e = tem_shared<FrameEncoder>(video, fd, true);
@@ -136,7 +138,7 @@ shared_ptr<Video> Video::recordWebcam(const VideoCaptureArg &arg, const Message:
 	return nullptr;
 #endif
 }
-Video::FrameEncoder::FrameEncoder(shared_ptr<Video> v, const FrameData frameData, const bool forCamera)
+VideoSource::FrameEncoder::FrameEncoder(shared_ptr<VideoSource> v, const FrameData frameData, const bool forCamera)
 	: frames(), frameData(frameData), lastReset(std::chrono::system_clock::now()), encoder(nullptr), video(v),
 	  first(true)
 {
@@ -148,14 +150,14 @@ Video::FrameEncoder::FrameEncoder(shared_ptr<Video> v, const FrameData frameData
 
 	encoder = createEncoder(frameData, forCamera);
 }
-Video::FrameEncoder::~FrameEncoder()
+VideoSource::FrameEncoder::~FrameEncoder()
 {
 }
-void Video::FrameEncoder::addFrame(Frame &&frame)
+void VideoSource::FrameEncoder::addFrame(Frame &&frame)
 {
 	frames.push(std::move(frame));
 }
-bool Video::FrameEncoder::encodeFrames()
+bool VideoSource::FrameEncoder::encodeFrames()
 {
 	if (first)
 	{
@@ -231,7 +233,7 @@ bool Video::FrameEncoder::encodeFrames()
 	}
 	return true;
 }
-void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr)
+void VideoSource::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr)
 {
 	WorkPool::workPool.addWork([ptr]() {
 		if (!ptr->encodeFrames())
@@ -242,7 +244,7 @@ void Video::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr)
 		return true;
 	});
 }
-void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
+void VideoSource::Frame::resizeTo(const uint32_t w, const uint32_t h)
 {
 #if TEMSTREAM_USE_OPENCV
 	cv::Mat output;
@@ -261,7 +263,7 @@ void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 	width = w;
 	height = h;
 }
-void Video::Frame::resize(uint32_t ratio)
+void VideoSource::Frame::resize(uint32_t ratio)
 {
 	uint32_t w = width * ratio / 100;
 	w -= w % 2;
@@ -269,20 +271,20 @@ void Video::Frame::resize(uint32_t ratio)
 	h -= h % 2;
 	resizeTo(w, h);
 }
-Video::FrameData::FrameData()
+VideoSource::FrameData::FrameData()
 	: width(320), height(240), delay(std::nullopt), fps(24), bitrateInMbps(10), keyFrameInterval(300), scale(100)
 {
 }
-Video::FrameData::~FrameData()
+VideoSource::FrameData::~FrameData()
 {
 }
-Video::Writer::Writer() : filename(), writer(), vidsWritten(0), framesWritten(0)
+VideoSource::Writer::Writer() : filename(), writer(), vidsWritten(0), framesWritten(0)
 {
 }
-Video::Writer::~Writer()
+VideoSource::Writer::~Writer()
 {
 }
-bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData frameData)
+bool VideoSource::resetVideo(VideoSource::Writer &w, shared_ptr<VideoSource> video, FrameData frameData)
 {
 	StringStream ss;
 	ss << video->getSource() << "_" << w.vidsWritten << VideoExtension;
@@ -290,7 +292,7 @@ bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData fram
 	if (w.writer == nullptr)
 	{
 		w.writer = tem_shared<cv::VideoWriter>(
-			w.filename, Video::getFourcc(), frameData.fps,
+			w.filename, VideoSource::getFourcc(), frameData.fps,
 			cv::Size(frameData.width * frameData.scale / 100u, frameData.height * frameData.scale / 100u));
 		if (!w.writer->isOpened())
 		{
@@ -299,7 +301,7 @@ bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData fram
 		}
 	}
 	else if (!w.writer->open(
-				 w.filename, Video::getFourcc(), frameData.fps,
+				 w.filename, VideoSource::getFourcc(), frameData.fps,
 				 cv::Size(frameData.width * frameData.scale / 100u, frameData.height * frameData.scale / 100u)))
 	{
 		(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
@@ -307,7 +309,7 @@ bool Video::resetVideo(Video::Writer &w, shared_ptr<Video> video, FrameData fram
 	}
 	return true;
 }
-int Video::getFourcc()
+int VideoSource::getFourcc()
 {
 	return cv::VideoWriter::fourcc('H', '2', '6', '4');
 }

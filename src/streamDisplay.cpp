@@ -14,7 +14,7 @@ StreamDisplay::StreamDisplay(StreamDisplay &&display)
 StreamDisplay::~StreamDisplay()
 {
 }
-void StreamDisplay::updateTexture(const Video::Frame &frame)
+void StreamDisplay::updateTexture(const VideoSource::Frame &frame)
 {
 	if (!visible)
 	{
@@ -179,14 +179,14 @@ bool StreamDisplay::ImageMessageHandler::operator()(ByteList &&bytes)
 }
 bool StreamDisplay::operator()(Message::Audio &audio)
 {
-	if (!gui.useAudio(source, [this, &audio](Audio &a) {
+	if (!gui.useAudio(source, [this, &audio](AudioSource &a) {
 			if (!std::holds_alternative<CheckAudio>(data))
 			{
 				data.emplace<CheckAudio>(nullptr, a.isRecording());
 			}
 		}))
 	{
-		auto ptr = Audio::startPlayback(source, nullptr, gui.getConfiguration().defaultVolume / 100.f);
+		auto ptr = AudioSource::startPlayback(source, nullptr, gui.getConfiguration().defaultVolume / 100.f);
 		if (ptr && gui.addAudio(std::move(ptr)))
 		{
 			*logger << "Started playback on default audio device" << std::endl;
@@ -308,7 +308,7 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 		return true;
 	}
 
-	const auto func = [&t](const Audio &a) {
+	const auto func = [&t](const AudioSource &a) {
 		auto current = a.getCurrentAudio();
 		constexpr float speed = 0.75f;
 		if (current.empty())

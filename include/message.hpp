@@ -4,6 +4,16 @@
 
 namespace TemStream
 {
+enum ServerType : uint8_t
+{
+	Unknown = 0,
+	Link,
+	Text,
+	Image,
+	Audio,
+	Video,
+	Count
+};
 namespace Message
 {
 #define EMPTY_MESSAGE(Name)                                                                                            \
@@ -61,30 +71,31 @@ struct PeerInformation
 		return os;
 	}
 };
+
 struct VerifyLogin
 {
 	String serverName;
 	PeerInformation peerInformation;
-	uint32_t streamType;
+	ServerType serverType;
 
 	VerifyLogin &swap(VerifyLogin &login)
 	{
 		std::swap(serverName, login.serverName);
 		peerInformation.swap(login.peerInformation);
-		std::swap(streamType, login.streamType);
+		std::swap(serverType, login.serverType);
 		return *this;
 	}
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(serverName, peerInformation, streamType);
+		ar(serverName, peerInformation, serverType);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(serverName, peerInformation, streamType);
+		ar(serverName, peerInformation, serverType);
 	}
 	friend std::ostream &operator<<(std::ostream &os, const VerifyLogin &login)
 	{
-		os << "Server: " << login.serverName << "; Type: " << login.streamType
+		os << "Server: " << login.serverName << "; Type: " << login.serverType
 		   << "; Peer Information: " << login.peerInformation << std::endl;
 		return os;
 	}

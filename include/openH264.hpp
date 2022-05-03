@@ -14,7 +14,7 @@ struct EncoderDeleter
 {
 	void operator()(ISVCEncoder *e) const;
 };
-class OpenH264 : public Video::EncoderDecoder
+class OpenH264 : public VideoSource::EncoderDecoder
 {
   private:
 	using Decoder = std::unique_ptr<ISVCDecoder, DecoderDeleter>;
@@ -34,7 +34,7 @@ class OpenH264 : public Video::EncoderDecoder
 	void encodeAndSend(ByteList &, const Message::Source &) override;
 	bool decode(ByteList &) override;
 
-	friend unique_ptr<EncoderDecoder> Video::createEncoder(Video::FrameData, bool);
-	friend unique_ptr<EncoderDecoder> Video::createDecoder();
+	friend unique_ptr<EncoderDecoder> VideoSource::createEncoder(VideoSource::FrameData, bool);
+	friend unique_ptr<EncoderDecoder> VideoSource::createDecoder();
 };
 } // namespace TemStream

@@ -49,21 +49,22 @@ struct Screenshot
 	uint16_t width;
 	uint16_t height;
 };
-class Converter : public Video::RGBA2YUV<Screenshot>
+class Converter : public VideoSource::RGBA2YUV<Screenshot>
 {
   private:
 	ByteList temp;
-	std::optional<Video::Frame> convertToFrame(Screenshot &&) override;
+	std::optional<VideoSource::Frame> convertToFrame(Screenshot &&) override;
 
-	bool handleWriter(Video::Writer &) override;
+	bool handleWriter(VideoSource::Writer &) override;
 
   public:
-	Converter(std::shared_ptr<Video::FrameEncoder> encoder, std::shared_ptr<Video> video, Video::FrameData frameData)
-		: Video::RGBA2YUV<Screenshot>(encoder, video, frameData), temp()
+	Converter(std::shared_ptr<VideoSource::FrameEncoder> encoder, std::shared_ptr<VideoSource> video,
+			  VideoSource::FrameData frameData)
+		: VideoSource::RGBA2YUV<Screenshot>(encoder, video, frameData), temp()
 	{
 	}
-	Converter(std::shared_ptr<Video> video, Video::FrameData frameData)
-		: Video::RGBA2YUV<Screenshot>(video, frameData), temp()
+	Converter(std::shared_ptr<VideoSource> video, VideoSource::FrameData frameData)
+		: VideoSource::RGBA2YUV<Screenshot>(video, frameData), temp()
 	{
 	}
 	~Converter()
@@ -77,7 +78,7 @@ class Screenshotter
 	std::weak_ptr<Converter> converter;
 	WindowProcess window;
 	TimePoint nextFrame;
-	std::shared_ptr<Video> video;
+	std::shared_ptr<VideoSource> video;
 	XCB_Connection con;
 	uint32_t fps;
 	bool first;
@@ -86,7 +87,7 @@ class Screenshotter
 	static bool takeScreenshot(shared_ptr<Screenshotter>);
 
   public:
-	Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr, shared_ptr<Video> v,
+	Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr, shared_ptr<VideoSource> v,
 				  const uint32_t fps);
 	~Screenshotter();
 
