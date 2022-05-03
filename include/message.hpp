@@ -124,7 +124,7 @@ struct VerifyLogin
 	friend std::ostream &operator<<(std::ostream &os, const VerifyLogin &login)
 	{
 		os << "Server: " << login.serverName << "; Type: " << login.serverType
-		   << "; Peer Information: " << login.peerInformation << std::endl;
+		   << "; Peer Information: " << login.peerInformation;
 		return os;
 	}
 };
@@ -298,3 +298,25 @@ constexpr size_t ServerTypeToIndex(const ServerType t)
 	}
 }
 } // namespace TemStream
+namespace std
+{
+template <> struct hash<TemStream::PeerInformation>
+{
+	std::size_t operator()(const TemStream::PeerInformation &info) const
+	{
+		std::size_t value = hash<TemStream::String>()(info.name);
+		TemStream::hash_combine(value, info.type);
+		return value;
+	}
+};
+template <> struct hash<TemStream::Message::VerifyLogin>
+{
+	std::size_t operator()(const TemStream::Message::VerifyLogin &l) const
+	{
+		std::size_t value = hash<TemStream::String>()(l.serverName);
+		TemStream::hash_combine(value, l.serverType);
+		TemStream::hash_combine(value, l.peerInformation);
+		return value;
+	}
+};
+} // namespace std

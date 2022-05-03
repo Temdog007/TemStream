@@ -397,8 +397,23 @@ void TemStreamGui::connect(const Address &address)
 		*logger << "Server information: " << clientConnection->getInfo() << std::endl;
 		if (this->addConnection(clientConnection))
 		{
-			WorkPool::workPool.addWork(
-				[clientConnection]() { return TemStreamGui::handleClientConnection(*clientConnection); });
+			(*logger)(Logger::Trace) << "Adding connection to list: " << clientConnection->getInfo() << std::endl;
+			WorkPool::workPool.addWork([this, clientConnection]() {
+				if (TemStreamGui::handleClientConnection(*clientConnection))
+				{
+					return true;
+				}
+				else
+				{
+					clientConnection->close();
+					this->dirty = true;
+					return false;
+				}
+			});
+		}
+		else
+		{
+			(*logger)(Logger::Error) << "Failed to add connection" << clientConnection->getInfo() << std::endl;
 		}
 		return false;
 	});
@@ -406,15 +421,7 @@ void TemStreamGui::connect(const Address &address)
 
 bool TemStreamGui::handleClientConnection(ClientConnection &con)
 {
-	if (con.isOpened() && con.readAndHandle(0) && con.flushPackets() && !con->flush())
-	{
-		return true;
-	}
-	else
-	{
-		con.close();
-		return false;
-	}
+	return con.isOpened() && con.readAndHandle(0) && con.flushPackets() && con->flush();
 }
 
 bool TemStreamGui::addConnection(const shared_ptr<ClientConnection> &connection)
@@ -636,7 +643,7 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 void TemStreamGui::draw()
 {
 	const auto size = drawMainMenuBar();
-	const size_t connections = getConnectionCount();
+	const size_t connectionCount = getConnectionCount();
 
 	if (ImGui::Begin("##afdasy4", nullptr,
 					 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoCollapse |
@@ -647,16 +654,16 @@ void TemStreamGui::draw()
 		const auto &style = ImGui::GetStyle();
 		const auto &bg = style.Colors[ImGuiCol_WindowBg];
 		char text[KB(1)];
-		snprintf(text, sizeof(text), "Connections: %zu", connections);
+		snprintf(text, sizeof(text), "Connections: %zu", connectionCount);
 
 		ImColor color;
-		if (connections > 0)
+		if (connectionCount == 0)
 		{
-			color = Colors::GetGreen(colorIsLight(bg));
+			color = Colors::GetRed(colorIsLight(bg));
 		}
 		else
 		{
-			color = Colors::GetRed(colorIsLight(bg));
+			color = Colors::GetGreen(colorIsLight(bg));
 		}
 		const auto textSize = ImGui::CalcTextSize(text);
 		auto draw = ImGui::GetForegroundDrawList();
@@ -854,29 +861,6 @@ void TemStreamGui::draw()
 		if (ImGui::Begin("Send data to server", &opened,
 						 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			static const char *options[]{"Text", "Image", "Audio", "Video"};
-			int selected = getSelectedQuery(queryData.get());
-			if (ImGui::Combo("Data Type", &selected, options, IM_ARRAYSIZE(options)))
-			{
-				auto source = queryData->getSource();
-				switch (selected)
-				{
-				case 0:
-					queryData = tem_unique<QueryText>(*this, source);
-					break;
-				case 1:
-					queryData = tem_unique<QueryImage>(*this, source);
-					break;
-				case 2:
-					queryData = tem_unique<QueryAudio>(*this, source);
-					break;
-				case 3:
-					queryData = tem_unique<QueryVideo>(*this, source);
-					break;
-				default:
-					break;
-				}
-			}
 			if (queryData->draw())
 			{
 				queryData->execute();
@@ -926,7 +910,7 @@ void TemStreamGui::draw()
 					ImGui::PushID(static_cast<String>(source).c_str());
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", source.server.c_str());
+					ImGui::Text("%s", source.serverName.c_str());
 
 					ImGui::TableNextColumn();
 					const auto &info = con.getInfo();
@@ -951,6 +935,7 @@ void TemStreamGui::draw()
 					if (ImGui::Button("Disconnect"))
 					{
 						con.close();
+						dirty = true;
 					}
 
 					ImGui::PopID();
@@ -1354,7 +1339,7 @@ void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally
 	}
 	else
 	{
-		(*logger)(Logger::Error) << "Cannot send data to server: " << packet.source.server << std::endl;
+		(*logger)(Logger::Error) << "Cannot send data to server: " << packet.source.serverName << std::endl;
 	}
 }
 
@@ -1705,8 +1690,8 @@ int runApp(Configuration &configuration)
 				}
 				else
 				{
-					(*logger)(Logger::Trace) << "Removed stream display (" << iter->first
-											 << ") becuase it is missing from the stream list" << std::endl;
+					(*logger)(Logger::Trace)
+						<< "Removed stream display '" << iter->first << "' because its connection is gone" << std::endl;
 					iter = gui.displays.erase(iter);
 				}
 			}

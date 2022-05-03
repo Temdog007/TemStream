@@ -3,11 +3,20 @@
 namespace TemStream
 {
 ClientConnection::ClientConnection(TemStreamGui &gui, const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), gui(gui), serverInformation(), peers()
+	: Connection(address, std::move(s)), gui(gui), serverInformation(), peers(), opened(true)
 {
 }
 ClientConnection::~ClientConnection()
 {
+}
+void ClientConnection::close()
+{
+	if (!isOpened())
+	{
+		return;
+	}
+	opened = false;
+	(*logger)(Logger::Info) << "Closing connection: " << getSource() << std::endl;
 }
 bool ClientConnection::flushPackets()
 {
@@ -60,8 +69,8 @@ void ClientConnection::addPackets(MessagePackets &&m)
 Message::Source ClientConnection::getSource() const
 {
 	Message::Source source;
-	source.server = serverInformation.serverName;
-	source.peer = serverInformation.peerInformation.name;
+	source.serverName = serverInformation.serverName;
+	source.address = address;
 	return source;
 }
 } // namespace TemStream

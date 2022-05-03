@@ -14,7 +14,7 @@ class ServerConnection : public Connection
 	static Mutex peersMutex;
 	static LinkedList<std::weak_ptr<ServerConnection>> peers;
 
-	static void sendToPeers(Message::Packet &&);
+	static void sendToPeers(Message::Packet &&, const ServerConnection *author = nullptr);
 
 	static bool peerExists(const String &);
 
@@ -23,6 +23,8 @@ class ServerConnection : public Connection
 	static StringList getPeers();
 
 	static void sendLinks(const String &);
+
+	static void sendLinks();
 
 	static std::optional<PeerInformation> login(const Message::Credentials &);
 
@@ -98,7 +100,7 @@ class ServerConnection : public Connection
 	ServerConnection(ServerConnection &&) = delete;
 	~ServerConnection();
 
-	Message::Source getSource() const;
+	static Message::Source getSource();
 
 	bool isAuthenticated() const;
 

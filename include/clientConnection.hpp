@@ -24,10 +24,7 @@ class ClientConnection : public Connection
 	void addPacket(Message::Packet &&);
 	void addPackets(MessagePackets &&);
 
-	void close()
-	{
-		opened = false;
-	}
+	void close();
 
 	bool isOpened() const
 	{

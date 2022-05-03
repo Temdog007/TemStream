@@ -1,7 +1,7 @@
 #include <main.hpp>
 
 #define CHECK_INFO(X)                                                                                                  \
-	if (!connection.information.name.empty())                                                                          \
+	if (connection.information.name.empty())                                                                           \
 	{                                                                                                                  \
 		logger->AddError("Got " #X " from peer before getting their information");                                     \
 		return false;                                                                                                  \
@@ -35,6 +35,7 @@ int runApp(Configuration &configuration)
 		std::thread thread([]() {
 			String filename = ServerConnection::configuration.name;
 			filename += ".json";
+			ServerConnection::sendLinks(filename);
 			auto lastWrite = std::filesystem::last_write_time(filename);
 			using namespace std::chrono_literals;
 			while (!appDone)
@@ -202,21 +203,20 @@ void ServerConnection::handleOutput()
 		}
 	}
 }
-void ServerConnection::sendToPeers(Message::Packet &&packet)
+void ServerConnection::sendToPeers(Message::Packet &&packet, const ServerConnection *author)
 {
 	MemoryStream m;
 	{
 		cereal::PortableBinaryOutputArchive ar(m);
 		ar(packet);
 	}
-
 	LOCK(peersMutex);
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
 			// Don't send packet to peer author or if the peer isn't authenticated
-			if (ptr->information.name != packet.source.peer && ptr->isAuthenticated())
+			if (ptr.get() != author && ptr->isAuthenticated())
 			{
 				(*ptr)->send(m->getData(), m->getSize());
 			}
@@ -292,6 +292,12 @@ shared_ptr<ServerConnection> ServerConnection::getPointer() const
 	}
 	return nullptr;
 }
+void ServerConnection::sendLinks()
+{
+	String filename = ServerConnection::configuration.name;
+	filename += ".json";
+	return sendLinks(filename);
+}
 void ServerConnection::sendLinks(const String &filename)
 {
 	try
@@ -301,7 +307,7 @@ void ServerConnection::sendLinks(const String &filename)
 		{
 			std::ifstream file(filename.c_str());
 			cereal::JSONInputArchive ar(file);
-			ar(temp);
+			ar(cereal::make_nvp("servers", temp));
 		}
 		Message::ServerLinks links;
 		auto pair = toMoveIterator(std::move(temp));
@@ -310,8 +316,11 @@ void ServerConnection::sendLinks(const String &filename)
 						   Message::ServerLink link(std::move(s));
 						   return link;
 					   });
+
+		(*logger)(Logger::Trace) << "Sending links: " << links.size() << std::endl;
 		Message::Packet packet;
-		packet.source.server = ServerConnection::configuration.name;
+		packet.source = ServerConnection::getSource();
+		packet.payload.emplace<Message::ServerLinks>(std::move(links));
 		ServerConnection::sendToPeers(std::move(packet));
 	}
 	catch (const std::exception &e)
@@ -330,11 +339,11 @@ bool ServerConnection::isAuthenticated() const
 {
 	return !information.name.empty();
 }
-Message::Source ServerConnection::getSource() const
+Message::Source ServerConnection::getSource()
 {
 	Message::Source source;
-	source.peer = information.name;
-	source.server = configuration.name;
+	source.address = ServerConnection::configuration.address;
+	source.serverName = ServerConnection::configuration.name;
 	return source;
 }
 ServerConnection::MessageHandler::MessageHandler(ServerConnection &connection, Message::Packet &&packet)
@@ -351,12 +360,12 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 		(*logger)(Logger::Error) << "Server got invalid message type: " << packet.payload.index() << std::endl;
 		return false;
 	}
-	ServerConnection::sendToPeers(std::move(packet));
+	ServerConnection::sendToPeers(std::move(packet), &connection);
 	return true;
 }
 bool ServerConnection::MessageHandler::operator()()
 {
-	if (!std::holds_alternative<Message::Credentials>(packet.payload) && packet.source.server != configuration.name)
+	if (!std::holds_alternative<Message::Credentials>(packet.payload) && packet.source != ServerConnection::getSource())
 	{
 		(*logger)(Logger::Error) << "Server got message with wrong server name: " << packet.payload.index()
 								 << std::endl;
@@ -417,10 +426,14 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 	*logger << "Peer: " << connection.address << " -> " << connection.information << std::endl;
 	{
 		Message::Packet packet;
-		packet.source = connection.getSource();
+		packet.source = ServerConnection::getSource();
 		packet.payload.emplace<Message::VerifyLogin>(
 			Message::VerifyLogin{configuration.name, connection.information, configuration.serverType});
 		connection->sendPacket(packet);
+	}
+	if (configuration.serverType == ServerType::Link)
+	{
+		ServerConnection::sendLinks();
 	}
 	return true;
 }
@@ -437,7 +450,7 @@ bool ServerConnection::MessageHandler::operator()(Message::RequestPeers &)
 	CHECK_INFO(Message::RequestPeers)
 	LOCK(peersMutex);
 	Message::Packet packet;
-	packet.source = connection.getSource();
+	packet.source = ServerConnection::getSource();
 	packet.payload.emplace<Message::PeerList>(Message::PeerList{getPeers()});
 	connection->sendPacket(packet);
 	return true;
@@ -448,7 +461,7 @@ bool ServerConnection::MessageHandler::operator()(Message::PeerList &)
 }
 bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 {
-	if (packet.source.peer != connection.information.name)
+	if (packet.source != ServerConnection::getSource())
 	{
 		return false;
 	}

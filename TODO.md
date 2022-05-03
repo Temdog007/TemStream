@@ -291,6 +291,9 @@
 - [x] Add links stream
 
 ### May 3, 2022
+- [ ] Fix Image/text not being sent on connect
+- [ ] Fix audio streaming
+- [ ] Retest streaming on laptop
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range

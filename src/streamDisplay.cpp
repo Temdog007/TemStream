@@ -194,6 +194,11 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 	}
 	return true;
 }
+bool StreamDisplay::operator()(Message::ServerLinks &serverLinks)
+{
+	data.emplace<Message::ServerLinks>(std::move(serverLinks));
+	return true;
+}
 #define BAD_MESSAGE(X)                                                                                                 \
 	logger->AddError("Got unexpected '" #X "' message from the server. Disconnecting from server.");                   \
 	return false
@@ -217,11 +222,6 @@ bool StreamDisplay::operator()(Message::RequestPeers &)
 {
 	BAD_MESSAGE(RequestPeers);
 }
-bool StreamDisplay::operator()(Message::ServerLinks &serverLinks)
-{
-	data.emplace<Message::ServerLinks>(std::move(serverLinks));
-	return true;
-}
 bool StreamDisplay::operator()(Message::PeerList &)
 {
 	BAD_MESSAGE(PeerList);
@@ -238,13 +238,13 @@ bool StreamDisplay::Draw::operator()(std::monostate)
 }
 bool StreamDisplay::Draw::operator()(String &s)
 {
-	std::array<char, KB(8)> buffer;
-	display.source.print(buffer);
+
 	SetWindowMinSize(display.gui.getWindow());
-	if (ImGui::Begin(buffer.data(), &display.visible, display.flags))
+	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
 		const char *str = s.c_str();
+		std::array<char, KB(8)> buffer;
 		for (size_t i = 0; i < s.size(); i += sizeof(buffer))
 		{
 			if (ImGui::BeginChild(1 + (i / sizeof(buffer))))
@@ -265,15 +265,56 @@ bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 	{
 		return true;
 	}
-	std::array<char, KB(8)> buffer;
-	display.source.print(buffer);
 	SetWindowMinSize(display.gui.getWindow());
-	if (ImGui::Begin(buffer.data(), &display.visible, display.flags))
+	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
 		const auto max = ImGui::GetWindowContentRegionMax();
 		const auto min = ImGui::GetWindowContentRegionMin();
 		ImGui::Image(texture, ImVec2(max.x - min.x, max.y - min.y));
+	}
+	ImGui::End();
+	return true;
+}
+bool StreamDisplay::Draw::operator()(Message::ServerLinks &links)
+{
+	SetWindowMinSize(display.gui.getWindow());
+	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
+	{
+		if (ImGui::BeginTable("Available Servers", 3, ImGuiTableFlags_Borders))
+		{
+			ImGui::TableSetupColumn("Name");
+			ImGui::TableSetupColumn("Type");
+			ImGui::TableSetupColumn("Connect");
+			ImGui::TableHeadersRow();
+			for (const auto &link : links)
+			{
+				{
+					StringStream ss;
+					ss << link.name << link.address << link.type;
+					ImGui::PushID(ss.str().c_str());
+				}
+
+				ImGui::TableNextColumn();
+				ImGui::Text("%s", link.name.c_str());
+
+				{
+					StringStream ss;
+					ss << link.type;
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", ss.str().c_str());
+				}
+
+				ImGui::TableNextColumn();
+				if (ImGui::Button("Connect"))
+				{
+					display.gui.connect(link.address);
+				}
+
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
 	}
 	ImGui::End();
 	return true;
@@ -383,18 +424,6 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	return operator()(t.texture);
 }
-bool StreamDisplay::Draw::operator()(Message::ServerLinks &links)
-{
-	for (const auto &link : links)
-	{
-		if (ImGui::Button(link.name.c_str()))
-		{
-			display.gui.connect(link.address);
-			break;
-		}
-	}
-	return true;
-}
 bool StreamDisplay::Draw::operator()(ByteList &)
 {
 	return true;
@@ -427,7 +456,7 @@ void StreamDisplay::ContextMenu::operator()(String &s)
 }
 void StreamDisplay::ContextMenu::operator()(CheckAudio &a)
 {
-	return operator()(a.texture);
+	operator()(a.texture);
 }
 void StreamDisplay::ContextMenu::operator()(Message::ServerLinks &)
 {

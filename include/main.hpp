@@ -245,9 +245,9 @@ template <typename T> void cleanSwap(T &t)
 
 #include "addrinfo.hpp"
 
-#include "message_source.hpp"
-
 #include "address.hpp"
+
+#include "messageSource.hpp"
 
 #include "socket.hpp"
 

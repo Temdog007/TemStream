@@ -11,7 +11,7 @@ IQuery::~IQuery()
 }
 bool IQuery::draw()
 {
-	ImGui::Text("Destination: %s", source.server.c_str());
+	ImGui::Text("Destination: %s", source.serverName.c_str());
 	return ImGui::Button("Send");
 }
 // QueryText

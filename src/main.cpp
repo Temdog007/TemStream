@@ -94,9 +94,9 @@ void signalHandler(int s)
 
 void parseMemory(const int argc, const char **argv, size_t size)
 {
-	for (int i = 1; i < argc - 1; i += 2)
+	for (int i = 1; i < argc - 1; ++i)
 	{
-		if (strcmp("-M", argv[i]) == 0 || strcmp("--memory", argv[i]) == 0)
+		if (strcasecmp("-M", argv[i]) == 0 || strcasecmp("--memory", argv[i]) == 0)
 		{
 			size = static_cast<size_t>(strtoull(argv[i + 1], nullptr, 10));
 			break;
