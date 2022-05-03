@@ -140,7 +140,7 @@ extern void logSDLError(const char *);
 #define MB(X) (KB(X) * 1024UL)
 #define GB(X) (MB(X) * 1024UL)
 
-#define MAX_IMAGE_CHUNK KB(64)
+#define MAX_FILE_CHUNK KB(64)
 
 #define _DEBUG !NDEBUG
 #if _DEBUG

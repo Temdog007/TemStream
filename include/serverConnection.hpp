@@ -101,6 +101,7 @@ class ServerConnection : public Connection
 		ImageSaver(ServerConnection &, const Message::Source &);
 		~ImageSaver();
 
+		void operator()(const Message::LargeFile &);
 		void operator()(std::monostate);
 		void operator()(const ByteList &);
 		void operator()(uint64_t);

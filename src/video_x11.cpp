@@ -422,18 +422,24 @@ bool Converter::handleWriter(Video::Writer &w)
 							}
 						}
 
-						Message::Packet *packet = allocateAndConstruct<Message::Packet>();
-						packet->source = video->getSource();
-						packet->payload.emplace<Message::Video>(std::move(bytes));
+						auto packets = allocateAndConstruct<MessagePackets>();
+
+						Message::prepareLargeBytes(bytes,
+												   [&packets, &source = video->getSource()](Message::LargeFile &&lf) {
+													   Message::Packet packet;
+													   packet.source = source;
+													   packet.payload.emplace<Message::Video>(std::move(lf));
+													   packets->emplace_back(std::move(packet));
+												   });
 
 						SDL_Event e;
 						e.type = SDL_USEREVENT;
-						e.user.code = TemStreamEvent::SendSingleMessagePacket;
-						e.user.data1 = packet;
+						e.user.code = TemStreamEvent::SendMessagePackets;
+						e.user.data1 = packets;
 						e.user.data2 = nullptr;
 						if (!tryPushEvent(e))
 						{
-							destroyAndDeallocate(packet);
+							destroyAndDeallocate(packets);
 						}
 
 						std::filesystem::remove(oldFilename);

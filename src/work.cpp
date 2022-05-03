@@ -125,8 +125,13 @@ void sendImage(const String &filename, const Message::Source &source)
 	}
 
 	MessagePackets *packets = allocateAndConstruct<MessagePackets>();
-	Message::prepareImageBytes(file, source,
-							   [packets](Message::Packet &&packet) { packets->emplace_back(std::move(packet)); });
+	Message::prepareLargeBytes(file, [packets, &source](Message::LargeFile &&largeFile) {
+		Message::Packet packet;
+		packet.source = source;
+		Message::Image image{std::move(largeFile)};
+		packet.payload.emplace<Message::Image>(std::move(image));
+		packets->emplace_back(std::move(packet));
+	});
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::SendMessagePackets;

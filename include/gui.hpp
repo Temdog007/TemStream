@@ -54,13 +54,16 @@ class TemStreamGui
 	Map<Message::Source, unique_ptr<Audio>> audio;
 	Map<Message::Source, shared_ptr<Video>> video;
 	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> decodingMap;
+	Map<Message::Source, ByteList> pendingVideo;
 	ConcurrentQueue<VideoPacket> videoPackets;
 	Message::Streams streams;
 	Message::Subscriptions subscriptions;
 	Message::PeerInformationSet otherPeers;
 	PeerInformation peerInfo;
-	Mutex peerMutex;
-	unique_ptr<ClientConnetion> peer;
+	shared_ptr<ClientConnetion> clientConnection;
+	std::weak_ptr<ClientConnetion> updatePeerCon;
+	std::weak_ptr<ClientConnetion> flushPacketsCon;
+	std::weak_ptr<ClientConnetion> mainThreadCon;
 	unique_ptr<IQuery> queryData;
 	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;

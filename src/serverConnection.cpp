@@ -422,7 +422,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Text &)
 bool ServerConnection::MessageHandler::operator()(Message::Image &image)
 {
 	CHECK_INFO(Message::Image)
-	std::visit(ImageSaver(connection, packet.source), image);
+	std::visit(ImageSaver(connection, packet.source), image.largeFile);
 	return processCurrentMessage();
 }
 bool ServerConnection::MessageHandler::operator()(Message::Video &)
@@ -795,7 +795,13 @@ void ServerConnection::MessageHandler::sendImageBytes(shared_ptr<ServerConnectio
 		return;
 	}
 
-	Message::prepareImageBytes(file, source, [ptr](Message::Packet &&packet) { (*ptr)->sendPacket(packet); });
+	Message::prepareLargeBytes(file, [ptr, &source](Message::LargeFile &&lf) {
+		Message::Packet packet;
+		packet.source = source;
+		Message::Image image{std::move(lf)};
+		packet.payload.emplace<Message::Image>(std::move(image));
+		(*ptr)->sendPacket(packet);
+	});
 }
 ServerConnection::ImageSaver::ImageSaver(ServerConnection &connection, const Message::Source &source)
 	: connection(connection), source(source)
@@ -803,6 +809,10 @@ ServerConnection::ImageSaver::ImageSaver(ServerConnection &connection, const Mes
 }
 ServerConnection::ImageSaver::~ImageSaver()
 {
+}
+void ServerConnection::ImageSaver::operator()(const Message::LargeFile &lf)
+{
+	std::visit(*this, lf);
 }
 void ServerConnection::ImageSaver::operator()(uint64_t)
 {

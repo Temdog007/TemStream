@@ -6,6 +6,16 @@ namespace TemStream
 {
 namespace Message
 {
+#define EMPTY_MESSAGE(Name)                                                                                            \
+	struct Name                                                                                                        \
+	{                                                                                                                  \
+		template <class Archive> void save(Archive &) const                                                            \
+		{                                                                                                              \
+		}                                                                                                              \
+		template <class Archive> void load(Archive &)                                                                  \
+		{                                                                                                              \
+		}                                                                                                              \
+	}
 extern const Guid MagicGuid;
 struct Header
 {
@@ -43,17 +53,20 @@ struct VerifyLogin
 		ar(info);
 	}
 };
-using Image = std::variant<std::monostate, uint64_t, ByteList>;
-#define EMPTY_MESSAGE(Name)                                                                                            \
-	struct Name                                                                                                        \
-	{                                                                                                                  \
-		template <class Archive> void save(Archive &) const                                                            \
-		{                                                                                                              \
-		}                                                                                                              \
-		template <class Archive> void load(Archive &)                                                                  \
-		{                                                                                                              \
-		}                                                                                                              \
+using LargeFile = std::variant<std::monostate, uint64_t, ByteList>;
+struct Image
+{
+	LargeFile largeFile;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(largeFile);
 	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(largeFile);
+	}
+};
+
 struct Frame
 {
 	uint16_t width;
@@ -68,7 +81,7 @@ struct Frame
 		ar(width, height, bytes);
 	}
 };
-using Video = std::variant<Frame, ByteList>;
+using Video = std::variant<Frame, LargeFile>;
 struct Audio
 {
 	ByteList bytes;
@@ -151,14 +164,14 @@ struct Packet
 		ar(payload, source, trail);
 	}
 };
-template <typename Iterator> static ByteList getImageByteChunk(Iterator &start, Iterator end)
+template <typename Iterator> static ByteList getByteChunk(Iterator &start, Iterator end)
 {
-	ByteList bytes(MAX_IMAGE_CHUNK);
+	ByteList bytes(MAX_FILE_CHUNK);
 	while (start != end)
 	{
 		bytes.append(*start);
 		++start;
-		if (bytes.size() >= MAX_IMAGE_CHUNK)
+		if (bytes.size() >= MAX_FILE_CHUNK)
 		{
 			return bytes;
 		}
@@ -166,34 +179,29 @@ template <typename Iterator> static ByteList getImageByteChunk(Iterator &start, 
 	return bytes;
 }
 template <typename Iterator>
-static void prepareImageBytes(Iterator start, Iterator end, const uint64_t size, const Source &source,
-							  const std::function<void(Packet &&)> &func)
+static void prepareLargeBytes(Iterator start, Iterator end, const uint64_t size,
+							  const std::function<void(LargeFile &&)> &func)
 {
 	{
-		Message::Packet packet;
-		packet.payload.emplace<Message::Image>(size);
-		packet.source = source;
-		func(std::move(packet));
+		LargeFile lf = size;
+		func(std::move(lf));
 	}
 	while (start != end)
 	{
-		ByteList bytes = getImageByteChunk(start, end);
+		ByteList bytes = getByteChunk(start, end);
 		if (bytes.empty())
 		{
 			break;
 		}
-		Message::Packet packet;
-		packet.payload.emplace<Message::Image>(std::move(bytes));
-		packet.source = source;
-		func(std::move(packet));
+		LargeFile lf = std::move(bytes);
+		func(std::move(lf));
 	}
 	{
-		Message::Packet packet;
-		packet.payload.emplace<Message::Image>(std::monostate{});
-		packet.source = source;
-		func(std::move(packet));
+		LargeFile lf = std::monostate{};
+		func(std::move(lf));
 	}
 }
-extern void prepareImageBytes(std::ifstream &, const Source &, const std::function<void(Packet &&)> &);
+extern void prepareLargeBytes(std::ifstream &, const std::function<void(LargeFile &&)> &);
+extern void prepareLargeBytes(const ByteList &, const std::function<void(LargeFile &&)> &);
 } // namespace Message
 } // namespace TemStream

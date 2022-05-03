@@ -10,7 +10,7 @@ std::ostream &operator<<(std::ostream &os, const Header &header)
 	return os;
 }
 const Guid MagicGuid(0x2abe3059992u, 0xa589a5bbc5u);
-void prepareImageBytes(std::ifstream &file, const Source &source, const std::function<void(Packet &&)> &func)
+void prepareLargeBytes(std::ifstream &file, const std::function<void(LargeFile &&)> &func)
 {
 	auto size = file.tellg();
 	file.seekg(0, std::ios::end);
@@ -19,7 +19,23 @@ void prepareImageBytes(std::ifstream &file, const Source &source, const std::fun
 
 	file.seekg(0, std::ios::beg);
 
-	prepareImageBytes(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), size, source, func);
+	prepareLargeBytes(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), size, func);
+}
+void prepareLargeBytes(const ByteList &bytes, const std::function<void(LargeFile &&)> &func)
+{
+	{
+		LargeFile lf = bytes.size<uint64_t>();
+		func(std::move(lf));
+	}
+	for (size_t i = 0; i < bytes.size(); i += MAX_FILE_CHUNK)
+	{
+		LargeFile lf = ByteList(bytes, MAX_FILE_CHUNK, i);
+		func(std::move(lf));
+	}
+	{
+		LargeFile lf = std::monostate{};
+		func(std::move(lf));
+	}
 }
 } // namespace Message
 const char *getExtension(const char *filename)

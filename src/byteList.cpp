@@ -17,6 +17,10 @@ ByteList::ByteList(const ByteList &list) : buffer(nullptr), used(0), total(0)
 {
 	append(list);
 }
+ByteList::ByteList(const ByteList &list, const uint32_t len, const uint32_t offset) : buffer(nullptr), used(0), total(0)
+{
+	append(list, len, offset);
+}
 ByteList::ByteList(ByteList &&list) noexcept : buffer(nullptr), used(0), total(0)
 {
 	swap(list);
@@ -94,9 +98,16 @@ void ByteList::append(const ByteList &list)
 {
 	append(list.buffer, list.used);
 }
-void ByteList::append(const ByteList &list, const uint32_t count)
+void ByteList::append(const ByteList &list, const uint32_t count, const uint32_t offset)
 {
-	append(list.buffer, std::min(list.used, count));
+	if (offset + count >= list.used)
+	{
+		append(list.buffer + offset, list.used - offset);
+	}
+	else
+	{
+		append(list.buffer + offset, count);
+	}
 }
 void ByteList::insert(const uint8_t *data, const size_t count, const size_t offset)
 {

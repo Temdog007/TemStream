@@ -244,7 +244,7 @@ bool Audio::encodeAndSendAudio(ClientConnetion &peer)
 		Message::Packet packet;
 		packet.source = source;
 		packet.payload.emplace<Message::Audio>(Message::Audio{ByteList(buffer.data(), result)});
-		packets.push_back(std::move(packet));
+		packets.emplace_back(std::move(packet));
 	}
 
 	for (const auto &packet : packets)

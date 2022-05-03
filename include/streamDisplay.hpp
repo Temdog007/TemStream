@@ -63,6 +63,7 @@ class StreamDisplay
 		ImageMessageHandler(StreamDisplay &);
 		~ImageMessageHandler();
 
+		bool operator()(Message::LargeFile &&);
 		bool operator()(uint64_t);
 		bool operator()(std::monostate);
 		bool operator()(ByteList &&);

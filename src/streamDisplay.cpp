@@ -132,13 +132,17 @@ bool StreamDisplay::operator()(Message::Text &message)
 }
 bool StreamDisplay::operator()(Message::Image &message)
 {
-	return std::visit(ImageMessageHandler(*this), std::move(message));
+	return std::visit(ImageMessageHandler(*this), std::move(message.largeFile));
 }
 StreamDisplay::ImageMessageHandler::ImageMessageHandler(StreamDisplay &display) : display(display)
 {
 }
 StreamDisplay::ImageMessageHandler::~ImageMessageHandler()
 {
+}
+bool StreamDisplay::ImageMessageHandler::operator()(Message::LargeFile &&lf)
+{
+	return std::visit(*this, std::move(lf));
 }
 bool StreamDisplay::ImageMessageHandler::operator()(const uint64_t size)
 {

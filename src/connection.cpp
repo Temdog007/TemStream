@@ -79,12 +79,14 @@ bool Connection::readAndHandle(const int timeout, const bool base64)
 				}
 				if (header.size > maxMessageSize || header.size == 0 || header.id != Message::MagicGuid)
 				{
-					// Something is happening where the value is incorrect sometimes. Until it is determined why and
-					// fixed, this error will be handled by clearing the bytes received and dropping packet(s).
-					(*logger)(Logger::Warning) << "Got invalid message header: " << header << "; Max size allowed "
-											   << maxMessageSize << "; Magic Guid: " << Message::MagicGuid << std::endl;
-					bytes.clear();
-					return true;
+#if _DEBUG
+					(*logger)(Logger::Error) << "Got invalid message header: " << header << "; Max size allowed "
+											 << maxMessageSize << "; Magic Guid: " << Message::MagicGuid << std::endl;
+#else
+					(*logger)(Logger::Error) << "Got invalid message header: " << header.size << "; Max size allowed "
+											 << maxMessageSize << std::endl;
+#endif
+					return false;
 				}
 
 				nextMessageSize = header.size;

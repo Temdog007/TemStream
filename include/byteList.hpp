@@ -26,6 +26,7 @@ class ByteList
 		insert(arr.data(), arr.size());
 	}
 	ByteList(const ByteList &);
+	ByteList(const ByteList &, uint32_t len, const uint32_t offset = 0);
 	ByteList(ByteList &&) noexcept;
 	~ByteList();
 
@@ -73,7 +74,7 @@ class ByteList
 	void insert(const uint8_t *, const size_t, const size_t offset);
 
 	void append(const ByteList &);
-	void append(const ByteList &, const uint32_t);
+	void append(const ByteList &, const uint32_t len, const uint32_t offset = 0);
 
 	template <typename Iterator> void append(Iterator start, Iterator end)
 	{

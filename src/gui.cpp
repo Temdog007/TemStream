@@ -66,7 +66,7 @@ namespace TemStream
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: connectToServer(), peerMutex(), peer(nullptr), queryData(nullptr), allUTF32(getAllUTF32()),
+	: connectToServer(), clientConnection(nullptr), queryData(nullptr), allUTF32(getAllUTF32()),
 	  lastVideoCheck(std::chrono::system_clock::now()), io(io), configuration(c), window(nullptr), renderer(nullptr)
 {
 }
@@ -83,57 +83,59 @@ TemStreamGui::~TemStreamGui()
 
 void TemStreamGui::refresh()
 {
-	LOCK(peerMutex);
-	if (peer == nullptr)
+	if (auto peer = mainThreadCon.lock())
 	{
-		return;
+		{
+			Message::Packet packet;
+			packet.source.author = peerInfo.name;
+			packet.payload.emplace<Message::GetSubscriptions>();
+			sendPacket(std::move(packet), false);
+		}
+		{
+			Message::Packet packet;
+			packet.source.author = peerInfo.name;
+			packet.payload.emplace<Message::GetStreams>();
+			sendPacket(std::move(packet), false);
+		}
 	}
+	else
 	{
-		Message::Packet packet;
-		packet.source.author = peerInfo.name;
-		packet.payload.emplace<Message::GetSubscriptions>();
-		sendPacket(std::move(packet), false);
-	}
-	{
-		Message::Packet packet;
-		packet.source.author = peerInfo.name;
-		packet.payload.emplace<Message::GetStreams>();
-		sendPacket(std::move(packet), false);
+		mainThreadCon = clientConnection;
 	}
 }
 
 void TemStreamGui::updatePeer()
 {
-	LOCK(peerMutex);
-
-	if (peer == nullptr)
+	if (auto peer = updatePeerCon.lock())
 	{
-		return;
-	}
-
-	if (!peer->readAndHandle(0))
-	{
-		(*logger)(Logger::Trace) << "TemStreamGui::update: read error" << std::endl;
-		onDisconnect(peer->gotServerInformation());
-		peer = nullptr;
-		return;
-	}
-	for (const auto &a : audio)
-	{
-		if (!a.second->encodeAndSendAudio(*peer))
+		if (!peer->readAndHandle(0))
+		{
+			(*logger)(Logger::Trace) << "TemStreamGui::update: read error" << std::endl;
+			onDisconnect(peer->gotServerInformation());
+			clientConnection = nullptr;
+			return;
+		}
+		for (const auto &a : audio)
+		{
+			if (!a.second->encodeAndSendAudio(*peer))
+			{
+				(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
+				onDisconnect(peer->gotServerInformation());
+				clientConnection = nullptr;
+				break;
+			}
+		}
+		if (!(*peer)->flush())
 		{
 			(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
 			onDisconnect(peer->gotServerInformation());
-			peer = nullptr;
-			break;
+			clientConnection = nullptr;
+			return;
 		}
 	}
-	if (!(*peer)->flush())
+	else
 	{
-		(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
-		onDisconnect(peer->gotServerInformation());
-		peer = nullptr;
-		return;
+		updatePeerCon = clientConnection;
 	}
 }
 
@@ -158,7 +160,8 @@ void TemStreamGui::decodeVideoPackets()
 		}
 		lastVideoCheck = now;
 	}
-	if (auto result = videoPackets.clearIfGreaterThan(5))
+	// This needs to be big enough to handle video files.
+	if (auto result = videoPackets.clearIfGreaterThan(1000))
 	{
 		(*logger)(Logger::Warning) << "Dropping " << *result << " received video frames" << std::endl;
 	}
@@ -172,10 +175,10 @@ void TemStreamGui::decodeVideoPackets()
 	struct DecodePacket
 	{
 		const Message::Source &source;
-		Map<Message::Source, unique_ptr<Video::EncoderDecoder>> &decodingMap;
-		TimePoint &lastVideoCheck;
+		TemStreamGui &gui;
 		void operator()(Message::Frame &packet)
 		{
+			auto &decodingMap = gui.decodingMap;
 			auto iter = decodingMap.find(source);
 			if (iter == decodingMap.end())
 			{
@@ -192,7 +195,7 @@ void TemStreamGui::decodeVideoPackets()
 					return;
 				}
 				iter = pair.first;
-				lastVideoCheck = std::chrono::system_clock::now();
+				gui.lastVideoCheck = std::chrono::system_clock::now();
 				(*logger)(Logger::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
 			}
 			if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
@@ -231,8 +234,43 @@ void TemStreamGui::decodeVideoPackets()
 				destroyAndDeallocate(newSource);
 			}
 		}
-		void operator()(ByteList &videoFile)
+		void operator()(Message::LargeFile &lf)
 		{
+			std::visit(*this, lf);
+		}
+		void operator()(const uint64_t fileSize)
+		{
+			auto iter = gui.pendingVideo.find(source);
+			if (iter == gui.pendingVideo.end())
+			{
+				auto [rIter, inserted] = gui.pendingVideo.try_emplace(source);
+				if (!inserted)
+				{
+					return;
+				}
+				iter = rIter;
+			}
+			iter->second.clear();
+			iter->second.reallocate(fileSize);
+		}
+		void operator()(const ByteList &bytes)
+		{
+			auto iter = gui.pendingVideo.find(source);
+			if (iter == gui.pendingVideo.end())
+			{
+				return;
+			}
+			iter->second.append(bytes);
+		}
+		void operator()(std::monostate)
+		{
+			auto iter = gui.pendingVideo.find(source);
+			if (iter == gui.pendingVideo.end())
+			{
+				return;
+			}
+
+			const ByteList &videoFile = iter->second;
 			(*logger)(Logger::Trace) << "Got video file: " << printMemory(videoFile.size()) << std::endl;
 			StringStream ss;
 			ss << source << "_temp" << VideoExtension;
@@ -296,7 +334,7 @@ void TemStreamGui::decodeVideoPackets()
 	};
 
 	auto &[source, packet] = *result;
-	std::visit(DecodePacket{source, decodingMap, lastVideoCheck}, packet);
+	std::visit(DecodePacket{source, *this}, packet);
 }
 
 void TemStreamGui::onDisconnect(const bool gotInformation)
@@ -320,8 +358,7 @@ void TemStreamGui::onDisconnect(const bool gotInformation)
 
 void TemStreamGui::disconnect()
 {
-	LOCK(peerMutex);
-	peer = nullptr;
+	clientConnection = nullptr;
 	dirty = true;
 }
 
@@ -381,14 +418,16 @@ bool TemStreamGui::init()
 	});
 
 	WorkPool::workPool.addWork([this]() {
-		LOCK(this->peerMutex);
-		if (this->peer == nullptr)
+		if (auto peer = this->flushPacketsCon.lock())
 		{
-			return true;
+			if (!peer->flushPackets())
+			{
+				this->clientConnection = nullptr;
+			}
 		}
-		if (!this->peer->flushPackets())
+		else
 		{
-			peer = nullptr;
+			this->flushPacketsCon = this->clientConnection;
 		}
 		return true;
 	});
@@ -411,12 +450,12 @@ bool TemStreamGui::connect(const Address &address)
 		return false;
 	}
 
-	LOCK(peerMutex);
-	peer = tem_unique<ClientConnetion>(*this, address, std::move(s));
+	clientConnection = tem_unique<ClientConnetion>(*this, address, std::move(s));
+	mainThreadCon = clientConnection;
 	*logger << "Connected to server: " << address << std::endl;
 	Message::Packet packet;
 	packet.payload.emplace<Message::Credentials>(configuration.credentials);
-	(*peer)->sendPacket(packet);
+	(*clientConnection)->sendPacket(packet);
 	return true;
 }
 
@@ -502,8 +541,7 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			if (ImGui::MenuItem("Disconnect from server", "", nullptr, connectedToServer))
 			{
 				connectToServer = std::nullopt;
-				LOCK(peerMutex);
-				peer = nullptr;
+				clientConnection = nullptr;
 			}
 			else
 			{
@@ -513,8 +551,8 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
 					ImGui::TextColored(Colors::GetGreen(isLight), "Logged in as: %s\n", peerInfo.name.c_str());
 
+					if (auto peer = mainThreadCon.lock())
 					{
-						LOCK(peerMutex);
 						const auto &info = peer->getInfo();
 						ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "Server: %s\n",
 										   info.name.c_str());
@@ -1375,35 +1413,36 @@ bool TemStreamGui::sendCreateMessage(const Message::Packet &packet)
 
 void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)
 {
-	LOCK(peerMutex);
-	if (peer == nullptr)
+	if (auto peer = mainThreadCon.lock())
+	{
+		(*peer)->sendPacket(packet);
+		if (handleLocally)
+		{
+			peer->addPacket(std::move(packet));
+		}
+	}
+	else
 	{
 		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
-		return;
-	}
-
-	(*peer)->sendPacket(packet);
-	if (handleLocally)
-	{
-		peer->addPacket(std::move(packet));
 	}
 }
 
 void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocally)
 {
-	LOCK(peerMutex);
-	if (peer == nullptr)
+	if (auto peer = mainThreadCon.lock())
+	{
+		for (const auto &packet : packets)
+		{
+			(*peer)->sendPacket(packet);
+		}
+		if (handleLocally)
+		{
+			peer->addPackets(std::move(packets));
+		}
+	}
+	else
 	{
 		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
-		return;
-	}
-	for (const auto &packet : packets)
-	{
-		(*peer)->sendPacket(packet);
-	}
-	if (handleLocally)
-	{
-		peer->addPackets(std::move(packets));
 	}
 }
 
@@ -1472,8 +1511,7 @@ bool TemStreamGui::useAudio(const Message::Source &source, const std::function<v
 
 bool TemStreamGui::isConnected()
 {
-	LOCK(peerMutex);
-	return peer != nullptr;
+	return !mainThreadCon.expired();
 }
 
 void TemStreamGui::LoadFonts()
@@ -1507,10 +1545,12 @@ void TemStreamGui::handleMessage(Message::Packet &&m)
 		auto pair = displays.try_emplace(m.source, StreamDisplay(*this, m.source));
 		if (!pair.second)
 		{
-			LOCK(peerMutex);
-			onDisconnect(peer->gotServerInformation());
+			if (auto peer = mainThreadCon.lock())
+			{
+				onDisconnect(peer->gotServerInformation());
+			}
 			(*logger)(Logger::Trace) << "TemStreamGui::handleMessage: error" << std::endl;
-			peer = nullptr;
+			clientConnection = nullptr;
 			return;
 		}
 		iter = pair.first;

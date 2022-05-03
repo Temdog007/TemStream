@@ -113,7 +113,7 @@ void VPX::encodeAndSend(ByteList &bytes, const Message::Source &source)
 		v.width = vpx_img_plane_width(&image, 0);
 		v.height = vpx_img_plane_height(&image, 0);
 		packet.payload.emplace<Message::Video>(std::move(v));
-		packets->push_back(std::move(packet));
+		packets->emplace_back(std::move(packet));
 	}
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
