@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-class ClientConnetion;
+class ClientConnection;
 class Audio
 {
   public:
@@ -79,7 +79,7 @@ class Audio
 
 	void enqueueAudio(const ByteList &);
 
-	bool encodeAndSendAudio(ClientConnetion &);
+	bool encodeAndSendAudio(ClientConnection &);
 
 	Type getType() const
 	{

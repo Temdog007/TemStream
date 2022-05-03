@@ -49,21 +49,14 @@ class TemStreamGui
 
   private:
 	std::array<char, KB(1)> strBuffer;
-	std::optional<Address> connectToServer;
 	Map<Message::Source, StreamDisplay> displays;
 	Map<Message::Source, unique_ptr<Audio>> audio;
 	Map<Message::Source, shared_ptr<Video>> video;
 	Map<Message::Source, unique_ptr<Video::EncoderDecoder>> decodingMap;
 	Map<Message::Source, ByteList> pendingVideo;
+	Map<Message::Source, std::weak_ptr<ClientConnection>> connections;
+	Mutex connectionMutex;
 	ConcurrentQueue<VideoPacket> videoPackets;
-	Message::Streams streams;
-	Message::Subscriptions subscriptions;
-	Message::PeerInformationSet otherPeers;
-	PeerInformation peerInfo;
-	shared_ptr<ClientConnetion> clientConnection;
-	std::weak_ptr<ClientConnetion> updatePeerCon;
-	std::weak_ptr<ClientConnetion> flushPacketsCon;
-	std::weak_ptr<ClientConnetion> mainThreadCon;
 	unique_ptr<IQuery> queryData;
 	std::optional<Message::Source> audioTarget;
 	std::optional<FileDisplay> fileDirectory;
@@ -79,9 +72,7 @@ class TemStreamGui
 
 	void handleMessage(Message::Packet &&);
 
-	void onDisconnect(bool);
-
-	ImVec2 drawMainMenuBar(bool);
+	ImVec2 drawMainMenuBar();
 
 	static String32 getAllUTF32();
 
@@ -94,21 +85,24 @@ class TemStreamGui
 	};
 
 	bool init();
-	bool connect(const Address &);
-	void updatePeer();
+	void connect(const Address &);
 	void decodeVideoPackets();
 	void draw();
-	void refresh();
+
+	void addConnection(const shared_ptr<ClientConnection> &);
+	shared_ptr<ClientConnection> getConnection(const Message::Source &);
+	size_t getConnectionCount();
+	bool hasConnection(const Message::Source &);
+	void forEachConnection(const std::function<void(ClientConnection &)> &);
+	void removeConnection(const Message::Source &);
+
+	static bool handleClientConnection(ClientConnection &);
 
 	struct MessageHandler
 	{
 		TemStreamGui &gui;
 		const Message::Source &source;
 
-		bool operator()(Message::Streams &s);
-		bool operator()(Message::VerifyLogin &);
-		bool operator()(Message::PeerInformationSet &);
-		bool operator()(Message::Subscriptions &);
 		bool operator()(Message::Video &);
 
 		template <typename T> bool operator()(T &)
@@ -129,11 +123,6 @@ class TemStreamGui
 	TemStreamGui(TemStreamGui &&) = delete;
 
 	~TemStreamGui();
-
-	const PeerInformation &getInfo() const
-	{
-		return peerInfo;
-	}
 
 	ImGuiIO &getIO()
 	{
@@ -159,8 +148,6 @@ class TemStreamGui
 
 	bool addVideo(shared_ptr<Video>);
 
-	bool isConnected();
-
 	void pushFont();
 
 	void setShowLogs(bool v)
@@ -172,21 +159,11 @@ class TemStreamGui
 		return configuration.showLogs;
 	}
 
-	int getSelectedQuery() const;
+	static int getSelectedQuery(const IQuery *);
+	unique_ptr<IQuery> getQuery(uint32_t, const Message::Source &);
 
 	void sendPacket(Message::Packet &&, const bool handleLocally = true);
 	void sendPackets(MessagePackets &&, const bool handleLocally = true);
-
-	void disconnect();
-
-	static bool sendCreateMessage(const Message::Source &, uint32_t);
-
-	template <typename T> static bool sendCreateMessage(const Message::Source &source)
-	{
-		return sendCreateMessage(source, variant_index<Message::Payload, T>());
-	}
-
-	static bool sendCreateMessage(const Message::Packet &);
 };
 class TemStreamGuiLogger : public InMemoryLogger
 {

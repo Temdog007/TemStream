@@ -196,7 +196,6 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 }
 #define BAD_MESSAGE(X)                                                                                                 \
 	logger->AddError("Got unexpected '" #X "' message from the server. Disconnecting from server.");                   \
-	gui.disconnect();                                                                                                  \
 	return false
 bool StreamDisplay::operator()(std::monostate)
 {
@@ -210,10 +209,6 @@ bool StreamDisplay::operator()(Message::Credentials &)
 {
 	BAD_MESSAGE(Credentials);
 }
-bool StreamDisplay::operator()(PeerInformation &)
-{
-	BAD_MESSAGE(PeerInformation);
-}
 bool StreamDisplay::operator()(Message::VerifyLogin &)
 {
 	BAD_MESSAGE(VerifyLogin);
@@ -222,29 +217,9 @@ bool StreamDisplay::operator()(Message::RequestPeers &)
 {
 	BAD_MESSAGE(RequestPeers);
 }
-bool StreamDisplay::operator()(Message::PeerInformationSet &)
+bool StreamDisplay::operator()(Message::PeerList &)
 {
-	BAD_MESSAGE(PeerInformationList);
-}
-bool StreamDisplay::operator()(Message::StreamUpdate &)
-{
-	BAD_MESSAGE(StreamUpdate);
-}
-bool StreamDisplay::operator()(Message::GetStreams &)
-{
-	BAD_MESSAGE(GetStreams);
-}
-bool StreamDisplay::operator()(Message::Streams &)
-{
-	return true;
-}
-bool StreamDisplay::operator()(Message::GetSubscriptions &)
-{
-	BAD_MESSAGE(GetSubscriptions);
-}
-bool StreamDisplay::operator()(Message::Subscriptions &)
-{
-	return true;
+	BAD_MESSAGE(PeerList);
 }
 StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)
 {

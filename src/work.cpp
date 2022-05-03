@@ -57,14 +57,14 @@ bool fileIsBinary(const String &filename)
 	}
 	return false;
 }
-void checkFile(TemStreamGui &gui, const String &filename)
+void checkFile(TemStreamGui &gui, const Message::Source &source, const String &filename)
 {
 	try
 	{
 		IQuery *data = nullptr;
 		if (isJpeg(filename.c_str()) || isXPM(filename.c_str()))
 		{
-			data = allocateAndConstruct<QueryImage>(gui, filename);
+			data = allocateAndConstruct<QueryImage>(gui, source, filename);
 			goto end;
 		}
 
@@ -72,14 +72,14 @@ void checkFile(TemStreamGui &gui, const String &filename)
 		{
 			if (isImage(filename.c_str()))
 			{
-				data = allocateAndConstruct<QueryImage>(gui, filename);
+				data = allocateAndConstruct<QueryImage>(gui, source, filename);
 				goto end;
 			}
 
 #if TEMSTREAM_USE_OPENCV
 			if (cv::VideoCapture(cv::String(filename)).isOpened())
 			{
-				data = allocateAndConstruct<QueryVideo>(gui, filename);
+				data = allocateAndConstruct<QueryVideo>(gui, source, filename);
 				goto end;
 			}
 #endif
@@ -88,7 +88,7 @@ void checkFile(TemStreamGui &gui, const String &filename)
 		{
 			std::ifstream file(filename.c_str());
 			String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-			data = allocateAndConstruct<QueryText>(gui, std::move(s));
+			data = allocateAndConstruct<QueryText>(gui, source, std::move(s));
 			goto end;
 		}
 	end:
@@ -116,11 +116,6 @@ void sendImage(const String &filename, const Message::Source &source)
 	if (!file.is_open())
 	{
 		(*logger)(Logger::Error) << "Failed to open file: " << filename << std::endl;
-		return;
-	}
-
-	if (!TemStreamGui::sendCreateMessage<Message::Image>(source))
-	{
 		return;
 	}
 
@@ -180,11 +175,6 @@ void startRecordingAudio(const Message::Source &source, const std::optional<Stri
 		return;
 	}
 
-	if (!TemStreamGui::sendCreateMessage<Message::Audio>(source))
-	{
-		return;
-	}
-
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
 	e.user.code = TemStreamEvent::AddAudio;
@@ -201,11 +191,6 @@ void startRecordingWindowAudio(const Message::Source &source, const WindowProces
 {
 	auto ptr = Audio::startRecordingWindow(source, windowProcess, silenceThreshold);
 	if (ptr == nullptr)
-	{
-		return;
-	}
-
-	if (!TemStreamGui::sendCreateMessage<Message::Audio>(source))
 	{
 		return;
 	}

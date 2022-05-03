@@ -201,7 +201,7 @@ bool Audio::isRecording() const
 		return false;
 	}
 }
-bool Audio::encodeAndSendAudio(ClientConnetion &peer)
+bool Audio::encodeAndSendAudio(ClientConnection &peer)
 {
 	if (!isRecording())
 	{

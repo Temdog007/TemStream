@@ -8,18 +8,21 @@ class TemStreamGui;
 class IQuery
 {
   protected:
-	String streamName;
+	Message::Source source;
 	TemStreamGui &gui;
 
   public:
-	IQuery(TemStreamGui &);
+	IQuery(TemStreamGui &, const Message::Source &);
 	virtual ~IQuery();
 
 	virtual bool draw();
 
 	virtual void execute() const = 0;
 
-	Message::Source getSource() const;
+	const Message::Source &getSource() const
+	{
+		return source;
+	}
 };
 class QueryText : public IQuery
 {
@@ -27,11 +30,16 @@ class QueryText : public IQuery
 	String text;
 
   public:
-	QueryText(TemStreamGui &);
-	QueryText(TemStreamGui &, String &&);
+	QueryText(TemStreamGui &, const Message::Source &);
+	QueryText(TemStreamGui &, const Message::Source &, String &&);
 	~QueryText();
 
 	bool draw() override;
+
+	void setText(String &&s) noexcept
+	{
+		text.swap(s);
+	}
 
 	void execute() const override;
 };
@@ -41,8 +49,8 @@ class QueryImage : public IQuery
 	String image;
 
   public:
-	QueryImage(TemStreamGui &);
-	QueryImage(TemStreamGui &, const String &);
+	QueryImage(TemStreamGui &, const Message::Source &);
+	QueryImage(TemStreamGui &, const Message::Source &, const String &);
 	~QueryImage();
 
 	bool draw() override;
@@ -62,7 +70,7 @@ class QueryAudio : public IQuery
 	int selected;
 
   public:
-	QueryAudio(TemStreamGui &);
+	QueryAudio(TemStreamGui &, const Message::Source &);
 	~QueryAudio();
 
 	bool draw() override;
@@ -87,8 +95,8 @@ class QueryVideo : public IQuery
 	VideoSelection selection;
 
   public:
-	QueryVideo(TemStreamGui &);
-	QueryVideo(TemStreamGui &, const String &);
+	QueryVideo(TemStreamGui &, const Message::Source &);
+	QueryVideo(TemStreamGui &, const Message::Source &, const String &);
 	~QueryVideo();
 
 	bool draw() override;

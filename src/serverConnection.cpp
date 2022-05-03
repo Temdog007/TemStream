@@ -359,7 +359,8 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 	{
 		Message::Packet packet;
 		packet.source = connection.getSource();
-		packet.payload.emplace<Message::VerifyLogin>(Message::VerifyLogin{configuration.name, connection.information});
+		packet.payload.emplace<Message::VerifyLogin>(
+			Message::VerifyLogin{configuration.name, connection.information, configuration.streamType});
 		connection->sendPacket(packet);
 	}
 	return true;

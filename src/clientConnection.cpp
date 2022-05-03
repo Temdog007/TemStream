@@ -2,14 +2,14 @@
 
 namespace TemStream
 {
-ClientConnetion::ClientConnetion(TemStreamGui &gui, const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), gui(gui), acquiredServerInformation(false)
+ClientConnection::ClientConnection(TemStreamGui &gui, const Address &address, unique_ptr<Socket> s)
+	: Connection(address, std::move(s)), gui(gui), serverInformation(), peers()
 {
 }
-ClientConnetion::~ClientConnetion()
+ClientConnection::~ClientConnection()
 {
 }
-bool ClientConnetion::flushPackets()
+bool ClientConnection::flushPackets()
 {
 	using namespace std::chrono_literals;
 	auto packet = getPackets().pop(0s);
@@ -17,42 +17,21 @@ bool ClientConnetion::flushPackets()
 	{
 		return true;
 	}
-	auto ptr = std::get_if<PeerInformation>(&packet->payload);
-	if (ptr == nullptr)
+
+	// Send audio data to playback immediately to avoid audio delay
+	if (auto message = std::get_if<Message::Audio>(&packet->payload))
 	{
-		// Send audio data to playback immediately to avoid audio issues
-		if (auto message = std::get_if<Message::Audio>(&packet->payload))
-		{
-			gui.useAudio(packet->source, [&message](Audio &a) {
-				if (!a.isRecording())
-				{
-					a.enqueueAudio(message->bytes);
-				}
-			});
-		}
-		addPacket(std::move(*packet));
+		gui.useAudio(packet->source, [&message](Audio &a) {
+			if (!a.isRecording())
+			{
+				a.enqueueAudio(message->bytes);
+			}
+		});
 	}
-	else if (acquiredServerInformation)
-	{
-		logger->AddError("Got duplicate information from server");
-		return false;
-	}
-	else
-	{
-		if (ptr->isServer)
-		{
-			info = *ptr;
-			acquiredServerInformation = true;
-		}
-		else
-		{
-			logger->AddError("Connection error. Must connect to a server. Connected to a client");
-			return false;
-		}
-	}
+	addPacket(std::move(*packet));
 	return true;
 }
-void ClientConnetion::addPacket(Message::Packet &&m)
+void ClientConnection::addPacket(Message::Packet &&m)
 {
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
@@ -65,7 +44,7 @@ void ClientConnetion::addPacket(Message::Packet &&m)
 		destroyAndDeallocate(packet);
 	}
 }
-void ClientConnetion::addPackets(MessagePackets &&m)
+void ClientConnection::addPackets(MessagePackets &&m)
 {
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
@@ -77,5 +56,12 @@ void ClientConnetion::addPackets(MessagePackets &&m)
 	{
 		destroyAndDeallocate(packets);
 	}
+}
+Message::Source ClientConnection::getSource() const
+{
+	Message::Source source;
+	source.server = serverInformation.serverName;
+	source.peer = serverInformation.peerInformation.name;
+	return source;
 }
 } // namespace TemStream

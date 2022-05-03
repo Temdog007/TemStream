@@ -65,19 +65,28 @@ struct VerifyLogin
 {
 	String serverName;
 	PeerInformation peerInformation;
+	uint32_t streamType;
+
 	VerifyLogin &swap(VerifyLogin &login)
 	{
 		std::swap(serverName, login.serverName);
 		peerInformation.swap(login.peerInformation);
+		std::swap(streamType, login.streamType);
 		return *this;
 	}
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(serverName, peerInformation);
+		ar(serverName, peerInformation, streamType);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(serverName, peerInformation);
+		ar(serverName, peerInformation, streamType);
+	}
+	friend std::ostream &operator<<(std::ostream &os, const VerifyLogin &login)
+	{
+		os << "Server: " << login.serverName << "; Type: " << login.streamType
+		   << "; Peer Information: " << login.peerInformation << std::endl;
+		return os;
 	}
 };
 using LargeFile = std::variant<std::monostate, uint64_t, ByteList>;

@@ -3,7 +3,7 @@
 namespace TemStream
 {
 // IQuery
-IQuery::IQuery(TemStreamGui &gui) : streamName(), gui(gui)
+IQuery::IQuery(TemStreamGui &gui, const Message::Source &source) : source(source), gui(gui)
 {
 }
 IQuery::~IQuery()
@@ -11,18 +11,15 @@ IQuery::~IQuery()
 }
 bool IQuery::draw()
 {
-	ImGui::InputText("Stream Name", &streamName);
+	ImGui::Text("Destination: %s", source.server.c_str());
 	return ImGui::Button("Send");
 }
-Message::Source IQuery::getSource() const
-{
-	return Message::Source{gui.getInfo().name, streamName};
-}
 // QueryText
-QueryText::QueryText(TemStreamGui &gui) : IQuery(gui), text()
+QueryText::QueryText(TemStreamGui &gui, const Message::Source &source) : IQuery(gui, source), text()
 {
 }
-QueryText::QueryText(TemStreamGui &gui, String &&s) : IQuery(gui), text(std::move(s))
+QueryText::QueryText(TemStreamGui &gui, const Message::Source &source, String &&s)
+	: IQuery(gui, source), text(std::move(s))
 {
 }
 QueryText::~QueryText()
@@ -35,18 +32,9 @@ bool QueryText::draw()
 }
 void QueryText::execute() const
 {
-	Message::Source source;
-	source.author = gui.getInfo().name;
-	source.destination = streamName;
-
-	if (!TemStreamGui::sendCreateMessage<Message::Text>(source))
-	{
-		return;
-	}
-
 	Message::Packet *packet = allocateAndConstruct<Message::Packet>();
 	packet->payload.emplace<Message::Text>(text);
-	packet->source = std::move(source);
+	packet->source = getSource();
 
 	SDL_Event e;
 	e.type = SDL_USEREVENT;
@@ -59,10 +47,11 @@ void QueryText::execute() const
 	}
 }
 // Query Image
-QueryImage::QueryImage(TemStreamGui &gui) : IQuery(gui), image()
+QueryImage::QueryImage(TemStreamGui &gui, const Message::Source &source) : IQuery(gui, source), image()
 {
 }
-QueryImage::QueryImage(TemStreamGui &gui, const String &s) : IQuery(gui), image(s)
+QueryImage::QueryImage(TemStreamGui &gui, const Message::Source &source, const String &s)
+	: IQuery(gui, source), image(s)
 {
 }
 QueryImage::~QueryImage()
@@ -80,7 +69,8 @@ void QueryImage::execute() const
 		return false;
 	});
 }
-QueryAudio::QueryAudio(TemStreamGui &gui) : IQuery(gui), windowNames(), source(Source::Device), selected(-1)
+QueryAudio::QueryAudio(TemStreamGui &gui, const Message::Source &source)
+	: IQuery(gui, source), windowNames(), source(Source::Device), selected(-1)
 {
 }
 QueryAudio::~QueryAudio()
@@ -171,11 +161,12 @@ void QueryAudio::execute() const
 		break;
 	}
 }
-QueryVideo::QueryVideo(TemStreamGui &gui) : IQuery(gui), selection(WebCamSelection{Video::FrameData(), 0})
+QueryVideo::QueryVideo(TemStreamGui &gui, const Message::Source &source)
+	: IQuery(gui, source), selection(WebCamSelection{Video::FrameData(), 0})
 {
 }
-QueryVideo::QueryVideo(TemStreamGui &gui, const String &s)
-	: IQuery(gui), selection(WebCamSelection{Video::FrameData(), s})
+QueryVideo::QueryVideo(TemStreamGui &gui, const Message::Source &source, const String &s)
+	: IQuery(gui, source), selection(WebCamSelection{Video::FrameData(), s})
 {
 }
 QueryVideo::~QueryVideo()

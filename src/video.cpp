@@ -140,8 +140,6 @@ Video::FrameEncoder::FrameEncoder(shared_ptr<Video> v, const FrameData frameData
 	: frames(), frameData(frameData), lastReset(std::chrono::system_clock::now()), encoder(nullptr), video(v),
 	  first(true)
 {
-	TemStreamGui::sendCreateMessage<Message::Video>(v->getSource());
-
 	this->frameData.width -= this->frameData.width % 2;
 	this->frameData.width = this->frameData.width * frameData.scale / 100;
 

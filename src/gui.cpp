@@ -66,8 +66,8 @@ namespace TemStream
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: connectToServer(), clientConnection(nullptr), queryData(nullptr), allUTF32(getAllUTF32()),
-	  lastVideoCheck(std::chrono::system_clock::now()), io(io), configuration(c), window(nullptr), renderer(nullptr)
+	: queryData(nullptr), allUTF32(getAllUTF32()), lastVideoCheck(std::chrono::system_clock::now()), io(io),
+	  configuration(c), window(nullptr), renderer(nullptr)
 {
 }
 
@@ -79,64 +79,6 @@ TemStreamGui::~TemStreamGui()
 	window = nullptr;
 	IMG_Quit();
 	SDL_Quit();
-}
-
-void TemStreamGui::refresh()
-{
-	if (auto peer = mainThreadCon.lock())
-	{
-		{
-			Message::Packet packet;
-			packet.source.author = peerInfo.name;
-			packet.payload.emplace<Message::GetSubscriptions>();
-			sendPacket(std::move(packet), false);
-		}
-		{
-			Message::Packet packet;
-			packet.source.author = peerInfo.name;
-			packet.payload.emplace<Message::GetStreams>();
-			sendPacket(std::move(packet), false);
-		}
-	}
-	else
-	{
-		mainThreadCon = clientConnection;
-	}
-}
-
-void TemStreamGui::updatePeer()
-{
-	if (auto peer = updatePeerCon.lock())
-	{
-		if (!peer->readAndHandle(0))
-		{
-			(*logger)(Logger::Trace) << "TemStreamGui::update: read error" << std::endl;
-			onDisconnect(peer->gotServerInformation());
-			clientConnection = nullptr;
-			return;
-		}
-		for (const auto &a : audio)
-		{
-			if (!a.second->encodeAndSendAudio(*peer))
-			{
-				(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
-				onDisconnect(peer->gotServerInformation());
-				clientConnection = nullptr;
-				break;
-			}
-		}
-		if (!(*peer)->flush())
-		{
-			(*logger)(Logger::Trace) << "TemStreamGui::update: send error" << std::endl;
-			onDisconnect(peer->gotServerInformation());
-			clientConnection = nullptr;
-			return;
-		}
-	}
-	else
-	{
-		updatePeerCon = clientConnection;
-	}
 }
 
 void TemStreamGui::decodeVideoPackets()
@@ -336,31 +278,6 @@ void TemStreamGui::decodeVideoPackets()
 	std::visit(DecodePacket{source, *this}, packet);
 }
 
-void TemStreamGui::onDisconnect(const bool gotInformation)
-{
-	if (appDone)
-	{
-		return;
-	}
-	const char *message = nullptr;
-	if (gotInformation)
-	{
-		message = "Lost connection to server";
-	}
-	else
-	{
-		message = "Failed to connect to server";
-	}
-	(*logger)(Logger::Error) << message << std::endl;
-	dirty = true;
-}
-
-void TemStreamGui::disconnect()
-{
-	clientConnection = nullptr;
-	dirty = true;
-}
-
 void TemStreamGui::pushFont()
 {
 	if (configuration.fontIndex >= io.Fonts->Fonts.size())
@@ -412,26 +329,6 @@ bool TemStreamGui::init()
 	}
 
 	WorkPool::workPool.addWork([this]() {
-		this->updatePeer();
-		return true;
-	});
-
-	WorkPool::workPool.addWork([this]() {
-		if (auto peer = this->flushPacketsCon.lock())
-		{
-			if (!peer->flushPackets())
-			{
-				this->clientConnection = nullptr;
-			}
-		}
-		else
-		{
-			this->flushPacketsCon = this->clientConnection;
-		}
-		return true;
-	});
-
-	WorkPool::workPool.addWork([this]() {
 		this->decodeVideoPackets();
 		return true;
 	});
@@ -439,26 +336,130 @@ bool TemStreamGui::init()
 	return true;
 }
 
-bool TemStreamGui::connect(const Address &address)
+void TemStreamGui::connect(const Address &address)
 {
 	*logger << "Connecting to server: " << address << std::endl;
-	auto s = address.makeTcpSocket();
-	if (s == nullptr)
-	{
-		(*logger)(Logger::Error) << "Failed to connect to server: " << address << std::endl;
-		return false;
-	}
+	WorkPool::workPool.addWork([address = address, this]() {
+		auto s = address.makeTcpSocket();
+		if (s == nullptr)
+		{
+			(*logger)(Logger::Error) << "Failed to connect to server: " << address << std::endl;
+			return false;
+		}
 
-	clientConnection = tem_unique<ClientConnetion>(*this, address, std::move(s));
-	mainThreadCon = clientConnection;
-	*logger << "Connected to server: " << address << std::endl;
-	Message::Packet packet;
-	packet.payload.emplace<Message::Credentials>(configuration.credentials);
-	(*clientConnection)->sendPacket(packet);
-	return true;
+		*logger << "Connected to server: " << address << std::endl;
+
+		auto clientConnection = tem_shared<ClientConnection>(*this, address, std::move(s));
+		{
+			Message::Packet packet;
+			packet.payload.emplace<Message::Credentials>(configuration.credentials);
+			(*clientConnection)->sendPacket(packet);
+		}
+		// Wait for response to get server type
+		if (!clientConnection->readAndHandle(3000))
+		{
+			(*logger)(Logger::Error) << "Authentication failure for server: " << address << std::endl;
+			return false;
+		}
+
+		using namespace std::chrono_literals;
+		{
+			auto packet = clientConnection->getPackets().pop(0s);
+			if (!packet)
+			{
+				(*logger)(Logger::Error) << "Authentication failure for server: " << address << std::endl;
+				return false;
+			}
+
+			if (auto ptr = std::get_if<Message::VerifyLogin>(&packet->payload))
+			{
+				clientConnection->setInfo(std::move(*ptr));
+			}
+			else
+			{
+				(*logger)(Logger::Error) << "Authentication failure for server: " << address << std::endl;
+				return false;
+			}
+		}
+
+		*logger << "Server information: " << clientConnection->getInfo() << std::endl;
+		this->addConnection(clientConnection);
+		WorkPool::workPool.addWork(
+			[clientConnection]() { return TemStreamGui::handleClientConnection(*clientConnection); });
+		return false;
+	});
 }
 
-ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
+bool TemStreamGui::handleClientConnection(ClientConnection &con)
+{
+	return con.isOpened() && con.readAndHandle(0) && con.flushPackets() && !con->flush();
+}
+
+void TemStreamGui::addConnection(const shared_ptr<ClientConnection> &connection)
+{
+	LOCK(connectionMutex);
+	connections.try_emplace(connection->getSource(), connection);
+}
+
+shared_ptr<ClientConnection> TemStreamGui::getConnection(const Message::Source &source)
+{
+	LOCK(connectionMutex);
+	auto iter = connections.find(source);
+	if (iter == connections.end())
+	{
+		return nullptr;
+	}
+	return iter->second.lock();
+}
+
+bool TemStreamGui::hasConnection(const Message::Source &source)
+{
+	return getConnection(source) != nullptr;
+}
+
+size_t TemStreamGui::getConnectionCount()
+{
+	LOCK(connectionMutex);
+	size_t count = 0;
+	for (auto iter = connections.begin(); iter != connections.end();)
+	{
+		if (iter->second.expired())
+		{
+			iter = connections.erase(iter);
+		}
+		else
+		{
+			++count;
+			++iter;
+		}
+	}
+	return count;
+}
+
+void TemStreamGui::forEachConnection(const std::function<void(ClientConnection &)> &func)
+{
+	LOCK(connectionMutex);
+	for (auto iter = connections.begin(); iter != connections.end();)
+	{
+		if (auto ptr = iter->second.lock())
+		{
+			func(*ptr);
+			++iter;
+		}
+		else
+		{
+			iter = connections.erase(iter);
+		}
+	}
+}
+
+void TemStreamGui::removeConnection(const Message::Source &source)
+{
+	LOCK(connectionMutex);
+	connections.erase(source);
+}
+
+ImVec2 TemStreamGui::drawMainMenuBar()
 {
 	ImVec2 size;
 	if (ImGui::BeginMainMenuBar())
@@ -503,9 +504,9 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 			{
 				configuration.showDisplays = true;
 			}
-			if (ImGui::MenuItem("Streams", "Ctrl+W", nullptr, !configuration.showStreams))
+			if (ImGui::MenuItem("Streams", "Ctrl+W", nullptr, !configuration.showConnections))
 			{
-				configuration.showStreams = true;
+				configuration.showConnections = true;
 			}
 			if (ImGui::MenuItem("Audio", "Ctrl+A", nullptr, !configuration.showAudio))
 			{
@@ -531,61 +532,15 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 		}
 		ImGui::Separator();
 
-		if (ImGui::BeginMenu("Connect"))
-		{
-			if (ImGui::MenuItem("Connect to server", "", nullptr, !connectedToServer))
-			{
-				connectToServer.emplace(configuration.address);
-			}
-			if (ImGui::MenuItem("Disconnect from server", "", nullptr, connectedToServer))
-			{
-				connectToServer = std::nullopt;
-				clientConnection = nullptr;
-			}
-			else
-			{
-				ImGui::Separator();
-				if (connectedToServer)
-				{
-					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
-					ImGui::TextColored(Colors::GetGreen(isLight), "Logged in as: %s\n", peerInfo.name.c_str());
-
-					if (auto peer = mainThreadCon.lock())
-					{
-						const auto &info = peer->getInfo();
-						ImGui::TextColored(isLight ? Colors::DarkYellow : Colors::Yellow, "Server: %s\n",
-										   info.name.c_str());
-
-						const auto &addr = peer->getAddress();
-						ImGui::TextColored(Colors::GetYellow(isLight), "Address: %s:%d\n", addr.hostname.c_str(),
-										   addr.port);
-					}
-
-					ImGui::Separator();
-					if (ImGui::MenuItem("Refresh", "Ctrl+R"))
-					{
-						refresh();
-					}
-
-					ImGui::Separator();
-					if (ImGui::MenuItem("Send Data", "Ctrl+P", nullptr, queryData == nullptr))
-					{
-						queryData = tem_unique<QueryText>(*this);
-					}
-				}
-			}
-			ImGui::EndMenu();
-		}
-		ImGui::Separator();
-
 		if (ImGui::BeginMenu("Memory"))
 		{
 			static int m = 256;
 			if (ImGui::InputInt("Change Memory (in MB)", &m, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
+				// .flags, .buttonid, .text
 				const SDL_MessageBoxButtonData buttons[] = {
-					{/* .flags, .buttonid, .text */ 0, 0, "No"},
-					{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 1, "Yes"},
+					{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "No"},
+					{0, 1, "Yes"},
 				};
 				SDL_MessageBoxData data{};
 				data.flags = SDL_MESSAGEBOX_INFORMATION;
@@ -595,10 +550,10 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 				data.buttons = buttons;
 				data.numbuttons = SDL_arraysize(buttons);
 				int i;
-				if (SDL_ShowMessageBox(&data, &i) == 0)
+				if (SDL_ShowMessageBox(&data, &i) == 0 && i == 1)
 				{
-					disconnect();
-					int pid = fork();
+					appDone = true;
+					const int pid = fork();
 					if (pid < 0)
 					{
 						perror("fork");
@@ -606,10 +561,9 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 					else if (pid == 0)
 					{
 						const auto s = std::to_string(m);
-						int i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
+						i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
 						(*logger)(Logger::Error) << "Failed to reset the application: " << i << std::endl;
 					}
-					appDone = true;
 				}
 				else
 				{
@@ -627,37 +581,36 @@ ImVec2 TemStreamGui::drawMainMenuBar(const bool connectedToServer)
 
 void TemStreamGui::draw()
 {
-	const bool connectedToServer = isConnected();
+	drawMainMenuBar();
+	// const auto size = drawMainMenuBar();
 
-	const auto size = drawMainMenuBar(connectedToServer);
-
-	if (ImGui::Begin("##afdasy4", nullptr,
-					 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoCollapse |
-						 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings |
-						 ImGuiWindowFlags_NoScrollbar))
-	{
-		ImColor color;
-		const char *text;
-		const auto &style = ImGui::GetStyle();
-		const auto &bg = style.Colors[ImGuiCol_WindowBg];
-		if (connectedToServer)
-		{
-			color = Colors::GetGreen(colorIsLight(bg));
-			text = "Connected";
-		}
-		else
-		{
-			color = Colors::GetRed(colorIsLight(bg));
-			text = "Disconnected";
-		}
-		const auto textSize = ImGui::CalcTextSize(text);
-		auto draw = ImGui::GetForegroundDrawList();
-		const float x = size.x - (textSize.x + size.x * 0.01f);
-		const float radius = size.y * 0.5f;
-		draw->AddCircleFilled(ImVec2(x - radius, radius), radius, color);
-		draw->AddText(ImVec2(x, 0), color, text);
-	}
-	ImGui::End();
+	// if (ImGui::Begin("##afdasy4", nullptr,
+	// 				 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoCollapse |
+	// 					 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings |
+	// 					 ImGuiWindowFlags_NoScrollbar))
+	// {
+	// 	ImColor color;
+	// 	const char *text;
+	// 	const auto &style = ImGui::GetStyle();
+	// 	const auto &bg = style.Colors[ImGuiCol_WindowBg];
+	// 	if (connectedToServer)
+	// 	{
+	// 		color = Colors::GetGreen(colorIsLight(bg));
+	// 		text = "Connected";
+	// 	}
+	// 	else
+	// 	{
+	// 		color = Colors::GetRed(colorIsLight(bg));
+	// 		text = "Disconnected";
+	// 	}
+	// 	const auto textSize = ImGui::CalcTextSize(text);
+	// 	auto draw = ImGui::GetForegroundDrawList();
+	// 	const float x = size.x - (textSize.x + size.x * 0.01f);
+	// 	const float radius = size.y * 0.5f;
+	// 	draw->AddCircleFilled(ImVec2(x - radius, radius), radius, color);
+	// 	draw->AddText(ImVec2(x, 0), color, text);
+	// }
+	// ImGui::End();
 
 	if (configuration.showAudio)
 	{
@@ -840,45 +793,28 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (connectToServer.has_value())
+	if (ImGui::Begin("Credentials", &configuration.showCredentials,
+					 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
 	{
-		bool opened = true;
-		if (ImGui::Begin("Connect to server", &opened, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
+		static const char *Options[]{"Token", "Username And Password"};
+		int selected = configuration.credentials.index();
+		if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
 		{
-			ImGui::InputText("Hostname", &connectToServer->hostname);
-			ImGui::InputInt("Port", &connectToServer->port);
-
-			ImGui::Separator();
-			static const char *Options[]{"Token", "Username And Password"};
-			int selected = configuration.credentials.index();
-			if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
+			switch (selected)
 			{
-				switch (selected)
-				{
-				case variant_index<Message::Credentials, String>():
-					configuration.credentials.emplace<String>("token12345");
-					break;
-				case variant_index<Message::Credentials, Message::UsernameAndPassword>():
-					configuration.credentials.emplace<Message::UsernameAndPassword>("User", "Password");
-					break;
-				default:
-					break;
-				}
-			}
-			std::visit(RenderCredentials(), configuration.credentials);
-			if (ImGui::Button("Connect"))
-			{
-				configuration.address = *connectToServer;
-				connect(*connectToServer);
-				opened = false;
+			case variant_index<Message::Credentials, String>():
+				configuration.credentials.emplace<String>("token12345");
+				break;
+			case variant_index<Message::Credentials, Message::UsernameAndPassword>():
+				configuration.credentials.emplace<Message::UsernameAndPassword>("User", "Password");
+				break;
+			default:
+				break;
 			}
 		}
-		ImGui::End();
-		if (!opened)
-		{
-			connectToServer = std::nullopt;
-		}
+		std::visit(RenderCredentials(), configuration.credentials);
 	}
+	ImGui::End();
 
 	if (queryData != nullptr)
 	{
@@ -887,22 +823,23 @@ void TemStreamGui::draw()
 						 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			static const char *options[]{"Text", "Image", "Audio", "Video"};
-			int selected = getSelectedQuery();
+			int selected = getSelectedQuery(queryData.get());
 			if (ImGui::Combo("Data Type", &selected, options, IM_ARRAYSIZE(options)))
 			{
+				auto source = queryData->getSource();
 				switch (selected)
 				{
 				case 0:
-					queryData = tem_unique<QueryText>(*this);
+					queryData = tem_unique<QueryText>(*this, source);
 					break;
 				case 1:
-					queryData = tem_unique<QueryImage>(*this);
+					queryData = tem_unique<QueryImage>(*this, source);
 					break;
 				case 2:
-					queryData = tem_unique<QueryAudio>(*this);
+					queryData = tem_unique<QueryAudio>(*this, source);
 					break;
 				case 3:
-					queryData = tem_unique<QueryVideo>(*this);
+					queryData = tem_unique<QueryVideo>(*this, source);
 					break;
 				default:
 					break;
@@ -910,14 +847,7 @@ void TemStreamGui::draw()
 			}
 			if (queryData->draw())
 			{
-				if (isConnected())
-				{
-					queryData->execute();
-				}
-				else
-				{
-					(*logger)(Logger::Error) << "Cannot send data if not connected to a server" << std::endl;
-				}
+				queryData->execute();
 				opened = false;
 			}
 		}
@@ -945,81 +875,55 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	configuration.showStreams &= !streams.empty();
-	if (configuration.showStreams)
+	configuration.showConnections &= getConnectionCount() != 0;
+	if (configuration.showConnections)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Streams", &configuration.showStreams))
+		if (ImGui::Begin("Connections", &configuration.showConnections))
 		{
 			if (ImGui::BeginTable("Streams", 4, ImGuiTableFlags_Borders))
 			{
 				ImGui::TableSetupColumn("Name");
-				ImGui::TableSetupColumn("Author");
 				ImGui::TableSetupColumn("Type");
-				ImGui::TableSetupColumn("Action");
+				ImGui::TableSetupColumn("Upload");
+				ImGui::TableSetupColumn("Disconnect");
 				ImGui::TableHeadersRow();
 
-				for (const auto &stream : streams)
-				{
-					const auto &source = stream.first;
+				forEachConnection([this](ClientConnection &con) {
+					const auto &source = con.getSource();
 
 					ImGui::PushID(static_cast<String>(source).c_str());
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", source.destination.c_str());
+					ImGui::Text("%s", source.server.c_str());
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", source.author.c_str());
+					const auto &info = con.getInfo();
+					const auto type = info.streamType;
+					ImGui::Text("%u", type);
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%u", stream.second.getType());
-
-					ImGui::TableNextColumn();
-					if (peerInfo.name == source.author)
+					if (ImGui::Button("Upload"))
 					{
-						if (ImGui::Button("Delete"))
+						if (info.peerInformation.writeAccess)
 						{
-							Message::Packet packet;
-							packet.source = source;
-							Message::StreamUpdate su;
-							su.action = Message::StreamUpdate::Delete;
-							su.source = source;
-							su.type = stream.second.getType();
-							packet.payload.emplace<Message::StreamUpdate>(std::move(su));
-							sendPacket(std::move(packet), false);
+							queryData = getQuery(type, source);
+						}
+						else
+						{
+							(*logger)(Logger::Error)
+								<< "Cannot upload data to server without write access" << std::endl;
 						}
 					}
-					else if (subscriptions.find(source) == subscriptions.end())
+
+					ImGui::TableNextColumn();
+					if (ImGui::Button("Disconnect"))
 					{
-						if (ImGui::Button("Subscribe"))
-						{
-							Message::Packet packet;
-							packet.source.author = peerInfo.name;
-							Message::StreamUpdate su;
-							su.action = Message::StreamUpdate::Subscribe;
-							su.source = source;
-							su.type = stream.second.getType();
-							packet.payload.emplace<Message::StreamUpdate>(std::move(su));
-							sendPacket(std::move(packet), false);
-						}
-					}
-					else
-					{
-						if (ImGui::Button("Unsubscribe"))
-						{
-							Message::Packet packet;
-							packet.source.author = peerInfo.name;
-							Message::StreamUpdate su;
-							su.action = Message::StreamUpdate::Unsubscribe;
-							su.source = source;
-							su.type = stream.second.getType();
-							packet.payload.emplace<Message::StreamUpdate>(std::move(su));
-							sendPacket(std::move(packet), false);
-						}
+						con.close();
 					}
 
 					ImGui::PopID();
-				}
+				});
 				ImGui::EndTable();
 			}
 		}
@@ -1352,67 +1256,52 @@ void TemStreamGui::draw()
 	}
 }
 
-int TemStreamGui::getSelectedQuery() const
+int TemStreamGui::getSelectedQuery(const IQuery *queryData)
 {
 	if (queryData == nullptr)
 	{
 		return -1;
 	}
-	if (dynamic_cast<QueryText *>(queryData.get()) != nullptr)
+	if (dynamic_cast<const QueryText *>(queryData) != nullptr)
 	{
 		return 0;
 	}
-	if (dynamic_cast<QueryImage *>(queryData.get()) != nullptr)
+	if (dynamic_cast<const QueryImage *>(queryData) != nullptr)
 	{
 		return 1;
 	}
-	if (dynamic_cast<QueryAudio *>(queryData.get()) != nullptr)
+	if (dynamic_cast<const QueryAudio *>(queryData) != nullptr)
 	{
 		return 2;
 	}
-	if (dynamic_cast<QueryVideo *>(queryData.get()) != nullptr)
+	if (dynamic_cast<const QueryVideo *>(queryData) != nullptr)
 	{
 		return 3;
 	}
 	return -1;
 }
 
-bool TemStreamGui::sendCreateMessage(const Message::Source &source, const uint32_t type)
+unique_ptr<IQuery> TemStreamGui::getQuery(const uint32_t i, const Message::Source &source)
 {
-	Message::StreamUpdate su;
-	su.source = source;
-	su.action = Message::StreamUpdate::Create;
-	su.type = type;
-	(*logger)(Logger::Trace) << "Creating stream " << su << std::endl;
-
-	Message::Packet *newPacket = allocateAndConstruct<Message::Packet>();
-	newPacket->source = source;
-	newPacket->payload.emplace<Message::StreamUpdate>(std::move(su));
-
-	SDL_Event e;
-	e.type = SDL_USEREVENT;
-	e.user.code = TemStreamEvent::SendSingleMessagePacket;
-	e.user.data1 = newPacket;
-	e.user.data2 = nullptr;
-	if (tryPushEvent(e))
+	switch (i)
 	{
-		return true;
+	case 0:
+		return tem_unique<QueryText>(*this, source);
+	case 1:
+		return tem_unique<QueryImage>(*this, source);
+	case 2:
+		return tem_unique<QueryAudio>(*this, source);
+	case 3:
+		return tem_unique<QueryVideo>(*this, source);
+	default:
+		return nullptr;
 	}
-	else
-	{
-		destroyAndDeallocate(newPacket);
-		return false;
-	}
-}
-
-bool TemStreamGui::sendCreateMessage(const Message::Packet &packet)
-{
-	return sendCreateMessage(packet.source, packet.payload.index());
 }
 
 void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)
 {
-	if (auto peer = mainThreadCon.lock())
+	auto peer = getConnection(packet.source);
+	if (peer)
 	{
 		(*peer)->sendPacket(packet);
 		if (handleLocally)
@@ -1422,59 +1311,17 @@ void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally
 	}
 	else
 	{
-		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
+		(*logger)(Logger::Error) << "Cannot send data to server: " << packet.source.server << std::endl;
 	}
 }
 
 void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocally)
 {
-	if (auto peer = mainThreadCon.lock())
+	auto pair = toMoveIterator(packets);
+	for (auto iter = pair.first; iter != pair.second; ++iter)
 	{
-		for (const auto &packet : packets)
-		{
-			(*peer)->sendPacket(packet);
-		}
-		if (handleLocally)
-		{
-			peer->addPackets(std::move(packets));
-		}
+		sendPacket(std::move(*iter), handleLocally);
 	}
-	else
-	{
-		(*logger)(Logger::Error) << "Cannot send data when not conncted to the server" << std::endl;
-	}
-}
-
-bool TemStreamGui::MessageHandler::operator()(Message::VerifyLogin &login)
-{
-	gui.peerInfo.swap(login.info);
-	*logger << "Logged in as " << gui.peerInfo.name << std::endl;
-	gui.dirty = true;
-	return true;
-}
-
-bool TemStreamGui::MessageHandler::operator()(Message::PeerInformationSet &set)
-{
-	gui.otherPeers.swap(set);
-	*logger << "Got " << set.size() << " peers from server" << std::endl;
-	gui.dirty = true;
-	return true;
-}
-
-bool TemStreamGui::MessageHandler::operator()(Message::Streams &s)
-{
-	gui.streams.swap(s);
-	*logger << "Got " << gui.streams.size() << " streams from server" << std::endl;
-	gui.dirty = true;
-	return true;
-}
-
-bool TemStreamGui::MessageHandler::operator()(Message::Subscriptions &s)
-{
-	gui.subscriptions.swap(s);
-	*logger << "Got " << gui.subscriptions.size() << " subscriptions from server" << std::endl;
-	gui.dirty = true;
-	return true;
 }
 
 bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
@@ -1508,11 +1355,6 @@ bool TemStreamGui::useAudio(const Message::Source &source, const std::function<v
 	return false;
 }
 
-bool TemStreamGui::isConnected()
-{
-	return !mainThreadCon.expired();
-}
-
 void TemStreamGui::LoadFonts()
 {
 	io.Fonts->Clear();
@@ -1544,12 +1386,6 @@ void TemStreamGui::handleMessage(Message::Packet &&m)
 		auto pair = displays.try_emplace(m.source, StreamDisplay(*this, m.source));
 		if (!pair.second)
 		{
-			if (auto peer = mainThreadCon.lock())
-			{
-				onDisconnect(peer->gotServerInformation());
-			}
-			(*logger)(Logger::Trace) << "TemStreamGui::handleMessage: error" << std::endl;
-			clientConnection = nullptr;
 			return;
 		}
 		iter = pair.first;
@@ -1615,13 +1451,6 @@ int runApp(Configuration &configuration)
 		SDL_Event event;
 		while (SDL_PollEvent(&event))
 		{
-			if (!multiThread)
-			{
-				// Need to ensure that the connection stays alive even
-				// when there are a lot of SDL events enqueued. If multi-threaded,
-				// another thread should be handling this.
-				gui.updatePeer();
-			}
 			ImGui_ImplSDL2_ProcessEvent(&event);
 			switch (event.type)
 			{
@@ -1635,9 +1464,12 @@ int runApp(Configuration &configuration)
 				}
 				break;
 			case SDL_DROPTEXT: {
-				const size_t size = strlen(event.drop.file);
-				String s(event.drop.file, event.drop.file + size);
-				gui.queryData = tem_unique<QueryText>(gui, std::move(s));
+				if (auto ptr = dynamic_cast<QueryText *>(gui.queryData.get()))
+				{
+					const size_t size = strlen(event.drop.file);
+					String s(event.drop.file, event.drop.file + size);
+					ptr->setText(std::move(s));
+				}
 				SDL_free(event.drop.file);
 			}
 			break;
@@ -1651,9 +1483,14 @@ int runApp(Configuration &configuration)
 				}
 				else
 				{
+					if (gui.queryData == nullptr)
+					{
+						break;
+					}
+					Message::Source source = gui.queryData->getSource();
 					String s(event.drop.file);
-					WorkPool::workPool.addWork([&gui, s = std::move(s)]() {
-						Work::checkFile(gui, s);
+					WorkPool::workPool.addWork([&gui, s = std::move(s), source = std::move(source)]() {
+						Work::checkFile(gui, source, s);
 						return false;
 					});
 				}
@@ -1708,7 +1545,7 @@ int runApp(Configuration &configuration)
 					auto iter = gui.displays.find(*source);
 					if (iter == gui.displays.end())
 					{
-						if (gui.streams.find(*source) == gui.streams.end())
+						if (!gui.hasConnection(*source))
 						{
 							break;
 						}
@@ -1738,7 +1575,7 @@ int runApp(Configuration &configuration)
 					auto frame = unique_ptr<Video::Frame>(framePtr);
 					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
 					auto source = unique_ptr<Message::Source>(sourcePtr);
-					if (gui.streams.find(*source) == gui.streams.end())
+					if (!gui.hasConnection(*source))
 					{
 						break;
 					}
@@ -1791,7 +1628,7 @@ int runApp(Configuration &configuration)
 					gui.configuration.showDisplays = !gui.configuration.showDisplays;
 					break;
 				case SDLK_w:
-					gui.configuration.showStreams = !gui.configuration.showStreams;
+					gui.configuration.showConnections = !gui.configuration.showConnections;
 					break;
 				case SDLK_l:
 					gui.configuration.showLogs = !gui.configuration.showLogs;
@@ -1802,17 +1639,8 @@ int runApp(Configuration &configuration)
 				case SDLK_i:
 					gui.configuration.showStats = !gui.configuration.showStats;
 					break;
-				case SDLK_r:
-					gui.refresh();
-					break;
 				case SDLK_t:
 					gui.configuration.showColors = !gui.configuration.showColors;
-					break;
-				case SDLK_p:
-					if (gui.queryData == nullptr)
-					{
-						gui.queryData = tem_unique<QueryText>(gui);
-					}
 					break;
 				default:
 					break;
@@ -1825,69 +1653,46 @@ int runApp(Configuration &configuration)
 
 		if (gui.dirty)
 		{
-			if (gui.isConnected())
+			// Only keep displays, audios, videos if connection is present
+			for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 			{
-				// Only keep display if owner or subscribed
-				for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
+				if (gui.hasConnection(iter->first))
 				{
-					auto stream = gui.streams.find(iter->first);
-					if (stream == gui.streams.end())
-					{
-						(*logger)(Logger::Trace) << "Removed stream display (" << iter->first
-												 << ") becuase it is missing from the stream list" << std::endl;
-						iter = gui.displays.erase(iter);
-					}
-					else if (stream->first.author != gui.peerInfo.name &&
-							 gui.subscriptions.find(stream->first) == gui.subscriptions.end())
-					{
-						(*logger)(Logger::Trace) << "Removed stream display (" << iter->first
-												 << ") becuase not subscribed nor own stream" << std::endl;
-						iter = gui.displays.erase(iter);
-					}
-					else
-					{
-						++iter;
-					}
+					++iter;
 				}
-				for (auto iter = gui.audio.begin(); iter != gui.audio.end();)
+				else
 				{
-					if (gui.streams.find(iter->first) == gui.streams.end())
-					{
-						iter = gui.audio.erase(iter);
-					}
-					else
-					{
-						++iter;
-					}
-				}
-				for (auto iter = gui.video.begin(); iter != gui.video.end();)
-				{
-					if (!iter->second->isRunning())
-					{
-						iter = gui.video.erase(iter);
-					}
-					else if (gui.streams.find(iter->first) == gui.streams.end())
-					{
-						iter->second->setRunning(false);
-						iter = gui.video.erase(iter);
-					}
-					else
-					{
-						++iter;
-					}
+					(*logger)(Logger::Trace) << "Removed stream display (" << iter->first
+											 << ") becuase it is missing from the stream list" << std::endl;
+					iter = gui.displays.erase(iter);
 				}
 			}
-			else
+			for (auto iter = gui.audio.begin(); iter != gui.audio.end();)
 			{
-				for (auto pair : gui.video)
+				if (gui.hasConnection(iter->first))
 				{
-					pair.second->setRunning(false);
+					++iter;
 				}
-				cleanSwap(gui.video);
-				cleanSwap(gui.displays);
-				cleanSwap(gui.audio);
-				cleanSwap(gui.streams);
-				cleanSwap(gui.subscriptions);
+				else
+				{
+					iter = gui.audio.erase(iter);
+				}
+			}
+			for (auto iter = gui.video.begin(); iter != gui.video.end();)
+			{
+				if (!iter->second->isRunning())
+				{
+					iter = gui.video.erase(iter);
+				}
+				else if (gui.hasConnection(iter->first))
+				{
+					++iter;
+				}
+				else
+				{
+					iter->second->setRunning(false);
+					iter = gui.video.erase(iter);
+				}
 			}
 			gui.dirty = false;
 		}

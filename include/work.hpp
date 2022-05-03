@@ -39,7 +39,7 @@ class WorkPool
 };
 namespace Work
 {
-extern void checkFile(TemStreamGui &, const String &);
+extern void checkFile(TemStreamGui &, const Message::Source &, const String &);
 extern void sendImage(const String &, const Message::Source &);
 extern void loadSurface(const Message::Source &, const ByteList &);
 extern void startRecordingAudio(const Message::Source &, const std::optional<String> &, const float silenceThreshold);

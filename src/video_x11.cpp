@@ -327,8 +327,7 @@ bool Converter::handleWriter(Video::Writer &w)
 #if TEMSTREAM_USE_OPENCV
 	if (first)
 	{
-		if (!TemStreamGui::sendCreateMessage<Message::Video>(video->getSource()) ||
-			!Video::resetVideo(w, video, frameData))
+		if (!Video::resetVideo(w, video, frameData))
 		{
 			return false;
 		}
