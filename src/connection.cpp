@@ -3,7 +3,7 @@
 namespace TemStream
 {
 Connection::Connection(const Address &address, unique_ptr<Socket> s)
-	: bytes(MB(1)), packets(), nextMessageSize(std::nullopt), info(), address(address), mSocket(std::move(s)),
+	: bytes(MB(1)), packets(), nextMessageSize(std::nullopt), address(address), mSocket(std::move(s)),
 	  maxMessageSize(MB(1))
 {
 }

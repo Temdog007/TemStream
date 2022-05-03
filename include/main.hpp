@@ -248,11 +248,7 @@ template <typename T> void cleanSwap(T &t)
 
 #include "addrinfo.hpp"
 
-#include "peerInformation.hpp"
-
 #include "message_source.hpp"
-
-#include "stream.hpp"
 
 #include "message.hpp"
 #include "socket.hpp"

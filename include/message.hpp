@@ -36,21 +36,48 @@ struct Header
 using Text = String;
 using UsernameAndPassword = std::pair<String, String>;
 using Credentials = std::variant<String, UsernameAndPassword>;
-struct VerifyLogin
+struct PeerInformation
 {
-	PeerInformation info;
-	VerifyLogin &swap(VerifyLogin &login)
+	String name;
+	bool writeAccess;
+	PeerInformation &swap(PeerInformation &login)
 	{
-		std::swap(info, login.info);
+		std::swap(name, login.name);
+		std::swap(writeAccess, login.writeAccess);
 		return *this;
 	}
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(info);
+		ar(name, writeAccess);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(info);
+		ar(name, writeAccess);
+	}
+
+	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
+	{
+		os << info.name << " (Write Access: " << (info.writeAccess ? "Yes" : "No") << ")";
+		return os;
+	}
+};
+struct VerifyLogin
+{
+	String serverName;
+	PeerInformation peerInformation;
+	VerifyLogin &swap(VerifyLogin &login)
+	{
+		std::swap(serverName, login.serverName);
+		peerInformation.swap(login.peerInformation);
+		return *this;
+	}
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(serverName, peerInformation);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(serverName, peerInformation);
 	}
 };
 using LargeFile = std::variant<std::monostate, uint64_t, ByteList>;
@@ -94,42 +121,21 @@ struct Audio
 		ar(bytes);
 	}
 };
-struct StreamUpdate
+EMPTY_MESSAGE(RequestPeers);
+struct PeerList
 {
-	Source source;
-	enum
-	{
-		Create,
-		Delete,
-		Subscribe,
-		Unsubscribe
-	} action;
-	uint32_t type;
-
+	StringList peers;
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(source, action, type);
+		ar(peers);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(source, action, type);
-	}
-
-	friend std::ostream &operator<<(std::ostream &os, const StreamUpdate &su)
-	{
-		os << su.source << "; Action: " << su.action << "; Type: " << su.type;
-		return os;
+		ar(peers);
 	}
 };
-EMPTY_MESSAGE(GetSubscriptions);
-using Subscriptions = Set<Message::Source>;
-EMPTY_MESSAGE(RequestPeers);
-using PeerInformationSet = Set<PeerInformation>;
-EMPTY_MESSAGE(GetStreams);
-using Streams = Map<Message::Source, Stream>;
 using Payload =
-	std::variant<std::monostate, Text, Credentials, VerifyLogin, Image, Video, Audio, PeerInformation, RequestPeers,
-				 PeerInformationSet, StreamUpdate, GetStreams, Streams, GetSubscriptions, Subscriptions>;
+	std::variant<std::monostate, Text, Credentials, VerifyLogin, Image, Video, Audio, RequestPeers, PeerList>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
@@ -139,29 +145,22 @@ using Payload =
 	RVAL operator()(Message::Image &);                                                                                 \
 	RVAL operator()(Message::Audio &);                                                                                 \
 	RVAL operator()(Message::Video &);                                                                                 \
-	RVAL operator()(PeerInformation &);                                                                                \
 	RVAL operator()(Message::RequestPeers &);                                                                          \
-	RVAL operator()(Message::PeerInformationSet &);                                                                    \
-	RVAL operator()(Message::StreamUpdate &);                                                                          \
-	RVAL operator()(Message::GetStreams &);                                                                            \
-	RVAL operator()(Message::Streams &);                                                                               \
-	RVAL operator()(Message::GetSubscriptions &);                                                                      \
-	RVAL operator()(Message::Subscriptions &)
+	RVAL operator()(Message::PeerList &)
 
 struct Packet
 {
 	Payload payload;
 	Source source;
-	StringList trail;
 
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(payload, source, trail);
+		ar(payload, source);
 	}
 
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(payload, source, trail);
+		ar(payload, source);
 	}
 };
 template <typename Iterator> static ByteList getByteChunk(Iterator &start, Iterator end)

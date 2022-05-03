@@ -287,8 +287,9 @@
 
 ### May 2, 2022
 - [x] Ensure streams are deleted if author disconnects (ensure disconnection is always detected. Might be a local host issue)
-- [ ] Test with multiple servers
-- [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
+- [ ] Make each stream its own process
+- [ ] Add links stream
+- [ ] Add stream list stream
 
 ### May 3, 2022
 - [ ] Make server write all messages to hard disk when recording

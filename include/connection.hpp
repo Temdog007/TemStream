@@ -12,7 +12,6 @@ class Connection
 	std::optional<uint32_t> nextMessageSize;
 
   protected:
-	PeerInformation info;
 	const Address address;
 	unique_ptr<Socket> mSocket;
 	size_t maxMessageSize;
@@ -22,11 +21,6 @@ class Connection
 	Connection(const Connection &) = delete;
 	Connection(Connection &&) = delete;
 	virtual ~Connection();
-
-	const PeerInformation &getInfo() const
-	{
-		return info;
-	}
 
 	const Address &getAddress() const
 	{
@@ -44,11 +38,6 @@ class Connection
 	}
 
 	bool readAndHandle(const int, const bool base64 = TEMSTREAM_USE_BASE64);
-
-	bool isServer() const
-	{
-		return info.isServer;
-	}
 };
 
 } // namespace TemStream

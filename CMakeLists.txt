@@ -102,7 +102,6 @@ set(SOURCES
     src/main.cpp
     src/memoryStream.cpp 
     src/misc.cpp
-    src/stream.cpp
     src/socket.cpp
     src/time.cpp
   )

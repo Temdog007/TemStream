@@ -9,39 +9,22 @@ class ServerConnection : public Connection
 	friend int runApp(Configuration &configuration);
 
   private:
-	Message::Subscriptions subscriptions;
-	bool stayConnected;
-	bool informationAcquired;
-
 	static std::atomic_int32_t runningThreads;
-	static Message::Streams streams;
 	static Configuration configuration;
 	static Mutex peersMutex;
-	static List<std::weak_ptr<ServerConnection>> peers;
-	static Message::PeerInformationSet peersFromOtherServers;
+	static LinkedList<std::weak_ptr<ServerConnection>> peers;
 
-	enum Target
-	{
-		Client = 1 << 0,
-		Server = 1 << 1,
-		Both = Client | Server
-	};
+	static void sendToPeers(Message::Packet &&);
 
-	static bool sendToPeers(Message::Packet &&, const Target t = Target::Both, const bool checkSubscription = true);
-
-	static bool peerExists(const PeerInformation &);
+	static bool peerExists(const String &);
 
 	static size_t totalPeers();
 
-	static size_t totalStreams();
+	static StringList getPeers();
 
-	static std::optional<Stream> getStream(const Message::Source &);
+	static std::optional<Message::PeerInformation> login(const Message::Credentials &);
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
-
-	static Message::PeerInformationSet getPeers();
-
-	static std::optional<PeerInformation> getPeerFromCredentials(Message::Credentials &&);
 
 	shared_ptr<ServerConnection> getPointer() const;
 
@@ -61,11 +44,9 @@ class ServerConnection : public Connection
 		CredentialHandler(VerifyToken, VerifyUsernameAndPassword);
 		~CredentialHandler();
 
-		std::optional<PeerInformation> operator()(String &&);
-		std::optional<PeerInformation> operator()(Message::UsernameAndPassword &&);
+		std::optional<Message::PeerInformation> operator()(const String &);
+		std::optional<Message::PeerInformation> operator()(const Message::UsernameAndPassword &);
 	};
-
-	static bool sendStreamsToClients();
 
 	class MessageHandler
 	{
@@ -73,13 +54,11 @@ class ServerConnection : public Connection
 		ServerConnection &connection;
 		Message::Packet packet;
 
-		bool processCurrentMessage(const Target t = Target::Both, const bool checkSubscription = true);
-
-		bool sendSubscriptionsToClient() const;
+		bool processCurrentMessage();
 
 		bool savePayloadIfNedded(bool append = false) const;
 
-		bool sendPayloadForStream(const Message::Source &);
+		bool sendStoredPayload();
 
 		static void sendImageBytes(shared_ptr<ServerConnection>, Message::Source &&, String &&filename);
 
@@ -107,13 +86,21 @@ class ServerConnection : public Connection
 		void operator()(uint64_t);
 	};
 
+	Message::PeerInformation information;
+	bool stayConnected;
+
   public:
 	ServerConnection(const Address &, unique_ptr<Socket>);
-	virtual ~ServerConnection();
+	ServerConnection(const ServerConnection &) = delete;
+	ServerConnection(ServerConnection &&) = delete;
+	~ServerConnection();
 
-	bool gotInfo() const
+	Message::Source getSource() const;
+
+	template <const size_t N> static void getFilename(std::array<char, N> &arr)
 	{
-		return informationAcquired;
+		snprintf(arr.data(), arr.size(), "%s_%u_%" PRId64 ".tsd", configuration.name.c_str(), configuration.streamType,
+				 configuration.startTime);
 	}
 };
 } // namespace TemStream
