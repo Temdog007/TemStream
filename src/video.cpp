@@ -251,7 +251,7 @@ void Video::Frame::resizeTo(const uint32_t w, const uint32_t h)
 	{
 		cv::Mat m(height + height / 2U, width, CV_8UC1, bytes.data());
 		cv::resize(m, output, cv::Size(), (double)w / (double)width, (double)h / (double)height,
-				   cv::InterpolationFlags::INTER_CUBIC);
+				   cv::InterpolationFlags::INTER_AREA);
 	}
 	bytes = ByteList(output.data, output.total() * output.elemSize());
 #else

@@ -369,11 +369,6 @@ bool Converter::handleWriter(Video::Writer &w)
 					continue;
 				}
 				cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
-				{
-					cv::Mat dst;
-					cv::cvtColor(image, dst, cv::COLOR_BGRA2BGR);
-					image = std::move(dst);
-				}
 				cv::Mat output;
 				if (frameData.scale == 100)
 				{
@@ -382,11 +377,15 @@ bool Converter::handleWriter(Video::Writer &w)
 				else
 				{
 					const double scale = frameData.scale / 100.0;
-					cv::resize(image, output, cv::Size(), scale, scale, cv::InterpolationFlags::INTER_CUBIC);
+					cv::resize(image, output, cv::Size(), scale, scale, cv::InterpolationFlags::INTER_AREA);
+				}
+				{
+					cv::Mat dst;
+					cv::cvtColor(output, dst, cv::COLOR_BGRA2BGR);
+					output = std::move(dst);
 				}
 				*w.writer << output;
 				++w.framesWritten;
-				// (*logger)(Logger::Trace) << "JPEG size: " << jpegBytes.size() << std::endl;
 			}
 
 			if (w.framesWritten < frameData.fps * (*frameData.delay))

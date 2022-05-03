@@ -65,6 +65,8 @@ class ServerConnection : public Connection
 		std::optional<PeerInformation> operator()(Message::UsernameAndPassword &&);
 	};
 
+	static bool sendStreamsToClients();
+
 	class MessageHandler
 	{
 	  private:
@@ -74,8 +76,6 @@ class ServerConnection : public Connection
 		bool processCurrentMessage(const Target t = Target::Both, const bool checkSubscription = true);
 
 		bool sendSubscriptionsToClient() const;
-
-		bool sendStreamsToClients() const;
 
 		bool savePayloadIfNedded(bool append = false) const;
 

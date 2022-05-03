@@ -177,6 +177,7 @@ void ServerConnection::handleInput()
 			}
 		}
 	}
+	ServerConnection::sendStreamsToClients();
 }
 void ServerConnection::handleOutput()
 {
@@ -647,14 +648,13 @@ bool ServerConnection::MessageHandler::operator()(Message::Streams &streams)
 	ServerConnection::streams.insert(streams.begin(), streams.end());
 	return sendStreamsToClients();
 }
-bool ServerConnection::MessageHandler::sendStreamsToClients() const
+bool ServerConnection::sendStreamsToClients()
 {
 	LOCK(peersMutex);
 	Message::Packet packet;
 	packet.source.author = ServerConnection::configuration.name;
 	packet.payload.emplace<Message::Streams>(ServerConnection::streams);
-	(*logger)(Logger::Trace) << "Sending " << ServerConnection::streams.size()
-							 << " streams to peers: " << connection.getInfo() << std::endl;
+	(*logger)(Logger::Trace) << "Sending " << ServerConnection::streams.size() << " streams to peers" << std::endl;
 	return ServerConnection::sendToPeers(std::move(packet), Target::Client, false);
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetSubscriptions &)

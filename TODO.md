@@ -285,24 +285,24 @@
 - [x] Make OpenCV and SDL_Image use the same version of libjpeg9
 - [x] Add header to all packets sent
 
-### May 1, 2022
-- [ ] Ensure streams are deleted if author disconnects (ensure disconnection is always detected. Might be a local host issue)
+### May 2, 2022
+- [x] Ensure streams are deleted if author disconnects (ensure disconnection is always detected. Might be a local host issue)
 - [ ] Test with multiple servers
 - [ ] Have server send list of servers back to client. Allow client to select a new server to connect to 
 
-### May 2, 2022
+### May 3, 2022
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time stamp
 
-### May 3, 2022
+### May 4, 2022
 - [ ] Validate stream names/client names
 - [ ] Create layout message that applies to user's streams
 - [ ] Allow layout message to be saved/loaded
 - [ ] Add configuration for imgui style and fonts
 
-### May 4, 2022
+### May 5, 2022
 - [ ] Add comments to code
 - [ ] Implement SSL socket
 - [ ] Implement web socket
@@ -321,4 +321,3 @@
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
 - [ ] Fix loading tga files
-- [ ] Make refresh button for clients, streams, servers, etc (this shouldn't be necessary. Server always updates clients when needed)
