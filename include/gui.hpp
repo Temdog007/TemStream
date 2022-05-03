@@ -96,7 +96,7 @@ class TemStreamGui
 	void forEachConnection(const std::function<void(ClientConnection &)> &);
 	void removeConnection(const Message::Source &);
 
-	static bool handleClientConnection(ClientConnection &);
+	bool handleClientConnection(ClientConnection &);
 
 	struct MessageHandler
 	{

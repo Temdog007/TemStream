@@ -202,11 +202,11 @@ bool AudioSource::isRecording() const
 		return false;
 	}
 }
-bool AudioSource::encodeAndSendAudio(ClientConnection &peer)
+void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 {
 	if (!isRecording())
 	{
-		return true;
+		return;
 	}
 
 	ByteList outgoing;
@@ -258,7 +258,6 @@ bool AudioSource::encodeAndSendAudio(ClientConnection &peer)
 		Lock lock(id);
 		storedAudio = outgoing + storedAudio;
 	}
-	return true;
 }
 constexpr int AudioSource::closestValidFrameCount(const int frequency, const int frames)
 {

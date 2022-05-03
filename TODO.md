@@ -290,14 +290,16 @@
 - [x] Make each stream its own process
 - [x] Add links stream
 - [x] Fix Image/text not being sent on connect
+- [x] Fix audio streaming
 
 ### May 3, 2022
-- [ ] Fix audio streaming
 - [ ] Retest streaming on laptop
+- [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
+- [ ] Add chat stream
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range
-- [ ] Add message to get recorded messages at time stamp
+- [ ] Add message to get recorded messages at time interval
 
 ### May 4, 2022
 - [ ] Add a way to parse custom authentication

@@ -79,7 +79,7 @@ class AudioSource
 
 	void enqueueAudio(const ByteList &);
 
-	bool encodeAndSendAudio(ClientConnection &);
+	void encodeAndSendAudio(ClientConnection &);
 
 	Type getType() const
 	{

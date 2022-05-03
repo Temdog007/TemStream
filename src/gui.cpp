@@ -333,6 +333,22 @@ bool TemStreamGui::init()
 		return true;
 	});
 
+	WorkPool::workPool.addWork([this]() {
+		for (auto iter = audio.begin(); iter != audio.end();)
+		{
+			if (auto con = this->getConnection(iter->first))
+			{
+				iter->second->encodeAndSendAudio(*con);
+				++iter;
+			}
+			else
+			{
+				iter = audio.erase(iter);
+			}
+		}
+		return true;
+	});
+
 	return true;
 }
 
@@ -676,7 +692,7 @@ void TemStreamGui::draw()
 
 	if (configuration.showAudio)
 	{
-		if (ImGui::Begin("Audio", &configuration.showAudio, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("TemStream Audio", &configuration.showAudio, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			ImGui::SliderInt("Default Volume", &configuration.defaultVolume, 0, 100);
 			ImGui::SliderInt("Default Silence Threshold", &configuration.defaultSilenceThreshold, 0, 100);
@@ -778,7 +794,7 @@ void TemStreamGui::draw()
 	configuration.showVideo &= !video.empty();
 	if (configuration.showVideo)
 	{
-		if (ImGui::Begin("Video", &configuration.showVideo, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("TemStream Video", &configuration.showVideo, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			if (ImGui::BeginTable("Video", 2, ImGuiTableFlags_Borders))
 			{
@@ -832,7 +848,7 @@ void TemStreamGui::draw()
 	if (configuration.showFont)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Font", &configuration.showFont))
+		if (ImGui::Begin("TemStream Font", &configuration.showFont))
 		{
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t, Allocator<char32_t>, Allocator<char>> cvt;
@@ -876,7 +892,7 @@ void TemStreamGui::draw()
 	configuration.showDisplays &= !displays.empty();
 	if (configuration.showDisplays)
 	{
-		if (ImGui::Begin("Displays", &configuration.showDisplays, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("TemStream Displays", &configuration.showDisplays, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			for (auto &pair : displays)
 			{
@@ -892,7 +908,7 @@ void TemStreamGui::draw()
 	if (configuration.showConnections)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Connections", &configuration.showConnections))
+		if (ImGui::Begin("TemStream Connections", &configuration.showConnections))
 		{
 			if (ImGui::BeginTable("Streams", 4, ImGuiTableFlags_Borders))
 			{
@@ -962,7 +978,7 @@ void TemStreamGui::draw()
 	if (configuration.showLogs)
 	{
 		SetWindowMinSize(window);
-		if (ImGui::Begin("Logs", &configuration.showLogs))
+		if (ImGui::Begin("TemStream Logs", &configuration.showLogs))
 		{
 			ImGui::Checkbox("Auto Scroll", &configuration.autoScrollLogs);
 			ImGui::InputInt("Max Logs", &configuration.maxLogs);
@@ -1023,7 +1039,7 @@ void TemStreamGui::draw()
 
 	if (configuration.showStats)
 	{
-		if (ImGui::Begin("Stats", &configuration.showStats, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("TemStream Stats", &configuration.showStats, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			SDL_version v;
 			SDL_GetVersion(&v);
