@@ -12,6 +12,12 @@ template <class S> struct BaseAddress
 	BaseAddress() : hostname("localhost"), port(10000)
 	{
 	}
+	template <class U> BaseAddress(const BaseAddress<U> &a) : hostname(a.hostname), port(a.port)
+	{
+	}
+	template <class U> BaseAddress(BaseAddress<U> &&a) : hostname(std::move(a.hostname)), port(a.port)
+	{
+	}
 	BaseAddress(const char *hostname, int port) : hostname(hostname), port(port)
 	{
 	}

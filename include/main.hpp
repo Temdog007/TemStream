@@ -52,11 +52,8 @@ namespace fs = std::filesystem;
 #include <cereal/types/variant.hpp>
 #include <cereal/types/vector.hpp>
 
-#if TEMSTREAM_CLIENT_JSON_CONFIG
-#include <cereal/archives/json.hpp>
-#else
 #include <cereal/archives/binary.hpp>
-#endif
+#include <cereal/archives/json.hpp>
 #include <cereal/archives/portable_binary.hpp>
 
 #if TEMSTREAM_USE_OPENCV

@@ -22,7 +22,9 @@ class ServerConnection : public Connection
 
 	static StringList getPeers();
 
-	static std::optional<Message::PeerInformation> login(const Message::Credentials &);
+	static void sendLinks(const String &);
+
+	static std::optional<PeerInformation> login(const Message::Credentials &);
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
 
@@ -31,8 +33,8 @@ class ServerConnection : public Connection
 	void handleInput();
 	void handleOutput();
 
-	typedef bool (*VerifyToken)(const char *, char *, bool *);
-	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, bool *);
+	typedef bool (*VerifyToken)(const char *, char *, uint8_t *);
+	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, uint8_t *);
 
 	class CredentialHandler
 	{
@@ -44,8 +46,8 @@ class ServerConnection : public Connection
 		CredentialHandler(VerifyToken, VerifyUsernameAndPassword);
 		~CredentialHandler();
 
-		std::optional<Message::PeerInformation> operator()(const String &);
-		std::optional<Message::PeerInformation> operator()(const Message::UsernameAndPassword &);
+		std::optional<PeerInformation> operator()(const String &);
+		std::optional<PeerInformation> operator()(const Message::UsernameAndPassword &);
 	};
 
 	class MessageHandler
@@ -86,16 +88,19 @@ class ServerConnection : public Connection
 		void operator()(uint64_t);
 	};
 
-	Message::PeerInformation information;
+	PeerInformation information;
+	const TimePoint startingTime;
 	bool stayConnected;
 
   public:
-	ServerConnection(const Address &, unique_ptr<Socket>);
+	ServerConnection(Address &&, unique_ptr<Socket>);
 	ServerConnection(const ServerConnection &) = delete;
 	ServerConnection(ServerConnection &&) = delete;
 	~ServerConnection();
 
 	Message::Source getSource() const;
+
+	bool isAuthenticated() const;
 
 	template <const size_t N> static void getFilename(std::array<char, N> &arr)
 	{

@@ -96,6 +96,7 @@ yarn-error.log*
 *.*_tcp
 *.*_udp
 *.png
+*.json
 *.temstream
 *.temstream_replay
 
@@ -108,3 +109,5 @@ release/
 python/
 
 font_compressor
+
+!json/*.json

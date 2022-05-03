@@ -2,36 +2,10 @@
 
 namespace TemStream
 {
-const char *ServerTypeStrings[ServerType::Count];
-
-#define WRITE_SERVER_TYPE(X) ServerTypeStrings[ServerType::X] = #X
-
-bool validServerType(const ServerType type)
-{
-	return ServerType::Unknown < type && type < ServerType::Count;
-}
-std::ostream &operator<<(std::ostream &os, const ServerType type)
-{
-	if (validServerType(type))
-	{
-		os << ServerTypeStrings[type];
-	}
-	else
-	{
-		os << "Unknown";
-	}
-	return os;
-}
-
 Configuration::Configuration()
 	: address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), maxClients(UINT32_MAX),
-	  maxMessageSize(MB(1)), serverType(ServerType::Unknown), record(false)
+	  maxMessageSize(MB(1)), serverType(ServerType::UnknownServerType), record(false)
 {
-	WRITE_SERVER_TYPE(Link);
-	WRITE_SERVER_TYPE(Text);
-	WRITE_SERVER_TYPE(Image);
-	WRITE_SERVER_TYPE(Audio);
-	WRITE_SERVER_TYPE(Video);
 }
 Configuration::~Configuration()
 {

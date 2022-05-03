@@ -54,7 +54,7 @@ class TemStreamGui
 	Map<Message::Source, shared_ptr<VideoSource>> video;
 	Map<Message::Source, unique_ptr<VideoSource::EncoderDecoder>> decodingMap;
 	Map<Message::Source, ByteList> pendingVideo;
-	Map<Message::Source, std::weak_ptr<ClientConnection>> connections;
+	Map<Message::Source, shared_ptr<ClientConnection>> connections;
 	Mutex connectionMutex;
 	ConcurrentQueue<VideoPacket> videoPackets;
 	unique_ptr<IQuery> queryData;
@@ -89,7 +89,7 @@ class TemStreamGui
 	void decodeVideoPackets();
 	void draw();
 
-	void addConnection(const shared_ptr<ClientConnection> &);
+	bool addConnection(const shared_ptr<ClientConnection> &);
 	shared_ptr<ClientConnection> getConnection(const Message::Source &);
 	size_t getConnectionCount();
 	bool hasConnection(const Message::Source &);

@@ -2,6 +2,59 @@
 
 namespace TemStream
 {
+bool validServerType(const ServerType type)
+{
+	return ServerType::UnknownServerType < type && type < ServerType::ServerTypeCount;
+}
+const char *ServerTypeStrings[ServerType::ServerTypeCount];
+std::ostream &operator<<(std::ostream &os, const ServerType type)
+{
+	static bool first = true;
+	if (first)
+	{
+		WRITE_STRING_TO_STRING_ARRAY(ServerType, Link);
+		WRITE_STRING_TO_STRING_ARRAY(ServerType, Text);
+		WRITE_STRING_TO_STRING_ARRAY(ServerType, Image);
+		WRITE_STRING_TO_STRING_ARRAY(ServerType, Audio);
+		WRITE_STRING_TO_STRING_ARRAY(ServerType, Video);
+		first = false;
+	}
+	if (validServerType(type))
+	{
+		os << ServerTypeStrings[type];
+	}
+	else
+	{
+		os << "Unknown";
+	}
+	return os;
+}
+
+const char *PeerTypeStrings[PeerType::PeerTypeCount];
+bool validPeerType(const PeerType type)
+{
+	return PeerType::InvalidPeerType < type && type < PeerType::PeerTypeCount;
+}
+std::ostream &operator<<(std::ostream &os, const PeerType type)
+{
+	static bool first = true;
+	if (first)
+	{
+		WRITE_STRING_TO_STRING_ARRAY(PeerType, Consumer);
+		WRITE_STRING_TO_STRING_ARRAY(PeerType, Producer);
+		WRITE_STRING_TO_STRING_ARRAY(PeerType, Admin);
+		first = false;
+	}
+	if (validPeerType(type))
+	{
+		os << PeerTypeStrings[type];
+	}
+	else
+	{
+		os << "Unknown";
+	}
+	return os;
+}
 namespace Message
 {
 std::ostream &operator<<(std::ostream &os, const Header &header)

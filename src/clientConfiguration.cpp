@@ -3,7 +3,7 @@
 namespace TemStream
 {
 Configuration::Configuration()
-	: colors(), fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(24.f),
+	: colors(), fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(16.f),
 	  defaultVolume(100), defaultSilenceThreshold(0), fontIndex(1), maxLogs(10000), showLogs(false),
 	  showConnections(true), showDisplays(false), showAudio(false), showFont(false), showStats(false), showColors(false)
 {

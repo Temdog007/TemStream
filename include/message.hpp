@@ -4,15 +4,69 @@
 
 namespace TemStream
 {
+#define WRITE_STRING_TO_STRING_ARRAY(Name, X) Name##Strings[Name::X] = #X
+
 enum ServerType : uint8_t
 {
-	Unknown = 0,
+	UnknownServerType = 0u,
 	Link,
 	Text,
 	Image,
 	Audio,
 	Video,
-	Count
+	ServerTypeCount
+};
+extern const char *ServerTypeStrings[ServerType::ServerTypeCount];
+extern std::ostream &operator<<(std::ostream &, ServerType);
+extern bool validServerType(const ServerType);
+
+enum PeerType : uint8_t
+{
+	InvalidPeerType = 0u,
+	Consumer,
+	Producer,
+	Admin,
+	PeerTypeCount
+};
+extern const char *PeerTypeStrings[PeerType::PeerTypeCount];
+extern std::ostream &operator<<(std::ostream &, const PeerType);
+extern bool validPeerType(PeerType);
+struct PeerInformation
+{
+	String name;
+	PeerType type;
+	PeerInformation &swap(PeerInformation &login)
+	{
+		std::swap(name, login.name);
+		std::swap(type, login.type);
+		return *this;
+	}
+
+	constexpr bool hasWriteAccess() const
+	{
+		switch (type)
+		{
+		case PeerType::Consumer:
+		case PeerType::Admin:
+			return true;
+		default:
+			return false;
+		}
+	}
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(name, type);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(name, type);
+	}
+
+	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
+	{
+		os << info.name << " (" << info.type << ")";
+		return os;
+	}
 };
 namespace Message
 {
@@ -46,31 +100,6 @@ struct Header
 using Text = String;
 using UsernameAndPassword = std::pair<String, String>;
 using Credentials = std::variant<String, UsernameAndPassword>;
-struct PeerInformation
-{
-	String name;
-	bool writeAccess;
-	PeerInformation &swap(PeerInformation &login)
-	{
-		std::swap(name, login.name);
-		std::swap(writeAccess, login.writeAccess);
-		return *this;
-	}
-	template <class Archive> void save(Archive &ar) const
-	{
-		ar(name, writeAccess);
-	}
-	template <class Archive> void load(Archive &ar)
-	{
-		ar(name, writeAccess);
-	}
-
-	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
-	{
-		os << info.name << " (Write Access: " << (info.writeAccess ? "Yes" : "No") << ")";
-		return os;
-	}
-};
 struct VerifyLogin
 {
 	String serverName;
@@ -104,6 +133,19 @@ template <class S> struct BaseServerLink
 	BaseAddress<S> address;
 	S name;
 	ServerType type;
+	BaseServerLink() : address(), name(), type()
+	{
+	}
+	template <class U> BaseServerLink(const BaseServerLink<U> &a) : address(a.address), name(a.name), type(a.type)
+	{
+	}
+	template <class U>
+	BaseServerLink(BaseServerLink<U> &&a) : address(std::move(a.address)), name(std::move(a.name)), type(a.type)
+	{
+	}
+	~BaseServerLink()
+	{
+	}
 	template <class Archive> void save(Archive &ar) const
 	{
 		ar(address, name, type);
@@ -239,4 +281,20 @@ static void prepareLargeBytes(Iterator start, Iterator end, const uint64_t size,
 extern void prepareLargeBytes(std::ifstream &, const std::function<void(LargeFile &&)> &);
 extern void prepareLargeBytes(const ByteList &, const std::function<void(LargeFile &&)> &);
 } // namespace Message
+constexpr size_t ServerTypeToIndex(const ServerType t)
+{
+	switch (t)
+	{
+	case ServerType::Text:
+		return variant_index<Message::Payload, Message::Text>();
+	case ServerType::Audio:
+		return variant_index<Message::Payload, Message::Audio>();
+	case ServerType::Image:
+		return variant_index<Message::Payload, Message::Image>();
+	case ServerType::Video:
+		return variant_index<Message::Payload, Message::Video>();
+	default:
+		throw std::runtime_error("Invalid server type");
+	}
+}
 } // namespace TemStream

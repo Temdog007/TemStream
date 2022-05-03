@@ -35,7 +35,7 @@ void Socket::send(const uint8_t *data, const size_t size, const bool convertToBa
 		outgoing.append(data, size);
 	}
 }
-void Socket::sendPacket(const Message::Packet &packet)
+void Socket::sendPacket(const Message::Packet &packet, const bool sendImmediately)
 {
 	try
 	{
@@ -45,6 +45,10 @@ void Socket::sendPacket(const Message::Packet &packet)
 			in(packet);
 		}
 		send(m->getData(), m->getSize());
+		if (sendImmediately)
+		{
+			flush();
+		}
 	}
 	catch (const std::bad_alloc &)
 	{

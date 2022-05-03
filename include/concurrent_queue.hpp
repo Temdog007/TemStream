@@ -109,7 +109,7 @@ template <typename T> class ConcurrentQueue
 		return r;
 	}
 
-	size_t size() const
+	size_t size()
 	{
 		auto lck = lock();
 		return queue.size();

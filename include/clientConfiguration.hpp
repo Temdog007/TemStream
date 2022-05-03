@@ -10,10 +10,9 @@
 	archive(cereal::make_nvp("customColors", cc), cereal::make_nvp("fontFiles", ff),                                   \
 			cereal::make_nvp("address", address), CEREAL_NVP(maxLogs), CEREAL_NVP(fontSize),                           \
 			CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold), CEREAL_NVP(fontIndex),                     \
-			CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showCredentials),                             \
-			CEREAL_NVP(showConnections), CEREAL_NVP(showDisplays), CEREAL_NVP(showAudio), CEREAL_NVP(showVideo),       \
-			CEREAL_NVP(showFont), CEREAL_NVP(showStats), CEREAL_NVP(showColors), CEREAL_NVP(showLogsFilter),           \
-			CEREAL_NVP(colors))
+			CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showConnections), CEREAL_NVP(showDisplays),   \
+			CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats),                 \
+			CEREAL_NVP(showColors), CEREAL_NVP(showLogsFilter), CEREAL_NVP(colors))
 namespace TemStream
 {
 class ColorList
@@ -61,7 +60,6 @@ struct Configuration
 	bool showLogs;
 	bool autoScrollLogs;
 	bool showConnections;
-	bool showCredentials;
 	bool showDisplays;
 	bool showAudio;
 	bool showVideo;
@@ -99,13 +97,46 @@ struct Configuration
 
 	template <class Archive> void save(Archive &archive) const
 	{
-		// Don't save credentials
+		archive(credentials.index());
+		struct Foo
+		{
+			Archive &archive;
+			void operator()(const String &token)
+			{
+				// JSON requires STL string
+				std::string s(token);
+				archive(s);
+			}
+			void operator()(const Message::UsernameAndPassword &uap)
+			{
+				// JSON requires STL string
+				// Don't save password
+				std::string u(uap.first);
+				archive(u);
+			}
+		};
+		std::visit(Foo{archive}, credentials);
 		CONFIGURATION_ARCHIVE(archive);
 	}
 
 	template <class Archive> void load(Archive &archive)
 	{
-		// Don't load credentials
+		// Don't load password
+		uint32_t index = 0;
+		archive(index);
+		std::string s;
+		archive(s);
+		switch (index)
+		{
+		case variant_index<Message::Credentials, String>():
+			credentials.emplace<String>(std::move(s));
+			break;
+		case variant_index<Message::Credentials, Message::UsernameAndPassword>():
+			credentials.emplace<Message::UsernameAndPassword>(std::move(s), "");
+			break;
+		default:
+			break;
+		}
 		CONFIGURATION_ARCHIVE(archive);
 		fromCustomColors(std::move(cc));
 		fromFontFiles(std::move(ff));

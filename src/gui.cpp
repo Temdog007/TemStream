@@ -353,21 +353,32 @@ void TemStreamGui::connect(const Address &address)
 		{
 			Message::Packet packet;
 			packet.payload.emplace<Message::Credentials>(configuration.credentials);
-			(*clientConnection)->sendPacket(packet);
+			(*clientConnection)->sendPacket(packet, true);
 		}
 		// Wait for response to get server type
-		if (!clientConnection->readAndHandle(3000))
+		auto &packets = clientConnection->getPackets();
+		while (true)
 		{
-			(*logger)(Logger::Error) << "Authentication failure for server: " << address << std::endl;
-			return false;
+			if (!clientConnection->readAndHandle(3000))
+			{
+				(*logger)(Logger::Error) << "Authentication failure for server: " << address << "; No repsonse"
+										 << std::endl;
+				return false;
+			}
+			if (packets.size() > 0)
+			{
+				break;
+			}
 		}
 
 		using namespace std::chrono_literals;
 		{
-			auto packet = clientConnection->getPackets().pop(0s);
+			auto packet = packets.pop(1s);
 			if (!packet)
 			{
-				(*logger)(Logger::Error) << "Authentication failure for server: " << address << std::endl;
+				// This shouldn't ever happen
+				(*logger)(Logger::Error) << "Authentication failure for server: " << address
+										 << "; Internal error: " << std::endl;
 				return false;
 			}
 
@@ -377,28 +388,40 @@ void TemStreamGui::connect(const Address &address)
 			}
 			else
 			{
-				(*logger)(Logger::Error) << "Authentication failure for server: " << address << std::endl;
+				(*logger)(Logger::Error) << "Authentication failure for server: " << address
+										 << "; Bad message: " << packet->payload.index() << std::endl;
 				return false;
 			}
 		}
 
 		*logger << "Server information: " << clientConnection->getInfo() << std::endl;
-		this->addConnection(clientConnection);
-		WorkPool::workPool.addWork(
-			[clientConnection]() { return TemStreamGui::handleClientConnection(*clientConnection); });
+		if (this->addConnection(clientConnection))
+		{
+			WorkPool::workPool.addWork(
+				[clientConnection]() { return TemStreamGui::handleClientConnection(*clientConnection); });
+		}
 		return false;
 	});
 }
 
 bool TemStreamGui::handleClientConnection(ClientConnection &con)
 {
-	return con.isOpened() && con.readAndHandle(0) && con.flushPackets() && !con->flush();
+	if (con.isOpened() && con.readAndHandle(0) && con.flushPackets() && !con->flush())
+	{
+		return true;
+	}
+	else
+	{
+		con.close();
+		return false;
+	}
 }
 
-void TemStreamGui::addConnection(const shared_ptr<ClientConnection> &connection)
+bool TemStreamGui::addConnection(const shared_ptr<ClientConnection> &connection)
 {
 	LOCK(connectionMutex);
-	connections.try_emplace(connection->getSource(), connection);
+	auto [iter, result] = connections.try_emplace(connection->getSource(), connection);
+	return result;
 }
 
 shared_ptr<ClientConnection> TemStreamGui::getConnection(const Message::Source &source)
@@ -409,7 +432,15 @@ shared_ptr<ClientConnection> TemStreamGui::getConnection(const Message::Source &
 	{
 		return nullptr;
 	}
-	return iter->second.lock();
+	if (iter->second->isOpened())
+	{
+		return iter->second;
+	}
+	else
+	{
+		connections.erase(iter);
+		return nullptr;
+	}
 }
 
 bool TemStreamGui::hasConnection(const Message::Source &source)
@@ -423,14 +454,14 @@ size_t TemStreamGui::getConnectionCount()
 	size_t count = 0;
 	for (auto iter = connections.begin(); iter != connections.end();)
 	{
-		if (iter->second.expired())
-		{
-			iter = connections.erase(iter);
-		}
-		else
+		if (iter->second->isOpened())
 		{
 			++count;
 			++iter;
+		}
+		else
+		{
+			iter = connections.erase(iter);
 		}
 	}
 	return count;
@@ -441,9 +472,9 @@ void TemStreamGui::forEachConnection(const std::function<void(ClientConnection &
 	LOCK(connectionMutex);
 	for (auto iter = connections.begin(); iter != connections.end();)
 	{
-		if (auto ptr = iter->second.lock())
+		if (iter->second->isOpened())
 		{
-			func(*ptr);
+			func(*iter->second);
 			++iter;
 		}
 		else
@@ -532,6 +563,29 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 		}
 		ImGui::Separator();
 
+		if (ImGui::BeginMenu("Credentials"))
+		{
+			static const char *Options[]{"Token", "Username And Password"};
+			int selected = configuration.credentials.index();
+			if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
+			{
+				switch (selected)
+				{
+				case variant_index<Message::Credentials, String>():
+					configuration.credentials.emplace<String>("token12345");
+					break;
+				case variant_index<Message::Credentials, Message::UsernameAndPassword>():
+					configuration.credentials.emplace<Message::UsernameAndPassword>("User", "Password");
+					break;
+				default:
+					break;
+				}
+			}
+			std::visit(RenderCredentials(), configuration.credentials);
+			ImGui::EndMenu();
+		}
+		ImGui::Separator();
+
 		if (ImGui::BeginMenu("Memory"))
 		{
 			static int m = 256;
@@ -581,36 +635,37 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 
 void TemStreamGui::draw()
 {
-	drawMainMenuBar();
-	// const auto size = drawMainMenuBar();
+	const auto size = drawMainMenuBar();
+	const size_t connections = getConnectionCount();
 
-	// if (ImGui::Begin("##afdasy4", nullptr,
-	// 				 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoCollapse |
-	// 					 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings |
-	// 					 ImGuiWindowFlags_NoScrollbar))
-	// {
-	// 	ImColor color;
-	// 	const char *text;
-	// 	const auto &style = ImGui::GetStyle();
-	// 	const auto &bg = style.Colors[ImGuiCol_WindowBg];
-	// 	if (connectedToServer)
-	// 	{
-	// 		color = Colors::GetGreen(colorIsLight(bg));
-	// 		text = "Connected";
-	// 	}
-	// 	else
-	// 	{
-	// 		color = Colors::GetRed(colorIsLight(bg));
-	// 		text = "Disconnected";
-	// 	}
-	// 	const auto textSize = ImGui::CalcTextSize(text);
-	// 	auto draw = ImGui::GetForegroundDrawList();
-	// 	const float x = size.x - (textSize.x + size.x * 0.01f);
-	// 	const float radius = size.y * 0.5f;
-	// 	draw->AddCircleFilled(ImVec2(x - radius, radius), radius, color);
-	// 	draw->AddText(ImVec2(x, 0), color, text);
-	// }
-	// ImGui::End();
+	if (ImGui::Begin("##afdasy4", nullptr,
+					 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoCollapse |
+						 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings |
+						 ImGuiWindowFlags_NoScrollbar))
+	{
+
+		const auto &style = ImGui::GetStyle();
+		const auto &bg = style.Colors[ImGuiCol_WindowBg];
+		char text[KB(1)];
+		snprintf(text, sizeof(text), "Connections: %zu", connections);
+
+		ImColor color;
+		if (connections > 0)
+		{
+			color = Colors::GetGreen(colorIsLight(bg));
+		}
+		else
+		{
+			color = Colors::GetRed(colorIsLight(bg));
+		}
+		const auto textSize = ImGui::CalcTextSize(text);
+		auto draw = ImGui::GetForegroundDrawList();
+		const float x = size.x - (textSize.x + size.x * 0.01f);
+		const float radius = size.y * 0.5f;
+		draw->AddCircleFilled(ImVec2(x - radius, radius), radius, color);
+		draw->AddText(ImVec2(x, 0), color, text);
+	}
+	ImGui::End();
 
 	if (configuration.showAudio)
 	{
@@ -793,29 +848,6 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (ImGui::Begin("Credentials", &configuration.showCredentials,
-					 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
-	{
-		static const char *Options[]{"Token", "Username And Password"};
-		int selected = configuration.credentials.index();
-		if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
-		{
-			switch (selected)
-			{
-			case variant_index<Message::Credentials, String>():
-				configuration.credentials.emplace<String>("token12345");
-				break;
-			case variant_index<Message::Credentials, Message::UsernameAndPassword>():
-				configuration.credentials.emplace<Message::UsernameAndPassword>("User", "Password");
-				break;
-			default:
-				break;
-			}
-		}
-		std::visit(RenderCredentials(), configuration.credentials);
-	}
-	ImGui::End();
-
 	if (queryData != nullptr)
 	{
 		bool opened = true;
@@ -875,7 +907,6 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	configuration.showConnections &= getConnectionCount() != 0;
 	if (configuration.showConnections)
 	{
 		SetWindowMinSize(window);
@@ -905,7 +936,7 @@ void TemStreamGui::draw()
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Upload"))
 					{
-						if (info.peerInformation.writeAccess)
+						if (info.peerInformation.hasWriteAccess())
 						{
 							queryData = getQuery(type, source);
 						}
@@ -925,6 +956,18 @@ void TemStreamGui::draw()
 					ImGui::PopID();
 				});
 				ImGui::EndTable();
+			}
+			if (ImGui::CollapsingHeader("Connect to stream"))
+			{
+				ImGui::InputText("Hostname", &configuration.address.hostname);
+				if (ImGui::InputInt("Port", &configuration.address.port, 1, 100))
+				{
+					configuration.address.port = std::clamp(configuration.address.port, 1, UINT16_MAX);
+				}
+				if (ImGui::Button("Connect"))
+				{
+					connect(configuration.address);
+				}
 			}
 		}
 		ImGui::End();
@@ -1260,7 +1303,7 @@ ServerType TemStreamGui::getSelectedQuery(const IQuery *queryData)
 {
 	if (queryData == nullptr)
 	{
-		return ServerType::Unknown;
+		return ServerType::UnknownServerType;
 	}
 	if (dynamic_cast<const QueryText *>(queryData) != nullptr)
 	{
@@ -1278,7 +1321,7 @@ ServerType TemStreamGui::getSelectedQuery(const IQuery *queryData)
 	{
 		return ServerType::Video;
 	}
-	return ServerType::Unknown;
+	return ServerType::UnknownServerType;
 }
 
 unique_ptr<IQuery> TemStreamGui::getQuery(const ServerType i, const Message::Source &source)

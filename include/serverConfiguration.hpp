@@ -4,8 +4,6 @@
 
 namespace TemStream
 {
-extern const char *ServerTypeStrings[ServerType::Count];
-extern std::ostream &operator<<(std::ostream &, ServerType);
 struct Configuration
 {
 	Address address;

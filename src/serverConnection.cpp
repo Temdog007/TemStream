@@ -30,6 +30,27 @@ int runApp(Configuration &configuration)
 
 	ServerConnection::configuration = configuration;
 
+	if (configuration.serverType == ServerType::Link)
+	{
+		std::thread thread([]() {
+			String filename = ServerConnection::configuration.name;
+			filename += ".json";
+			auto lastWrite = std::filesystem::last_write_time(filename);
+			using namespace std::chrono_literals;
+			while (!appDone)
+			{
+				const auto now = std::filesystem::last_write_time(filename);
+				if (now != lastWrite)
+				{
+					ServerConnection::sendLinks(filename);
+					lastWrite = now;
+				}
+				std::this_thread::sleep_for(1s);
+			}
+		});
+		thread.detach();
+	}
+
 	if (!openSocket(fd, configuration.address, true))
 	{
 		goto end;
@@ -71,8 +92,7 @@ int runApp(Configuration &configuration)
 		{
 			*logger << "New connection: " << str.data() << ':' << port << std::endl;
 
-			Address address(str.data(), port);
-			auto peer = tem_shared<ServerConnection>(address, std::move(s));
+			auto peer = tem_shared<ServerConnection>(Address(str.data(), port), std::move(s));
 			++ServerConnection::runningThreads;
 			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
 			thread.detach();
@@ -83,7 +103,7 @@ int runApp(Configuration &configuration)
 
 end:
 	::close(fd);
-	*logger << "Ending server: " << configuration.name;
+	*logger << "Ending server: " << configuration.name << std::endl;
 	while (ServerConnection::runningThreads > 0)
 	{
 		using namespace std::chrono_literals;
@@ -129,11 +149,16 @@ void ServerConnection::handleInput()
 		}
 	});
 
+	using namespace std::chrono_literals;
 	while (!appDone && stayConnected)
 	{
 		try
 		{
 			if (!readAndHandle(1000))
+			{
+				break;
+			}
+			if (!isAuthenticated() && std::chrono::system_clock::now() - startingTime > 10s)
 			{
 				break;
 			}
@@ -190,8 +215,8 @@ void ServerConnection::sendToPeers(Message::Packet &&packet)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
-			// Don't send packet to peer
-			if ((*ptr).information.name != packet.source.peer)
+			// Don't send packet to peer author or if the peer isn't authenticated
+			if (ptr->information.name != packet.source.peer && ptr->isAuthenticated())
 			{
 				(*ptr)->send(m->getData(), m->getSize());
 			}
@@ -267,12 +292,43 @@ shared_ptr<ServerConnection> ServerConnection::getPointer() const
 	}
 	return nullptr;
 }
-ServerConnection::ServerConnection(const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), stayConnected(true)
+void ServerConnection::sendLinks(const String &filename)
+{
+	try
+	{
+		// Required to use STL containers for JSON serializing
+		std::vector<Message::BaseServerLink<std::string>> temp;
+		{
+			std::ifstream file(filename.c_str());
+			cereal::JSONInputArchive ar(file);
+			ar(temp);
+		}
+		Message::ServerLinks links;
+		auto pair = toMoveIterator(std::move(temp));
+		std::transform(pair.first, pair.second, std::inserter(links, links.begin()),
+					   [](Message::BaseServerLink<std::string> &&s) {
+						   Message::ServerLink link(std::move(s));
+						   return link;
+					   });
+		Message::Packet packet;
+		packet.source.server = ServerConnection::configuration.name;
+		ServerConnection::sendToPeers(std::move(packet));
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << e.what() << std::endl;
+	}
+}
+ServerConnection::ServerConnection(Address &&address, unique_ptr<Socket> s)
+	: Connection(std::move(address), std::move(s)), startingTime(std::chrono::system_clock::now()), stayConnected(true)
 {
 }
 ServerConnection::~ServerConnection()
 {
+}
+bool ServerConnection::isAuthenticated() const
+{
+	return !information.name.empty();
 }
 Message::Source ServerConnection::getSource() const
 {
@@ -290,8 +346,9 @@ ServerConnection::MessageHandler::~MessageHandler()
 }
 bool ServerConnection::MessageHandler::processCurrentMessage()
 {
-	if (packet.payload.index() != configuration.serverType)
+	if (packet.payload.index() != ServerTypeToIndex(configuration.serverType))
 	{
+		(*logger)(Logger::Error) << "Server got invalid message type: " << packet.payload.index() << std::endl;
 		return false;
 	}
 	ServerConnection::sendToPeers(std::move(packet));
@@ -299,8 +356,10 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 }
 bool ServerConnection::MessageHandler::operator()()
 {
-	if (packet.source.server != configuration.name)
+	if (!std::holds_alternative<Message::Credentials>(packet.payload) && packet.source.server != configuration.name)
 	{
+		(*logger)(Logger::Error) << "Server got message with wrong server name: " << packet.payload.index()
+								 << std::endl;
 		return false;
 	}
 	return std::visit(*this, packet.payload);
@@ -331,7 +390,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Audio &)
 	CHECK_INFO(Message::Audio)
 	return processCurrentMessage();
 }
-std::optional<Message::PeerInformation> ServerConnection::login(const Message::Credentials &credentials)
+std::optional<PeerInformation> ServerConnection::login(const Message::Credentials &credentials)
 {
 	// TODO: Load dll to handle credentials
 	return std::visit(CredentialHandler(nullptr, nullptr), std::move(credentials));
@@ -530,15 +589,17 @@ ServerConnection::CredentialHandler::CredentialHandler(VerifyToken verifyToken,
 ServerConnection::CredentialHandler::~CredentialHandler()
 {
 }
-std::optional<Message::PeerInformation> ServerConnection::CredentialHandler::operator()(const String &token)
+std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(const String &token)
 {
-	Message::PeerInformation info;
+	PeerInformation info;
 	if (verifyToken)
 	{
 		char username[KB(1)];
-		if (verifyToken(token.c_str(), username, &info.writeAccess))
+		uint8_t type = info.type;
+		if (verifyToken(token.c_str(), username, &type))
 		{
 			info.name = username;
+			info.type = static_cast<PeerType>(type);
 		}
 		else
 		{
@@ -547,23 +608,24 @@ std::optional<Message::PeerInformation> ServerConnection::CredentialHandler::ope
 	}
 	else
 	{
-		// Default credentials always give peer write access
+		// Default credentials always give admin role
 		// Don't use in production!!!
 		info.name = std::move(token);
-		info.writeAccess = true;
+		info.type = PeerType::Admin;
 	}
 	return info;
 }
-std::optional<Message::PeerInformation> ServerConnection::CredentialHandler::operator()(
-	const Message::UsernameAndPassword &pair)
+std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(const Message::UsernameAndPassword &pair)
 {
-	Message::PeerInformation info;
+	PeerInformation info;
 	if (verifyUsernameAndPassword)
 	{
 		char username[KB(1)];
-		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), username, &info.writeAccess))
+		uint8_t type = info.type;
+		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), username, &type))
 		{
 			info.name = username;
+			info.type = static_cast<PeerType>(type);
 		}
 		else
 		{
@@ -575,7 +637,7 @@ std::optional<Message::PeerInformation> ServerConnection::CredentialHandler::ope
 		// Default credentials always give peer write access
 		// Don't use in production!!!
 		info.name = std::move(pair.first);
-		info.writeAccess = false;
+		info.type = PeerType::Admin;
 	}
 	return info;
 }

@@ -1,0 +1,9 @@
+{
+    "address": {
+        "hostname": "locahost",
+        "port": 10000
+    },
+    "name": "Example",
+    "type": 2,
+    "comment": "ServerTypes: Link=1, Text=2, Image=3, Audio=4, Video=5"
+}

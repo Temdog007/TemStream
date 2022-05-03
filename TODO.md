@@ -287,9 +287,8 @@
 
 ### May 2, 2022
 - [x] Ensure streams are deleted if author disconnects (ensure disconnection is always detected. Might be a local host issue)
-- [ ] Make each stream its own process
-- [ ] Add links stream
-- [ ] Add stream list stream
+- [x] Make each stream its own process
+- [x] Add links stream
 
 ### May 3, 2022
 - [ ] Make server write all messages to hard disk when recording
@@ -298,16 +297,15 @@
 - [ ] Add message to get recorded messages at time stamp
 
 ### May 4, 2022
-- [ ] Validate stream names/client names
-- [ ] Create layout message that applies to user's streams
-- [ ] Allow layout message to be saved/loaded
-- [ ] Add configuration for imgui style and fonts
+- [ ] Add a way to parse custom authentication
+- [ ] Add comments to code
 
 ### May 5, 2022
-- [ ] Add comments to code
-- [ ] Implement SSL socket
 - [ ] Implement web socket
 - [ ] Test browser
+
+### May 6, 2022
+- [ ] Implement SSL socket
 - [ ] Test android
 
 ### Bugs
@@ -321,4 +319,4 @@
 
 ### Maybe
 - [ ] Make plug in library for OBS to send video and audio to server
-- [ ] Fix loading tga files
+- [ ] Fix loading tga/tiff files
