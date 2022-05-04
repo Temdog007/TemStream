@@ -296,7 +296,7 @@
 - [x] Add access list
 - [x] Test reloading server links
 - [x] Add chat stream
-- [ ] Include font with emoticons
+- [x] Include font with emoticons
 - [ ] Handle authentication
 - [ ] Retest streaming on laptop
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)

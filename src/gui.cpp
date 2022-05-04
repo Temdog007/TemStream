@@ -5,6 +5,7 @@
 #include "fonts/Cousine.cpp"
 #include "fonts/DroidSans.cpp"
 #include "fonts/Karla.cpp"
+#include "fonts/NotoEmoji.cpp"
 #include "fonts/ProggyClean.cpp"
 #include "fonts/ProggyTiny.cpp"
 #include "fonts/Roboto.cpp"
@@ -568,7 +569,7 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 			{
 				configuration.showDisplays = true;
 			}
-			if (ImGui::MenuItem("Streams", "Ctrl+W", nullptr, !configuration.showConnections))
+			if (ImGui::MenuItem("Connections", "Ctrl+W", nullptr, !configuration.showConnections))
 			{
 				configuration.showConnections = true;
 			}
@@ -920,7 +921,7 @@ void TemStreamGui::draw()
 		SetWindowMinSize(window);
 		if (ImGui::Begin("TemStream Connections", &configuration.showConnections))
 		{
-			if (ImGui::BeginTable("Streams", 4, TableFlags))
+			if (ImGui::BeginTable("Connections", 4, TableFlags))
 			{
 				ImGui::TableSetupColumn("Name");
 				ImGui::TableSetupColumn("Type");
@@ -1425,11 +1426,19 @@ void TemStreamGui::LoadFonts()
 	cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
 	for (size_t i = 0; i < IM_ARRAYSIZE(Fonts); ++i)
 	{
+		cfg.MergeMode = false;
 		io.Fonts->AddFontFromMemoryCompressedTTF(Fonts[i], FontSizes[i], configuration.fontSize, &cfg, ranges);
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromMemoryCompressedTTF(NotoEmoji_compressed_data, NotoEmoji_compressed_size,
+												 configuration.fontSize, &cfg, ranges);
 	}
 	for (const auto &file : configuration.fontFiles)
 	{
+		cfg.MergeMode = false;
 		io.Fonts->AddFontFromFileTTF(file.c_str(), configuration.fontSize);
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromMemoryCompressedTTF(NotoEmoji_compressed_data, NotoEmoji_compressed_size,
+												 configuration.fontSize, &cfg, ranges);
 	}
 	io.Fonts->Build();
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
