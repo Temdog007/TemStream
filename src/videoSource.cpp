@@ -4,11 +4,12 @@ namespace TemStream
 {
 const char *VideoExtension = ".mkv";
 const size_t VideoSource::MaxVideoPackets = 20;
-VideoSource::VideoSource(const Message::Source &source) : source(source), windowProcress(), running(true)
+VideoSource::VideoSource(const Message::Source &source, String &&name)
+	: source(source), windowProcress(), name(std::move(name)), running(true)
 {
 }
 VideoSource::VideoSource(const Message::Source &source, const WindowProcess &wp)
-	: source(source), windowProcress(wp), running(true)
+	: source(source), windowProcress(wp), name(wp.name), running(true)
 {
 }
 VideoSource::~VideoSource()
@@ -108,7 +109,19 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 	fd.height = image.rows;
 	fd.fps = static_cast<int>(cap.get(cv::CAP_PROP_FPS));
 
-	auto video = tem_shared<VideoSource>(source);
+	struct Foo
+	{
+		String operator()(const String &name)
+		{
+			return name;
+		}
+		String operator()(const int32_t i)
+		{
+			return String(std::to_string(i));
+		}
+	};
+	auto name = std::visit(Foo(), arg);
+	auto video = tem_shared<VideoSource>(source, std::move(name));
 	std::weak_ptr<FrameEncoder> encoder;
 	{
 		auto e = tem_shared<FrameEncoder>(video, fd, true);

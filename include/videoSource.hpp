@@ -19,9 +19,10 @@ class VideoSource
   private:
 	Message::Source source;
 	const WindowProcess windowProcress;
+	String name;
 	bool running;
 
-	VideoSource(const Message::Source &);
+	VideoSource(const Message::Source &, String &&);
 	VideoSource(const Message::Source &, const WindowProcess &);
 
   public:
@@ -31,6 +32,11 @@ class VideoSource
 	const WindowProcess &getInfo() const
 	{
 		return windowProcress;
+	}
+
+	const String &getName() const
+	{
+		return name;
 	}
 
 	const Message::Source &getSource() const

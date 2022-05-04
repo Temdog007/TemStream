@@ -202,6 +202,10 @@ bool AudioSource::isRecording() const
 		return false;
 	}
 }
+bool AudioSource::isActive() const
+{
+	return decoder != nullptr || encoder != nullptr;
+}
 void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 {
 	if (!isRecording())

@@ -88,6 +88,8 @@ class AudioSource
 
 	bool isRecording() const;
 
+	bool isActive() const;
+
 	float getVolume() const
 	{
 		return volume;

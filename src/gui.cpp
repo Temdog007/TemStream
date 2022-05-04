@@ -946,27 +946,51 @@ void TemStreamGui::draw()
 					}
 
 					ImGui::TableNextColumn();
-					const auto dur = con.nextSendInterval();
-					if (dur.has_value())
+					if (info.peerInformation.hasWriteAccess())
 					{
-						ImGui::Text("Send upload in %0.2f seconds", dur->count());
-					}
-					else
-					{
-						if (ImGui::Button("Upload"))
+						const auto dur = con.nextSendInterval();
+						if (dur.has_value())
 						{
-							if (info.peerInformation.hasWriteAccess())
+							ImGui::Text("Wait %0.2f", dur->count());
+						}
+						else
+						{
+							switch (info.serverType)
+							{
+							case ServerType::Audio: {
+								auto iter = audio.find(source);
+								if (iter != audio.end())
+								{
+									ImGui::TextWrapped("%s\n%s", iter->second->isRecording() ? "Sending" : "Receiving",
+													   iter->second->getName().c_str());
+									goto nextColumn;
+								}
+							}
+							break;
+							case ServerType::Video: {
+								auto iter = video.find(source);
+								if (iter != video.end())
+								{
+									ImGui::TextWrapped("Sending\n%s", iter->second->getName().c_str());
+									goto nextColumn;
+								}
+							}
+							break;
+							default:
+								break;
+							}
+							if (ImGui::Button("Upload"))
 							{
 								queryData = getQuery(info.serverType, source);
 							}
-							else
-							{
-								(*logger)(Logger::Error)
-									<< "Cannot upload data to server without write access" << std::endl;
-							}
 						}
 					}
+					else
+					{
+						ImGui::Text("No write access");
+					}
 
+				nextColumn:
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Disconnect"))
 					{
@@ -1752,7 +1776,7 @@ int runApp(Configuration &configuration)
 			}
 			for (auto iter = gui.audio.begin(); iter != gui.audio.end();)
 			{
-				if (gui.hasConnection(iter->first))
+				if (gui.hasConnection(iter->first) && iter->second->isActive())
 				{
 					++iter;
 				}
