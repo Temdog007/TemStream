@@ -548,20 +548,20 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 			{
 				ImGui::Checkbox("Font Display", &configuration.showFont);
 				int value = configuration.fontSize;
-				if (ImGui::SliderInt("Font Size", &value, 12, 96, "%d",
-									 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput))
+				constexpr int minFontSize = 12;
+				constexpr int maxFontSize = 96;
+				if (ImGui::InputInt("Font Size", &value) && minFontSize <= value && value <= maxFontSize)
 				{
-					configuration.fontSize = value;
-				}
-				if (ImGui::IsItemDeactivatedAfterEdit())
-				{
+					configuration.fontSize = std::clamp(value, minFontSize, maxFontSize);
 					SDL_Event e;
 					e.type = SDL_USEREVENT;
 					e.user.code = TemStreamEvent::ReloadFont;
 					tryPushEvent(e);
 				}
-				ImGui::SliderInt("Font Type", &configuration.fontIndex, 0, io.Fonts->Fonts.size() - 1, "%d",
-								 ImGuiSliderFlags_NoInput);
+				if (ImGui::InputInt("Font Type", &configuration.fontIndex))
+				{
+					configuration.fontIndex = std::clamp(configuration.fontIndex, 0, io.Fonts->Fonts.size() - 1);
+				}
 				ImGui::EndMenu();
 			}
 			if (ImGui::MenuItem("Displays", "Ctrl+D", nullptr, !configuration.showDisplays))
