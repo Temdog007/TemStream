@@ -8,14 +8,12 @@ template <typename Key, typename Value> class ConcurrentMap
 {
   private:
 	Map<Key, Value> map;
-	Mutex mutex;
+	Mutex &mutex;
 
   public:
-	ConcurrentMap() : map(), mutex()
+	ConcurrentMap(Mutex &mutex) : map(), mutex(mutex)
 	{
 	}
-	ConcurrentMap(const ConcurrentMap &) = delete;
-	ConcurrentMap(ConcurrentMap &&) = delete;
 	~ConcurrentMap()
 	{
 	}
@@ -80,20 +78,6 @@ template <typename Key, typename Value> class ConcurrentMap
 			return defaultValue;
 		}
 		return iter->second;
-	}
-
-	std::optional<Value> tryFind(const Key &key)
-	{
-		if (auto lck = std::unique_lock{mutex, std::try_to_lock})
-		{
-			auto iter = map.find(key);
-			if (iter == map.end())
-			{
-				return std::nullopt;
-			}
-			return iter->second;
-		}
-		return std::nullopt;
 	}
 
 	void forEach(const std::function<void(const Key &, Value &)> &func)

@@ -51,6 +51,7 @@ class TemStreamGui
   private:
 	std::array<char, KB(1)> strBuffer;
 
+	Mutex connectionMutex;
 	ConcurrentMap<Message::Source, unique_ptr<AudioSource>> audio;
 	ConcurrentMap<Message::Source, shared_ptr<VideoSource>> video;
 	ConcurrentMap<Message::Source, shared_ptr<ClientConnection>> connections;

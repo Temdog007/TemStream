@@ -68,8 +68,9 @@ const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Siz
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: queryData(nullptr), allUTF32(getAllUTF32()), lastVideoCheck(std::chrono::system_clock::now()), io(io),
-	  configuration(c), window(nullptr), renderer(nullptr)
+	: strBuffer(), audio(connectionMutex), video(connectionMutex), connections(connectionMutex), queryData(nullptr),
+	  allUTF32(getAllUTF32()), lastVideoCheck(std::chrono::system_clock::now()), io(io), configuration(c),
+	  window(nullptr), renderer(nullptr)
 {
 }
 
@@ -337,21 +338,15 @@ bool TemStreamGui::init()
 
 	WorkPool::workPool.addWork([this]() {
 		audio.removeIfNot([this](const auto &source, const auto &a) {
-			// Don't deadlock if cannot get connection. Try again later
-			auto value = this->connections.tryFind(source);
-			if (!value.has_value())
+			if (auto con = this->getConnection(source))
 			{
+				a->encodeAndSendAudio(*con);
 				return true;
 			}
-
-			auto con = *value;
-			if (con == nullptr)
+			else
 			{
 				return false;
 			}
-
-			a->encodeAndSendAudio(*con);
-			return true;
 		});
 		return true;
 	});
