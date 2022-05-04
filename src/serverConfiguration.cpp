@@ -2,8 +2,9 @@
 
 namespace TemStream
 {
+const char *banList = nullptr;
 Configuration::Configuration()
-	: address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), maxClients(UINT32_MAX),
+	: access(), address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), maxClients(UINT32_MAX),
 	  maxMessageSize(MB(1)), serverType(ServerType::UnknownServerType), record(false)
 {
 }
@@ -35,6 +36,48 @@ Configuration loadConfiguration(const int argc, const char **argv)
 		SET_TYPE(V, video, Video);
 		if (i >= argc - 1)
 		{
+			continue;
+		}
+		if (strcasecmp("-B", argv[i]) == 0 || strcasecmp("--banned", argv[i]) == 0)
+		{
+			std::ifstream file(argv[i + 1]);
+			if (!file.is_open())
+			{
+				std::string message = "Failed to open file: ";
+				message += argv[i + 1];
+				throw std::invalid_argument(std::move(message));
+			}
+			configuration.access.banList = true;
+			configuration.access.members.clear();
+			for (String line; std::getline(file, line);)
+			{
+				configuration.access.members.emplace(std::move(line));
+			}
+			banList = argv[i + 1];
+			i += 2;
+			continue;
+		}
+		if (strcasecmp("-AL", argv[i]) == 0 || strcasecmp("--allowed", argv[i]) == 0)
+		{
+			std::ifstream file(argv[i + 1]);
+			if (!file.is_open())
+			{
+				std::string message = "Failed to open file: ";
+				message += argv[i + 1];
+				throw std::invalid_argument(std::move(message));
+			}
+			configuration.access.banList = false;
+			configuration.access.members.clear();
+			for (String line; std::getline(file, line);)
+			{
+				if (line.empty())
+				{
+					continue;
+				}
+				configuration.access.members.emplace(std::move(line));
+			}
+			banList = argv[i + 1];
+			i += 2;
 			continue;
 		}
 		if (strcasecmp("-H", argv[i]) == 0 || strcasecmp("--hostname", argv[i]) == 0)
@@ -84,8 +127,23 @@ Configuration loadConfiguration(const int argc, const char **argv)
 
 	throw std::invalid_argument("Unknown server type");
 }
-void saveConfiguration(const Configuration &)
+void saveConfiguration(const Configuration &c)
 {
+	if (banList == nullptr)
+	{
+		return;
+	}
+
+	std::ofstream file(banList);
+	if (!file.is_open())
+	{
+		return;
+	}
+
+	for (const auto &member : c.access.members)
+	{
+		file << member << std::endl;
+	}
 }
 bool Configuration::valid() const
 {

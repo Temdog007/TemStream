@@ -26,6 +26,8 @@ class ServerConnection : public Connection
 
 	static void sendLinks();
 
+	static void checkAccess();
+
 	static std::optional<PeerInformation> login(const Message::Credentials &);
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);

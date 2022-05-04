@@ -6,6 +6,7 @@ namespace TemStream
 {
 struct Configuration
 {
+	Access access;
 	Address address;
 	String name;
 	int64_t startTime;
@@ -15,14 +16,15 @@ struct Configuration
 	bool record;
 
 	Configuration();
-	virtual ~Configuration();
+	~Configuration();
 
 	bool valid() const;
 
 	friend std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
 	{
 		os << "Address: " << configuration.address << "\nName: " << configuration.name
-		   << "\nStream type: " << configuration.serverType << "\nMax Clients: " << configuration.maxClients << '\n';
+		   << "\nStream type: " << configuration.serverType << "\nAccess: " << configuration.access
+		   << "\nMax Clients: " << configuration.maxClients << '\n';
 		printMemory(os, "Max Message Size", configuration.maxMessageSize)
 			<< "\nRecording: " << (configuration.record ? "Yes" : "No");
 		return os;

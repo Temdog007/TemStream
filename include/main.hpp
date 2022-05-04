@@ -243,6 +243,8 @@ template <typename T> void cleanSwap(T &t)
 #include "logger.hpp"
 #include "windowProcess.hpp"
 
+#include "access.hpp"
+
 #include "addrinfo.hpp"
 
 #include "address.hpp"

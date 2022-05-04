@@ -272,6 +272,25 @@ StringList ServerConnection::getPeers()
 	}
 	return list;
 }
+void ServerConnection::checkAccess()
+{
+	LOCK(peersMutex);
+	for (auto iter = peers.begin(); iter != peers.end();)
+	{
+		if (auto ptr = iter->lock())
+		{
+			if (configuration.access.isBanned(ptr->information.name))
+			{
+				ptr->stayConnected = false;
+			}
+			++iter;
+		}
+		else
+		{
+			iter = peers.erase(iter);
+		}
+	}
+}
 shared_ptr<ServerConnection> ServerConnection::getPointer() const
 {
 	LOCK(peersMutex);
@@ -360,6 +379,11 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 		(*logger)(Logger::Error) << "Server got invalid message type: " << packet.payload.index() << std::endl;
 		return false;
 	}
+	if (!connection.information.hasWriteAccess())
+	{
+		(*logger)(Logger::Error) << "Peer doesn't have write access: " << connection.information << std::endl;
+		return false;
+	}
 	ServerConnection::sendToPeers(std::move(packet), &connection);
 	return true;
 }
@@ -423,6 +447,12 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 		return false;
 	}
 	connection.information.swap(*info);
+	checkAccess();
+	if (!connection.stayConnected)
+	{
+		(*logger)(Logger::Warning) << "Peer " << connection.information << "  is banned" << std::endl;
+		return false;
+	}
 	*logger << "Peer: " << connection.address << " -> " << connection.information << std::endl;
 	{
 		Message::Packet packet;
@@ -431,15 +461,22 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 			Message::VerifyLogin{configuration.name, connection.information, configuration.serverType});
 		connection->sendPacket(packet);
 	}
-	if (configuration.serverType == ServerType::Link)
+
+	return sendStoredPayload();
+}
+bool ServerConnection::MessageHandler::operator()(Access &access)
+{
+	if (connection.information.type != PeerType::Admin)
 	{
-		ServerConnection::sendLinks();
-		return true;
+		(*logger)(Logger::Error) << "Non-admin peer " << connection.information << " tried to change access of server";
+		return false;
 	}
-	else
 	{
-		return sendStoredPayload();
+		LOCK(peersMutex);
+		configuration.access = std::move(access);
 	}
+	ServerConnection::checkAccess();
+	return true;
 }
 bool ServerConnection::MessageHandler::operator()(Message::ServerLinks &)
 {
@@ -452,7 +489,6 @@ bool ServerConnection::MessageHandler::operator()(Message::VerifyLogin &)
 bool ServerConnection::MessageHandler::operator()(Message::RequestPeers &)
 {
 	CHECK_INFO(Message::RequestPeers)
-	LOCK(peersMutex);
 	Message::Packet packet;
 	packet.source = ServerConnection::getSource();
 	packet.payload.emplace<Message::PeerList>(Message::PeerList{getPeers()});
@@ -512,6 +548,9 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 
 	switch (configuration.serverType)
 	{
+	case ServerType::Link:
+		ServerConnection::sendLinks();
+		return true;
 	case ServerType::Text:
 		try
 		{

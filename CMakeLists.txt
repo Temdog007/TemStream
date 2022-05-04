@@ -93,6 +93,7 @@ if(OPENH264_ENCODING)
 endif()
 
 set(SOURCES 
+    src/access.cpp
     src/addrinfo.cpp 
     src/base64.cpp
     src/byteList.cpp

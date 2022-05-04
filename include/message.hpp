@@ -212,7 +212,7 @@ struct PeerList
 	}
 };
 using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, ServerLinks, Image, Video, Audio,
-							 RequestPeers, PeerList>;
+							 RequestPeers, PeerList, Access>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
@@ -224,7 +224,8 @@ using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Ser
 	RVAL operator()(Message::Audio &);                                                                                 \
 	RVAL operator()(Message::Video &);                                                                                 \
 	RVAL operator()(Message::RequestPeers &);                                                                          \
-	RVAL operator()(Message::PeerList &)
+	RVAL operator()(Message::PeerList &);                                                                              \
+	RVAL operator()(Access &)
 
 struct Packet
 {

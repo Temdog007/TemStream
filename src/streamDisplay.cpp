@@ -234,6 +234,10 @@ bool StreamDisplay::operator()(Message::PeerList &)
 {
 	BAD_MESSAGE(PeerList);
 }
+bool StreamDisplay::operator()(Access &)
+{
+	BAD_MESSAGE(Access);
+}
 StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)
 {
 }

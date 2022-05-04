@@ -293,25 +293,32 @@
 - [x] Fix audio streaming
 
 ### May 3, 2022
+- [x] Add access list
+- [ ] Handle authentication
 - [ ] Retest streaming on laptop
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
 - [ ] Add chat stream
+- [ ] Include font with emoticons
+
+### May 4, 2022
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay streams that only accept replay messages
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time interval
 
-### May 4, 2022
-- [ ] Add a way to parse custom authentication
+### May 5, 2022
 - [ ] Add comments to code
 
-### May 5, 2022
+### May 6, 2022
 - [ ] Implement web socket
 - [ ] Test browser
 
 ### May 6, 2022
 - [ ] Implement SSL socket
 - [ ] Test android
+
+### May 7, 2022
+- [ ] Test on windows (use VM)
 
 ### Bugs
 - [x] Connecting to multiple streams quickly causes some displays to not show
