@@ -255,7 +255,8 @@ template <typename T> void cleanSwap(T &t)
 
 #include "message.hpp"
 
-#include "concurrent_queue.hpp"
+#include "concurrentMap.hpp"
+#include "concurrentQueue.hpp"
 
 #include "connection.hpp"
 

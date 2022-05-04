@@ -50,13 +50,15 @@ class TemStreamGui
 
   private:
 	std::array<char, KB(1)> strBuffer;
+
+	ConcurrentMap<Message::Source, unique_ptr<AudioSource>> audio;
+	ConcurrentMap<Message::Source, shared_ptr<VideoSource>> video;
+	ConcurrentMap<Message::Source, shared_ptr<ClientConnection>> connections;
+
 	Map<Message::Source, StreamDisplay> displays;
-	Map<Message::Source, unique_ptr<AudioSource>> audio;
-	Map<Message::Source, shared_ptr<VideoSource>> video;
 	Map<Message::Source, unique_ptr<VideoSource::EncoderDecoder>> decodingMap;
 	Map<Message::Source, ByteList> pendingVideo;
-	Map<Message::Source, shared_ptr<ClientConnection>> connections;
-	Mutex connectionMutex;
+
 	ConcurrentQueue<VideoPacket> videoPackets;
 	unique_ptr<IQuery> queryData;
 	std::optional<Message::Source> audioTarget;
@@ -99,7 +101,6 @@ class TemStreamGui
 	String getUsername(const Message::Source &);
 	size_t getConnectionCount();
 	bool hasConnection(const Message::Source &);
-	void forEachConnection(const std::function<void(ClientConnection &)> &);
 
   private:
 	struct MessageHandler

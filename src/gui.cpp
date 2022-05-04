@@ -336,18 +336,23 @@ bool TemStreamGui::init()
 	});
 
 	WorkPool::workPool.addWork([this]() {
-		for (auto iter = audio.begin(); iter != audio.end();)
-		{
-			if (auto con = this->getConnection(iter->first))
+		audio.removeIfNot([this](const auto &source, const auto &a) {
+			// Don't deadlock if cannot get connection. Try again later
+			auto value = this->connections.tryFind(source);
+			if (!value.has_value())
 			{
-				iter->second->encodeAndSendAudio(*con);
-				++iter;
+				return true;
 			}
-			else
+
+			auto con = *value;
+			if (con == nullptr)
 			{
-				iter = audio.erase(iter);
+				return false;
 			}
-		}
+
+			a->encodeAndSendAudio(*con);
+			return true;
+		});
 		return true;
 	});
 
@@ -444,26 +449,23 @@ bool TemStreamGui::handleClientConnection(ClientConnection &con)
 
 bool TemStreamGui::addConnection(const shared_ptr<ClientConnection> &connection)
 {
-	LOCK(connectionMutex);
-	auto [iter, result] = connections.try_emplace(connection->getSource(), connection);
-	return result;
+	return connections.add(connection->getSource(), connection);
 }
 
 shared_ptr<ClientConnection> TemStreamGui::getConnection(const Message::Source &source)
 {
-	LOCK(connectionMutex);
-	auto iter = connections.find(source);
-	if (iter == connections.end())
+	auto ptr = connections.find(source, nullptr);
+	if (ptr == nullptr)
 	{
 		return nullptr;
 	}
-	if (iter->second->isOpened())
+	if (ptr->isOpened())
 	{
-		return iter->second;
+		return ptr;
 	}
 	else
 	{
-		connections.erase(iter);
+		connections.remove(source);
 		return nullptr;
 	}
 }
@@ -484,44 +486,24 @@ bool TemStreamGui::hasConnection(const Message::Source &source)
 
 size_t TemStreamGui::getConnectionCount()
 {
-	LOCK(connectionMutex);
 	size_t count = 0;
-	for (auto iter = connections.begin(); iter != connections.end();)
-	{
-		if (iter->second->isOpened())
+	connections.removeIfNot([&count](const auto &, const auto &con) {
+		if (con->isOpened())
 		{
 			++count;
-			++iter;
+			return true;
 		}
 		else
 		{
-			iter = connections.erase(iter);
+			return false;
 		}
-	}
+	});
 	return count;
-}
-
-void TemStreamGui::forEachConnection(const std::function<void(ClientConnection &)> &func)
-{
-	LOCK(connectionMutex);
-	for (auto iter = connections.begin(); iter != connections.end();)
-	{
-		if (iter->second->isOpened())
-		{
-			func(*iter->second);
-			++iter;
-		}
-		else
-		{
-			iter = connections.erase(iter);
-		}
-	}
 }
 
 void TemStreamGui::removeConnection(const Message::Source &source)
 {
-	LOCK(connectionMutex);
-	connections.erase(source);
+	connections.remove(source);
 }
 
 ImVec2 TemStreamGui::drawMainMenuBar()
@@ -717,10 +699,7 @@ void TemStreamGui::draw()
 				ImGui::TableSetupColumn("Stop");
 				ImGui::TableHeadersRow();
 
-				for (auto iter = audio.begin(); iter != audio.end();)
-				{
-					auto &a = iter->second;
-
+				audio.removeIfNot([this](const auto &source, const auto &a) {
 					ImGui::PushID(a->getName().c_str());
 
 					ImGui::TableNextColumn();
@@ -732,12 +711,12 @@ void TemStreamGui::draw()
 					{
 						if (ImGui::Button(a->getName().c_str()))
 						{
-							audioTarget = iter->first;
+							audioTarget = source;
 						}
 					}
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", iter->first.serverName.c_str());
+					ImGui::Text("%s", source.serverName.c_str());
 
 					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
 					if (a->isRecording())
@@ -785,17 +764,15 @@ void TemStreamGui::draw()
 					}
 
 					ImGui::TableNextColumn();
+					bool result = true;
 					if (ImGui::Button("Stop"))
 					{
-						iter = audio.erase(iter);
-					}
-					else
-					{
-						++iter;
+						result = false;
 					}
 
 					ImGui::PopID();
-				}
+					return result;
+				});
 				ImGui::EndTable();
 			}
 		}
@@ -812,19 +789,17 @@ void TemStreamGui::draw()
 				ImGui::TableSetupColumn("Device Name");
 				ImGui::TableSetupColumn("Stop");
 				ImGui::TableHeadersRow();
-				for (auto iter = video.begin(); iter != video.end();)
-				{
-					if (!iter->second->isRunning())
+				video.removeIfNot([this](const auto &, auto &v) {
+					if (!v->isRunning())
 					{
-						iter = video.erase(iter);
-						continue;
+						return false;
 					}
 					String name;
-					const auto &data = iter->second->getInfo();
+					const auto &data = v->getInfo();
 					if (data.name.empty())
 					{
 						StringStream ss;
-						ss << iter->second->getSource();
+						ss << v->getSource();
 						name = ss.str();
 					}
 					else
@@ -838,18 +813,16 @@ void TemStreamGui::draw()
 					ImGui::Text("%s", name.c_str());
 
 					ImGui::TableNextColumn();
+					bool result = true;
 					if (ImGui::Button("Stop"))
 					{
-						iter->second->setRunning(false);
-						iter = video.erase(iter);
-					}
-					else
-					{
-						++iter;
+						v->setRunning(false);
+						result = false;
 					}
 
 					ImGui::PopID();
-				}
+					return result;
+				});
 				ImGui::EndTable();
 			}
 		}
@@ -929,8 +902,8 @@ void TemStreamGui::draw()
 				ImGui::TableSetupColumn("Disconnect");
 				ImGui::TableHeadersRow();
 
-				forEachConnection([this](ClientConnection &con) {
-					const auto &source = con.getSource();
+				connections.forEach([this](const auto &source, auto &ptr) {
+					auto &con = *ptr;
 
 					ImGui::PushID(static_cast<String>(source).c_str());
 
@@ -957,21 +930,19 @@ void TemStreamGui::draw()
 						{
 							switch (info.serverType)
 							{
-							case ServerType::Audio: {
-								auto iter = audio.find(source);
-								if (iter != audio.end())
+							case ServerType::Audio:
+								if (audio.use(source, [](auto &a) {
+										ImGui::TextWrapped("%s\n%s", a->isRecording() ? "Sending" : "Receiving",
+														   a->getName().c_str());
+									}))
 								{
-									ImGui::TextWrapped("%s\n%s", iter->second->isRecording() ? "Sending" : "Receiving",
-													   iter->second->getName().c_str());
 									goto nextColumn;
 								}
-							}
-							break;
+								break;
 							case ServerType::Video: {
-								auto iter = video.find(source);
-								if (iter != video.end())
+								if (video.use(source,
+											  [](auto &v) { ImGui::TextWrapped("Sending\n%s", v->getName().c_str()); }))
 								{
-									ImGui::TextWrapped("Sending\n%s", iter->second->getName().c_str());
 									goto nextColumn;
 								}
 							}
@@ -1285,10 +1256,7 @@ void TemStreamGui::draw()
 
 	if (audioTarget.has_value())
 	{
-		auto iter = audio.find(*audioTarget);
-		if (iter != audio.end())
-		{
-			auto &a = iter->second;
+		audio.use(*audioTarget, [this](auto &a) {
 			const bool recording = a->isRecording();
 			std::optional<const char *> opt = std::nullopt;
 			bool opened = true;
@@ -1340,7 +1308,7 @@ void TemStreamGui::draw()
 					a.swap(newAudio);
 				}
 			}
-		}
+		});
 	}
 }
 
@@ -1428,25 +1396,17 @@ bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
 
 bool TemStreamGui::addAudio(unique_ptr<AudioSource> &&ptr)
 {
-	auto pair = audio.try_emplace(ptr->getSource(), std::move(ptr));
-	return pair.second;
+	return audio.add(ptr->getSource(), std::move(ptr));
 }
 
 bool TemStreamGui::addVideo(shared_ptr<VideoSource> ptr)
 {
-	auto pair = video.try_emplace(ptr->getSource(), ptr);
-	return pair.second;
+	return video.add(ptr->getSource(), ptr);
 }
 
-bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(AudioSource &)> &f)
+bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(AudioSource &)> &func)
 {
-	auto iter = audio.find(source);
-	if (iter != audio.end())
-	{
-		f(*iter->second);
-		return true;
-	}
-	return false;
+	return audio.use(source, [&func](auto &a) { func(*a); });
 }
 
 void TemStreamGui::LoadFonts()
@@ -1774,33 +1734,23 @@ int runApp(Configuration &configuration)
 					iter = gui.displays.erase(iter);
 				}
 			}
-			for (auto iter = gui.audio.begin(); iter != gui.audio.end();)
-			{
-				if (gui.hasConnection(iter->first) && iter->second->isActive())
+
+			gui.audio.removeIfNot(
+				[&gui](const auto &source, const auto &a) { return gui.hasConnection(source) && a->isActive(); });
+
+			gui.video.removeIfNot([&gui](const auto &source, const auto &v) {
+				if (!v->isRunning())
 				{
-					++iter;
+					return false;
 				}
-				else
+				else if (!gui.hasConnection(source))
 				{
-					iter = gui.audio.erase(iter);
+					v->setRunning(false);
+					return false;
 				}
-			}
-			for (auto iter = gui.video.begin(); iter != gui.video.end();)
-			{
-				if (!iter->second->isRunning())
-				{
-					iter = gui.video.erase(iter);
-				}
-				else if (gui.hasConnection(iter->first))
-				{
-					++iter;
-				}
-				else
-				{
-					iter->second->setRunning(false);
-					iter = gui.video.erase(iter);
-				}
-			}
+				return true;
+			});
+
 			gui.dirty = false;
 		}
 
@@ -1841,12 +1791,10 @@ int runApp(Configuration &configuration)
 	}
 
 	gui.audio.clear();
-	for (auto &pair : gui.video)
-	{
-		pair.second->setRunning(false);
-	}
+	gui.video.forEach([](const auto &, auto &value) { value->setRunning(false); });
 	gui.video.clear();
 	WorkPool::workPool.clear();
+
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();

@@ -300,11 +300,11 @@
 - [x] Retest streaming on laptop
 - [x] Send message rate to ensure client doesn't send packet too soon
 - [x] Only allow upload if write access
-- [ ] Make concurrent map
-- [ ] Handle authentication
-- [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
+- [x] Make concurrent map
 
 ### May 4, 2022
+- [ ] Handle authentication
+- [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add new role (super consumer) that can view replay of streams
 - [ ] Add replay message for every stream
