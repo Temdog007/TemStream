@@ -294,12 +294,12 @@
 
 ### May 3, 2022
 - [x] Add access list
-- [ ] Test reloading server links
+- [x] Test reloading server links
+- [x] Add chat stream
+- [ ] Include font with emoticons
 - [ ] Handle authentication
 - [ ] Retest streaming on laptop
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
-- [x] Add chat stream
-- [ ] Include font with emoticons
 
 ### May 4, 2022
 - [ ] Make server write all messages to hard disk when recording
