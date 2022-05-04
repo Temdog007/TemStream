@@ -294,15 +294,16 @@
 
 ### May 3, 2022
 - [x] Add access list
+- [ ] Test reloading server links
 - [ ] Handle authentication
 - [ ] Retest streaming on laptop
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
-- [ ] Add chat stream
+- [x] Add chat stream
 - [ ] Include font with emoticons
 
 ### May 4, 2022
 - [ ] Make server write all messages to hard disk when recording
-- [ ] Add replay streams that only accept replay messages
+- [ ] Add replay message for every stream
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time interval
 

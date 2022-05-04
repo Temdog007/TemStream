@@ -63,6 +63,7 @@ uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
 namespace TemStream
 {
 
+const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp;
 void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
@@ -466,6 +467,15 @@ shared_ptr<ClientConnection> TemStreamGui::getConnection(const Message::Source &
 	}
 }
 
+String TemStreamGui::getUsername(const Message::Source &source)
+{
+	if (auto ptr = getConnection(source))
+	{
+		return ptr->getInfo().peerInformation.name;
+	}
+	return String();
+}
+
 bool TemStreamGui::hasConnection(const Message::Source &source)
 {
 	return getConnection(source) != nullptr;
@@ -696,7 +706,7 @@ void TemStreamGui::draw()
 		{
 			ImGui::SliderInt("Default Volume", &configuration.defaultVolume, 0, 100);
 			ImGui::SliderInt("Default Silence Threshold", &configuration.defaultSilenceThreshold, 0, 100);
-			if (!audio.empty() && ImGui::BeginTable("Audio", 6, ImGuiTableFlags_Borders))
+			if (!audio.empty() && ImGui::BeginTable("Audio", 6, TableFlags))
 			{
 				ImGui::TableSetupColumn("Device Name");
 				ImGui::TableSetupColumn("Source/Destination");
@@ -796,7 +806,7 @@ void TemStreamGui::draw()
 	{
 		if (ImGui::Begin("TemStream Video", &configuration.showVideo, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			if (ImGui::BeginTable("Video", 2, ImGuiTableFlags_Borders))
+			if (ImGui::BeginTable("Video", 2, TableFlags))
 			{
 				ImGui::TableSetupColumn("Device Name");
 				ImGui::TableSetupColumn("Stop");
@@ -910,7 +920,7 @@ void TemStreamGui::draw()
 		SetWindowMinSize(window);
 		if (ImGui::Begin("TemStream Connections", &configuration.showConnections))
 		{
-			if (ImGui::BeginTable("Streams", 4, ImGuiTableFlags_Borders))
+			if (ImGui::BeginTable("Streams", 4, TableFlags))
 			{
 				ImGui::TableSetupColumn("Name");
 				ImGui::TableSetupColumn("Type");
@@ -1183,7 +1193,7 @@ void TemStreamGui::draw()
 			std::optional<String> newDir;
 			if (ImGui::BeginChild("Files"))
 			{
-				if (ImGui::BeginTable("", 2, ImGuiTableFlags_Borders))
+				if (ImGui::BeginTable("", 2, TableFlags))
 				{
 					ImGui::TableSetupColumn("Name");
 					ImGui::TableSetupColumn("Type");
@@ -1311,6 +1321,10 @@ ServerType TemStreamGui::getSelectedQuery(const IQuery *queryData)
 	{
 		return ServerType::Text;
 	}
+	if (dynamic_cast<const QueryChat *>(queryData) != nullptr)
+	{
+		return ServerType::Chat;
+	}
 	if (dynamic_cast<const QueryImage *>(queryData) != nullptr)
 	{
 		return ServerType::Image;
@@ -1332,6 +1346,8 @@ unique_ptr<IQuery> TemStreamGui::getQuery(const ServerType i, const Message::Sou
 	{
 	case ServerType::Text:
 		return tem_unique<QueryText>(*this, source);
+	case ServerType::Chat:
+		return tem_unique<QueryChat>(*this, source);
 	case ServerType::Image:
 		return tem_unique<QueryImage>(*this, source);
 	case ServerType::Audio:

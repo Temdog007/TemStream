@@ -11,6 +11,7 @@ enum ServerType : uint8_t
 	UnknownServerType = 0u,
 	Link,
 	Text,
+	Chat,
 	Image,
 	Audio,
 	Video,
@@ -211,12 +212,27 @@ struct PeerList
 		ar(peers);
 	}
 };
-using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, ServerLinks, Image, Video, Audio,
+struct Chat
+{
+	String author;
+	String message;
+	int64_t timestamp;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(author, message, timestamp);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(author, message, timestamp);
+	}
+};
+using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
 							 RequestPeers, PeerList, Access>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
 	RVAL operator()(Message::Text &);                                                                                  \
+	RVAL operator()(Message::Chat &);                                                                                  \
 	RVAL operator()(Message::ServerLinks &);                                                                           \
 	RVAL operator()(Message::Credentials &);                                                                           \
 	RVAL operator()(Message::VerifyLogin &);                                                                           \
@@ -288,6 +304,8 @@ constexpr size_t ServerTypeToIndex(const ServerType t)
 	{
 	case ServerType::Text:
 		return variant_index<Message::Payload, Message::Text>();
+	case ServerType::Chat:
+		return variant_index<Message::Payload, Message::Chat>();
 	case ServerType::Audio:
 		return variant_index<Message::Payload, Message::Audio>();
 	case ServerType::Image:

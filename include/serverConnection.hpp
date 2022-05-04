@@ -32,11 +32,6 @@ class ServerConnection : public Connection
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
 
-	shared_ptr<ServerConnection> getPointer() const;
-
-	void handleInput();
-	void handleOutput();
-
 	typedef bool (*VerifyToken)(const char *, char *, uint8_t *);
 	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, uint8_t *);
 
@@ -92,8 +87,14 @@ class ServerConnection : public Connection
 		void operator()(uint64_t);
 	};
 
+	shared_ptr<ServerConnection> getPointer() const;
+
+	void handleInput();
+	void handleOutput();
+
 	PeerInformation information;
 	const TimePoint startingTime;
+	TimePoint lastMessage;
 	bool stayConnected;
 
   public:

@@ -46,6 +46,43 @@ void QueryText::execute() const
 		destroyAndDeallocate(packet);
 	}
 }
+// QueryChat
+QueryChat::QueryChat(TemStreamGui &gui, const Message::Source &source) : IQuery(gui, source), text()
+{
+}
+QueryChat::QueryChat(TemStreamGui &gui, const Message::Source &source, String &&s)
+	: IQuery(gui, source), text(std::move(s))
+{
+}
+QueryChat::~QueryChat()
+{
+}
+bool QueryChat::draw()
+{
+	ImGui::InputTextMultiline("Message", &text);
+	return IQuery::draw();
+}
+void QueryChat::execute() const
+{
+	Message::Packet *packet = allocateAndConstruct<Message::Packet>();
+	packet->source = getSource();
+	{
+		Message::Chat chat;
+		chat.message = text;
+		chat.author = gui.getUsername(packet->source);
+		packet->payload.emplace<Message::Chat>(std::move(chat));
+	}
+
+	SDL_Event e;
+	e.type = SDL_USEREVENT;
+	e.user.code = TemStreamEvent::SendSingleMessagePacket;
+	e.user.data1 = packet;
+	e.user.data2 = &e;
+	if (!tryPushEvent(e))
+	{
+		destroyAndDeallocate(packet);
+	}
+}
 // Query Image
 QueryImage::QueryImage(TemStreamGui &gui, const Message::Source &source) : IQuery(gui, source), image()
 {

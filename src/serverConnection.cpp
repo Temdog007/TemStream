@@ -384,6 +384,19 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 		(*logger)(Logger::Error) << "Peer doesn't have write access: " << connection.information << std::endl;
 		return false;
 	}
+	const auto now = std::chrono::system_clock::now();
+	if (configuration.messageRateInSeconds != 0)
+	{
+		const auto timepoint =
+			connection.lastMessage + std::chrono::duration<uint32_t>(configuration.messageRateInSeconds);
+		if (now < timepoint)
+		{
+			(*logger)(Logger::Error) << "Peer is sending packets too frequently: " << connection.information
+									 << std::endl;
+			return false;
+		}
+	}
+	connection.lastMessage = now;
 	ServerConnection::sendToPeers(std::move(packet), &connection);
 	return true;
 }
@@ -405,6 +418,13 @@ bool ServerConnection::MessageHandler::operator()(Message::Text &)
 {
 	CHECK_INFO(Message::Text)
 	savePayloadIfNedded();
+	return processCurrentMessage();
+}
+bool ServerConnection::MessageHandler::operator()(Message::Chat &chat)
+{
+	CHECK_INFO(Message::Chat)
+	chat.timestamp = static_cast<int64_t>(time(nullptr));
+	chat.author = connection.information.name;
 	return processCurrentMessage();
 }
 bool ServerConnection::MessageHandler::operator()(Message::Image &image)
@@ -486,18 +506,23 @@ bool ServerConnection::MessageHandler::operator()(Message::VerifyLogin &)
 {
 	BAD_MESSAGE(VerifyLogin);
 }
+bool ServerConnection::MessageHandler::operator()(Message::PeerList &)
+{
+	BAD_MESSAGE(PeerList);
+}
 bool ServerConnection::MessageHandler::operator()(Message::RequestPeers &)
 {
 	CHECK_INFO(Message::RequestPeers)
+	if (connection.information.type != PeerType::Admin)
+	{
+		(*logger)(Logger::Error) << "Non-admin peer " << connection.information << " tried to get peer list";
+		return false;
+	}
 	Message::Packet packet;
 	packet.source = ServerConnection::getSource();
 	packet.payload.emplace<Message::PeerList>(Message::PeerList{getPeers()});
 	connection->sendPacket(packet);
 	return true;
-}
-bool ServerConnection::MessageHandler::operator()(Message::PeerList &)
-{
-	BAD_MESSAGE(PeerList);
 }
 bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 {

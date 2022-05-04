@@ -14,6 +14,7 @@ std::ostream &operator<<(std::ostream &os, const ServerType type)
 	{
 		WRITE_STRING_TO_STRING_ARRAY(ServerType, Link);
 		WRITE_STRING_TO_STRING_ARRAY(ServerType, Text);
+		WRITE_STRING_TO_STRING_ARRAY(ServerType, Chat);
 		WRITE_STRING_TO_STRING_ARRAY(ServerType, Image);
 		WRITE_STRING_TO_STRING_ARRAY(ServerType, Audio);
 		WRITE_STRING_TO_STRING_ARRAY(ServerType, Video);

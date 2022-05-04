@@ -4,12 +4,16 @@ namespace TemStream
 {
 const char *banList = nullptr;
 Configuration::Configuration()
-	: access(), address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), maxClients(UINT32_MAX),
-	  maxMessageSize(MB(1)), serverType(ServerType::UnknownServerType), record(false)
+	: access(), address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), messageRateInSeconds(0),
+	  maxClients(UINT32_MAX), maxMessageSize(MB(1)), serverType(ServerType::UnknownServerType), record(false)
 {
 }
 Configuration::~Configuration()
 {
+}
+bool Configuration::valid() const
+{
+	return validServerType(serverType);
 }
 #define SET_TYPE(ShortArg, LongArg, s)                                                                                 \
 	if (strcasecmp("-" #ShortArg, argv[i]) == 0 || strcasecmp("--" #LongArg, argv[i]) == 0)                            \
@@ -31,6 +35,7 @@ Configuration loadConfiguration(const int argc, const char **argv)
 		}
 		SET_TYPE(L, link, Link);
 		SET_TYPE(T, text, Text);
+		SET_TYPE(C, chat, Chat);
 		SET_TYPE(I, image, Image);
 		SET_TYPE(A, audio, Audio);
 		SET_TYPE(V, video, Video);
@@ -116,6 +121,12 @@ Configuration loadConfiguration(const int argc, const char **argv)
 			i += 2;
 			continue;
 		}
+		if (strcasecmp("-MR", argv[i]) == 0 || strcasecmp("--message-rate", argv[i]) == 0)
+		{
+			configuration.messageRateInSeconds = static_cast<uint32_t>(atoi(argv[i + 1]));
+			i += 2;
+			continue;
+		}
 		std::string err("Unexpected argument: ");
 		err += argv[i];
 		throw std::invalid_argument(std::move(err));
@@ -127,26 +138,29 @@ Configuration loadConfiguration(const int argc, const char **argv)
 
 	throw std::invalid_argument("Unknown server type");
 }
-void saveConfiguration(const Configuration &c)
+void saveBanList(const char *filename, const Set<String> &members)
 {
-	if (banList == nullptr)
-	{
-		return;
-	}
-
-	std::ofstream file(banList);
+	std::ofstream file(filename);
 	if (!file.is_open())
 	{
 		return;
 	}
 
-	for (const auto &member : c.access.members)
+	for (const auto &member : members)
 	{
 		file << member << std::endl;
 	}
 }
-bool Configuration::valid() const
+void saveConfiguration(const Configuration &c)
 {
-	return validServerType(serverType);
+	if (banList != nullptr)
+	{
+		saveBanList(banList, c.access.members);
+	}
+	else if (!c.access.members.empty())
+	{
+		const String newBanList = c.name + " ban list.txt";
+		saveBanList(newBanList.c_str(), c.access.members);
+	}
 }
 } // namespace TemStream

@@ -4,6 +4,7 @@
 
 namespace TemStream
 {
+extern const ImGuiTableFlags TableFlags;
 class IQuery;
 class FileDisplay
 {
@@ -90,14 +91,17 @@ class TemStreamGui
 	void draw();
 
 	bool addConnection(const shared_ptr<ClientConnection> &);
+	void removeConnection(const Message::Source &);
+	bool handleClientConnection(ClientConnection &);
+
+  public:
 	shared_ptr<ClientConnection> getConnection(const Message::Source &);
+	String getUsername(const Message::Source &);
 	size_t getConnectionCount();
 	bool hasConnection(const Message::Source &);
 	void forEachConnection(const std::function<void(ClientConnection &)> &);
-	void removeConnection(const Message::Source &);
 
-	bool handleClientConnection(ClientConnection &);
-
+  private:
 	struct MessageHandler
 	{
 		TemStreamGui &gui;

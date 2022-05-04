@@ -43,6 +43,25 @@ class QueryText : public IQuery
 
 	void execute() const override;
 };
+class QueryChat : public IQuery
+{
+  private:
+	String text;
+
+  public:
+	QueryChat(TemStreamGui &, const Message::Source &);
+	QueryChat(TemStreamGui &, const Message::Source &, String &&);
+	~QueryChat();
+
+	bool draw() override;
+
+	void setText(String &&s) noexcept
+	{
+		text.swap(s);
+	}
+
+	void execute() const override;
+};
 class QueryImage : public IQuery
 {
   private:

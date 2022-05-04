@@ -23,8 +23,9 @@ struct CheckAudio
 	{
 	}
 };
+using ChatLog = List<Message::Chat>;
 using DisplayData =
-	std::variant<std::monostate, SDL_TextureWrapper, String, ByteList, CheckAudio, Message::ServerLinks>;
+	std::variant<std::monostate, SDL_TextureWrapper, String, ChatLog, ByteList, CheckAudio, Message::ServerLinks>;
 class StreamDisplay
 {
   private:
@@ -47,6 +48,7 @@ class StreamDisplay
 
 		void operator()(std::monostate);
 		void operator()(String &);
+		void operator()(ChatLog &);
 		void operator()(SDL_TextureWrapper &);
 		void operator()(CheckAudio &);
 		void operator()(ByteList &);
@@ -79,6 +81,7 @@ class StreamDisplay
 
 		bool operator()(std::monostate);
 		bool operator()(String &);
+		bool operator()(ChatLog &);
 		bool operator()(SDL_TextureWrapper &);
 		bool operator()(CheckAudio &);
 		bool operator()(ByteList &);

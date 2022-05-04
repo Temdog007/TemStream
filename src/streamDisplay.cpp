@@ -138,6 +138,17 @@ bool StreamDisplay::operator()(Message::Text &message)
 	data = std::move(message);
 	return true;
 }
+bool StreamDisplay::operator()(Message::Chat &chat)
+{
+	if (!std::holds_alternative<ChatLog>(data))
+	{
+		data.emplace<ChatLog>();
+	}
+
+	auto &logs = std::get<ChatLog>(data);
+	logs.emplace_back(std::move(chat));
+	return true;
+}
 bool StreamDisplay::operator()(Message::Image &message)
 {
 	return std::visit(ImageMessageHandler(*this), std::move(message.largeFile));
@@ -269,6 +280,38 @@ bool StreamDisplay::Draw::operator()(String &s)
 	ImGui::End();
 	return true;
 }
+bool StreamDisplay::Draw::operator()(ChatLog &logs)
+{
+	SetWindowMinSize(display.gui.getWindow());
+	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
+	{
+		display.drawContextMenu();
+		if (ImGui::BeginTable("Chat Logs", 3, TableFlags))
+		{
+			ImGui::TableSetupColumn("Timestamp");
+			ImGui::TableSetupColumn("Author");
+			ImGui::TableSetupColumn("Message");
+			ImGui::TableHeadersRow();
+			char buffer[KB(1)];
+			for (const auto &log : logs)
+			{
+				ImGui::TableNextColumn();
+				const auto t = static_cast<time_t>(log.timestamp);
+				std::strftime(buffer, sizeof(buffer), "%D %T", std::gmtime(&t));
+				ImGui::TextWrapped("%s", buffer);
+
+				ImGui::TableNextColumn();
+				ImGui::TextWrapped("%s", log.author.c_str());
+
+				ImGui::TableNextColumn();
+				ImGui::TextWrapped("%s", log.message.c_str());
+			}
+			ImGui::EndTable();
+		}
+	}
+	ImGui::End();
+	return true;
+}
 bool StreamDisplay::Draw::operator()(SDL_TextureWrapper &t)
 {
 	auto &texture = *t;
@@ -293,7 +336,7 @@ bool StreamDisplay::Draw::operator()(Message::ServerLinks &links)
 	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
-		if (ImGui::BeginTable("Available Servers", 3, ImGuiTableFlags_Borders))
+		if (ImGui::BeginTable("Available Servers", 3, TableFlags))
 		{
 			ImGui::TableSetupColumn("Name");
 			ImGui::TableSetupColumn("Type");
@@ -465,6 +508,9 @@ void StreamDisplay::ContextMenu::operator()(String &s)
 			logSDLError("Failed to copy to clipboard");
 		}
 	}
+}
+void StreamDisplay::ContextMenu::operator()(ChatLog &)
+{
 }
 void StreamDisplay::ContextMenu::operator()(CheckAudio &a)
 {

@@ -10,6 +10,7 @@ struct Configuration
 	Address address;
 	String name;
 	int64_t startTime;
+	uint32_t messageRateInSeconds;
 	uint32_t maxClients;
 	uint32_t maxMessageSize;
 	ServerType serverType;
@@ -24,7 +25,8 @@ struct Configuration
 	{
 		os << "Address: " << configuration.address << "\nName: " << configuration.name
 		   << "\nStream type: " << configuration.serverType << "\nAccess: " << configuration.access
-		   << "\nMax Clients: " << configuration.maxClients << '\n';
+		   << "\nMax Clients: " << configuration.maxClients
+		   << "\nMessage Rate (in seconds): " << configuration.messageRateInSeconds << '\n';
 		printMemory(os, "Max Message Size", configuration.maxMessageSize)
 			<< "\nRecording: " << (configuration.record ? "Yes" : "No");
 		return os;
