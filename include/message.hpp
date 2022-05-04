@@ -106,26 +106,24 @@ struct VerifyLogin
 	String serverName;
 	PeerInformation peerInformation;
 	ServerType serverType;
+	uint32_t sendRate;
 
-	VerifyLogin &swap(VerifyLogin &login)
-	{
-		std::swap(serverName, login.serverName);
-		peerInformation.swap(login.peerInformation);
-		std::swap(serverType, login.serverType);
-		return *this;
-	}
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(serverName, peerInformation, serverType);
+		ar(serverName, peerInformation, serverType, sendRate);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(serverName, peerInformation, serverType);
+		ar(serverName, peerInformation, serverType, sendRate);
 	}
 	friend std::ostream &operator<<(std::ostream &os, const VerifyLogin &login)
 	{
 		os << "Server: " << login.serverName << "; Type: " << login.serverType
 		   << "; Peer Information: " << login.peerInformation;
+		if (login.sendRate != 0)
+		{
+			os << "Message sent rate (in seconds): " << login.sendRate;
+		}
 		return os;
 	}
 };

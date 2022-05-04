@@ -476,8 +476,12 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 	{
 		Message::Packet packet;
 		packet.source = ServerConnection::getSource();
-		packet.payload.emplace<Message::VerifyLogin>(
-			Message::VerifyLogin{configuration.name, connection.information, configuration.serverType});
+		Message::VerifyLogin login;
+		login.serverName = configuration.name;
+		login.sendRate = configuration.messageRateInSeconds;
+		login.serverType = configuration.serverType;
+		login.peerInformation = connection.information;
+		packet.payload.emplace<Message::VerifyLogin>(std::move(login));
 		connection->sendPacket(packet);
 	}
 

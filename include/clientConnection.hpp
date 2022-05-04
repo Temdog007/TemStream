@@ -12,6 +12,7 @@ class ClientConnection : public Connection
 	TemStreamGui &gui;
 	Message::VerifyLogin serverInformation;
 	Message::PeerList peers;
+	TimePoint lastSentMessage;
 	bool opened;
 
   public:
@@ -20,6 +21,7 @@ class ClientConnection : public Connection
 	ClientConnection(ClientConnection &&) = delete;
 	virtual ~ClientConnection();
 
+	void sendPacket(const Message::Packet &, const bool sendImmediately = false);
 	bool flushPackets();
 	void addPacket(Message::Packet &&);
 	void addPackets(MessagePackets &&);
@@ -45,8 +47,10 @@ class ClientConnection : public Connection
 
 	void setInfo(Message::VerifyLogin &&l)
 	{
-		serverInformation.swap(l);
+		serverInformation = std::move(l);
 	}
+
+	std::optional<std::chrono::duration<double>> nextSendInterval() const;
 
 	bool operator()(Message::PeerList &&);
 

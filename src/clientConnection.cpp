@@ -3,7 +3,7 @@
 namespace TemStream
 {
 ClientConnection::ClientConnection(TemStreamGui &gui, const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), gui(gui), serverInformation(), peers(), opened(true)
+	: Connection(address, std::move(s)), gui(gui), serverInformation(), peers(), lastSentMessage(), opened(true)
 {
 }
 ClientConnection::~ClientConnection()
@@ -17,6 +17,11 @@ void ClientConnection::close()
 	}
 	opened = false;
 	(*logger)(Logger::Info) << "Closing connection: " << getSource() << std::endl;
+}
+void ClientConnection::sendPacket(const Message::Packet &packet, const bool sendImmediately)
+{
+	mSocket->sendPacket(packet, sendImmediately);
+	lastSentMessage = std::chrono::system_clock::now();
 }
 bool ClientConnection::flushPackets()
 {
@@ -72,5 +77,20 @@ Message::Source ClientConnection::getSource() const
 	source.serverName = serverInformation.serverName;
 	source.address = address;
 	return source;
+}
+std::optional<std::chrono::duration<double>> ClientConnection::nextSendInterval() const
+{
+	if (serverInformation.sendRate == 0)
+	{
+		return std::nullopt;
+	}
+
+	const auto now = std::chrono::system_clock::now();
+	const auto diff = lastSentMessage + std::chrono::duration<uint32_t>(serverInformation.sendRate);
+	if (now < diff)
+	{
+		return diff - now;
+	}
+	return std::nullopt;
 }
 } // namespace TemStream

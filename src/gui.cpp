@@ -371,7 +371,7 @@ void TemStreamGui::connect(const Address &address)
 		{
 			Message::Packet packet;
 			packet.payload.emplace<Message::Credentials>(configuration.credentials);
-			(*clientConnection)->sendPacket(packet, true);
+			clientConnection->sendPacket(packet, true);
 		}
 		// Wait for response to get server type
 		auto &packets = clientConnection->getPackets();
@@ -946,16 +946,24 @@ void TemStreamGui::draw()
 					}
 
 					ImGui::TableNextColumn();
-					if (ImGui::Button("Upload"))
+					const auto dur = con.nextSendInterval();
+					if (dur.has_value())
 					{
-						if (info.peerInformation.hasWriteAccess())
+						ImGui::Text("Send upload in %0.2f seconds", dur->count());
+					}
+					else
+					{
+						if (ImGui::Button("Upload"))
 						{
-							queryData = getQuery(info.serverType, source);
-						}
-						else
-						{
-							(*logger)(Logger::Error)
-								<< "Cannot upload data to server without write access" << std::endl;
+							if (info.peerInformation.hasWriteAccess())
+							{
+								queryData = getQuery(info.serverType, source);
+							}
+							else
+							{
+								(*logger)(Logger::Error)
+									<< "Cannot upload data to server without write access" << std::endl;
+							}
 						}
 					}
 
@@ -1365,7 +1373,7 @@ void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally
 	auto peer = getConnection(packet.source);
 	if (peer)
 	{
-		(*peer)->sendPacket(packet);
+		peer->sendPacket(packet);
 		if (handleLocally)
 		{
 			peer->addPacket(std::move(packet));
