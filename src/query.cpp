@@ -70,6 +70,7 @@ void QueryChat::execute() const
 		Message::Chat chat;
 		chat.message = text;
 		chat.author = gui.getUsername(packet->source);
+		chat.timestamp = static_cast<int64_t>(time(nullptr));
 		packet->payload.emplace<Message::Chat>(std::move(chat));
 	}
 

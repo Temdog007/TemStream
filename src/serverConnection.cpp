@@ -404,8 +404,7 @@ bool ServerConnection::MessageHandler::operator()()
 {
 	if (!std::holds_alternative<Message::Credentials>(packet.payload) && packet.source != ServerConnection::getSource())
 	{
-		(*logger)(Logger::Error) << "Server got message with wrong server name: " << packet.payload.index()
-								 << std::endl;
+		(*logger)(Logger::Error) << "Server got message with wrong server address: " << packet.source << std::endl;
 		return false;
 	}
 	return std::visit(*this, packet.payload);

@@ -201,7 +201,7 @@ std::optional<VideoSource::Frame> Converter::convertToFrame(Screenshot &&s)
 }
 Screenshotter::Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr,
 							 shared_ptr<VideoSource> v, const uint32_t fps)
-	: converter(ptr), window(w), video(v), con(std::move(con)), fps(fps), first(true)
+	: converter(ptr), window(w), video(v), con(std::move(con)), fps(fps), visible(true), first(true)
 {
 }
 Screenshotter::~Screenshotter()
@@ -264,8 +264,12 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	dim = data->getSize(data->con.get());
 	if (!dim)
 	{
-		(*logger)(Logger::Error) << "Window '" << data->window.name << "' is not visible. Ending stream" << std::endl;
-		return false;
+		if (data->visible)
+		{
+			(*logger)(Logger::Warning) << "Window '" << data->window.name << "' is not visible." << std::endl;
+			data->visible = false;
+		}
+		return true;
 	}
 
 	xcb_get_image_cookie_t cookie = xcb_get_image(data->con.get(), XCB_IMAGE_FORMAT_Z_PIXMAP, data->window.windowId, 0,
@@ -276,8 +280,18 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	auto reply = makeXCB(replyPtr);
 	if (error || !reply)
 	{
-		(*logger)(Logger::Error) << "Window '" << data->window.name << "' is not visible. Ending stream" << std::endl;
-		return false;
+		if (data->visible)
+		{
+			(*logger)(Logger::Warning) << "Window '" << data->window.name << "' is not visible." << std::endl;
+			data->visible = false;
+		}
+		return true;
+	}
+
+	if (!data->visible)
+	{
+		*logger << "Window '" << data->window.name << "' is visible again." << std::endl;
+		data->visible = true;
 	}
 
 	try

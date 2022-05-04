@@ -53,6 +53,7 @@ class Converter : public VideoSource::RGBA2YUV<Screenshot>
 {
   private:
 	ByteList temp;
+
 	std::optional<VideoSource::Frame> convertToFrame(Screenshot &&) override;
 
 	bool handleWriter(VideoSource::Writer &) override;
@@ -81,6 +82,7 @@ class Screenshotter
 	std::shared_ptr<VideoSource> video;
 	XCB_Connection con;
 	uint32_t fps;
+	bool visible;
 	bool first;
 
 	Dimensions getSize(xcb_connection_t *);

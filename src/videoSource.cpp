@@ -16,7 +16,8 @@ VideoSource::~VideoSource()
 }
 void VideoSource::logDroppedPackets(const size_t count, const Message::Source &source, const char *target)
 {
-	(*logger)(Logger::Warning) << target << " is dropping " << count << " video frames from " << source << std::endl;
+	(*logger)(Logger::Warning) << target << " is dropping " << count << " video frames from " << source.serverName
+							   << std::endl;
 }
 bool WebCamCapture::execute()
 {
@@ -238,7 +239,7 @@ void VideoSource::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr
 	WorkPool::workPool.addWork([ptr]() {
 		if (!ptr->encodeFrames())
 		{
-			(*logger) << "Ending encoding: " << ptr->video->getSource() << std::endl;
+			(*logger) << "Ending encoding: " << ptr->video->getSource().serverName << std::endl;
 			return false;
 		}
 		return true;

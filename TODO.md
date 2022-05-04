@@ -297,8 +297,9 @@
 - [x] Test reloading server links
 - [x] Add chat stream
 - [x] Include font with emoticons
+- [x] Retest streaming on laptop
+- [ ] Send message rate to ensure client doesn't send packet too soon
 - [ ] Handle authentication
-- [ ] Retest streaming on laptop
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
 
 ### May 4, 2022
