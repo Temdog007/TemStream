@@ -31,7 +31,6 @@ class AudioSource
 		OpusEncoder *encoder;
 	};
 	SDL_AudioDeviceID id;
-	SDL_KeyCode code;
 	union {
 		float volume;
 		float silenceThreshold;

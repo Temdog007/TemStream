@@ -3,8 +3,7 @@
 namespace TemStream
 {
 AudioSource::AudioSource(const Message::Source &source, const Type type, const float volume)
-	: buffer(), source(source), name(), recordBuffer(), storedAudio(), currentAudio(), spec(), decoder(nullptr), id(0),
-	  code(SDLK_UNKNOWN), volume(volume), type(type)
+	: buffer(), source(source), decoder(nullptr), id(0), volume(volume), type(type)
 {
 }
 AudioSource::~AudioSource()
