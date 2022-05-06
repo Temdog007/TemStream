@@ -3,7 +3,7 @@
 namespace TemStream
 {
 AudioSource::AudioSource(const Message::Source &source, const Type type, const float volume)
-	: buffer(), source(source), decoder(nullptr), id(0), volume(volume), type(type)
+	: source(source), decoder(nullptr), id(0), volume(volume), type(type)
 {
 }
 AudioSource::~AudioSource()
@@ -42,7 +42,11 @@ void AudioSource::enqueueAudio(const ByteList &bytes)
 		}
 		const size_t bytesRead = result * spec.channels * sizeof(float);
 		Lock lock(id);
-		storedAudio.append(buffer.data(), bytesRead);
+		if (!storedAudio.append(buffer.data(), bytesRead))
+		{
+			(*logger)(Logger::Warning)
+				<< "AudioSource delay is occurring for playback. AudioSource packets will be dropped." << std::endl;
+		}
 	}
 }
 void AudioSource::clearAudio()
@@ -50,10 +54,10 @@ void AudioSource::clearAudio()
 	Lock lock(id);
 	storedAudio.clear();
 }
-ByteList AudioSource::getCurrentAudio() const
+void AudioSource::getCurrentAudio(ByteList &list) const
 {
 	Lock lock(id);
-	return currentAudio;
+	list = currentAudio;
 }
 SDL_AudioSpec AudioSource::getAudioSpec()
 {
@@ -142,28 +146,14 @@ void AudioSource::playbackAudio(uint8_t *data, const int count)
 		return;
 	}
 	memset(data, spec.silence, count);
-	if (storedAudio.size() > MB(1))
-	{
-		(*logger)(Logger::Warning)
-			<< "AudioSource delay is occurring for playback. AudioSource packets will be dropped." << std::endl;
-		storedAudio.clear();
-	}
-	const size_t toCopy = std::min((size_t)count, storedAudio.size());
+
+	storedAudio.peek(data, count);
+
 	currentAudio.clear();
-	if (toCopy > 0)
-	{
-		memcpy(data, storedAudio.data(), toCopy);
-		currentAudio.append(storedAudio, toCopy);
-		storedAudio.remove(toCopy);
-	}
-	// else if (!currentAudio.empty())
-	// {
-	// 	// Make echo effect rather than random intervals of silence if possible
-	// 	SDL_MixAudioFormat(data, currentAudio.data(), this->spec.format, std::min((size_t)count, currentAudio.size()),
-	// 					   SDL_MIX_MAXVOLUME / 2);
-	// }
+	storedAudio.pop(currentAudio);
 }
-bool AudioSource::isLoudEnough(float *data, const int count) const
+
+bool AudioSource::isLoudEnough(const float *data, const int count) const
 {
 	float sum = 0.f;
 	for (int i = 0; i < count; ++i)
@@ -174,21 +164,21 @@ bool AudioSource::isLoudEnough(float *data, const int count) const
 }
 void AudioSource::recordAudio(uint8_t *data, const int count)
 {
-	if (!isLoudEnough(reinterpret_cast<float *>(data), count / sizeof(float)))
+	if (!isLoudEnough(reinterpret_cast<const float *>(data), count / sizeof(float)))
 	{
 		memset(data, spec.silence, count);
 	}
-	storedAudio.append(data, count);
-	if (storedAudio.size() > MB(1))
+	currentAudio.clear();
+	if (storedAudio.append(data, count))
+	{
+		currentAudio.append(data, count);
+	}
+	else
 	{
 		(*logger)(Logger::Warning)
 			<< "AudioSource delay is occurring for recording. AudioSource packets will be dropped." << std::endl;
 		storedAudio.clear();
-		return;
 	}
-
-	currentAudio.clear();
-	currentAudio.append(data, count);
 }
 bool AudioSource::isRecording() const
 {
@@ -212,10 +202,9 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 		return;
 	}
 
-	ByteList outgoing;
 	{
 		Lock lock(id);
-		outgoing.swap(storedAudio);
+		outgoing = std::move(storedAudio);
 	}
 
 	const int minDuration = audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_2_5_MS);
@@ -230,14 +219,12 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 		}
 
 		frameSize = closestValidFrameCount(spec.freq, frameSize);
-		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
 
-		recordBuffer.clear();
-		recordBuffer.append(outgoing, bytesUsed);
-		outgoing.remove(bytesUsed);
-
-		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(recordBuffer.data()), frameSize,
+		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(outgoing.begin()), frameSize,
 											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
+
+		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
+		outgoing.remove(bytesUsed);
 		if (result < 0)
 		{
 			(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
@@ -253,13 +240,18 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 
 	for (const auto &packet : packets)
 	{
-		peer->sendPacket(packet);
+		peer.sendPacket(packet);
 	}
 	peer.addPackets(std::move(packets));
 	if (!outgoing.empty())
 	{
 		Lock lock(id);
-		storedAudio = outgoing + storedAudio;
+		if (!storedAudio.prepend(outgoing))
+		{
+			(*logger)(Logger::Warning)
+				<< "AudioSource delay is occurring for recording. AudioSource packets will be dropped." << std::endl;
+			storedAudio.clear();
+		}
 	}
 }
 constexpr int AudioSource::closestValidFrameCount(const int frequency, const int frames)

@@ -236,6 +236,8 @@ template <typename T> void cleanSwap(T &t)
 
 #include "byteList.hpp"
 
+#include "fixedSizeList.hpp"
+
 #include "base64.hpp"
 
 #include "memoryStream.hpp"

@@ -9,14 +9,16 @@ struct CheckAudio
 {
 	List<float> left;
 	List<float> right;
+	ByteList currentAudio;
 	SDL_TextureWrapper texture;
 	const bool isRecording;
 
-	CheckAudio(SDL_Texture *t, const bool b) : left(), right(), texture(t), isRecording(b)
+	CheckAudio(SDL_Texture *t, const bool b) : left(), right(), currentAudio(), texture(t), isRecording(b)
 	{
 	}
 	CheckAudio(CheckAudio &&a)
-		: left(std::move(left)), right(std::move(right)), texture(std::move(a.texture)), isRecording(a.isRecording)
+		: left(std::move(left)), right(std::move(right)), currentAudio(std::move(a.currentAudio)),
+		  texture(std::move(a.texture)), isRecording(a.isRecording)
 	{
 	}
 	~CheckAudio()

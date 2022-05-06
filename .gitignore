@@ -99,6 +99,8 @@ yarn-error.log*
 *.json
 *.temstream
 *.temstream_replay
+imgui.ini
+TemStream_log*.txt
 
 streams/
 junk/

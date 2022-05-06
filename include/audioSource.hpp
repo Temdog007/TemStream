@@ -4,6 +4,7 @@
 
 namespace TemStream
 {
+using AudioBuffer = FixedSizeList<uint8_t, MB(1)>;
 class ClientConnection;
 class AudioSource
 {
@@ -22,9 +23,12 @@ class AudioSource
 	};
 	const Message::Source source;
 	String name;
-	ByteList recordBuffer;
-	ByteList storedAudio;
+
+	// For recording
 	ByteList currentAudio;
+	AudioBuffer outgoing;
+
+	AudioBuffer storedAudio;
 	SDL_AudioSpec spec;
 	union {
 		OpusDecoder *decoder;
@@ -132,9 +136,9 @@ class AudioSource
 		return name;
 	}
 
-	ByteList getCurrentAudio() const;
+	void getCurrentAudio(ByteList &) const;
 
-	bool isLoudEnough(float *, int) const;
+	bool isLoudEnough(const float *, int) const;
 
 	static std::optional<WindowProcesses> getWindowsWithAudio();
 	static unique_ptr<AudioSource> startRecordingWindow(const Message::Source &, const WindowProcess &, float);

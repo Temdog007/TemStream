@@ -410,9 +410,9 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 	}
 
 	const auto func = [&t](const AudioSource &a) {
-		auto current = a.getCurrentAudio();
+		a.getCurrentAudio(t.currentAudio);
 		constexpr float speed = 0.75f;
-		if (current.empty())
+		if (t.currentAudio.empty())
 		{
 			for (auto &f : t.left)
 			{
@@ -425,8 +425,8 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 		}
 		else
 		{
-			const float *fdata = reinterpret_cast<const float *>(current.data());
-			const size_t fsize = current.size() / sizeof(float);
+			const float *fdata = reinterpret_cast<const float *>(t.currentAudio.data());
+			const size_t fsize = t.currentAudio.size() / sizeof(float);
 			t.left.resize(fsize / 2, 0.f);
 			t.right.resize(fsize / 2, 0.f);
 			for (size_t i = 0; i < fsize - 1; i += 2)
