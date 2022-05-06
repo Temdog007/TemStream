@@ -150,7 +150,7 @@ void AudioSource::playbackAudio(uint8_t *data, const int count)
 	storedAudio.peek(data, count);
 
 	currentAudio.clear();
-	storedAudio.pop(currentAudio);
+	storedAudio.pop(currentAudio, static_cast<size_t>(count));
 }
 
 bool AudioSource::isLoudEnough(const float *data, const int count) const

@@ -141,16 +141,17 @@ template <class T, const size_t N> class FixedSizeList
 		return toCopy;
 	}
 
-	size_t peek(ByteList &list) const
+	size_t peek(ByteList &list, const std::optional<size_t> &max = std::nullopt) const
 	{
-		const auto s = size();
+		const auto s = max.value_or(size());
 		list.append(begin(), s * sizeof(T));
 		return s;
 	}
 
-	ByteList peek() const
+	ByteList peek(const std::optional<size_t> &max = std::nullopt) const
 	{
-		ByteList list(size());
+		const auto s = max.value_or(size());
+		ByteList list(s);
 		peek(list);
 		return list;
 	}
@@ -177,15 +178,15 @@ template <class T, const size_t N> class FixedSizeList
 		return pop(reinterpret_cast<T *>(dst), (count * sizeof(U)) / sizeof(T));
 	}
 
-	size_t pop(ByteList &list)
+	size_t pop(ByteList &list, const std::optional<size_t> &max = std::nullopt)
 	{
-		const auto copied = peek(list);
+		const auto copied = peek(list, max);
 		return remove(copied);
 	}
 
-	ByteList pop()
+	ByteList pop(const std::optional<size_t> &max = std::nullopt)
 	{
-		ByteList list = peek();
+		ByteList list = peek(max);
 		remove(list.size());
 		return list;
 	}

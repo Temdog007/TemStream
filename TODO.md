@@ -303,7 +303,7 @@
 - [x] Make concurrent map
 
 ### May 5, 2022
-- [ ] Make fixed size list
+- [x] Make fixed size list
 - [ ] Handle authentication
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
 - [ ] Make server write all messages to hard disk when recording
