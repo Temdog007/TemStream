@@ -15,7 +15,7 @@ class AddrInfo
 	~AddrInfo();
 
 	bool getInfo(const char *hostname, const char *port, const struct addrinfo &);
-	bool makeSocket(int &) const;
+	bool makeSocket(int &, const bool isTcp) const;
 	bool bind(int) const;
 	bool connect(int) const;
 

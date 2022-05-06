@@ -12,6 +12,13 @@ VideoSource::VideoSource(const Message::Source &source, const WindowProcess &wp)
 	: source(source), windowProcress(wp), name(wp.name), running(true)
 {
 }
+VideoSource::VideoSource(const Message::Source &source, const Address &address)
+	: source(source), windowProcress(), name(), running(true)
+{
+	StringStream ss;
+	ss << address;
+	name = std::move(ss.str());
+}
 VideoSource::~VideoSource()
 {
 }
@@ -151,6 +158,56 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 #else
 	return nullptr;
 #endif
+}
+shared_ptr<VideoSource> VideoSource::listenToUdpPort(const Address &address, const Message::Source &source)
+{
+	auto ptr = UdpSocket::create(address);
+	if (ptr == nullptr)
+	{
+		return nullptr;
+	}
+
+	shared_ptr<UdpSocket> udp = std::move(ptr);
+
+	auto video = tem_shared<VideoSource>(source, address);
+	(*logger)(Logger::Trace) << "Listening to port: " << address << std::endl;
+	WorkPool::workPool.addWork([udp, video]() {
+		if (!video->isRunning())
+		{
+			return false;
+		}
+		ByteList bytes;
+		if (!udp->read(0, bytes, false))
+		{
+			video->setRunning(false);
+			return false;
+		}
+
+		if (bytes.empty())
+		{
+			return true;
+		}
+
+		auto packet = allocateAndConstruct<Message::Packet>();
+		packet->source = video->getSource();
+		Message::Frame frame{};
+		frame.bytes = std::move(bytes);
+		Message::Video v;
+		v.emplace<Message::Frame>(std::move(frame));
+		packet->payload.emplace<Message::Video>(std::move(v));
+
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::SendSingleMessagePacket;
+		e.user.data1 = packet;
+		e.user.data2 = &e;
+		if (!tryPushEvent(e))
+		{
+			destroyAndDeallocate(packet);
+		}
+		return true;
+	});
+	return video;
 }
 VideoSource::FrameEncoder::FrameEncoder(shared_ptr<VideoSource> v, const FrameData frameData, const bool forCamera)
 	: frames(), frameData(frameData), lastReset(std::chrono::system_clock::now()), encoder(nullptr), video(v),

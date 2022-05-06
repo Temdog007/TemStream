@@ -14,7 +14,7 @@ Connection::~Connection()
 
 bool Connection::readAndHandle(const int timeout, const bool base64)
 {
-	if (mSocket == nullptr || !mSocket->read(timeout, bytes))
+	if (mSocket == nullptr || !mSocket->read(timeout, bytes, true))
 	{
 		return false;
 	}

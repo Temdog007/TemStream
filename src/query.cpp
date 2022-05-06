@@ -200,11 +200,11 @@ void QueryAudio::execute() const
 	}
 }
 QueryVideo::QueryVideo(TemStreamGui &gui, const Message::Source &source)
-	: IQuery(gui, source), selection(WebCamSelection{VideoSource::FrameData(), 0})
+	: IQuery(gui, source), selection(WebCamSelection(0))
 {
 }
 QueryVideo::QueryVideo(TemStreamGui &gui, const Message::Source &source, const String &s)
-	: IQuery(gui, source), selection(WebCamSelection{VideoSource::FrameData(), s})
+	: IQuery(gui, source), selection(WebCamSelection(s))
 {
 }
 QueryVideo::~QueryVideo()
@@ -212,24 +212,27 @@ QueryVideo::~QueryVideo()
 }
 bool QueryVideo::draw()
 {
-	static const char *selections[]{"Webcam", "Window"};
+	static const char *selections[]{"Webcam", "Window", "Port"};
 	int s = static_cast<int>(selection.index());
 	if (ImGui::Combo("Source", &s, selections, IM_ARRAYSIZE(selections)))
 	{
 		switch (s)
 		{
 		case variant_index<VideoSelection, WebCamSelection>():
-			selection.emplace<WebCamSelection>(WebCamSelection{VideoSource::FrameData(), 0});
+			selection.emplace<WebCamSelection>(WebCamSelection(0));
 			break;
 		case variant_index<VideoSelection, WindowSelection>():
 			selection.emplace<WindowSelection>(
 				WindowSelection{VideoSource::FrameData(), VideoSource::getRecordableWindows(), 0});
 			break;
+		case variant_index<VideoSelection, Address>():
+			selection.emplace<Address>("localhost", 3400);
+			break;
 		default:
 			break;
 		}
 	}
-	struct Foo
+	struct DrawSelection
 	{
 		void operator()(WindowSelection &ws)
 		{
@@ -274,8 +277,12 @@ bool QueryVideo::draw()
 			std::visit(Bar(), w.arg);
 			w.frameData.draw();
 		}
+		void operator()(Address &address)
+		{
+			drawAddress(address);
+		}
 	};
-	std::visit(Foo(), selection);
+	std::visit(DrawSelection(), selection);
 	return IQuery::draw();
 }
 std::ostream &operator<<(std::ostream &os, const VideoCaptureArg &arg)
@@ -371,6 +378,18 @@ void QueryVideo::execute() const
 			if (ptr == nullptr)
 			{
 				(*logger)(Logger::Error) << "Failed to start recording webcam " << wb.arg << std::endl;
+			}
+			else
+			{
+				gui.addVideo(std::move(ptr));
+			}
+		}
+		void operator()(const Address &address) const
+		{
+			auto ptr = VideoSource::listenToUdpPort(address, source);
+			if (ptr == nullptr)
+			{
+				(*logger)(Logger::Error) << "Failed to start listening to port: " << address << std::endl;
 			}
 			else
 			{

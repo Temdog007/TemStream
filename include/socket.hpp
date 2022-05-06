@@ -25,8 +25,8 @@ class Socket
 	void sendPacket(const Message::Packet &, const bool sendImmediately = false);
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
-	void send(const uint8_t *, size_t, const bool convertToBase64 = TEMSTREAM_USE_BASE64);
-	virtual bool read(const int timeout, ByteList &) = 0;
+	virtual void send(const uint8_t *, size_t, const bool convertToBase64 = TEMSTREAM_USE_BASE64);
+	virtual bool read(const int timeout, ByteList &, const bool readAll) = 0;
 
 	bool flush();
 
@@ -37,23 +37,56 @@ class Socket
 
 	virtual bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const = 0;
 };
-class TcpSocket : public Socket
+class BasicSocket : public Socket
 {
-  private:
+  protected:
 	int fd;
 
 	bool flush(const ByteList &) override;
 	void close();
 
   public:
-	TcpSocket();
-	TcpSocket(int);
-	TcpSocket(const TcpSocket &) = delete;
-	TcpSocket(TcpSocket &&) = delete;
-	virtual ~TcpSocket();
+	BasicSocket();
+	BasicSocket(int);
+	BasicSocket(const BasicSocket &) = delete;
+	BasicSocket(BasicSocket &&) = delete;
+	virtual ~BasicSocket();
 
 	PollState pollRead(const int timeout) const;
 	PollState pollWrite(const int timeout) const;
+
+	bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const override;
+};
+class UdpSocket : public BasicSocket
+{
+  public:
+	UdpSocket();
+	UdpSocket(int);
+	virtual ~UdpSocket();
+
+	template <class S> static unique_ptr<UdpSocket> create(const BaseAddress<S> &addr)
+	{
+		auto ptr = tem_unique<UdpSocket>();
+		char port[64];
+		snprintf(port, sizeof(port), "%d", addr.port);
+		if (ptr->connect(addr.hostname.c_str(), port, true))
+		{
+			return ptr;
+		}
+		return nullptr;
+	}
+
+	void send(const uint8_t *, size_t, const bool) override;
+
+	bool connect(const char *hostname, const char *port, const bool isServer) override;
+	bool read(const int timeout, ByteList &, const bool readAll) override;
+};
+class TcpSocket : public BasicSocket
+{
+  public:
+	TcpSocket();
+	TcpSocket(int);
+	virtual ~TcpSocket();
 
 	template <class S> static unique_ptr<TcpSocket> create(const BaseAddress<S> &addr)
 	{
@@ -67,9 +100,7 @@ class TcpSocket : public Socket
 		return nullptr;
 	}
 
-	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
-	virtual bool read(const int timeout, ByteList &) override;
-
-	virtual bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const override;
+	bool connect(const char *hostname, const char *port, const bool isServer) override;
+	bool read(const int timeout, ByteList &, const bool readAll) override;
 };
 } // namespace TemStream

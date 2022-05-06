@@ -62,6 +62,14 @@ void logSDLError(const char *str)
 {
 	(*logger)(Logger::Error) << str << ": " << SDL_GetError() << std::endl;
 }
+void drawAddress(Address &address)
+{
+	ImGui::InputText("Hostname", &address.hostname);
+	if (ImGui::InputInt("Port", &address.port, 1, 100))
+	{
+		address.port = std::clamp(address.port, 1, UINT16_MAX);
+	}
+}
 } // namespace TemStream
 
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR

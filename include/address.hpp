@@ -55,7 +55,7 @@ template <class S> struct BaseAddress
 };
 using Address = BaseAddress<String>;
 using STL_Address = BaseAddress<std::string>;
-extern bool openSocket(int &, const Address &, const bool isServer);
+extern bool openSocket(int &, const Address &, const bool isServer, const bool isTcp);
 } // namespace TemStream
 
 namespace std

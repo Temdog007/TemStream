@@ -133,20 +133,20 @@ String printMemory(const size_t mem)
 	return String(buffer);
 }
 
-bool openSocket(int &fd, const Address &address, const bool isServer)
+bool openSocket(int &fd, const Address &address, const bool isServer, const bool isTcp)
 {
 	char port[64];
 	snprintf(port, sizeof(port), "%d", address.port);
-	return openSocket(fd, address.hostname.c_str(), port, isServer);
+	return openSocket(fd, address.hostname.c_str(), port, isServer, isTcp);
 }
 
-bool openSocket(int &fd, const char *hostname, const char *port, const bool isServer)
+bool openSocket(int &fd, const char *hostname, const char *port, const bool isServer, const bool isTcp)
 {
 	struct addrinfo hints;
 	memset(&hints, 0, sizeof(hints));
 
 	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_socktype = isTcp ? SOCK_STREAM : SOCK_DGRAM;
 
 	AddrInfo info;
 	if (!info.getInfo(hostname, port, hints))
@@ -154,7 +154,7 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 		return false;
 	}
 
-	if (!info.makeSocket(fd) || fd < 0)
+	if (!info.makeSocket(fd, isTcp) || fd < 0)
 	{
 		perror("socket");
 		return false;
@@ -167,7 +167,7 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 			perror("bind");
 			return false;
 		}
-		if (listen(fd, 10) < 0)
+		if (isTcp && listen(fd, 10) < 0)
 		{
 			perror("listen");
 			return false;

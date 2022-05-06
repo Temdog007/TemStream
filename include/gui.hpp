@@ -189,6 +189,7 @@ class TemStreamGuiLogger : public InMemoryLogger
 
 	void saveLogs();
 };
+extern void drawAddress(Address &address);
 } // namespace TemStream
 
 template <typename Archive> static inline void serialize(Archive &ar, ImVec4 &v)

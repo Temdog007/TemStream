@@ -109,8 +109,16 @@ class QueryVideo : public IQuery
 	{
 		VideoSource::FrameData frameData;
 		VideoCaptureArg arg;
+
+		WebCamSelection(VideoCaptureArg &&arg) : frameData(), arg(std::move(arg))
+		{
+		}
+		~WebCamSelection()
+		{
+		}
 	};
-	using VideoSelection = std::variant<WebCamSelection, WindowSelection>;
+
+	using VideoSelection = std::variant<WebCamSelection, WindowSelection, Address>;
 	VideoSelection selection;
 
   public:

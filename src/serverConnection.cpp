@@ -52,7 +52,7 @@ int runApp(Configuration &configuration)
 		thread.detach();
 	}
 
-	if (!openSocket(fd, configuration.address, true))
+	if (!openSocket(fd, configuration.address, true, true))
 	{
 		goto end;
 	}

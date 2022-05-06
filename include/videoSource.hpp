@@ -24,6 +24,7 @@ class VideoSource
 
 	VideoSource(const Message::Source &, String &&);
 	VideoSource(const Message::Source &, const WindowProcess &);
+	VideoSource(const Message::Source &, const Address &);
 
   public:
 	~VideoSource();
@@ -86,7 +87,7 @@ class VideoSource
 	static shared_ptr<VideoSource> recordWindow(const WindowProcess &, const Message::Source &, VideoSource::FrameData);
 	static shared_ptr<VideoSource> recordWebcam(const VideoCaptureArg &, const Message::Source &,
 												VideoSource::FrameData);
-
+	static shared_ptr<VideoSource> listenToUdpPort(const Address &, const Message::Source &);
 	class EncoderDecoder
 	{
 	  protected:

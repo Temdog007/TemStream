@@ -35,7 +35,7 @@ bool AddrInfo::getInfo(const char *hostname, const char *port, const struct addr
 	return true;
 }
 
-bool AddrInfo::makeSocket(int &sockfd) const
+bool AddrInfo::makeSocket(int &sockfd, const bool isTcp) const
 {
 	if (res == nullptr)
 	{
@@ -49,7 +49,7 @@ bool AddrInfo::makeSocket(int &sockfd) const
 		return false;
 	}
 	yes = 1;
-	if (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(yes)) < 0)
+	if (isTcp && setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(yes)) < 0)
 	{
 		perror("setsockopt");
 		return false;

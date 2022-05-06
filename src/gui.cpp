@@ -143,19 +143,20 @@ void TemStreamGui::decodeVideoPackets()
 				gui.lastVideoCheck = std::chrono::system_clock::now();
 				(*logger)(Logger::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
 			}
-			if (iter->second->getHeight() != packet.height || iter->second->getWidth() != packet.width)
-			{
-				auto decoder = VideoSource::createDecoder();
-				if (!decoder)
-				{
-					return;
-				}
-				decoder->setWidth(packet.width);
-				decoder->setHeight(packet.height);
-				iter->second.swap(decoder);
-			}
+			auto &decoder = iter->second;
+			// if (decoder->getHeight() != packet.height || decoder->getWidth() != packet.width)
+			// {
+			// 	auto newDecoder = VideoSource::createDecoder();
+			// 	if (!newDecoder)
+			// 	{
+			// 		return;
+			// 	}
+			// 	decoder->setWidth(packet.width);
+			// 	decoder->setHeight(packet.height);
+			// 	decoder.swap(newDecoder);
+			// }
 
-			if (!iter->second->decode(packet.bytes))
+			if (!decoder->decode(packet.bytes))
 			{
 				return;
 			}
@@ -166,8 +167,8 @@ void TemStreamGui::decodeVideoPackets()
 
 			auto frame = allocateAndConstruct<VideoSource::Frame>();
 			frame->bytes = std::move(packet.bytes);
-			frame->width = packet.width;
-			frame->height = packet.height;
+			frame->width = decoder->getWidth();
+			frame->height = decoder->getHeight();
 			frame->format = SDL_PIXELFORMAT_IYUV;
 			e.user.data1 = frame;
 
@@ -970,11 +971,7 @@ void TemStreamGui::draw()
 			}
 			if (ImGui::CollapsingHeader("Connect to stream"))
 			{
-				ImGui::InputText("Hostname", &configuration.address.hostname);
-				if (ImGui::InputInt("Port", &configuration.address.port, 1, 100))
-				{
-					configuration.address.port = std::clamp(configuration.address.port, 1, UINT16_MAX);
-				}
+				drawAddress(configuration.address);
 				if (ImGui::Button("Connect"))
 				{
 					connect(configuration.address);
@@ -1715,6 +1712,11 @@ int runApp(Configuration &configuration)
 
 		if (gui.dirty)
 		{
+			if (gui.getConnectionCount() == 0)
+			{
+				gui.displays.clear();
+			}
+
 			// Only keep displays, audios, videos if connection is present
 			for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
 			{

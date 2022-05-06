@@ -166,7 +166,7 @@ template <typename T> inline void hash_combine(std::size_t &seed, const T &v)
 	seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-extern bool openSocket(int &, const char *hostname, const char *port, const bool isServer);
+extern bool openSocket(int &, const char *hostname, const char *port, const bool isServer, const bool isTcp);
 
 extern bool sendData(int, const void *, size_t);
 
