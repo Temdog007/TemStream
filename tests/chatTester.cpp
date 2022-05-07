@@ -75,7 +75,7 @@ void runConnection(const Message::Source &source)
 			break;
 		}
 		packets.clear();
-		const int seconds = info.sendRate + std::rand() % 3;
+		const int seconds = info.sendRate + 1 + std::rand() % 2;
 		std::this_thread::sleep_until(std::chrono::system_clock::now() + std::chrono::seconds(seconds));
 	}
 

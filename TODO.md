@@ -309,12 +309,12 @@
 ### May 6, 2022
 - [x] Make program to join server and send random chat messages
 - [x] Add bad word filtering for chat messages
-- [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
-- [ ] Handle authentication
+- [x] Refactor client roles
+- [x] Allow banning/unbanning users
 
 ### May 7, 2022
+- [ ] Handle authentication
 - [ ] Make server write all messages to hard disk when recording
-- [ ] Add new role (super consumer) that can view replay of streams
 - [ ] Add replay message for every stream
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time interval

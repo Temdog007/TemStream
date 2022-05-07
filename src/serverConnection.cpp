@@ -522,7 +522,14 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 {
 	if (!connection.information.isModerator())
 	{
-		(*logger)(Logger::Error) << "Non-moderator peer " << connection.information << " tried to change ban a user";
+		(*logger)(Logger::Error) << "Non-moderator peer " << connection.information << " tried to change ban a user"
+								 << std::endl;
+		return false;
+	}
+	if (!ServerConnection::configuration.access.banList)
+	{
+		(*logger)(Logger::Error) << "Peer " << connection.information
+								 << " tried to change ban a user when there is no ban list" << std::endl;
 		return false;
 	}
 	{
@@ -531,13 +538,20 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 		{
 			if (auto ptr = iter->lock())
 			{
+				// Cannot ban moderators
 				if (ptr->information.name == banUser.name)
 				{
-					if (ServerConnection::configuration.access.banList)
+					if (ptr->information.isModerator())
 					{
-						ServerConnection::configuration.access.members.insert(ptr->information.name);
-						break;
+						(*logger)(Logger::Warning) << "Moderator " << connection.information
+												   << " tried to ban user: " << ptr->information << std::endl;
 					}
+					else
+					{
+						*logger << "Banned user: " << ptr->information << std::endl;
+						ServerConnection::configuration.access.members.insert(ptr->information.name);
+					}
+					break;
 				}
 				++iter;
 			}

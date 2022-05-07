@@ -143,7 +143,7 @@ struct VerifyLogin
 		   << "; Peer Information: " << login.peerInformation;
 		if (login.sendRate != 0)
 		{
-			os << "Message sent rate (in seconds): " << login.sendRate;
+			os << "; Message sent rate (in seconds): " << login.sendRate;
 		}
 		return os;
 	}

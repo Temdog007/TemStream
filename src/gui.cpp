@@ -677,10 +677,15 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 
 				for (const auto &peer : info.peers)
 				{
-					StringStream ss;
-					ss << peer;
+					String s;
+					{
+						StringStream ss;
+						ss << peer;
+						s = std::move(ss.str());
+					}
+					ImGui::PushID(s.c_str());
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", ss.str().c_str());
+					ImGui::Text("%s", s.c_str());
 
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Ban User"))
@@ -692,6 +697,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 						packet.payload.emplace<Message::BanUser>(std::move(banUser));
 						con.sendPacket(packet, true);
 					}
+					ImGui::PopID();
 				}
 				ImGui::EndTable();
 			}
