@@ -308,27 +308,29 @@
 
 ### May 6, 2022
 - [x] Make program to join server and send random chat messages
-- [ ] Add regex filtering for chat messages
-- [ ] Handle authentication
+- [x] Add bad word filtering for chat messages
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
+- [ ] Handle authentication
+
+### May 7, 2022
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add new role (super consumer) that can view replay of streams
 - [ ] Add replay message for every stream
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time interval
 
-### May 5, 2022
+### May 8, 2022
 - [ ] Implement web socket
 - [ ] Test browser
 
-### May 6, 2022
+### May 9, 2022
 - [ ] Implement SSL socket
 - [ ] Test android
 
-### May 7, 2022
+### May 10, 2022
 - [ ] Test on windows (use VM)
 
-### May 8, 2022
+### May 11, 2022
 - [ ] Add comments to code
 
 ### Bugs

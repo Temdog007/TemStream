@@ -7,7 +7,7 @@ namespace TemStream
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR
 using String = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
 using String32 = std::basic_string<char32_t, std::char_traits<char32_t>, Allocator<char32_t>>;
-using StringStream = std::basic_ostringstream<char, std::char_traits<char>, Allocator<char>>;
+using StringStream = std::basic_stringstream<char, std::char_traits<char>, Allocator<char>>;
 template <typename T> using List = std::vector<T, Allocator<T>>;
 template <typename T> using Deque = std::deque<T, Allocator<T>>;
 template <typename K> using Set = std::unordered_set<K, std::hash<K>, std::equal_to<K>, Allocator<K>>;
@@ -97,7 +97,7 @@ namespace TemStream
 
 using String = std::string;
 using String32 = std::u32string;
-using StringStream = std::ostringstream;
+using StringStream = std::stringstream;
 template <typename T> using List = std::vector<T>;
 template <typename T> using Deque = std::deque<T>;
 template <typename T> using Set = std::unordered_set<T>;

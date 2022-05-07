@@ -1,5 +1,7 @@
 #include <main.hpp>
 
+#include "badWords.hpp"
+
 #define CHECK_INFO(X)                                                                                                  \
 	if (connection.information.name.empty())                                                                           \
 	{                                                                                                                  \
@@ -17,6 +19,7 @@ std::atomic_int32_t ServerConnection::runningThreads = 0;
 Configuration ServerConnection::configuration;
 Mutex ServerConnection::peersMutex;
 LinkedList<std::weak_ptr<ServerConnection>> ServerConnection::peers;
+StringList badWords;
 
 int runApp(Configuration &configuration)
 {
@@ -27,6 +30,17 @@ int runApp(Configuration &configuration)
 
 	int result = EXIT_FAILURE;
 	int fd = -1;
+
+	{
+		String s(reinterpret_cast<char *>(List_of_Dirty_Naughty_Obscene_and_Otherwise_Bad_Words_en),
+				 List_of_Dirty_Naughty_Obscene_and_Otherwise_Bad_Words_en_len);
+		StringStream ss(s);
+		String to;
+		while (std::getline(ss, to, '\n'))
+		{
+			badWords.emplace_back(std::move(to));
+		}
+	}
 
 	ServerConnection::configuration = configuration;
 
@@ -422,6 +436,23 @@ bool ServerConnection::MessageHandler::operator()(Message::Text &)
 bool ServerConnection::MessageHandler::operator()(Message::Chat &chat)
 {
 	CHECK_INFO(Message::Chat)
+	// Check for profainity
+	auto &message = chat.message;
+	for (const auto &word : badWords)
+	{
+		while (true)
+		{
+			auto iter = std::search(message.begin(), message.end(), word.begin(), word.end(),
+									[](char c1, char c2) { return std::toupper(c1) == std::toupper(c2); });
+			if (iter == message.end())
+			{
+				break;
+			}
+
+			std::replace_if(
+				iter, iter + word.size(), [](auto) { return true; }, '*');
+		}
+	}
 	chat.timestamp = static_cast<int64_t>(time(nullptr));
 	chat.author = connection.information.name;
 	return processCurrentMessage();
