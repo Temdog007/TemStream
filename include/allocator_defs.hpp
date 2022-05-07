@@ -17,6 +17,8 @@ using Map = std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, Allocator<s
 template <typename T> using LinkedList = std::list<T, Allocator<T>>;
 template <typename T> using Queue = std::queue<T, LinkedList<T>>;
 
+using UTF8Converter = std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t, Allocator<char32_t>, Allocator<char>>;
+
 template <typename T, typename... Args> T *allocateAndConstruct(Args &&...args)
 {
 	Allocator<T> a;
@@ -103,6 +105,9 @@ template <typename K, typename V> using Map = std::unordered_map<K, V>;
 
 template <typename T> using LinkedList = std::list<T>;
 template <typename T> using Queue = std::queue<T>;
+
+using UTF8Converter = std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t>;
+
 template <typename T, typename... Args> T *allocateAndConstruct(Args &&...args)
 {
 	return new T(std::forward<Args>(args)...);

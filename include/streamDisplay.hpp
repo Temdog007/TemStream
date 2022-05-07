@@ -25,7 +25,18 @@ struct CheckAudio
 	{
 	}
 };
-using ChatLog = List<Message::Chat>;
+struct ChatLog
+{
+	List<Message::Chat> logs;
+	bool autoScroll;
+
+	ChatLog() : logs(), autoScroll(true)
+	{
+	}
+	~ChatLog()
+	{
+	}
+};
 using DisplayData =
 	std::variant<std::monostate, SDL_TextureWrapper, String, ChatLog, ByteList, CheckAudio, Message::ServerLinks>;
 class StreamDisplay

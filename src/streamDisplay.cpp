@@ -145,8 +145,8 @@ bool StreamDisplay::operator()(Message::Chat &chat)
 		data.emplace<ChatLog>();
 	}
 
-	auto &logs = std::get<ChatLog>(data);
-	logs.emplace_back(std::move(chat));
+	auto &chatLog = std::get<ChatLog>(data);
+	chatLog.logs.emplace_back(std::move(chat));
 	return true;
 }
 bool StreamDisplay::operator()(Message::Image &message)
@@ -280,34 +280,43 @@ bool StreamDisplay::Draw::operator()(String &s)
 	ImGui::End();
 	return true;
 }
-bool StreamDisplay::Draw::operator()(ChatLog &logs)
+bool StreamDisplay::Draw::operator()(ChatLog &chatLog)
 {
 	SetWindowMinSize(display.gui.getWindow());
 	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
-		if (ImGui::BeginTable("Chat Logs", 3, TableFlags))
+		ImGui::Checkbox("Auto Scroll", &chatLog.autoScroll);
+		if (ImGui::BeginChild("Logs"))
 		{
-			ImGui::TableSetupColumn("Timestamp");
-			ImGui::TableSetupColumn("Author");
-			ImGui::TableSetupColumn("Message");
-			ImGui::TableHeadersRow();
-			char buffer[KB(1)];
-			for (const auto &log : logs)
+			if (ImGui::BeginTable("Chat Logs", 3, TableFlags))
 			{
-				ImGui::TableNextColumn();
-				const auto t = static_cast<time_t>(log.timestamp);
-				std::strftime(buffer, sizeof(buffer), "%D %T", std::gmtime(&t));
-				ImGui::TextWrapped("%s", buffer);
+				ImGui::TableSetupColumn("Timestamp");
+				ImGui::TableSetupColumn("Author");
+				ImGui::TableSetupColumn("Message");
+				ImGui::TableHeadersRow();
+				char buffer[KB(1)];
+				for (const auto &log : chatLog.logs)
+				{
+					ImGui::TableNextColumn();
+					const auto t = static_cast<time_t>(log.timestamp);
+					std::strftime(buffer, sizeof(buffer), "%D %T", std::gmtime(&t));
+					ImGui::TextWrapped("%s", buffer);
 
-				ImGui::TableNextColumn();
-				ImGui::TextWrapped("%s", log.author.c_str());
+					ImGui::TableNextColumn();
+					ImGui::TextWrapped("%s", log.author.c_str());
 
-				ImGui::TableNextColumn();
-				ImGui::TextWrapped("%s", log.message.c_str());
+					ImGui::TableNextColumn();
+					ImGui::TextWrapped("%s", log.message.c_str());
+				}
+				ImGui::EndTable();
 			}
-			ImGui::EndTable();
 		}
+		if (chatLog.autoScroll)
+		{
+			ImGui::SetScrollHereY(1.f);
+		}
+		ImGui::EndChild();
 	}
 	ImGui::End();
 	return true;

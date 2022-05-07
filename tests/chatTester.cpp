@@ -85,13 +85,21 @@ void runConnection(const Message::Source &source)
 String randomString(size_t min, size_t max)
 {
 	String s;
-	const size_t n = min + static_cast<size_t>(roundf((max - min) * static_cast<float>(rand()) / RAND_MAX));
+	const size_t n = randomBetween(min, max);
 	while (s.size() < n)
 	{
 		const char c = rand() % 128;
 		if (isprint(c))
 		{
 			s += c;
+		}
+		else
+		{
+			// Add unicode if not printable
+			const auto value = randomBetween(0x1f600, 0x1f700);
+			UTF8Converter cvt;
+			const auto temp = cvt.to_bytes(value);
+			s += temp;
 		}
 	}
 	return s;
@@ -105,7 +113,7 @@ Message::Chat randomChatMessage(const String &author)
 	return chat;
 }
 
-Configuration loadConfiguration(int argc, const char *argv[])
+Configuration loadConfiguration(int argc, const char **argv)
 {
 	Configuration configuration;
 	if (argc < 5)

@@ -199,7 +199,12 @@ extern const char *ApplicationPath;
 
 template <typename T> T lerp(T min, T max, float percent)
 {
-	return min + (max - min) * percent;
+	return min + static_cast<T>((max - min) * percent);
+}
+
+template <typename T> T randomBetween(T min, T max)
+{
+	return lerp(min, max, static_cast<float>(rand()) / RAND_MAX);
 }
 
 template <typename T> auto toMoveIterator(T &&t)

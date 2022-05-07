@@ -307,7 +307,8 @@
 - [x] Handle UDP listening
 
 ### May 6, 2022
-- [ ] Make program to join server and send random chat messages
+- [x] Make program to join server and send random chat messages
+- [ ] Add regex filtering for chat messages
 - [ ] Handle authentication
 - [ ] If admin, display all peers from a server (allow removal, adding to ban list/ white list)
 - [ ] Make server write all messages to hard disk when recording

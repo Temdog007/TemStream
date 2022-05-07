@@ -14,6 +14,8 @@ void parseMemory(int, const char **, size_t);
 
 int main(const int argc, const char **argv)
 {
+	srand(time(nullptr));
+
 	TemStream::ApplicationPath = argv[0];
 	{
 		struct sigaction action;

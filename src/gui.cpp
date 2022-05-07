@@ -834,11 +834,7 @@ void TemStreamGui::draw()
 		SetWindowMinSize(window);
 		if (ImGui::Begin("TemStream Font", &configuration.showFont))
 		{
-#if TEMSTREAM_USE_CUSTOM_ALLOCATOR
-			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t, Allocator<char32_t>, Allocator<char>> cvt;
-#else
-			std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> cvt;
-#endif
+			UTF8Converter cvt;
 			const String s = cvt.to_bytes(allUTF32);
 			const size_t size = 1000;
 			for (size_t i = 0; i < s.size(); i += size)
