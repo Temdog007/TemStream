@@ -268,15 +268,15 @@ size_t ServerConnection::totalPeers()
 	LOCK(peersMutex);
 	return ServerConnection::peers.size();
 }
-StringList ServerConnection::getPeers()
+List<PeerInformation> ServerConnection::getPeers()
 {
-	StringList list;
+	List<PeerInformation> list;
 	LOCK(peersMutex);
 	for (auto iter = peers.begin(); iter != peers.end();)
 	{
 		if (auto ptr = iter->lock())
 		{
-			list.push_back(ptr->information.name);
+			list.push_back(ptr->information);
 			++iter;
 		}
 		else
@@ -518,16 +518,34 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 
 	return sendStoredPayload();
 }
-bool ServerConnection::MessageHandler::operator()(Access &access)
+bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 {
-	if (connection.information.type != PeerType::Admin)
+	if (!connection.information.isModerator())
 	{
-		(*logger)(Logger::Error) << "Non-admin peer " << connection.information << " tried to change access of server";
+		(*logger)(Logger::Error) << "Non-moderator peer " << connection.information << " tried to change ban a user";
 		return false;
 	}
 	{
 		LOCK(peersMutex);
-		configuration.access = std::move(access);
+		for (auto iter = ServerConnection::peers.begin(); iter != ServerConnection::peers.end();)
+		{
+			if (auto ptr = iter->lock())
+			{
+				if (ptr->information.name == banUser.name)
+				{
+					if (ServerConnection::configuration.access.banList)
+					{
+						ServerConnection::configuration.access.members.insert(ptr->information.name);
+						break;
+					}
+				}
+				++iter;
+			}
+			else
+			{
+				iter = ServerConnection::peers.erase(iter);
+			}
+		}
 	}
 	ServerConnection::checkAccess();
 	return true;
@@ -540,21 +558,27 @@ bool ServerConnection::MessageHandler::operator()(Message::VerifyLogin &)
 {
 	BAD_MESSAGE(VerifyLogin);
 }
-bool ServerConnection::MessageHandler::operator()(Message::PeerList &)
+bool ServerConnection::MessageHandler::operator()(Message::ServerInformation &)
 {
-	BAD_MESSAGE(PeerList);
+	BAD_MESSAGE(ServerInformation);
 }
-bool ServerConnection::MessageHandler::operator()(Message::RequestPeers &)
+bool ServerConnection::MessageHandler::operator()(Message::RequestServerInformation &)
 {
-	CHECK_INFO(Message::RequestPeers)
-	if (connection.information.type != PeerType::Admin)
+	CHECK_INFO(Message::RequestServerInformation)
+	if (!connection.information.isModerator())
 	{
-		(*logger)(Logger::Error) << "Non-admin peer " << connection.information << " tried to get peer list";
+		(*logger)(Logger::Error) << "Non-moderator peer " << connection.information << " tried to get peer list";
 		return false;
 	}
 	Message::Packet packet;
 	packet.source = ServerConnection::getSource();
-	packet.payload.emplace<Message::PeerList>(Message::PeerList{getPeers()});
+	Message::ServerInformation info;
+	info.peers = getPeers();
+	if (ServerConnection::configuration.access.banList)
+	{
+		info.banList = ServerConnection::configuration.access.members;
+	}
+	packet.payload.emplace<Message::ServerInformation>(std::move(info));
 	connection->sendPacket(packet);
 	return true;
 }
@@ -709,12 +733,12 @@ std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(c
 	PeerInformation info;
 	if (verifyToken)
 	{
-		char username[KB(1)];
-		uint8_t type = info.type;
-		if (verifyToken(token.c_str(), username, &type))
+		char username[32];
+		uint32_t flags = 0;
+		if (verifyToken(token.c_str(), username, &flags))
 		{
 			info.name = username;
-			info.type = static_cast<PeerType>(type);
+			info.flags = static_cast<PeerFlags>(flags);
 		}
 		else
 		{
@@ -723,10 +747,10 @@ std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(c
 	}
 	else
 	{
-		// Default credentials always give admin role
+		// Default credentials always sets the owner flag
 		// Don't use in production!!!
 		info.name = std::move(token);
-		info.type = PeerType::Admin;
+		info.flags = PeerFlags::Owner;
 	}
 	return info;
 }
@@ -735,12 +759,12 @@ std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(c
 	PeerInformation info;
 	if (verifyUsernameAndPassword)
 	{
-		char username[KB(1)];
-		uint8_t type = info.type;
-		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), username, &type))
+		char username[32];
+		uint32_t flags = 0;
+		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), username, &flags))
 		{
 			info.name = username;
-			info.type = static_cast<PeerType>(type);
+			info.flags = static_cast<PeerFlags>(flags);
 		}
 		else
 		{
@@ -749,10 +773,10 @@ std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(c
 	}
 	else
 	{
-		// Default credentials always give peer write access
+		// Default credentials always sets the owner flag
 		// Don't use in production!!!
 		info.name = std::move(pair.first);
-		info.type = PeerType::Admin;
+		info.flags = PeerFlags::Owner;
 	}
 	return info;
 }

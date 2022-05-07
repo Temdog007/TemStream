@@ -59,6 +59,7 @@ class TemStreamGui
 	Map<Message::Source, StreamDisplay> displays;
 	Map<Message::Source, unique_ptr<VideoSource::EncoderDecoder>> decodingMap;
 	Map<Message::Source, ByteList> pendingVideo;
+	Map<Message::Source, int> actionSelections;
 
 	ConcurrentQueue<VideoPacket> videoPackets;
 	unique_ptr<IQuery> queryData;
@@ -77,6 +78,8 @@ class TemStreamGui
 	void handleMessage(Message::Packet &&);
 
 	ImVec2 drawMainMenuBar();
+
+	void renderConnection(const Message::Source &, shared_ptr<ClientConnection> &);
 
 	static String32 getAllUTF32();
 
@@ -110,6 +113,8 @@ class TemStreamGui
 		const Message::Source &source;
 
 		bool operator()(Message::Video &);
+
+		bool operator()(Message::ServerInformation &);
 
 		template <typename T> bool operator()(T &)
 		{

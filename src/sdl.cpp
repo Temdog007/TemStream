@@ -5,7 +5,7 @@ namespace TemStream
 SDL_TextureWrapper::SDL_TextureWrapper(SDL_Texture *texture) : texture(texture)
 {
 }
-SDL_TextureWrapper::SDL_TextureWrapper(SDL_TextureWrapper &&w) : texture(w.texture)
+SDL_TextureWrapper::SDL_TextureWrapper(SDL_TextureWrapper &&w) : texture(nullptr)
 {
 	swap(w);
 }

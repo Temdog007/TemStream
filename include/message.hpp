@@ -21,51 +21,72 @@ extern const char *ServerTypeStrings[ServerType::ServerTypeCount];
 extern std::ostream &operator<<(std::ostream &, ServerType);
 extern bool validServerType(const ServerType);
 
-enum PeerType : uint8_t
+enum PeerFlags : uint32_t
 {
-	InvalidPeerType = 0u,
-	Consumer,
-	Producer,
-	Admin,
-	PeerTypeCount
+	None = 0u,
+	WriteAccess = 1u << 0u,
+	ReplayAccess = 1u << 1u,
+	Moderator = 1u << 2u,
+	Owner = 1u << 3u
 };
-extern const char *PeerTypeStrings[PeerType::PeerTypeCount];
-extern std::ostream &operator<<(std::ostream &, const PeerType);
-extern bool validPeerType(PeerType);
+constexpr bool peerFlagsOverlap(const PeerFlags a, const PeerFlags b)
+{
+	return (a & b) != 0;
+}
+extern std::ostream &operator<<(std::ostream &, const PeerFlags);
+constexpr PeerFlags operator|(const PeerFlags a, const PeerFlags b)
+{
+	return static_cast<PeerFlags>(static_cast<int>(a) | static_cast<int>(b));
+}
 struct PeerInformation
 {
 	String name;
-	PeerType type;
-	PeerInformation &swap(PeerInformation &login)
+	PeerFlags flags;
+
+	PeerInformation &swap(PeerInformation &login) noexcept
 	{
 		std::swap(name, login.name);
-		std::swap(type, login.type);
+		std::swap(flags, login.flags);
 		return *this;
+	}
+
+	constexpr bool is(const PeerFlags f) const
+	{
+		return peerFlagsOverlap(flags, f);
+	}
+
+	constexpr bool isOwner() const
+	{
+		return is(Owner);
 	}
 
 	constexpr bool hasWriteAccess() const
 	{
-		switch (type)
-		{
-		case PeerType::Consumer:
-		case PeerType::Admin:
-			return true;
-		default:
-			return false;
-		}
+		return is(Owner | WriteAccess);
 	}
+
+	constexpr bool hasReplayAccess() const
+	{
+		return is(Owner | ReplayAccess);
+	}
+
+	constexpr bool isModerator() const
+	{
+		return is(Owner | Moderator);
+	}
+
 	template <class Archive> void save(Archive &ar) const
 	{
-		ar(name, type);
+		ar(name, flags);
 	}
 	template <class Archive> void load(Archive &ar)
 	{
-		ar(name, type);
+		ar(name, flags);
 	}
 
 	friend std::ostream &operator<<(std::ostream &os, const PeerInformation &info)
 	{
-		os << info.name << " (" << info.type << ")";
+		os << info.name << " " << info.flags;
 		return os;
 	}
 };
@@ -184,32 +205,6 @@ struct Frame
 		ar(width, height, bytes);
 	}
 };
-using Video = std::variant<Frame, LargeFile>;
-struct Audio
-{
-	ByteList bytes;
-	template <class Archive> void save(Archive &ar) const
-	{
-		ar(bytes);
-	}
-	template <class Archive> void load(Archive &ar)
-	{
-		ar(bytes);
-	}
-};
-EMPTY_MESSAGE(RequestPeers);
-struct PeerList
-{
-	StringList peers;
-	template <class Archive> void save(Archive &ar) const
-	{
-		ar(peers);
-	}
-	template <class Archive> void load(Archive &ar)
-	{
-		ar(peers);
-	}
-};
 struct Chat
 {
 	String author;
@@ -224,8 +219,47 @@ struct Chat
 		ar(author, message, timestamp);
 	}
 };
+using Video = std::variant<Frame, LargeFile>;
+struct Audio
+{
+	ByteList bytes;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(bytes);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(bytes);
+	}
+};
+EMPTY_MESSAGE(RequestServerInformation);
+struct ServerInformation
+{
+	List<PeerInformation> peers;
+	Set<String> banList;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(peers, banList);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(peers, banList);
+	}
+};
+struct BanUser
+{
+	String name;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(name);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(name);
+	}
+};
 using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
-							 RequestPeers, PeerList, Access>;
+							 RequestServerInformation, ServerInformation, BanUser>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
@@ -237,9 +271,9 @@ using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Cha
 	RVAL operator()(Message::Image &);                                                                                 \
 	RVAL operator()(Message::Audio &);                                                                                 \
 	RVAL operator()(Message::Video &);                                                                                 \
-	RVAL operator()(Message::RequestPeers &);                                                                          \
-	RVAL operator()(Message::PeerList &);                                                                              \
-	RVAL operator()(Access &)
+	RVAL operator()(Message::RequestServerInformation &);                                                              \
+	RVAL operator()(Message::ServerInformation &);                                                                     \
+	RVAL operator()(Message::BanUser &)
 
 struct Packet
 {
@@ -322,7 +356,7 @@ template <> struct hash<TemStream::PeerInformation>
 	std::size_t operator()(const TemStream::PeerInformation &info) const
 	{
 		std::size_t value = hash<TemStream::String>()(info.name);
-		TemStream::hash_combine(value, info.type);
+		TemStream::hash_combine(value, info.flags);
 		return value;
 	}
 };

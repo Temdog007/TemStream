@@ -10,8 +10,8 @@ class ClientConnection : public Connection
 {
   private:
 	TemStreamGui &gui;
-	Message::VerifyLogin serverInformation;
-	Message::PeerList peers;
+	Message::VerifyLogin verifyLogin;
+	Message::ServerInformation serverInformation;
 	TimePoint lastSentMessage;
 	bool opened;
 
@@ -40,23 +40,27 @@ class ClientConnection : public Connection
 
 	Message::Source getSource() const;
 
+	std::optional<std::chrono::duration<double>> nextSendInterval() const;
+
 	const Message::VerifyLogin &getInfo() const
+	{
+		return verifyLogin;
+	}
+
+	void setVerifyLogin(Message::VerifyLogin &&verifyLogin)
+	{
+		this->verifyLogin = std::move(verifyLogin);
+	}
+
+	const Message::ServerInformation &getServerInformation() const
 	{
 		return serverInformation;
 	}
 
-	void setInfo(Message::VerifyLogin &&l)
+	bool setServerInformation(Message::ServerInformation &&serverInformation)
 	{
-		serverInformation = std::move(l);
-	}
-
-	std::optional<std::chrono::duration<double>> nextSendInterval() const;
-
-	bool operator()(Message::PeerList &&);
-
-	template <typename T> bool operator()(const T &)
-	{
-		return false;
+		this->serverInformation = std::move(serverInformation);
+		return true;
 	}
 };
 } // namespace TemStream

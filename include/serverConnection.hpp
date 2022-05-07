@@ -20,7 +20,7 @@ class ServerConnection : public Connection
 
 	static size_t totalPeers();
 
-	static StringList getPeers();
+	static List<PeerInformation> getPeers();
 
 	static void sendLinks(const String &);
 
@@ -32,8 +32,8 @@ class ServerConnection : public Connection
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
 
-	typedef bool (*VerifyToken)(const char *, char *, uint8_t *);
-	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, uint8_t *);
+	typedef bool (*VerifyToken)(const char *, char *, uint32_t *);
+	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, uint32_t *);
 
 	class CredentialHandler
 	{

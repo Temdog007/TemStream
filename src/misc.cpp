@@ -31,29 +31,26 @@ std::ostream &operator<<(std::ostream &os, const ServerType type)
 	return os;
 }
 
-const char *PeerTypeStrings[PeerType::PeerTypeCount];
-bool validPeerType(const PeerType type)
+std::ostream &operator<<(std::ostream &os, const PeerFlags flags)
 {
-	return PeerType::InvalidPeerType < type && type < PeerType::PeerTypeCount;
-}
-std::ostream &operator<<(std::ostream &os, const PeerType type)
-{
-	static bool first = true;
-	if (first)
+	os << '[';
+	if (peerFlagsOverlap(flags, WriteAccess))
 	{
-		WRITE_STRING_TO_STRING_ARRAY(PeerType, Consumer);
-		WRITE_STRING_TO_STRING_ARRAY(PeerType, Producer);
-		WRITE_STRING_TO_STRING_ARRAY(PeerType, Admin);
-		first = false;
+		os << "WriteAcess,";
 	}
-	if (validPeerType(type))
+	if (peerFlagsOverlap(flags, ReplayAccess))
 	{
-		os << PeerTypeStrings[type];
+		os << "ReplayAcess,";
 	}
-	else
+	if (peerFlagsOverlap(flags, Moderator))
 	{
-		os << "Unknown";
+		os << "Moderator,";
 	}
+	if (peerFlagsOverlap(flags, Owner))
+	{
+		os << "Owner";
+	}
+	os << ']';
 	return os;
 }
 namespace Message

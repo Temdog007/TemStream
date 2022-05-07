@@ -3,7 +3,7 @@
 namespace TemStream
 {
 ClientConnection::ClientConnection(TemStreamGui &gui, const Address &address, unique_ptr<Socket> s)
-	: Connection(address, std::move(s)), gui(gui), serverInformation(), peers(), lastSentMessage(), opened(true)
+	: Connection(address, std::move(s)), gui(gui), verifyLogin(), serverInformation(), lastSentMessage(), opened(true)
 {
 }
 ClientConnection::~ClientConnection()
@@ -74,19 +74,19 @@ void ClientConnection::addPackets(MessagePackets &&m)
 Message::Source ClientConnection::getSource() const
 {
 	Message::Source source;
-	source.serverName = serverInformation.serverName;
+	source.serverName = verifyLogin.serverName;
 	source.address = address;
 	return source;
 }
 std::optional<std::chrono::duration<double>> ClientConnection::nextSendInterval() const
 {
-	if (serverInformation.sendRate == 0)
+	if (verifyLogin.sendRate == 0)
 	{
 		return std::nullopt;
 	}
 
 	const auto now = std::chrono::system_clock::now();
-	const auto diff = lastSentMessage + std::chrono::duration<uint32_t>(serverInformation.sendRate);
+	const auto diff = lastSentMessage + std::chrono::duration<uint32_t>(verifyLogin.sendRate);
 	if (now < diff)
 	{
 		return diff - now;

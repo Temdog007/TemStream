@@ -237,17 +237,17 @@ bool StreamDisplay::operator()(Message::VerifyLogin &)
 {
 	BAD_MESSAGE(VerifyLogin);
 }
-bool StreamDisplay::operator()(Message::RequestPeers &)
+bool StreamDisplay::operator()(Message::RequestServerInformation &)
 {
-	BAD_MESSAGE(RequestPeers);
+	BAD_MESSAGE(RequestServerInformation);
 }
-bool StreamDisplay::operator()(Message::PeerList &)
+bool StreamDisplay::operator()(Message::ServerInformation &)
 {
-	BAD_MESSAGE(PeerList);
+	BAD_MESSAGE(ServerInformation);
 }
-bool StreamDisplay::operator()(Access &)
+bool StreamDisplay::operator()(Message::BanUser &)
 {
-	BAD_MESSAGE(Access);
+	BAD_MESSAGE(BanUser);
 }
 StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)
 {

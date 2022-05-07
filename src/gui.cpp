@@ -407,7 +407,7 @@ void TemStreamGui::connect(const Address &address)
 
 			if (auto ptr = std::get_if<Message::VerifyLogin>(&packet->payload))
 			{
-				clientConnection->setInfo(std::move(*ptr));
+				clientConnection->setVerifyLogin(std::move(*ptr));
 			}
 			else
 			{
@@ -647,6 +647,165 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 		ImGui::EndMainMenuBar();
 	}
 	return size;
+}
+
+void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<ClientConnection> &ptr)
+{
+	auto &con = *ptr;
+
+	ImGui::PushID(static_cast<String>(source).c_str());
+
+	bool closed = true;
+	if (ImGui::BeginPopupModal("Moderation", &closed))
+	{
+		const auto &info = con.getServerInformation();
+		ImGui::Text("Peers: %zu", info.peers.size());
+		if (ImGui::Button("Refresh"))
+		{
+			Message::Packet packet;
+			packet.source = source;
+			packet.payload.emplace<Message::RequestServerInformation>();
+			con.sendPacket(packet, true);
+		}
+		if (ImGui::BeginChild("Peer List"))
+		{
+			if (ImGui::BeginTable("Peer Table", 2, TableFlags))
+			{
+				ImGui::TableSetupColumn("Name [Permissions]");
+				ImGui::TableSetupColumn("Ban");
+				ImGui::TableHeadersRow();
+
+				for (const auto &peer : info.peers)
+				{
+					StringStream ss;
+					ss << peer;
+					ImGui::TableNextColumn();
+					ImGui::Text("%s", ss.str().c_str());
+
+					ImGui::TableNextColumn();
+					if (ImGui::Button("Ban User"))
+					{
+						Message::Packet packet;
+						packet.source = source;
+						Message::BanUser banUser;
+						banUser.name = peer.name;
+						packet.payload.emplace<Message::BanUser>(std::move(banUser));
+						con.sendPacket(packet, true);
+					}
+				}
+				ImGui::EndTable();
+			}
+		}
+		ImGui::EndChild();
+		ImGui::EndPopup();
+	}
+
+	ImGui::TableNextColumn();
+	ImGui::Text("%s", source.serverName.c_str());
+
+	ImGui::TableNextColumn();
+	const auto &info = con.getInfo();
+	{
+		StringStream ss;
+		ss << info.serverType;
+		ImGui::Text("%s", ss.str().c_str());
+	}
+
+	int selected;
+	{
+		auto iter = actionSelections.find(source);
+		if (iter == actionSelections.end())
+		{
+			auto pair = actionSelections.try_emplace(source, 0);
+			iter = pair.first;
+		}
+		selected = iter->second;
+	}
+
+	static const char *actions[]{"-------", "Upload", "Disconnect", "Moderate"};
+
+	ImGui::TableNextColumn();
+	if (ImGui::Combo("Action", &selected, actions, IM_ARRAYSIZE(actions)) && selected == 3)
+	{
+		if (!info.peerInformation.isModerator())
+		{
+			selected = 0;
+		}
+	}
+
+	ImGui::TableNextColumn();
+	switch (selected)
+	{
+	case 1: {
+		if (!info.peerInformation.hasWriteAccess())
+		{
+			ImGui::Text("?");
+			selected = 0;
+			break;
+		}
+		const auto dur = con.nextSendInterval();
+		if (dur.has_value())
+		{
+			ImGui::Text("Wait %0.2f", dur->count());
+			break;
+		}
+
+		bool wrote = false;
+		switch (info.serverType)
+		{
+		case ServerType::Audio:
+			if (audio.use(source, [](auto &a) {
+					ImGui::TextWrapped("%s\n%s", a->isRecording() ? "Sending" : "Receiving", a->getName().c_str());
+				}))
+			{
+				wrote = true;
+			}
+			break;
+		case ServerType::Video: {
+			if (video.use(source, [](auto &v) { ImGui::TextWrapped("Sending\n%s", v->getName().c_str()); }))
+			{
+				wrote = true;
+			}
+		}
+		break;
+		default:
+			break;
+		}
+		if (!wrote && ImGui::Button("Upload"))
+		{
+			queryData = getQuery(info.serverType, source);
+		}
+	}
+	break;
+	case 2:
+		if (ImGui::Button("Disconnect"))
+		{
+			con.close();
+			dirty = true;
+		}
+		break;
+	case 3:
+		if (!info.peerInformation.isModerator())
+		{
+			selected = 0;
+			break;
+		}
+		if (ImGui::Button("Moderate"))
+		{
+			ImGui::OpenPopup("Moderation");
+			Message::Packet packet;
+			packet.source = source;
+			packet.payload.emplace<Message::RequestServerInformation>();
+			con.sendPacket(packet, true);
+		}
+		break;
+	default:
+		ImGui::Text("?");
+		break;
+	}
+
+	actionSelections[source] = selected;
+	ImGui::PopID();
 }
 
 void TemStreamGui::draw()
@@ -894,79 +1053,11 @@ void TemStreamGui::draw()
 			{
 				ImGui::TableSetupColumn("Name");
 				ImGui::TableSetupColumn("Type");
-				ImGui::TableSetupColumn("Upload");
-				ImGui::TableSetupColumn("Disconnect");
+				ImGui::TableSetupColumn("Action");
+				ImGui::TableSetupColumn("Run");
 				ImGui::TableHeadersRow();
 
-				connections.forEach([this](const auto &source, auto &ptr) {
-					auto &con = *ptr;
-
-					ImGui::PushID(static_cast<String>(source).c_str());
-
-					ImGui::TableNextColumn();
-					ImGui::Text("%s", source.serverName.c_str());
-
-					ImGui::TableNextColumn();
-					const auto &info = con.getInfo();
-					{
-						StringStream ss;
-						ss << info.serverType;
-						ImGui::Text("%s", ss.str().c_str());
-					}
-
-					ImGui::TableNextColumn();
-					if (info.peerInformation.hasWriteAccess())
-					{
-						const auto dur = con.nextSendInterval();
-						if (dur.has_value())
-						{
-							ImGui::Text("Wait %0.2f", dur->count());
-						}
-						else
-						{
-							switch (info.serverType)
-							{
-							case ServerType::Audio:
-								if (audio.use(source, [](auto &a) {
-										ImGui::TextWrapped("%s\n%s", a->isRecording() ? "Sending" : "Receiving",
-														   a->getName().c_str());
-									}))
-								{
-									goto nextColumn;
-								}
-								break;
-							case ServerType::Video: {
-								if (video.use(source,
-											  [](auto &v) { ImGui::TextWrapped("Sending\n%s", v->getName().c_str()); }))
-								{
-									goto nextColumn;
-								}
-							}
-							break;
-							default:
-								break;
-							}
-							if (ImGui::Button("Upload"))
-							{
-								queryData = getQuery(info.serverType, source);
-							}
-						}
-					}
-					else
-					{
-						ImGui::Text("No write access");
-					}
-
-				nextColumn:
-					ImGui::TableNextColumn();
-					if (ImGui::Button("Disconnect"))
-					{
-						con.close();
-						dirty = true;
-					}
-
-					ImGui::PopID();
-				});
+				connections.forEach([this](const auto &source, auto &ptr) { renderConnection(source, ptr); });
 				ImGui::EndTable();
 			}
 			if (ImGui::CollapsingHeader("Connect to stream"))
@@ -1392,6 +1483,18 @@ bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
 	auto pair = std::make_pair(source, std::move(v));
 	gui.videoPackets.push(std::move(pair));
 	gui.dirty = true;
+	return true;
+}
+
+bool TemStreamGui::MessageHandler::operator()(Message::ServerInformation &info)
+{
+	auto con = gui.getConnection(source);
+	if (con == nullptr)
+	{
+		return true;
+	}
+
+	con->setServerInformation(std::move(info));
 	return true;
 }
 
