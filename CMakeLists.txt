@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 option(COMPILE_CLIENT "Compile TemStream client" ON)
 option(COMPILE_SERVER "Compile TemStream server" ON)
+option(COMPILE_CHAT_TEST "Compile TemStream chat test" OFF)
 option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
 option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
@@ -16,6 +17,7 @@ option(OPENH264_ENCODING "Use OpenH264 to encode video" OFF)
 option(USE_OPEN_CV "Use OpenCV library" ON)
 
 set(OPENH264_ENCODING ON)
+set(COMPILE_CHAT_TEST ON)
 set(VPX_ENCODING OFF)
 set(BUILD_SANDBOX OFF)
 set(SUPPORT_JPG ON)
@@ -211,4 +213,32 @@ if(COMPILE_SERVER)
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)
   target_link_libraries(TemStreamServer PRIVATE Threads::Threads)
+endif()
+
+# Compile Chat Test
+if(COMPILE_CHAT_TEST)
+  add_executable(TemStreamChatTest ${SOURCES} tests/chatTester.cpp)
+
+  if(MSVC)
+    target_compile_options(TemStreamChatTest PRIVATE /W4 /WX)
+  else()
+    target_compile_options(TemStreamChatTest PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+
+  if(CUSTOM_ALLOCATOR)
+    target_compile_definitions(TemStreamChatTest PRIVATE -DTEMSTREAM_USE_CUSTOM_ALLOCATOR)
+  endif()
+
+  target_compile_definitions(TemStreamChatTest PRIVATE -DTEMSTREAM_CHAT_TEST)
+
+  target_include_directories(TemStreamChatTest PRIVATE 
+    "${PROJECT_SOURCE_DIR}/include"
+    "${PROJECT_SOURCE_DIR}/tests"
+    "${CEREAL_SOURCE_DIR}/include")
+
+  target_link_libraries(TemStreamChatTest PRIVATE cereal)
+
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  find_package(Threads REQUIRED)
+  target_link_libraries(TemStreamChatTest PRIVATE Threads::Threads)
 endif()

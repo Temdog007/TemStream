@@ -21,7 +21,7 @@ class ClientConnection : public Connection
 	ClientConnection(ClientConnection &&) = delete;
 	virtual ~ClientConnection();
 
-	void sendPacket(const Message::Packet &, const bool sendImmediately = false);
+	bool sendPacket(const Message::Packet &, const bool sendImmediately = false);
 	bool flushPackets();
 	void addPacket(Message::Packet &&);
 	void addPackets(MessagePackets &&);

@@ -18,10 +18,10 @@ void ClientConnection::close()
 	opened = false;
 	(*logger)(Logger::Info) << "Closing connection: " << getSource() << std::endl;
 }
-void ClientConnection::sendPacket(const Message::Packet &packet, const bool sendImmediately)
+bool ClientConnection::sendPacket(const Message::Packet &packet, const bool sendImmediately)
 {
-	mSocket->sendPacket(packet, sendImmediately);
 	lastSentMessage = std::chrono::system_clock::now();
+	return mSocket->sendPacket(packet, sendImmediately);
 }
 bool ClientConnection::flushPackets()
 {

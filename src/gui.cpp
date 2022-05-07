@@ -372,7 +372,11 @@ void TemStreamGui::connect(const Address &address)
 		{
 			Message::Packet packet;
 			packet.payload.emplace<Message::Credentials>(configuration.credentials);
-			clientConnection->sendPacket(packet, true);
+			if (!clientConnection->sendPacket(packet, true))
+			{
+				(*logger)(Logger::Error) << "Authentication failure for server: " << address
+										 << "; Failed to send message" << std::endl;
+			}
 		}
 		// Wait for response to get server type
 		auto &packets = clientConnection->getPackets();
@@ -1352,30 +1356,39 @@ unique_ptr<IQuery> TemStreamGui::getQuery(const ServerType i, const Message::Sou
 	}
 }
 
-void TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)
+bool TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)
 {
 	auto peer = getConnection(packet.source);
 	if (peer)
 	{
-		peer->sendPacket(packet);
+		if (!peer->sendPacket(packet))
+		{
+			return false;
+		}
 		if (handleLocally)
 		{
 			peer->addPacket(std::move(packet));
 		}
+		return true;
 	}
 	else
 	{
 		(*logger)(Logger::Error) << "Cannot send data to server: " << packet.source.serverName << std::endl;
+		return false;
 	}
 }
 
-void TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocally)
+bool TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocally)
 {
 	auto pair = toMoveIterator(packets);
 	for (auto iter = pair.first; iter != pair.second; ++iter)
 	{
-		sendPacket(std::move(*iter), handleLocally);
+		if (!sendPacket(std::move(*iter), handleLocally))
+		{
+			return false;
+		}
 	}
+	return true;
 }
 
 bool TemStreamGui::MessageHandler::operator()(Message::Video &v)

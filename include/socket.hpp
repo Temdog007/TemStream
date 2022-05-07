@@ -22,7 +22,7 @@ class Socket
 	Socket();
 	virtual ~Socket();
 
-	void sendPacket(const Message::Packet &, const bool sendImmediately = false);
+	bool sendPacket(const Message::Packet &, const bool sendImmediately = false);
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
 	virtual void send(const uint8_t *, size_t, const bool convertToBase64 = TEMSTREAM_USE_BASE64);

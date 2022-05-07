@@ -78,7 +78,7 @@ template <> struct hash<TemStream::String>
 };
 } // namespace std
 
-#if !TEMSTREAM_SERVER
+#if TEMSTREAM_HAS_GUI
 namespace ImGui
 {
 IMGUI_API bool InputText(const char *, TemStream::String *, ImGuiInputTextFlags flags = 0,

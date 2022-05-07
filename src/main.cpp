@@ -30,6 +30,8 @@ int main(const int argc, const char **argv)
 		const size_t defaultMemory =
 #if TEMSTREAM_SERVER
 			128
+#elif TEMSTREAM_CHAT_TEST
+			32
 #else
 			256
 #endif
@@ -57,6 +59,8 @@ void TemStream::initialLogs()
 	const char *AppName =
 #if TEMSTREAM_SERVER
 		"TemStream Server"
+#elif TEMSTREAM_CHAT_TEST
+		"TemStream Chat Test"
 #else
 		"TemStream"
 #endif

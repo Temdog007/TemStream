@@ -170,8 +170,8 @@ class TemStreamGui
 	static ServerType getSelectedQuery(const IQuery *);
 	unique_ptr<IQuery> getQuery(ServerType, const Message::Source &);
 
-	void sendPacket(Message::Packet &&, const bool handleLocally = true);
-	void sendPackets(MessagePackets &&, const bool handleLocally = true);
+	bool sendPacket(Message::Packet &&, const bool handleLocally = true);
+	bool sendPackets(MessagePackets &&, const bool handleLocally = true);
 };
 class TemStreamGuiLogger : public InMemoryLogger
 {

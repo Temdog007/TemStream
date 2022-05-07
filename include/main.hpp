@@ -75,7 +75,13 @@ template <class Archive, typename T1, typename T2> void load(Archive &archive, s
 }
 } // namespace std
 
-#if !TEMSTREAM_SERVER
+#if TEMSTREAM_SERVER || TEMSTREAM_CHAT_TEST
+#define TEMSTREAM_HAS_GUI false
+#else
+#define TEMSTREAM_HAS_GUI true
+#endif
+
+#if TEMSTREAM_HAS_GUI
 #include <SDL.h>
 
 #include <SDL_image.h>
@@ -267,6 +273,8 @@ template <typename T> void cleanSwap(T &t)
 #if TEMSTREAM_SERVER
 #include "serverConfiguration.hpp"
 #include "serverConnection.hpp"
+#elif TEMSTREAM_CHAT_TEST
+#include "chatTester.hpp"
 #else
 #include "work.hpp"
 
