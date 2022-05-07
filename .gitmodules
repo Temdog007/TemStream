@@ -16,3 +16,6 @@ url = https://gitlab.xiph.org/xiph/opus.git
 [submodule "openh264"]
 path = openh264
 url = https://github.com/cisco/openh264.github
+[submodule "List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words"]
+	path = List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words
+	url = https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words.git
