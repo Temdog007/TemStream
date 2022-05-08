@@ -66,7 +66,7 @@ uint32_t getFlags(const std::string &s)
 
 extern "C" bool VerifyToken(const char *token, char (&username)[32], std::uint32_t &flags)
 {
-	return checkFile([token, username, &flags](const std::vector<std::string> &v) mutable {
+	return checkFile([token, &username, &flags](const std::vector<std::string> &v) mutable {
 		if (v.size() < 2)
 		{
 			return false;

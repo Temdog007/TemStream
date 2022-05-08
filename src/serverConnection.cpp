@@ -748,9 +748,9 @@ std::optional<PeerInformation> CredentialHandler::operator()(const String &token
 	PeerInformation info;
 	if (verifyToken)
 	{
-		char username[32];
+		char username[32]{};
 		uint32_t flags = 0;
-		if (verifyToken(token.c_str(), username, &flags))
+		if (verifyToken(token.c_str(), username, flags))
 		{
 			info.name = username;
 			info.flags = static_cast<PeerFlags>(flags);
@@ -775,7 +775,7 @@ std::optional<PeerInformation> CredentialHandler::operator()(const Message::User
 	if (verifyUsernameAndPassword)
 	{
 		uint32_t flags = 0;
-		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), &flags))
+		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), flags))
 		{
 			info.name = pair.first;
 			info.flags = static_cast<PeerFlags>(flags);

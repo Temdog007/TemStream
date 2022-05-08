@@ -5,8 +5,8 @@
 namespace TemStream
 {
 
-typedef bool (*VerifyToken)(const char *, char *, uint32_t *);
-typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, uint32_t *);
+typedef bool (*VerifyToken)(const char *, char (&username)[32], uint32_t &);
+typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, uint32_t &);
 struct Configuration
 {
 	Access access;
