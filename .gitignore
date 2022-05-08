@@ -102,6 +102,9 @@ yarn-error.log*
 imgui.ini
 TemStream_log*.txt
 
+*.o
+*.so
+
 streams/
 junk/
 

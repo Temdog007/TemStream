@@ -208,7 +208,7 @@ if(COMPILE_SERVER)
     "${PROJECT_SOURCE_DIR}/include"
     "${CEREAL_SOURCE_DIR}/include")
 
-  target_link_libraries(TemStreamServer PRIVATE cereal)
+  target_link_libraries(TemStreamServer PRIVATE cereal dl)
 
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)

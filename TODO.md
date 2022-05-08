@@ -313,24 +313,26 @@
 - [x] Allow banning/unbanning users
 
 ### May 7, 2022
-- [ ] Handle authentication
+- [x] Handle authentication
+
+### May 8, 2022
 - [ ] Make server write all messages to hard disk when recording
 - [ ] Add replay message for every stream
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time interval
 
-### May 8, 2022
+### May 9, 2022
 - [ ] Implement web socket
 - [ ] Test browser
 
-### May 9, 2022
+### May 10, 2022
 - [ ] Implement SSL socket
 - [ ] Test android
 
 ### May 10, 2022
-- [ ] Test on windows (use VM)
+- [ ] Test on window
 
-### May 11, 2022
+### May 12, 2022
 - [ ] Add comments to code
 
 ### Bugs

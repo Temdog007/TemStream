@@ -1,15 +1,32 @@
 #include <main.hpp>
 
+#include <dlfcn.h>
+
+#define LOAD_LIBRARY(m, X)                                                                                             \
+	configuration.m = reinterpret_cast<X>(dlsym(configuration.handle, #X));                                            \
+	if (configuration.m == nullptr)                                                                                    \
+	{                                                                                                                  \
+		throw std::runtime_error("Failed to load authentication function: " #X);                                       \
+	}
+
 namespace TemStream
 {
 const char *banList = nullptr;
 Configuration::Configuration()
-	: access(), address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), messageRateInSeconds(0),
-	  maxClients(UINT32_MAX), maxMessageSize(MB(1)), serverType(ServerType::UnknownServerType), record(false)
+	: access(), address(), name("Server"), startTime(static_cast<int64_t>(time(nullptr))), handle(nullptr),
+	  verifyToken(nullptr), verifyUsernameAndPassword(nullptr), messageRateInSeconds(0), maxClients(UINT32_MAX),
+	  maxMessageSize(MB(1)), serverType(ServerType::UnknownServerType), record(false)
 {
 }
 Configuration::~Configuration()
 {
+	if (handle != nullptr)
+	{
+		verifyToken = nullptr;
+		verifyUsernameAndPassword = nullptr;
+		dlclose(handle);
+		handle = nullptr;
+	}
 }
 bool Configuration::valid() const
 {
@@ -82,6 +99,19 @@ Configuration loadConfiguration(const int argc, const char **argv)
 				configuration.access.members.emplace(std::move(line));
 			}
 			banList = argv[i + 1];
+			i += 2;
+			continue;
+		}
+		if (strcasecmp("-AU", argv[i]) == 0 || strcasecmp("--authentication", argv[i]) == 0)
+		{
+			configuration.handle = dlopen(argv[i + 1], RTLD_LAZY);
+			if (configuration.handle == nullptr)
+			{
+				perror("dlopen");
+				throw std::runtime_error("Failed to open authentication library");
+			}
+			LOAD_LIBRARY(verifyToken, VerifyToken);
+			LOAD_LIBRARY(verifyUsernameAndPassword, VerifyUsernameAndPassword);
 			i += 2;
 			continue;
 		}
@@ -159,8 +189,26 @@ void saveConfiguration(const Configuration &c)
 	}
 	else if (!c.access.members.empty())
 	{
-		const String newBanList = c.name + " ban list.txt";
-		saveBanList(newBanList.c_str(), c.access.members);
+		String newList = c.name;
+		if (c.access.banList)
+		{
+			newList += "_ban_list.txt";
+		}
+		else
+		{
+			newList += "_allowed_list.txt";
+		}
+		saveBanList(newList.c_str(), c.access.members);
 	}
+}
+std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
+{
+	os << "Address: " << configuration.address << "\nName: " << configuration.name
+	   << "\nStream type: " << configuration.serverType << "\nAccess: " << configuration.access
+	   << "\nMax Clients: " << configuration.maxClients
+	   << "\nMessage Rate (in seconds): " << configuration.messageRateInSeconds << '\n';
+	printMemory(os, "Max Message Size", configuration.maxMessageSize)
+		<< "\nRecording: " << (configuration.record ? "Yes" : "No") << "\nAuthentication: " << configuration.handle;
+	return os;
 }
 } // namespace TemStream

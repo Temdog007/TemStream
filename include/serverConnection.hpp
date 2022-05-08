@@ -32,23 +32,6 @@ class ServerConnection : public Connection
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
 
-	typedef bool (*VerifyToken)(const char *, char *, uint32_t *);
-	typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, char *, uint32_t *);
-
-	class CredentialHandler
-	{
-	  private:
-		VerifyToken verifyToken;
-		VerifyUsernameAndPassword verifyUsernameAndPassword;
-
-	  public:
-		CredentialHandler(VerifyToken, VerifyUsernameAndPassword);
-		~CredentialHandler();
-
-		std::optional<PeerInformation> operator()(const String &);
-		std::optional<PeerInformation> operator()(const Message::UsernameAndPassword &);
-	};
-
 	class MessageHandler
 	{
 	  private:

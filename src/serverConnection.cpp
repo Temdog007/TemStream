@@ -36,7 +36,7 @@ int runApp(Configuration &configuration)
 				 List_of_Dirty_Naughty_Obscene_and_Otherwise_Bad_Words_en_len);
 		StringStream ss(s);
 		String to;
-		while (std::getline(ss, to, '\n'))
+		while (std::getline(ss, to))
 		{
 			badWords.emplace_back(std::move(to));
 		}
@@ -475,8 +475,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Audio &)
 }
 std::optional<PeerInformation> ServerConnection::login(const Message::Credentials &credentials)
 {
-	// TODO: Load dll to handle credentials
-	return std::visit(CredentialHandler(nullptr, nullptr), std::move(credentials));
+	return std::visit(CredentialHandler(ServerConnection::configuration), credentials);
 }
 bool ServerConnection::MessageHandler::operator()(Message::Credentials &credentials)
 {
@@ -538,7 +537,6 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 		{
 			if (auto ptr = iter->lock())
 			{
-				// Cannot ban moderators
 				if (ptr->information.name == banUser.name)
 				{
 					if (ptr->information.isModerator())
@@ -734,15 +732,18 @@ void ServerConnection::ImageSaver::operator()(const ByteList &bytes)
 void ServerConnection::ImageSaver::operator()(std::monostate)
 {
 }
-ServerConnection::CredentialHandler::CredentialHandler(VerifyToken verifyToken,
-													   VerifyUsernameAndPassword verifyUsernameAndPassword)
+CredentialHandler::CredentialHandler(VerifyToken verifyToken, VerifyUsernameAndPassword verifyUsernameAndPassword)
 	: verifyToken(verifyToken), verifyUsernameAndPassword(verifyUsernameAndPassword)
 {
 }
-ServerConnection::CredentialHandler::~CredentialHandler()
+CredentialHandler::CredentialHandler(const Configuration &configuration)
+	: verifyToken(configuration.verifyToken), verifyUsernameAndPassword(configuration.verifyUsernameAndPassword)
 {
 }
-std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(const String &token)
+CredentialHandler::~CredentialHandler()
+{
+}
+std::optional<PeerInformation> CredentialHandler::operator()(const String &token)
 {
 	PeerInformation info;
 	if (verifyToken)
@@ -768,16 +769,15 @@ std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(c
 	}
 	return info;
 }
-std::optional<PeerInformation> ServerConnection::CredentialHandler::operator()(const Message::UsernameAndPassword &pair)
+std::optional<PeerInformation> CredentialHandler::operator()(const Message::UsernameAndPassword &pair)
 {
 	PeerInformation info;
 	if (verifyUsernameAndPassword)
 	{
-		char username[32];
 		uint32_t flags = 0;
-		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), username, &flags))
+		if (verifyUsernameAndPassword(pair.first.c_str(), pair.second.c_str(), &flags))
 		{
-			info.name = username;
+			info.name = pair.first;
 			info.flags = static_cast<PeerFlags>(flags);
 		}
 		else

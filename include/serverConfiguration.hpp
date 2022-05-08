@@ -4,12 +4,18 @@
 
 namespace TemStream
 {
+
+typedef bool (*VerifyToken)(const char *, char *, uint32_t *);
+typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, uint32_t *);
 struct Configuration
 {
 	Access access;
 	Address address;
 	String name;
 	int64_t startTime;
+	void *handle;
+	VerifyToken verifyToken;
+	VerifyUsernameAndPassword verifyUsernameAndPassword;
 	uint32_t messageRateInSeconds;
 	uint32_t maxClients;
 	uint32_t maxMessageSize;
@@ -20,16 +26,20 @@ struct Configuration
 	~Configuration();
 
 	bool valid() const;
+};
+extern std::ostream &operator<<(std::ostream &, const Configuration &);
+class CredentialHandler
+{
+  private:
+	VerifyToken verifyToken;
+	VerifyUsernameAndPassword verifyUsernameAndPassword;
 
-	friend std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
-	{
-		os << "Address: " << configuration.address << "\nName: " << configuration.name
-		   << "\nStream type: " << configuration.serverType << "\nAccess: " << configuration.access
-		   << "\nMax Clients: " << configuration.maxClients
-		   << "\nMessage Rate (in seconds): " << configuration.messageRateInSeconds << '\n';
-		printMemory(os, "Max Message Size", configuration.maxMessageSize)
-			<< "\nRecording: " << (configuration.record ? "Yes" : "No");
-		return os;
-	}
+  public:
+	CredentialHandler(VerifyToken, VerifyUsernameAndPassword);
+	CredentialHandler(const Configuration &);
+	~CredentialHandler();
+
+	std::optional<PeerInformation> operator()(const String &);
+	std::optional<PeerInformation> operator()(const Message::UsernameAndPassword &);
 };
 } // namespace TemStream
