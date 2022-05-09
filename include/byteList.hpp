@@ -4,6 +4,7 @@
 
 namespace TemStream
 {
+class MemoryStream;
 class ByteList
 {
   private:
@@ -17,7 +18,9 @@ class ByteList
 	ByteList() noexcept;
 	ByteList(size_t initialSize);
 	ByteList(const uint8_t *, size_t);
-	template <typename T> ByteList(const T *t, size_t count) : buffer(nullptr), used(0), total(0)
+	ByteList(const MemoryStream &);
+	ByteList(MemoryStream &&);
+	template <typename T> ByteList(const T *t, const size_t count) : buffer(nullptr), used(0), total(0)
 	{
 		append(t, count);
 	}

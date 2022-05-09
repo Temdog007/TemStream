@@ -19,13 +19,16 @@ class MemoryBuffer : public std::basic_streambuf<char>
 	pos_type seekoff(off_type, std::ios_base::seekdir, std::ios_base::openmode) override;
 	pos_type seekpos(pos_type, std::ios_base::openmode) override;
 
-	const char *getData() const
+	ByteList &&moveBytes()
 	{
-		return reinterpret_cast<const char *>(byteList.data());
+		writePoint = 0;
+		readPoint = 0;
+		return std::move(byteList);
 	}
-	std::size_t getSize() const
+
+	const ByteList &getBytes() const
 	{
-		return byteList.size();
+		return byteList;
 	}
 
 	std::streamsize getReadPoint() const
@@ -50,7 +53,15 @@ class MemoryStream : public std::iostream
 	{
 		return buffer;
 	}
+	const MemoryBuffer &operator*() const
+	{
+		return buffer;
+	}
 	MemoryBuffer *operator->()
+	{
+		return &buffer;
+	}
+	const MemoryBuffer *operator->() const
 	{
 		return &buffer;
 	}

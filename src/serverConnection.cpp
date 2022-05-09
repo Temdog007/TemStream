@@ -20,6 +20,35 @@ Configuration ServerConnection::configuration;
 Mutex ServerConnection::peersMutex;
 LinkedList<std::weak_ptr<ServerConnection>> ServerConnection::peers;
 StringList badWords;
+struct RecordedPacket
+{
+	Message::Packet packet;
+	int64_t timestamp;
+
+	RecordedPacket(const Message::Packet &packet) : packet(packet), timestamp(0)
+	{
+		const auto now = std::chrono::system_clock::now();
+		const auto d = now.time_since_epoch();
+		const auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(d);
+		timestamp = dur.count();
+	}
+	~RecordedPacket()
+	{
+	}
+
+	bool save(const String &filename) const
+	{
+		std::ofstream file(filename.c_str(), std::ios::app | std::ios::out);
+		if (!file.is_open())
+		{
+			return false;
+		}
+
+		file << timestamp << ':' << packet << std::endl;
+		return true;
+	}
+};
+ConcurrentQueue<RecordedPacket> packetsToRecord;
 
 int runApp(Configuration &configuration)
 {
@@ -47,8 +76,7 @@ int runApp(Configuration &configuration)
 	if (configuration.serverType == ServerType::Link)
 	{
 		std::thread thread([]() {
-			String filename = ServerConnection::configuration.name;
-			filename += ".json";
+			const String filename = ServerConnection::configuration.name + ".json";
 			ServerConnection::sendLinks(filename);
 			auto lastWrite = std::filesystem::last_write_time(filename);
 			using namespace std::chrono_literals;
@@ -62,6 +90,31 @@ int runApp(Configuration &configuration)
 				}
 				std::this_thread::sleep_for(1s);
 			}
+		});
+		thread.detach();
+	}
+
+	if (configuration.record)
+	{
+		++ServerConnection::runningThreads;
+		std::thread thread([]() {
+			const String filename = ServerConnection::configuration.name + "_replay.tsr";
+			using namespace std::chrono_literals;
+			while (!appDone)
+			{
+				auto packet = packetsToRecord.pop(1s);
+				if (!packet)
+				{
+					continue;
+				}
+
+				if (!packet->save(filename))
+				{
+					(*logger)(Logger::Warning) << "Failed to save packet" << std::endl;
+				}
+			}
+			packetsToRecord.flush([&filename](RecordedPacket &&packet) { packet.save(filename); });
+			--ServerConnection::runningThreads;
 		});
 		thread.detach();
 	}
@@ -232,7 +285,8 @@ void ServerConnection::sendToPeers(Message::Packet &&packet, const ServerConnect
 			// Don't send packet to peer author or if the peer isn't authenticated
 			if (ptr.get() != author && ptr->isAuthenticated())
 			{
-				(*ptr)->send(m->getData(), m->getSize());
+				const auto &bytes = m->getBytes();
+				(*ptr)->send(bytes.data(), bytes.size());
 			}
 			++iter;
 		}
@@ -409,6 +463,11 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 									 << std::endl;
 			return false;
 		}
+	}
+
+	if (ServerConnection::configuration.record)
+	{
+		packetsToRecord.emplace(packet);
 	}
 	connection.lastMessage = now;
 	ServerConnection::sendToPeers(std::move(packet), &connection);

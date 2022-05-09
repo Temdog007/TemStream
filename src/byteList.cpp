@@ -13,6 +13,14 @@ ByteList::ByteList(const uint8_t *data, const size_t size) : buffer(nullptr), us
 {
 	append(data, size);
 }
+ByteList::ByteList(const MemoryStream &m) : buffer(nullptr), used(0), total(0)
+{
+	*this = m->getBytes();
+}
+ByteList::ByteList(MemoryStream &&m) : buffer(nullptr), used(0), total(0)
+{
+	*this = m->moveBytes();
+}
 ByteList::ByteList(const ByteList &list) : buffer(nullptr), used(0), total(0)
 {
 	append(list);

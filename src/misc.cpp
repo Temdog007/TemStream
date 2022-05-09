@@ -55,6 +55,21 @@ std::ostream &operator<<(std::ostream &os, const PeerFlags flags)
 }
 namespace Message
 {
+std::ostream &operator<<(std::ostream &os, const Message::Packet &packet)
+{
+	ByteList bytes;
+	{
+		MemoryStream m;
+		{
+			cereal::PortableBinaryOutputArchive ar(m);
+			ar(packet);
+		}
+		bytes = ByteList(std::move(m));
+	}
+	const String str = base64_encode(bytes);
+	os << str;
+	return os;
+}
 std::ostream &operator<<(std::ostream &os, const Header &header)
 {
 	os << "ID: " << header.id << "; Size: " << header.size;

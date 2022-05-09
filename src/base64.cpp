@@ -15,38 +15,39 @@ bool isBase64(char c)
 
 const char trailingChar = '=';
 
-ByteList base64_encode(const ByteList &bytes)
+String base64_encode(const ByteList &bytes)
 {
 	if (bytes.empty())
 	{
-		return ByteList();
+		return String();
 	}
 	const size_t len_encoded = (bytes.size() + 2) / 3 * 4;
 
-	ByteList ret(len_encoded);
+	String ret;
+	ret.reserve(len_encoded);
 
 	for (size_t pos = 0; pos < bytes.size(); pos += 3)
 	{
-		ret.append(base64Chars[(bytes[pos] & 0xfc) >> 2]);
+		ret.push_back(base64Chars[(bytes[pos] & 0xfc) >> 2]);
 		if (pos + 1 < bytes.size())
 		{
-			ret.append(base64Chars[((bytes[pos] & 0x03) << 4) + ((bytes[pos + 1] & 0xf0) >> 4)]);
+			ret.push_back(base64Chars[((bytes[pos] & 0x03) << 4) + ((bytes[pos + 1] & 0xf0) >> 4)]);
 			if (pos + 2 < bytes.size())
 			{
-				ret.append(base64Chars[((bytes[pos + 1] & 0x0f) << 2) + ((bytes[pos + 2] & 0xc0) >> 6)]);
-				ret.append(base64Chars[bytes[pos + 2] & 0x3f]);
+				ret.push_back(base64Chars[((bytes[pos + 1] & 0x0f) << 2) + ((bytes[pos + 2] & 0xc0) >> 6)]);
+				ret.push_back(base64Chars[bytes[pos + 2] & 0x3f]);
 			}
 			else
 			{
-				ret.append(base64Chars[(bytes[pos + 1] & 0x0f) << 2]);
-				ret.append(trailingChar);
+				ret.push_back(base64Chars[(bytes[pos + 1] & 0x0f) << 2]);
+				ret.push_back(trailingChar);
 			}
 		}
 		else
 		{
-			ret.append(base64Chars[(bytes[pos] & 0x03) << 4]);
-			ret.append(trailingChar);
-			ret.append(trailingChar);
+			ret.push_back(base64Chars[(bytes[pos] & 0x03) << 4]);
+			ret.push_back(trailingChar);
+			ret.push_back(trailingChar);
 		}
 	}
 	return ret;
@@ -88,25 +89,25 @@ static unsigned int pos_of_char(const unsigned char chr)
 	}
 }
 
-ByteList base64_decode(const ByteList &bytes)
+ByteList base64_decode(const String &str)
 {
-	if (bytes.empty())
+	if (str.empty())
 	{
 		return ByteList();
 	}
 
-	ByteList ret(bytes.size() / 4 * 3);
-	for (size_t pos = 0; pos < bytes.size(); pos += 4)
+	ByteList ret(str.size() / 4 * 3);
+	for (size_t pos = 0; pos < str.size(); pos += 4)
 	{
-		const auto c1 = pos_of_char(bytes[pos + 1]);
-		ret.append((pos_of_char(bytes[pos]) << 2) + ((c1 & 0x30) >> 4));
-		if (pos + 2 < bytes.size() && bytes[pos + 2] != trailingChar)
+		const auto c1 = pos_of_char(str[pos + 1]);
+		ret.append((pos_of_char(str[pos]) << 2) + ((c1 & 0x30) >> 4));
+		if (pos + 2 < str.size() && str[pos + 2] != trailingChar)
 		{
-			const auto c2 = pos_of_char(bytes[pos + 2]);
+			const auto c2 = pos_of_char(str[pos + 2]);
 			ret.append(((c1 & 0x0f) << 4) + ((c2 & 0x3c) >> 2));
-			if (pos + 3 < bytes.size() && bytes[pos + 3] != trailingChar)
+			if (pos + 3 < str.size() && str[pos + 3] != trailingChar)
 			{
-				ret.append(((c2 & 0x03) << 6) + pos_of_char(bytes[pos + 3]));
+				ret.append(((c2 & 0x03) << 6) + pos_of_char(str[pos + 3]));
 			}
 		}
 	}

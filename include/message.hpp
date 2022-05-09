@@ -290,6 +290,7 @@ struct Packet
 		ar(payload, source);
 	}
 };
+extern std::ostream &operator<<(std::ostream &, const Packet &);
 template <typename Iterator> static ByteList getByteChunk(Iterator &start, Iterator end)
 {
 	ByteList bytes(MAX_FILE_CHUNK);

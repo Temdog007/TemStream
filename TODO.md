@@ -316,7 +316,7 @@
 - [x] Handle authentication
 
 ### May 8, 2022
-- [ ] Make server write all messages to hard disk when recording
+- [x] Make server write all messages to hard disk when recording
 - [ ] Add replay message for every stream
 - [ ] Add message to get stream time range
 - [ ] Add message to get recorded messages at time interval

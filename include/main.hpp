@@ -60,8 +60,6 @@ namespace fs = std::filesystem;
 #include <opencv4/opencv2/opencv.hpp>
 #endif
 
-#define TEMSTREAM_USE_BASE64 false
-
 namespace std
 {
 template <class Archive, typename T1, typename T2> void save(Archive &archive, const std::pair<T1, T2> &pair)

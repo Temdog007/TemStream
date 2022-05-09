@@ -10,32 +10,25 @@ Socket::Socket() : buffer(), outgoing(KB(1)), mutex()
 Socket::~Socket()
 {
 }
-void Socket::send(const uint8_t *data, const size_t size, const bool convertToBase64)
+void Socket::send(const ByteList &bytes)
+{
+	send(bytes.data(), bytes.size());
+}
+void Socket::send(const uint8_t *data, const size_t size)
 {
 	LOCK(mutex);
-
-	if (convertToBase64)
 	{
-		ByteList bytes(data, size);
-		bytes = base64_encode(bytes);
-		outgoing.append(bytes);
-		outgoing.append('\0');
-	}
-	else
-	{
+		MemoryStream m;
 		{
-			MemoryStream m;
-			{
-				Message::Header header;
-				header.size = static_cast<uint64_t>(size);
-				header.id = Message::MagicGuid;
-				cereal::PortableBinaryOutputArchive ar(m);
-				ar(header);
-			}
-			outgoing.append(m->getData(), m->getWritePoint());
+			Message::Header header;
+			header.size = static_cast<uint64_t>(size);
+			header.id = Message::MagicGuid;
+			cereal::PortableBinaryOutputArchive ar(m);
+			ar(header);
 		}
-		outgoing.append(data, size);
+		outgoing.append(m->getBytes());
 	}
+	outgoing.append(data, size);
 }
 bool Socket::sendPacket(const Message::Packet &packet, const bool sendImmediately)
 {
@@ -46,7 +39,7 @@ bool Socket::sendPacket(const Message::Packet &packet, const bool sendImmediatel
 			cereal::PortableBinaryOutputArchive in(m);
 			in(packet);
 		}
-		send(m->getData(), m->getSize());
+		send(m->getBytes());
 		if (sendImmediately)
 		{
 			return flush();
@@ -140,7 +133,7 @@ bool UdpSocket::connect(const char *hostname, const char *port, const bool isSer
 	close();
 	return openSocket(fd, hostname, port, isServer, false);
 }
-void UdpSocket::send(const uint8_t *, size_t, const bool)
+void UdpSocket::send(const uint8_t *, size_t)
 {
 	throw std::runtime_error("Invalid call to UdpSocket::send");
 }

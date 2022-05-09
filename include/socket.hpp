@@ -4,6 +4,7 @@
 
 namespace TemStream
 {
+class ByteList;
 namespace Message
 {
 class Packet;
@@ -25,7 +26,7 @@ class Socket
 	bool sendPacket(const Message::Packet &, const bool sendImmediately = false);
 
 	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
-	virtual void send(const uint8_t *, size_t, const bool convertToBase64 = TEMSTREAM_USE_BASE64);
+	virtual void send(const uint8_t *, size_t);
 	virtual bool read(const int timeout, ByteList &, const bool readAll) = 0;
 
 	bool flush();
@@ -34,6 +35,8 @@ class Socket
 	{
 		send(reinterpret_cast<const uint8_t *>(t), sizeof(T) * count);
 	}
+
+	void send(const ByteList &);
 
 	virtual bool getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &, uint16_t &) const = 0;
 };
@@ -76,7 +79,7 @@ class UdpSocket : public BasicSocket
 		return nullptr;
 	}
 
-	void send(const uint8_t *, size_t, const bool) override;
+	void send(const uint8_t *, size_t) override;
 
 	bool connect(const char *hostname, const char *port, const bool isServer) override;
 	bool read(const int timeout, ByteList &, const bool readAll) override;
