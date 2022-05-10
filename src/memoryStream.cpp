@@ -5,6 +5,14 @@ namespace TemStream
 MemoryBuffer::MemoryBuffer() : std::basic_streambuf<char>(), byteList(), writePoint(0), readPoint(0)
 {
 }
+MemoryBuffer::MemoryBuffer(const ByteList &bytes)
+	: std::basic_streambuf<char>(), byteList(bytes), writePoint(byteList.size()), readPoint(0)
+{
+}
+MemoryBuffer::MemoryBuffer(ByteList &&bytes)
+	: std::basic_streambuf<char>(), byteList(std::move(bytes)), writePoint(byteList.size()), readPoint(0)
+{
+}
 MemoryBuffer::~MemoryBuffer()
 {
 }
@@ -75,6 +83,12 @@ MemoryBuffer::pos_type MemoryBuffer::seekpos(const pos_type pos, const std::ios_
 	return p;
 }
 MemoryStream::MemoryStream() : std::iostream(&buffer), buffer()
+{
+}
+MemoryStream::MemoryStream(const ByteList &bytes) : std::iostream(&buffer), buffer(bytes)
+{
+}
+MemoryStream::MemoryStream(ByteList &&bytes) : std::iostream(&buffer), buffer(std::move(bytes))
 {
 }
 MemoryStream::~MemoryStream()

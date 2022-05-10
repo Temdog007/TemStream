@@ -25,12 +25,8 @@ struct RecordedPacket
 	Message::Packet packet;
 	int64_t timestamp;
 
-	RecordedPacket(const Message::Packet &packet) : packet(packet), timestamp(0)
+	RecordedPacket(const Message::Packet &packet) : packet(packet), timestamp(static_cast<int64_t>(time(nullptr)))
 	{
-		const auto now = std::chrono::system_clock::now();
-		const auto d = now.time_since_epoch();
-		const auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(d);
-		timestamp = dur.count();
 	}
 	~RecordedPacket()
 	{
@@ -46,6 +42,23 @@ struct RecordedPacket
 
 		file << timestamp << ':' << packet << std::endl;
 		return true;
+	}
+
+	static std::optional<String> getEncodedPacket(const String &s, const int64_t target)
+	{
+		const auto pos = s.find(":");
+		if (pos == std::string::npos)
+		{
+			return std::nullopt;
+		}
+
+		const String t(s.begin(), s.begin() + pos);
+		auto timestamp = static_cast<int64_t>(strtoll(t.c_str(), nullptr, 10));
+		if (timestamp != target)
+		{
+			return std::nullopt;
+		}
+		return String(s.begin() + pos + 1, s.end());
 	}
 };
 ConcurrentQueue<RecordedPacket> packetsToRecord;
@@ -98,7 +111,7 @@ int runApp(Configuration &configuration)
 	{
 		++ServerConnection::runningThreads;
 		std::thread thread([]() {
-			const String filename = ServerConnection::configuration.name + "_replay.tsr";
+			const String filename = ServerConnection::getReplayFilename();
 			using namespace std::chrono_literals;
 			while (!appDone)
 			{
@@ -358,6 +371,10 @@ void ServerConnection::checkAccess()
 			iter = peers.erase(iter);
 		}
 	}
+}
+String ServerConnection::getReplayFilename()
+{
+	return ServerConnection::configuration.name + "_replay.tsr";
 }
 shared_ptr<ServerConnection> ServerConnection::getPointer() const
 {
@@ -621,6 +638,49 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 	ServerConnection::checkAccess();
 	return true;
 }
+bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
+{
+	if (!connection.information.hasReplayAccess())
+	{
+		(*logger)(Logger::Error) << "Peer " << connection.information << " does not have replay access" << std::endl;
+		return false;
+	}
+
+	const String filename;
+	std::ifstream file(filename.c_str());
+	if (!file.is_open())
+	{
+		return true;
+	}
+
+	String s;
+	size_t sent = 0;
+	while (std::getline(file, s))
+	{
+		auto message = RecordedPacket::getEncodedPacket(s, replay.timestamp);
+		if (message)
+		{
+			Message::Packet packet;
+			packet.source = ServerConnection::getSource();
+			packet.payload.emplace<Message::Replay>(Message::Replay{std::move(*message)});
+			connection->sendPacket(packet, true);
+			++sent;
+		}
+		else if (sent != 0)
+		{
+			break;
+		}
+	}
+	return true;
+}
+bool ServerConnection::MessageHandler::operator()(Message::TimeRange &)
+{
+	BAD_MESSAGE(TimeRange);
+}
+bool ServerConnection::MessageHandler::operator()(Message::Replay &)
+{
+	BAD_MESSAGE(Replay);
+}
 bool ServerConnection::MessageHandler::operator()(Message::ServerLinks &)
 {
 	BAD_MESSAGE(ServerLinks);
@@ -633,7 +693,7 @@ bool ServerConnection::MessageHandler::operator()(Message::ServerInformation &)
 {
 	BAD_MESSAGE(ServerInformation);
 }
-bool ServerConnection::MessageHandler::operator()(Message::RequestServerInformation &)
+bool ServerConnection::MessageHandler::operator()(Message::RequestServerInformation)
 {
 	CHECK_INFO(Message::RequestServerInformation)
 	if (!connection.information.isModerator())
@@ -719,7 +779,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 				ar(payload);
 			}
 			Message::Packet packet;
-			packet.source = connection.getSource();
+			packet.source = ServerConnection::getSource();
 			packet.payload = std::move(payload);
 			connection->sendPacket(packet);
 		}
@@ -730,7 +790,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 		}
 		break;
 	case ServerType::Image: {
-		std::thread thread(MessageHandler::sendImageBytes, connection.getPointer(), connection.getSource(),
+		std::thread thread(MessageHandler::sendImageBytes, connection.getPointer(), ServerConnection::getSource(),
 						   String(buffer.data()));
 		thread.detach();
 	}

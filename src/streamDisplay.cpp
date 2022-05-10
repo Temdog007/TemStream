@@ -3,12 +3,13 @@
 namespace TemStream
 {
 StreamDisplay::StreamDisplay(TemStreamGui &gui, const Message::Source &source)
-	: source(source), data(std::monostate{}), gui(gui), flags(ImGuiWindowFlags_None), visible(true)
+	: source(source), data(std::monostate{}), timeRange{0, 0}, gui(gui), flags(ImGuiWindowFlags_None), live(true),
+	  visible(true)
 {
 }
 StreamDisplay::StreamDisplay(StreamDisplay &&display)
-	: source(std::move(display.source)), data(std::move(display.data)), gui(display.gui), flags(display.flags),
-	  visible(display.visible)
+	: source(std::move(display.source)), data(std::move(display.data)), timeRange(display.timeRange), gui(display.gui),
+	  flags(display.flags), live(display.live), visible(display.visible)
 {
 }
 StreamDisplay::~StreamDisplay()
@@ -83,42 +84,9 @@ void StreamDisplay::drawFlagCheckboxes()
 	}
 
 	ImGui::Checkbox("Visible", &visible);
-	bool showTitleBar = (flags & ImGuiWindowFlags_NoTitleBar) == 0;
-	if (ImGui::Checkbox("Show Title Bar", &showTitleBar))
-	{
-		if (showTitleBar)
-		{
-			flags &= ~ImGuiWindowFlags_NoTitleBar;
-		}
-		else
-		{
-			flags |= ImGuiWindowFlags_NoTitleBar;
-		}
-	}
-	bool movable = (flags & ImGuiWindowFlags_NoMove) == 0;
-	if (ImGui::Checkbox("Movable", &movable))
-	{
-		if (movable)
-		{
-			flags &= ~ImGuiWindowFlags_NoMove;
-		}
-		else
-		{
-			flags |= ImGuiWindowFlags_NoMove;
-		}
-	}
-	bool resizable = (flags & ImGuiWindowFlags_NoResize) == 0;
-	if (ImGui::Checkbox("Resizable", &resizable))
-	{
-		if (resizable)
-		{
-			flags &= ~ImGuiWindowFlags_NoResize;
-		}
-		else
-		{
-			flags |= ImGuiWindowFlags_NoResize;
-		}
-	}
+	ImGui::CheckboxFlags("Not Movable", &flags, ImGuiWindowFlags_NoTitleBar);
+	ImGui::CheckboxFlags("Not Movable", &flags, ImGuiWindowFlags_NoMove);
+	ImGui::CheckboxFlags("Not Resizable", &flags, ImGuiWindowFlags_NoResize);
 
 	ImGui::PopID();
 }
@@ -213,6 +181,11 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 	}
 	return true;
 }
+bool StreamDisplay::operator()(Message::TimeRange &timeRange)
+{
+	this->timeRange = timeRange;
+	return true;
+}
 bool StreamDisplay::operator()(Message::ServerLinks &serverLinks)
 {
 	data.emplace<Message::ServerLinks>(std::move(serverLinks));
@@ -229,6 +202,14 @@ bool StreamDisplay::operator()(Message::Video &)
 {
 	BAD_MESSAGE(Video);
 }
+bool StreamDisplay::operator()(Message::Replay &)
+{
+	BAD_MESSAGE(Replay);
+}
+bool StreamDisplay::operator()(Message::GetReplay)
+{
+	BAD_MESSAGE(GetReplay);
+}
 bool StreamDisplay::operator()(Message::Credentials &)
 {
 	BAD_MESSAGE(Credentials);
@@ -237,7 +218,7 @@ bool StreamDisplay::operator()(Message::VerifyLogin &)
 {
 	BAD_MESSAGE(VerifyLogin);
 }
-bool StreamDisplay::operator()(Message::RequestServerInformation &)
+bool StreamDisplay::operator()(Message::RequestServerInformation)
 {
 	BAD_MESSAGE(RequestServerInformation);
 }

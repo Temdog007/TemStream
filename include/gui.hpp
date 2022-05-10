@@ -116,6 +116,8 @@ class TemStreamGui
 
 		bool operator()(Message::ServerInformation &);
 
+		bool operator()(Message::Replay &);
+
 		template <typename T> bool operator()(T &)
 		{
 #if LOG_MESSAGE_TYPE

@@ -44,11 +44,11 @@ class StreamDisplay
   private:
 	Message::Source source;
 	DisplayData data;
+	Message::TimeRange timeRange;
 	TemStreamGui &gui;
 	ImGuiWindowFlags flags;
+	bool live;
 	bool visible;
-
-	friend class TemStreamGui;
 
 	struct ContextMenu
 	{
@@ -122,6 +122,11 @@ class StreamDisplay
 	void setFlags(ImGuiWindowFlags flags)
 	{
 		this->flags = flags;
+	}
+
+	bool isLive() const
+	{
+		return live;
 	}
 
 	const Message::Source &getSource() const

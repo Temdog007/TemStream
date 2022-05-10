@@ -32,6 +32,8 @@ class ServerConnection : public Connection
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
 
+	static String getReplayFilename();
+
 	class MessageHandler
 	{
 	  private:

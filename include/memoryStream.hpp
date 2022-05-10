@@ -12,6 +12,8 @@ class MemoryBuffer : public std::basic_streambuf<char>
 
   public:
 	MemoryBuffer();
+	MemoryBuffer(const ByteList &);
+	MemoryBuffer(ByteList &&);
 	virtual ~MemoryBuffer();
 
 	std::streamsize xsgetn(char *, std::streamsize) override;
@@ -47,6 +49,8 @@ class MemoryStream : public std::iostream
 
   public:
 	MemoryStream();
+	MemoryStream(const ByteList &);
+	MemoryStream(ByteList &&);
 	virtual ~MemoryStream();
 
 	MemoryBuffer &operator*()

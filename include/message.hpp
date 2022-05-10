@@ -258,8 +258,45 @@ struct BanUser
 		ar(name);
 	}
 };
+struct GetReplay
+{
+	int64_t timestamp;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(timestamp);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(timestamp);
+	}
+};
+struct Replay
+{
+	String message;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(message);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(message);
+	}
+};
+struct TimeRange
+{
+	int64_t start;
+	int64_t end;
+	template <class Archive> void save(Archive &ar) const
+	{
+		ar(start, end);
+	}
+	template <class Archive> void load(Archive &ar)
+	{
+		ar(start, end);
+	}
+};
 using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
-							 RequestServerInformation, ServerInformation, BanUser>;
+							 RequestServerInformation, ServerInformation, BanUser, GetReplay, Replay, TimeRange>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
@@ -271,9 +308,12 @@ using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Cha
 	RVAL operator()(Message::Image &);                                                                                 \
 	RVAL operator()(Message::Audio &);                                                                                 \
 	RVAL operator()(Message::Video &);                                                                                 \
-	RVAL operator()(Message::RequestServerInformation &);                                                              \
+	RVAL operator()(Message::RequestServerInformation);                                                                \
 	RVAL operator()(Message::ServerInformation &);                                                                     \
-	RVAL operator()(Message::BanUser &)
+	RVAL operator()(Message::BanUser &);                                                                               \
+	RVAL operator()(Message::GetReplay);                                                                               \
+	RVAL operator()(Message::Replay &);                                                                                \
+	RVAL operator()(Message::TimeRange &)
 
 struct Packet
 {

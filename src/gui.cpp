@@ -1504,6 +1504,36 @@ bool TemStreamGui::MessageHandler::operator()(Message::ServerInformation &info)
 	return true;
 }
 
+bool TemStreamGui::MessageHandler::operator()(Message::Replay &replay)
+{
+	try
+	{
+		auto newPacket = allocateAndConstruct<Message::Packet>();
+		ByteList bytes = base64_decode(replay.message);
+		MemoryStream m(std::move(bytes));
+		{
+			cereal::PortableBinaryInputArchive ar(m);
+			ar(*newPacket);
+		}
+
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::HandleMessagePacket;
+		e.user.data1 = newPacket;
+		e.user.data2 = nullptr;
+		if (!tryPushEvent(e))
+		{
+			destroyAndDeallocate(newPacket);
+		}
+		return true;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Error) << "Failed to handle replay message: " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool TemStreamGui::addAudio(unique_ptr<AudioSource> &&ptr)
 {
 	return audio.add(ptr->getSource(), std::move(ptr));

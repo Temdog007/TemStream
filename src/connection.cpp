@@ -31,8 +31,7 @@ bool Connection::readAndHandle(const int timeout)
 				}
 
 				Message::Header header;
-				MemoryStream m;
-				m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+				MemoryStream m(std::move(bytes));
 				{
 					cereal::PortableBinaryInputArchive ar(m);
 					ar(header);
@@ -50,37 +49,36 @@ bool Connection::readAndHandle(const int timeout)
 				}
 
 				nextMessageSize = header.size;
-				bytes.remove(m->getReadPoint());
+				const auto read = m->getReadPoint();
+				bytes = std::move(m->moveBytes());
+				bytes.remove(read);
 			}
 
 			if (*nextMessageSize == bytes.size())
 			{
 				Message::Packet packet;
-				MemoryStream m;
+				MemoryStream m(std::move(bytes));
 				{
-
-					m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
 					cereal::PortableBinaryInputArchive ar(m);
 					ar(packet);
 				}
-				if (static_cast<size_t>(m->getReadPoint()) != bytes.size())
+				const auto &tempBytes = m->getBytes();
+				if (static_cast<size_t>(m->getReadPoint()) != tempBytes.size())
 				{
 					(*logger)(Logger::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
-											 << bytes.size() << " bytes" << std::endl;
+											 << tempBytes.size() << " bytes" << std::endl;
 					return false;
 				}
 
 				packets.push(std::move(packet));
-				bytes.clear();
 				nextMessageSize = std::nullopt;
 				return true;
 			}
 			else if (*nextMessageSize < bytes.size())
 			{
 				Message::Packet packet;
-				MemoryStream m;
+				MemoryStream m(std::move(bytes));
 				{
-					m.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
 					cereal::PortableBinaryInputArchive ar(m);
 					ar(packet);
 				}
@@ -92,6 +90,7 @@ bool Connection::readAndHandle(const int timeout)
 				}
 
 				packets.push(std::move(packet));
+				bytes = std::move(m->moveBytes());
 				bytes.remove(*nextMessageSize);
 				nextMessageSize = std::nullopt;
 			}
@@ -107,7 +106,7 @@ bool Connection::readAndHandle(const int timeout)
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Connection::readData: " << e.what() << std::endl;
+		(*logger)(Logger::Error) << "Connection::readAndHandle: " << e.what() << std::endl;
 	}
 	return false;
 }
