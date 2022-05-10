@@ -3,13 +3,12 @@
 namespace TemStream
 {
 StreamDisplay::StreamDisplay(TemStreamGui &gui, const Message::Source &source)
-	: source(source), data(std::monostate{}), timeRange{0, 0}, gui(gui), flags(ImGuiWindowFlags_None), live(true),
-	  visible(true)
+	: source(source), data(std::monostate{}), gui(gui), flags(ImGuiWindowFlags_None), visible(true)
 {
 }
 StreamDisplay::StreamDisplay(StreamDisplay &&display)
-	: source(std::move(display.source)), data(std::move(display.data)), timeRange(display.timeRange), gui(display.gui),
-	  flags(display.flags), live(display.live), visible(display.visible)
+	: source(std::move(display.source)), data(std::move(display.data)), gui(display.gui), flags(display.flags),
+	  visible(display.visible)
 {
 }
 StreamDisplay::~StreamDisplay()
@@ -71,9 +70,20 @@ void StreamDisplay::drawContextMenu()
 	if (ImGui::BeginPopupContextWindow("Stream Display Flags"))
 	{
 		drawFlagCheckboxes();
-		std::visit(StreamDisplay::ContextMenu(*this), data);
+		if (gui.hasReplayAccess(source) && ImGui::Button("Replay"))
+		{
+			gui.startReplay(source);
+		}
+		if (!std::visit(StreamDisplay::ContextMenu(*this), data))
+		{
+			data = std::monostate{};
+		}
 		ImGui::EndPopup();
 	}
+}
+bool StreamDisplay::isReplay() const
+{
+	return std::holds_alternative<ReplayData>(data);
 }
 void StreamDisplay::drawFlagCheckboxes()
 {
@@ -84,7 +94,7 @@ void StreamDisplay::drawFlagCheckboxes()
 	}
 
 	ImGui::Checkbox("Visible", &visible);
-	ImGui::CheckboxFlags("Not Movable", &flags, ImGuiWindowFlags_NoTitleBar);
+	ImGui::CheckboxFlags("No Title Bar", &flags, ImGuiWindowFlags_NoTitleBar);
 	ImGui::CheckboxFlags("Not Movable", &flags, ImGuiWindowFlags_NoMove);
 	ImGui::CheckboxFlags("Not Resizable", &flags, ImGuiWindowFlags_NoResize);
 
@@ -183,7 +193,17 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 }
 bool StreamDisplay::operator()(Message::TimeRange &timeRange)
 {
-	this->timeRange = timeRange;
+	if (auto ptr = std::get_if<ReplayData>(&data))
+	{
+		ptr->timeRange = timeRange;
+	}
+	else
+	{
+		ReplayData v;
+		v.timeRange = timeRange;
+		data.emplace<ReplayData>(std::move(v));
+		gui.getReplays(source, timeRange.start);
+	}
 	return true;
 }
 bool StreamDisplay::operator()(Message::ServerLinks &serverLinks)
@@ -202,9 +222,13 @@ bool StreamDisplay::operator()(Message::Video &)
 {
 	BAD_MESSAGE(Video);
 }
-bool StreamDisplay::operator()(Message::Replay &)
+bool StreamDisplay::operator()(Message::Replay &r)
 {
-	BAD_MESSAGE(Replay);
+	if (auto ptr = std::get_if<ReplayData>(&data))
+	{
+		ptr->packets.emplace_back(std::move(r.message));
+	}
+	return true;
 }
 bool StreamDisplay::operator()(Message::GetReplay)
 {
@@ -229,6 +253,10 @@ bool StreamDisplay::operator()(Message::ServerInformation &)
 bool StreamDisplay::operator()(Message::BanUser &)
 {
 	BAD_MESSAGE(BanUser);
+}
+bool StreamDisplay::operator()(Message::GetTimeRange)
+{
+	BAD_MESSAGE(GetTimeRange);
 }
 StreamDisplay::Draw::Draw(StreamDisplay &d) : display(d)
 {
@@ -469,6 +497,48 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	return operator()(t.texture);
 }
+
+bool StreamDisplay::Draw::operator()(ReplayData &v)
+{
+	--v.frames;
+	if (v.frames <= 0 && !v.packets.empty())
+	{
+		try
+		{
+			v.packets.erase(v.packets.begin());
+			ByteList bytes = base64_decode(v.packets[0]);
+			MemoryStream m(std::move(bytes));
+			Message::Packet packet;
+			{
+				cereal::PortableBinaryInputArchive ar(m);
+				ar(packet);
+			}
+			// Send audio data to playback immediately to avoid audio delay
+			if (auto message = std::get_if<Message::Audio>(&packet.payload))
+			{
+				display.gui.useAudio(packet.source, [&message](AudioSource &a) {
+					if (!a.isRecording())
+					{
+						a.enqueueAudio(message->bytes);
+					}
+				});
+			}
+			std::visit(display, packet.payload);
+			v.frames = v.fps;
+			if (v.packets.empty())
+			{
+				++v.replayCursor;
+				display.gui.getReplays(packet.source, v.replayCursor);
+			}
+		}
+		catch (const std::exception &e)
+		{
+			(*logger)(Logger::Error) << "Packet failure: " << e.what() << std::endl;
+			return false;
+		}
+	}
+	return operator()(v.texture);
+}
 bool StreamDisplay::Draw::operator()(ByteList &)
 {
 	return true;
@@ -479,13 +549,15 @@ StreamDisplay::ContextMenu::ContextMenu(StreamDisplay &d) : display(d)
 StreamDisplay::ContextMenu::~ContextMenu()
 {
 }
-void StreamDisplay::ContextMenu::operator()(std::monostate)
+bool StreamDisplay::ContextMenu::operator()(std::monostate)
 {
+	return true;
 }
-void StreamDisplay::ContextMenu::operator()(ByteList &)
+bool StreamDisplay::ContextMenu::operator()(ByteList &)
 {
+	return true;
 }
-void StreamDisplay::ContextMenu::operator()(String &s)
+bool StreamDisplay::ContextMenu::operator()(String &s)
 {
 	if (ImGui::Button("Copy"))
 	{
@@ -498,18 +570,43 @@ void StreamDisplay::ContextMenu::operator()(String &s)
 			logSDLError("Failed to copy to clipboard");
 		}
 	}
+	return true;
 }
-void StreamDisplay::ContextMenu::operator()(ChatLog &)
+bool StreamDisplay::ContextMenu::operator()(ChatLog &)
 {
+	return true;
 }
-void StreamDisplay::ContextMenu::operator()(CheckAudio &a)
+bool StreamDisplay::ContextMenu::operator()(CheckAudio &a)
 {
-	operator()(a.texture);
+	return operator()(a.texture);
 }
-void StreamDisplay::ContextMenu::operator()(Message::ServerLinks &)
+bool StreamDisplay::ContextMenu::operator()(ReplayData &r)
 {
+	if (ImGui::Button("Stop Replay"))
+	{
+		return false;
+	}
+
+	if (ImGui::InputInt("FPS", &r.fps))
+	{
+		r.fps = std::clamp(r.fps, 10, 60);
+	}
+
+	char buffer[256];
+	const auto seconds = r.replayCursor - r.timeRange.start;
+	snprintf(buffer, sizeof(buffer), "%02" PRId64 ":%02" PRId64 ":%02" PRId64, (seconds / 3600) % 60,
+			 (seconds / 60) % 60, seconds % 60);
+	if (ImGui::SliderInt(buffer, &r.replayCursor, r.timeRange.start, r.timeRange.end))
+	{
+		display.gui.getReplays(display.getSource(), r.replayCursor);
+	}
+	return operator()(r.texture);
 }
-void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
+bool StreamDisplay::ContextMenu::operator()(Message::ServerLinks &)
+{
+	return true;
+}
+bool StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 {
 	auto &texture = *w;
 	if (texture != nullptr && ImGui::Button("Screenshot"))
@@ -518,30 +615,31 @@ void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 		if (SDL_QueryTexture(texture, nullptr, nullptr, &w, &h) != 0)
 		{
 			logSDLError("Failed to query texture");
-			return;
+			return false;
 		}
 
 		auto renderer = display.gui.getRenderer();
-		auto surface = SDL_CreateRGBSurface(0, w, h, 32, 0, 0, 0, 0);
-		auto t = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
-		if (t == nullptr || surface == nullptr)
+		auto surface = SDL_SurfaceWrapper(SDL_CreateRGBSurface(0, w, h, 32, 0, 0, 0, 0));
+		auto t =
+			SDL_TextureWrapper(SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h));
+		if (*t == nullptr || *surface == nullptr)
 		{
 			logSDLError("Failed to create screenshot");
-			goto end;
+			return false;
 		}
 
-		if (SDL_SetRenderTarget(renderer, t) != 0 || SDL_RenderCopy(renderer, texture, nullptr, nullptr) != 0 ||
+		if (SDL_SetRenderTarget(renderer, *t) != 0 || SDL_RenderCopy(renderer, texture, nullptr, nullptr) != 0 ||
 			SDL_RenderReadPixels(renderer, nullptr, surface->format->format, surface->pixels, surface->pitch) != 0)
 		{
 			logSDLError("Error taking screenshot");
-			goto end;
+			return false;
 		}
 
 		{
 			char buffer[1024];
 			const time_t t = time(nullptr);
 			strftime(buffer, sizeof(buffer), "screenshot_%y_%m_%d_%H_%M_%S.png", localtime(&t));
-			if (IMG_SavePNG(surface, buffer) == 0)
+			if (IMG_SavePNG(*surface, buffer) == 0)
 			{
 				*logger << "Saved screenshot to " << buffer << std::endl;
 			}
@@ -550,10 +648,18 @@ void StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 				(*logger)(Logger::Error) << "Failed to save screenshot: " << IMG_GetError() << std::endl;
 			}
 		}
-
-	end:
-		SDL_DestroyTexture(t);
-		SDL_FreeSurface(surface);
 	}
+	return true;
+}
+ReplayData::ReplayData() : packets(), timeRange{0, 0}, texture(nullptr), replayCursor(0), fps(24), hasData(false)
+{
+}
+ReplayData::ReplayData(ReplayData &&data)
+	: packets(std::move(data.packets)), timeRange(data.timeRange), texture(std::move(data.texture)),
+	  replayCursor(data.replayCursor), fps(data.fps), hasData(data.hasData)
+{
+}
+ReplayData::~ReplayData()
+{
 }
 } // namespace TemStream

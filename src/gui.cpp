@@ -1520,7 +1520,7 @@ bool TemStreamGui::MessageHandler::operator()(Message::Replay &replay)
 		e.type = SDL_USEREVENT;
 		e.user.code = TemStreamEvent::HandleMessagePacket;
 		e.user.data1 = newPacket;
-		e.user.data2 = nullptr;
+		e.user.data2 = &e;
 		if (!tryPushEvent(e))
 		{
 			destroyAndDeallocate(newPacket);
@@ -1547,6 +1547,46 @@ bool TemStreamGui::addVideo(shared_ptr<VideoSource> ptr)
 bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(AudioSource &)> &func)
 {
 	return audio.use(source, [&func](auto &a) { func(*a); });
+}
+
+void TemStreamGui::startReplay(const Message::Source &source)
+{
+	auto con = getConnection(source);
+	if (!con)
+	{
+		return;
+	}
+
+	Message::Packet packet;
+	packet.source = source;
+	packet.payload.emplace<Message::GetTimeRange>();
+	con->sendPacket(packet);
+}
+
+void TemStreamGui::getReplays(const Message::Source &source, const int64_t timestamp)
+{
+	auto con = getConnection(source);
+	if (!con)
+	{
+		return;
+	}
+
+	Message::Packet packet;
+	packet.source = source;
+	Message::GetReplay r{timestamp};
+	packet.payload.emplace<Message::GetReplay>(std::move(r));
+	con->sendPacket(packet);
+}
+
+bool TemStreamGui::hasReplayAccess(const Message::Source &source)
+{
+	auto con = getConnection(source);
+	if (!con)
+	{
+		return false;
+	}
+
+	return con->getInfo().peerInformation.hasReplayAccess();
 }
 
 void TemStreamGui::LoadFonts()
@@ -1576,7 +1616,7 @@ void TemStreamGui::LoadFonts()
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
 }
 
-void TemStreamGui::handleMessage(Message::Packet &&m)
+void TemStreamGui::handleMessage(Message::Packet &&m, const bool isReplay)
 {
 	if (std::visit(MessageHandler{*this, m.source}, m.payload))
 	{
@@ -1591,6 +1631,11 @@ void TemStreamGui::handleMessage(Message::Packet &&m)
 			return;
 		}
 		iter = pair.first;
+	}
+
+	if (iter->second.isReplay() != isReplay)
+	{
+		return;
 	}
 
 	if (!std::visit(iter->second, m.payload))
@@ -1716,7 +1761,7 @@ int runApp(Configuration &configuration)
 				break;
 				case TemStreamEvent::HandleMessagePacket: {
 					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
-					gui.handleMessage(std::move(*packet));
+					gui.handleMessage(std::move(*packet), event.user.data2 != nullptr);
 					destroyAndDeallocate(packet);
 				}
 				break;
@@ -1730,8 +1775,10 @@ int runApp(Configuration &configuration)
 				case TemStreamEvent::HandleMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
 					auto pair = toMoveIterator(std::move(*packets));
-					std::for_each(pair.first, pair.second,
-								  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
+					const bool isReplay = event.user.data2 != nullptr;
+					std::for_each(pair.first, pair.second, [&gui, isReplay](Message::Packet &&packet) {
+						gui.handleMessage(std::move(packet), isReplay);
+					});
 					destroyAndDeallocate(packets);
 				}
 				break;

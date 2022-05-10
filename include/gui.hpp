@@ -75,7 +75,7 @@ class TemStreamGui
 
 	void LoadFonts();
 
-	void handleMessage(Message::Packet &&);
+	void handleMessage(Message::Packet &&, const bool isReplay);
 
 	ImVec2 drawMainMenuBar();
 
@@ -160,6 +160,10 @@ class TemStreamGui
 	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &f);
 
 	bool addVideo(shared_ptr<VideoSource>);
+
+	void startReplay(const Message::Source &);
+	void getReplays(const Message::Source &, int64_t);
+	bool hasReplayAccess(const Message::Source &);
 
 	void connect(const Address &);
 

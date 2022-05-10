@@ -295,8 +295,10 @@ struct TimeRange
 		ar(start, end);
 	}
 };
-using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
-							 RequestServerInformation, ServerInformation, BanUser, GetReplay, Replay, TimeRange>;
+EMPTY_MESSAGE(GetTimeRange);
+using Payload =
+	std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
+				 RequestServerInformation, ServerInformation, BanUser, GetReplay, Replay, TimeRange, GetTimeRange>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
@@ -313,7 +315,8 @@ using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Cha
 	RVAL operator()(Message::BanUser &);                                                                               \
 	RVAL operator()(Message::GetReplay);                                                                               \
 	RVAL operator()(Message::Replay &);                                                                                \
-	RVAL operator()(Message::TimeRange &)
+	RVAL operator()(Message::TimeRange &);                                                                             \
+	RVAL operator()(Message::GetTimeRange)
 
 struct Packet
 {

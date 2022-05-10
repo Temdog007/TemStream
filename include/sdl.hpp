@@ -23,6 +23,11 @@ class SDL_TextureWrapper
 		return texture;
 	}
 
+	SDL_Texture *operator->()
+	{
+		return texture;
+	}
+
 	void swap(SDL_TextureWrapper &);
 };
 class SDL_SurfaceWrapper
@@ -40,6 +45,11 @@ class SDL_SurfaceWrapper
 	SDL_SurfaceWrapper &operator=(SDL_SurfaceWrapper &&);
 
 	SDL_Surface *&operator*()
+	{
+		return surface;
+	}
+
+	SDL_Surface *operator->()
 	{
 		return surface;
 	}

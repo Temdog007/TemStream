@@ -44,17 +44,23 @@ struct RecordedPacket
 		return true;
 	}
 
-	static std::optional<String> getEncodedPacket(const String &s, const int64_t target)
+	static std::optional<int64_t> getTimestamp(const String &s, std::string::size_type &pos)
 	{
-		const auto pos = s.find(":");
+		pos = s.find(":");
 		if (pos == std::string::npos)
 		{
 			return std::nullopt;
 		}
 
 		const String t(s.begin(), s.begin() + pos);
-		auto timestamp = static_cast<int64_t>(strtoll(t.c_str(), nullptr, 10));
-		if (timestamp != target)
+		return static_cast<int64_t>(strtoll(t.c_str(), nullptr, 10));
+	}
+
+	static std::optional<String> getEncodedPacket(const String &s, const int64_t target)
+	{
+		std::string::size_type pos;
+		const auto timestamp = getTimestamp(s, pos);
+		if (*timestamp != target)
 		{
 			return std::nullopt;
 		}
@@ -663,13 +669,67 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 			Message::Packet packet;
 			packet.source = ServerConnection::getSource();
 			packet.payload.emplace<Message::Replay>(Message::Replay{std::move(*message)});
-			connection->sendPacket(packet, true);
+			connection->sendPacket(packet);
 			++sent;
 		}
 		else if (sent != 0)
 		{
 			break;
 		}
+	}
+	return true;
+}
+bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
+{
+	if (!connection.information.hasReplayAccess())
+	{
+		(*logger)(Logger::Error) << "Peer " << connection.information << " does not have replay access" << std::endl;
+		return false;
+	}
+
+	const String filename;
+	std::ifstream file(filename.c_str());
+	if (!file.is_open())
+	{
+		return true;
+	}
+
+	std::optional<int64_t> start = std::nullopt;
+	std::optional<int64_t> last = std::nullopt;
+	String s;
+	while (std::getline(file, s))
+	{
+		std::string::size_type pos;
+		const auto timestamp = RecordedPacket::getTimestamp(s, pos);
+		if (timestamp)
+		{
+			if (start.has_value())
+			{
+				*last = *timestamp;
+				break;
+			}
+			else
+			{
+				*start = *timestamp;
+			}
+		}
+	}
+	if (start.has_value())
+	{
+		Message::Packet packet;
+		packet.source = ServerConnection::getSource();
+		Message::TimeRange range;
+		range.start = *start;
+		if (last.has_value())
+		{
+			range.end = *last;
+		}
+		else
+		{
+			range.end = *start;
+		}
+		packet.payload.emplace<Message::TimeRange>(std::move(range));
+		return connection->sendPacket(packet);
 	}
 	return true;
 }

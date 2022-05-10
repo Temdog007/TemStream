@@ -52,7 +52,7 @@ void ClientConnection::addPacket(Message::Packet &&m)
 	e.user.code = TemStreamEvent::HandleMessagePacket;
 	auto packet = allocateAndConstruct<Message::Packet>(std::move(m));
 	e.user.data1 = packet;
-	e.user.data2 = &e;
+	e.user.data2 = nullptr;
 	if (!tryPushEvent(e))
 	{
 		destroyAndDeallocate(packet);

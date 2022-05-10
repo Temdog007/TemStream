@@ -25,6 +25,20 @@ struct CheckAudio
 	{
 	}
 };
+struct ReplayData
+{
+	StringList packets;
+	Message::TimeRange timeRange;
+	SDL_TextureWrapper texture;
+	int replayCursor;
+	int frames;
+	int fps;
+	bool hasData;
+
+	ReplayData();
+	ReplayData(ReplayData &&);
+	~ReplayData();
+};
 struct ChatLog
 {
 	List<Message::Chat> logs;
@@ -37,17 +51,15 @@ struct ChatLog
 	{
 	}
 };
-using DisplayData =
-	std::variant<std::monostate, SDL_TextureWrapper, String, ChatLog, ByteList, CheckAudio, Message::ServerLinks>;
+using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, ChatLog, ByteList, CheckAudio,
+								 Message::ServerLinks, ReplayData>;
 class StreamDisplay
 {
   private:
 	Message::Source source;
 	DisplayData data;
-	Message::TimeRange timeRange;
 	TemStreamGui &gui;
 	ImGuiWindowFlags flags;
-	bool live;
 	bool visible;
 
 	struct ContextMenu
@@ -59,13 +71,14 @@ class StreamDisplay
 		ContextMenu(StreamDisplay &);
 		~ContextMenu();
 
-		void operator()(std::monostate);
-		void operator()(String &);
-		void operator()(ChatLog &);
-		void operator()(SDL_TextureWrapper &);
-		void operator()(CheckAudio &);
-		void operator()(ByteList &);
-		void operator()(Message::ServerLinks &);
+		bool operator()(std::monostate);
+		bool operator()(String &);
+		bool operator()(ChatLog &);
+		bool operator()(SDL_TextureWrapper &);
+		bool operator()(CheckAudio &);
+		bool operator()(ByteList &);
+		bool operator()(Message::ServerLinks &);
+		bool operator()(ReplayData &);
 	};
 	struct ImageMessageHandler
 	{
@@ -99,6 +112,7 @@ class StreamDisplay
 		bool operator()(CheckAudio &);
 		bool operator()(ByteList &);
 		bool operator()(Message::ServerLinks &);
+		bool operator()(ReplayData &);
 	};
 
   protected:
@@ -124,10 +138,7 @@ class StreamDisplay
 		this->flags = flags;
 	}
 
-	bool isLive() const
-	{
-		return live;
-	}
+	bool isReplay() const;
 
 	const Message::Source &getSource() const
 	{
