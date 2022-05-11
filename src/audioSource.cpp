@@ -35,7 +35,6 @@ void AudioSource::enqueueAudio(const ByteList &bytes)
 	}
 	else
 	{
-		// (*logger)(Logger::Trace) << "Decoded bytes " << bytesRead << std::endl;
 		for (auto i = 0; i < result; ++i)
 		{
 			fbuffer[i] = std::clamp(fbuffer[i] * volume, -1.f, 1.f);

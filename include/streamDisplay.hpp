@@ -5,6 +5,7 @@
 namespace TemStream
 {
 class TemStreamGui;
+class StreamDisplay;
 struct CheckAudio
 {
 	List<float> left;
@@ -29,13 +30,12 @@ struct ReplayData
 {
 	StringList packets;
 	Message::TimeRange timeRange;
-	SDL_TextureWrapper texture;
-	int replayCursor;
-	int frames;
-	int fps;
+	unique_ptr<StreamDisplay> display;
+	TimePoint lastUpdate;
+	int64_t replayCursor;
 	bool hasData;
 
-	ReplayData();
+	ReplayData(TemStreamGui &, const Message::Source &, const Message::TimeRange &);
 	ReplayData(ReplayData &&);
 	~ReplayData();
 };
@@ -61,6 +61,7 @@ class StreamDisplay
 	TemStreamGui &gui;
 	ImGuiWindowFlags flags;
 	bool visible;
+	bool enableContextMenu;
 
 	struct ContextMenu
 	{
@@ -120,7 +121,7 @@ class StreamDisplay
 
   public:
 	StreamDisplay() = delete;
-	StreamDisplay(TemStreamGui &, const Message::Source &);
+	StreamDisplay(TemStreamGui &, const Message::Source &, const bool enableContextMenu = true);
 	StreamDisplay(const StreamDisplay &) = delete;
 	StreamDisplay(StreamDisplay &&);
 	virtual ~StreamDisplay();

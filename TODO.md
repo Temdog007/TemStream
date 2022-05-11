@@ -320,7 +320,7 @@
 
 ### May 10, 2022
 - [x] Add replay message
-- [ ] Add message to get stream time range
+- [x] Add message to get stream time range
 - [x] Add message to get recorded messages at time interval
 
 ### May 11, 2022

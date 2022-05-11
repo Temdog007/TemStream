@@ -2,13 +2,14 @@
 
 namespace TemStream
 {
-StreamDisplay::StreamDisplay(TemStreamGui &gui, const Message::Source &source)
-	: source(source), data(std::monostate{}), gui(gui), flags(ImGuiWindowFlags_None), visible(true)
+StreamDisplay::StreamDisplay(TemStreamGui &gui, const Message::Source &source, const bool enableContextMenu)
+	: source(source), data(std::monostate{}), gui(gui), flags(ImGuiWindowFlags_None), visible(true),
+	  enableContextMenu(enableContextMenu)
 {
 }
 StreamDisplay::StreamDisplay(StreamDisplay &&display)
 	: source(std::move(display.source)), data(std::move(display.data)), gui(display.gui), flags(display.flags),
-	  visible(display.visible)
+	  visible(display.visible), enableContextMenu(display.enableContextMenu)
 {
 }
 StreamDisplay::~StreamDisplay()
@@ -67,7 +68,7 @@ bool StreamDisplay::draw()
 }
 void StreamDisplay::drawContextMenu()
 {
-	if (ImGui::BeginPopupContextWindow("Stream Display Flags"))
+	if (enableContextMenu && ImGui::BeginPopupContextWindow("Stream Display Flags"))
 	{
 		drawFlagCheckboxes();
 		if (!std::visit(StreamDisplay::ContextMenu(*this), data))
@@ -196,9 +197,7 @@ bool StreamDisplay::operator()(Message::TimeRange &timeRange)
 	}
 	else
 	{
-		ReplayData v;
-		v.timeRange = timeRange;
-		data.emplace<ReplayData>(std::move(v));
+		data.emplace<ReplayData>(gui, source, timeRange);
 		gui.getReplays(source, timeRange.start);
 	}
 	return true;
@@ -464,8 +463,6 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 	if (!display.gui.useAudio(display.getSource(), func))
 	{
-		// Maybe determine when this is an error and when the user removed the audio
-		// (*logger)(Logger::Error) << "Audio is missing for stream: " << display.getSource() << std::endl;
 		return false;
 	}
 
@@ -511,46 +508,58 @@ bool StreamDisplay::Draw::operator()(ReplayData &v)
 	}
 	else if (v.packets.empty())
 	{
-		v.hasData = false;
-		++v.replayCursor;
-		display.gui.getReplays(display.source, v.replayCursor);
-	}
-	else
-	{
-		--v.frames;
-		if (v.frames <= 0)
+		const auto now = std::chrono::system_clock::now();
+		if (now > v.lastUpdate + std::chrono::seconds(1))
 		{
-			try
+			v.hasData = false;
+			if (v.replayCursor != v.timeRange.end)
 			{
-				v.packets.erase(v.packets.begin());
-				ByteList bytes = base64_decode(v.packets[0]);
-				MemoryStream m(std::move(bytes));
-				Message::Packet packet;
-				{
-					cereal::PortableBinaryInputArchive ar(m);
-					ar(packet);
-				}
-				// Send audio data to playback immediately to avoid audio delay
-				if (auto message = std::get_if<Message::Audio>(&packet.payload))
-				{
-					display.gui.useAudio(packet.source, [&message](AudioSource &a) {
-						if (!a.isRecording())
-						{
-							a.enqueueAudio(message->bytes);
-						}
-					});
-				}
-				std::visit(display, packet.payload);
-				v.frames = v.fps;
-			}
-			catch (const std::exception &e)
-			{
-				(*logger)(Logger::Error) << "Packet failure: " << e.what() << std::endl;
-				return false;
+				v.replayCursor = std::clamp(v.replayCursor + 1, v.timeRange.start, v.timeRange.end);
+				display.gui.getReplays(display.source, v.replayCursor);
+				v.lastUpdate = now;
 			}
 		}
 	}
-	return operator()(v.texture);
+	else
+	{
+		try
+		{
+			ByteList bytes = base64_decode(v.packets.front());
+			v.packets.erase(v.packets.begin());
+			MemoryStream m(std::move(bytes));
+			Message::Packet packet;
+			{
+				cereal::PortableBinaryInputArchive ar(m);
+				ar(packet);
+			}
+			if (auto message = std::get_if<Message::Audio>(&packet.payload))
+			{
+				display.gui.useAudio(
+					display.source, [&message](AudioSource &a) { a.enqueueAudio(message->bytes); }, true);
+			}
+
+			if (!std::visit(*v.display, packet.payload))
+			{
+				return false;
+			}
+		}
+		catch (const std::exception &e)
+		{
+			(*logger)(Logger::Error) << "Packet failure: " << e.what() << std::endl;
+			return false;
+		}
+	}
+
+	bool success = true;
+	SetWindowMinSize(display.gui.getWindow());
+	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
+	{
+		display.drawContextMenu();
+		v.display->visible = true;
+		success = std::visit(Draw(*v.display), v.display->data);
+	}
+	ImGui::End();
+	return success;
 }
 bool StreamDisplay::Draw::operator()(ByteList &)
 {
@@ -595,25 +604,19 @@ bool StreamDisplay::ContextMenu::operator()(CheckAudio &a)
 }
 bool StreamDisplay::ContextMenu::operator()(ReplayData &r)
 {
-	if (ImGui::Button("Stop Replay"))
-	{
-		return false;
-	}
-
-	if (ImGui::InputInt("FPS", &r.fps))
-	{
-		r.fps = std::clamp(r.fps, 10, 60);
-	}
+	bool success = true;
 
 	char buffer[256];
 	const auto seconds = r.replayCursor - r.timeRange.start;
 	snprintf(buffer, sizeof(buffer), "%02" PRId64 ":%02" PRId64 ":%02" PRId64, (seconds / 3600) % 60,
 			 (seconds / 60) % 60, seconds % 60);
-	if (ImGui::SliderInt(buffer, &r.replayCursor, r.timeRange.start, r.timeRange.end))
+	if (ImGui::SliderScalar(buffer, ImGuiDataType_S64, &r.replayCursor, &r.timeRange.start, &r.timeRange.end, PRId64,
+							0))
 	{
-		display.gui.getReplays(display.getSource(), r.replayCursor);
+		success = display.gui.getReplays(display.getSource(), r.replayCursor);
 	}
-	return operator()(r.texture);
+	r.display->flags = display.flags;
+	return success;
 }
 bool StreamDisplay::ContextMenu::operator()(Message::ServerLinks &)
 {
@@ -664,12 +667,14 @@ bool StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 	}
 	return true;
 }
-ReplayData::ReplayData() : packets(), timeRange{0, 0}, texture(nullptr), replayCursor(0), fps(24), hasData(false)
+ReplayData::ReplayData(TemStreamGui &gui, const Message::Source &source, const Message::TimeRange &r)
+	: packets(), timeRange(r), display(tem_unique<StreamDisplay>(gui, source, false)), lastUpdate(),
+	  replayCursor(r.start), hasData(false)
 {
 }
 ReplayData::ReplayData(ReplayData &&data)
-	: packets(std::move(data.packets)), timeRange(data.timeRange), texture(std::move(data.texture)),
-	  replayCursor(data.replayCursor), fps(data.fps), hasData(data.hasData)
+	: packets(std::move(data.packets)), timeRange(data.timeRange), display(std::move(data.display)),
+	  lastUpdate(data.lastUpdate), replayCursor(data.replayCursor), hasData(data.hasData)
 {
 }
 ReplayData::~ReplayData()

@@ -653,7 +653,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 {
 	auto &con = *ptr;
 
-	ImGui::PushID(static_cast<String>(source).c_str());
+	PushedID id(static_cast<String>(source).c_str());
 
 	bool closed = true;
 	if (ImGui::BeginPopupModal("Moderation", &closed))
@@ -683,7 +683,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 						ss << peer;
 						s = std::move(ss.str());
 					}
-					ImGui::PushID(s.c_str());
+					const PushedID id(s.c_str());
 					ImGui::TableNextColumn();
 					ImGui::Text("%s", s.c_str());
 
@@ -697,7 +697,6 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 						packet.payload.emplace<Message::BanUser>(std::move(banUser));
 						con.sendPacket(packet, true);
 					}
-					ImGui::PopID();
 				}
 				ImGui::EndTable();
 			}
@@ -854,7 +853,6 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 	}
 
 	actionSelections[source] = selected;
-	ImGui::PopID();
 }
 
 void TemStreamGui::draw()
@@ -908,7 +906,7 @@ void TemStreamGui::draw()
 				ImGui::TableHeadersRow();
 
 				audio.removeIfNot([this](const auto &source, const auto &a) {
-					ImGui::PushID(a->getName().c_str());
+					PushedID id(a->getName().c_str());
 
 					ImGui::TableNextColumn();
 					if (a->getType() == AudioSource::Type::RecordWindow)
@@ -977,8 +975,6 @@ void TemStreamGui::draw()
 					{
 						result = false;
 					}
-
-					ImGui::PopID();
 					return result;
 				});
 				ImGui::EndTable();
@@ -1015,7 +1011,7 @@ void TemStreamGui::draw()
 						name = data.name;
 					}
 
-					ImGui::PushID(name.c_str());
+					PushedID id(name.c_str());
 
 					ImGui::TableNextColumn();
 					ImGui::Text("%s", name.c_str());
@@ -1028,7 +1024,6 @@ void TemStreamGui::draw()
 						result = false;
 					}
 
-					ImGui::PopID();
 					return result;
 				});
 				ImGui::EndTable();
@@ -1547,36 +1542,6 @@ bool TemStreamGui::MessageHandler::operator()(Message::ServerInformation &info)
 	return true;
 }
 
-bool TemStreamGui::MessageHandler::operator()(Message::Replay &replay)
-{
-	try
-	{
-		auto newPacket = allocateAndConstruct<Message::Packet>();
-		ByteList bytes = base64_decode(replay.message);
-		MemoryStream m(std::move(bytes));
-		{
-			cereal::PortableBinaryInputArchive ar(m);
-			ar(*newPacket);
-		}
-
-		SDL_Event e;
-		e.type = SDL_USEREVENT;
-		e.user.code = TemStreamEvent::HandleMessagePacket;
-		e.user.data1 = newPacket;
-		e.user.data2 = &e;
-		if (!tryPushEvent(e))
-		{
-			destroyAndDeallocate(newPacket);
-		}
-		return true;
-	}
-	catch (const std::exception &e)
-	{
-		(*logger)(Logger::Error) << "Failed to handle replay message: " << e.what() << std::endl;
-		return false;
-	}
-}
-
 bool TemStreamGui::addAudio(unique_ptr<AudioSource> &&ptr)
 {
 	return audio.add(ptr->getSource(), std::move(ptr));
@@ -1587,9 +1552,24 @@ bool TemStreamGui::addVideo(shared_ptr<VideoSource> ptr)
 	return video.add(ptr->getSource(), ptr);
 }
 
-bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(AudioSource &)> &func)
+bool TemStreamGui::useAudio(const Message::Source &source, const std::function<void(AudioSource &)> &func,
+							const bool create)
 {
-	return audio.use(source, [&func](auto &a) { func(*a); });
+	const bool used = audio.use(source, [&func](auto &a) { func(*a); });
+	if (used)
+	{
+		return true;
+	}
+	else if (!create)
+	{
+		return false;
+	}
+	auto ptr = AudioSource::startPlayback(source, nullptr, configuration.defaultVolume / 100.f);
+	if (ptr)
+	{
+		return audio.add(source, std::move(ptr)) && useAudio(source, func, false);
+	}
+	return false;
 }
 
 bool TemStreamGui::startReplay(const Message::Source &source)
@@ -1671,7 +1651,7 @@ void TemStreamGui::LoadFonts()
 	ImGui_ImplSDLRenderer_DestroyFontsTexture();
 }
 
-void TemStreamGui::handleMessage(Message::Packet &&m, const bool isReplay)
+void TemStreamGui::handleMessage(Message::Packet &&m)
 {
 	if (std::visit(MessageHandler{*this, m.source}, m.payload))
 	{
@@ -1686,11 +1666,6 @@ void TemStreamGui::handleMessage(Message::Packet &&m, const bool isReplay)
 			return;
 		}
 		iter = pair.first;
-	}
-
-	if (iter->second.isReplay() != isReplay)
-	{
-		return;
 	}
 
 	if (!std::visit(iter->second, m.payload))
@@ -1816,7 +1791,7 @@ int runApp(Configuration &configuration)
 				break;
 				case TemStreamEvent::HandleMessagePacket: {
 					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
-					gui.handleMessage(std::move(*packet), event.user.data2 != nullptr);
+					gui.handleMessage(std::move(*packet));
 					destroyAndDeallocate(packet);
 				}
 				break;
@@ -1830,10 +1805,8 @@ int runApp(Configuration &configuration)
 				case TemStreamEvent::HandleMessagePackets: {
 					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
 					auto pair = toMoveIterator(std::move(*packets));
-					const bool isReplay = event.user.data2 != nullptr;
-					std::for_each(pair.first, pair.second, [&gui, isReplay](Message::Packet &&packet) {
-						gui.handleMessage(std::move(packet), isReplay);
-					});
+					std::for_each(pair.first, pair.second,
+								  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
 					destroyAndDeallocate(packets);
 				}
 				break;

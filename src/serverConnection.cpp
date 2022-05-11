@@ -652,7 +652,27 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 		return false;
 	}
 
-	const String filename;
+	struct Foo
+	{
+		ServerConnection &connection;
+		size_t sent;
+		Foo(ServerConnection &c) : connection(c), sent(0)
+		{
+		}
+		~Foo()
+		{
+			if (sent == 0)
+			{
+				Message::Packet packet;
+				packet.source = ServerConnection::getSource();
+				packet.payload.emplace<Message::NoReplay>();
+				connection->sendPacket(packet);
+			}
+		}
+	};
+	Foo foo(connection);
+
+	const String filename = ServerConnection::getReplayFilename();
 	std::ifstream file(filename.c_str());
 	if (!file.is_open())
 	{
@@ -660,7 +680,6 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 	}
 
 	String s;
-	size_t sent = 0;
 	while (std::getline(file, s))
 	{
 		auto message = RecordedPacket::getEncodedPacket(s, replay.timestamp);
@@ -673,19 +692,12 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 			{
 				return false;
 			}
-			++sent;
+			++foo.sent;
 		}
-		else if (sent != 0)
+		else if (foo.sent != 0)
 		{
 			break;
 		}
-	}
-	if (sent == 0)
-	{
-		Message::Packet packet;
-		packet.source = ServerConnection::getSource();
-		packet.payload.emplace<Message::NoReplay>();
-		return connection->sendPacket(packet);
 	}
 	return true;
 }
@@ -733,13 +745,12 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 		String prev;
 		do
 		{
-			prev = s;
+			prev = std::move(s);
 		} while (std::getline(file, s));
 
 		last = RecordedPacket::getTimestamp(prev, pos);
 	}
 
-	*logger << start << ':' << last << std::endl;
 	if (start.has_value())
 	{
 		Message::Packet packet;

@@ -75,7 +75,7 @@ class TemStreamGui
 
 	void LoadFonts();
 
-	void handleMessage(Message::Packet &&, const bool isReplay);
+	void handleMessage(Message::Packet &&);
 
 	ImVec2 drawMainMenuBar();
 
@@ -116,8 +116,6 @@ class TemStreamGui
 
 		bool operator()(Message::ServerInformation &);
 
-		bool operator()(Message::Replay &);
-
 		template <typename T> bool operator()(T &)
 		{
 #if LOG_MESSAGE_TYPE
@@ -157,7 +155,7 @@ class TemStreamGui
 	}
 
 	bool addAudio(unique_ptr<AudioSource> &&);
-	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &f);
+	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &f, const bool create = false);
 
 	bool addVideo(shared_ptr<VideoSource>);
 
@@ -205,6 +203,18 @@ class TemStreamGuiLogger : public InMemoryLogger
 	void saveLogs();
 };
 extern void drawAddress(Address &address);
+
+struct PushedID
+{
+	PushedID(const char *str)
+	{
+		ImGui::PushID(str);
+	}
+	~PushedID()
+	{
+		ImGui::PopID();
+	}
+};
 } // namespace TemStream
 
 template <typename Archive> static inline void serialize(Archive &ar, ImVec4 &v)
