@@ -97,11 +97,11 @@ int runApp(Configuration &configuration)
 		std::thread thread([]() {
 			const String filename = ServerConnection::configuration.name + ".json";
 			ServerConnection::sendLinks(filename);
-			auto lastWrite = std::filesystem::last_write_time(filename);
+			auto lastWrite = fs::last_write_time(filename);
 			using namespace std::chrono_literals;
 			while (!appDone)
 			{
-				const auto now = std::filesystem::last_write_time(filename);
+				const auto now = fs::last_write_time(filename);
 				if (now != lastWrite)
 				{
 					ServerConnection::sendLinks(filename);
@@ -669,13 +669,23 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 			Message::Packet packet;
 			packet.source = ServerConnection::getSource();
 			packet.payload.emplace<Message::Replay>(Message::Replay{std::move(*message)});
-			connection->sendPacket(packet);
+			if (!connection->sendPacket(packet))
+			{
+				return false;
+			}
 			++sent;
 		}
 		else if (sent != 0)
 		{
 			break;
 		}
+	}
+	if (sent == 0)
+	{
+		Message::Packet packet;
+		packet.source = ServerConnection::getSource();
+		packet.payload.emplace<Message::NoReplay>();
+		return connection->sendPacket(packet);
 	}
 	return true;
 }
@@ -687,33 +697,49 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 		return false;
 	}
 
-	const String filename;
-	std::ifstream file(filename.c_str());
-	if (!file.is_open())
+	struct Foo
 	{
-		return true;
-	}
+		bool success;
+		Foo() : success(false)
+		{
+		}
+		~Foo()
+		{
+			if (!success)
+			{
+				(*logger)(Logger::Warning) << "Peer requested replay but no replay available" << std::endl;
+			}
+		}
+	};
+
+	Foo foo;
 
 	std::optional<int64_t> start = std::nullopt;
 	std::optional<int64_t> last = std::nullopt;
-	String s;
-	while (std::getline(file, s))
+
 	{
-		std::string::size_type pos;
-		const auto timestamp = RecordedPacket::getTimestamp(s, pos);
-		if (timestamp)
+		const String filename = ServerConnection::getReplayFilename();
+		std::ifstream file(filename.c_str());
+		if (!file.is_open())
 		{
-			if (start.has_value())
-			{
-				*last = *timestamp;
-				break;
-			}
-			else
-			{
-				*start = *timestamp;
-			}
+			return true;
 		}
+
+		String s;
+		std::string::size_type pos;
+		std::getline(file, s);
+		start = RecordedPacket::getTimestamp(s, pos);
+
+		String prev;
+		do
+		{
+			prev = s;
+		} while (std::getline(file, s));
+
+		last = RecordedPacket::getTimestamp(prev, pos);
 	}
+
+	*logger << start << ':' << last << std::endl;
 	if (start.has_value())
 	{
 		Message::Packet packet;
@@ -728,7 +754,9 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 		{
 			range.end = *start;
 		}
+
 		packet.payload.emplace<Message::TimeRange>(std::move(range));
+		foo.success = true;
 		return connection->sendPacket(packet);
 	}
 	return true;
@@ -736,6 +764,10 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 bool ServerConnection::MessageHandler::operator()(Message::TimeRange &)
 {
 	BAD_MESSAGE(TimeRange);
+}
+bool ServerConnection::MessageHandler::operator()(Message::NoReplay)
+{
+	BAD_MESSAGE(NoReplay);
 }
 bool ServerConnection::MessageHandler::operator()(Message::Replay &)
 {
@@ -893,7 +925,7 @@ void ServerConnection::ImageSaver::operator()(uint64_t)
 {
 	std::array<char, KB(1)> buffer;
 	ServerConnection::getFilename(buffer);
-	std::filesystem::remove(buffer.data());
+	fs::remove(buffer.data());
 }
 void ServerConnection::ImageSaver::operator()(const ByteList &bytes)
 {

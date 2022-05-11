@@ -282,6 +282,7 @@ struct Replay
 		ar(message);
 	}
 };
+EMPTY_MESSAGE(NoReplay);
 struct TimeRange
 {
 	int64_t start;
@@ -295,10 +296,11 @@ struct TimeRange
 		ar(start, end);
 	}
 };
+extern std::ostream &operator<<(std::ostream &, const TimeRange &);
 EMPTY_MESSAGE(GetTimeRange);
-using Payload =
-	std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
-				 RequestServerInformation, ServerInformation, BanUser, GetReplay, Replay, TimeRange, GetTimeRange>;
+using Payload = std::variant<std::monostate, Credentials, VerifyLogin, Text, Chat, ServerLinks, Image, Video, Audio,
+							 RequestServerInformation, ServerInformation, BanUser, GetReplay, NoReplay, Replay,
+							 TimeRange, GetTimeRange>;
 
 #define MESSAGE_HANDLER_FUNCTIONS(RVAL)                                                                                \
 	RVAL operator()(std::monostate);                                                                                   \
@@ -313,8 +315,9 @@ using Payload =
 	RVAL operator()(Message::RequestServerInformation);                                                                \
 	RVAL operator()(Message::ServerInformation &);                                                                     \
 	RVAL operator()(Message::BanUser &);                                                                               \
-	RVAL operator()(Message::GetReplay);                                                                               \
 	RVAL operator()(Message::Replay &);                                                                                \
+	RVAL operator()(Message::GetReplay);                                                                               \
+	RVAL operator()(Message::NoReplay);                                                                                \
 	RVAL operator()(Message::TimeRange &);                                                                             \
 	RVAL operator()(Message::GetTimeRange)
 

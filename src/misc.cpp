@@ -75,6 +75,11 @@ std::ostream &operator<<(std::ostream &os, const Header &header)
 	os << "ID: " << header.id << "; Size: " << header.size;
 	return os;
 }
+std::ostream &operator<<(std::ostream &os, const TimeRange &t)
+{
+	os << t.end - t.start << " seconds";
+	return os;
+}
 const Guid MagicGuid(0x2abe3059992u, 0xa589a5bbc5u);
 void prepareLargeBytes(std::ifstream &file, const std::function<void(LargeFile &&)> &func)
 {

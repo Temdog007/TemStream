@@ -728,14 +728,33 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 		selected = iter->second;
 	}
 
-	static const char *actions[]{"-------", "Upload", "Disconnect", "Moderate"};
+	static const char *actions[]{"-------", "Upload", "Disconnect", "Replay", "Moderate"};
 
 	ImGui::TableNextColumn();
-	if (ImGui::Combo("Action", &selected, actions, IM_ARRAYSIZE(actions)) && selected == 3)
+	if (ImGui::Combo("Action", &selected, actions, IM_ARRAYSIZE(actions)))
 	{
-		if (!info.peerInformation.isModerator())
+		switch (selected)
 		{
-			selected = 0;
+		case 1:
+			if (!info.peerInformation.hasWriteAccess())
+			{
+				selected = 0;
+			}
+			break;
+		case 3:
+			if (!info.peerInformation.hasReplayAccess())
+			{
+				selected = 0;
+			}
+			break;
+		case 4:
+			if (!info.peerInformation.isModerator())
+			{
+				selected = 0;
+			}
+			break;
+		default:
+			break;
 		}
 	}
 
@@ -790,7 +809,31 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 			dirty = true;
 		}
 		break;
-	case 3:
+	case 3: {
+		if (!info.peerInformation.hasReplayAccess())
+		{
+			selected = 0;
+			break;
+		}
+
+		auto iter = displays.find(source);
+		if (iter == displays.end() || !iter->second.isReplay())
+		{
+			if (ImGui::Button("Start"))
+			{
+				startReplay(con);
+			}
+		}
+		else
+		{
+			if (ImGui::Button("Stop"))
+			{
+				displays.erase(iter);
+			}
+		}
+	}
+	break;
+	case 4:
 		if (!info.peerInformation.isModerator())
 		{
 			selected = 0;
@@ -1549,33 +1592,45 @@ bool TemStreamGui::useAudio(const Message::Source &source, const std::function<v
 	return audio.use(source, [&func](auto &a) { func(*a); });
 }
 
-void TemStreamGui::startReplay(const Message::Source &source)
+bool TemStreamGui::startReplay(const Message::Source &source)
 {
 	auto con = getConnection(source);
 	if (!con)
 	{
-		return;
+		(*logger)(Logger::Error) << "Requested replay of disconnected server" << std::endl;
+		return false;
 	}
 
-	Message::Packet packet;
-	packet.source = source;
-	packet.payload.emplace<Message::GetTimeRange>();
-	con->sendPacket(packet);
+	return startReplay(*con);
 }
 
-void TemStreamGui::getReplays(const Message::Source &source, const int64_t timestamp)
+bool TemStreamGui::startReplay(ClientConnection &con)
+{
+	Message::Packet packet;
+	packet.source = con.getSource();
+	packet.payload.emplace<Message::GetTimeRange>();
+	return con.sendPacket(packet);
+}
+
+bool TemStreamGui::getReplays(const Message::Source &source, const int64_t timestamp)
 {
 	auto con = getConnection(source);
 	if (!con)
 	{
-		return;
+		(*logger)(Logger::Error) << "Requested replay of disconnected server" << std::endl;
+		return false;
 	}
 
+	return getReplays(*con, timestamp);
+}
+
+bool TemStreamGui::getReplays(ClientConnection &con, const int64_t timestamp)
+{
 	Message::Packet packet;
-	packet.source = source;
+	packet.source = con.getSource();
 	Message::GetReplay r{timestamp};
 	packet.payload.emplace<Message::GetReplay>(std::move(r));
-	con->sendPacket(packet);
+	return con->sendPacket(packet);
 }
 
 bool TemStreamGui::hasReplayAccess(const Message::Source &source)

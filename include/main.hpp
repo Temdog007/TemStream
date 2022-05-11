@@ -273,6 +273,33 @@ template <typename T> void cleanSwap(T &t)
 
 #include "time.hpp"
 
+namespace detail
+{
+class Line : TemStream::String
+{
+	friend std::istream &operator>>(std::istream &is, Line &line)
+	{
+		return std::getline(is, line);
+	}
+};
+} // namespace detail
+
+namespace std
+{
+template <typename T> ostream &operator<<(ostream &os, const optional<T> &value)
+{
+	if (value.has_value())
+	{
+		os << *value;
+	}
+	else
+	{
+		os << "<No value>";
+	}
+	return os;
+}
+} // namespace std
+
 #if TEMSTREAM_SERVER
 #include "serverConfiguration.hpp"
 #include "serverConnection.hpp"

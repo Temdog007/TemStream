@@ -415,7 +415,7 @@ bool Converter::handleWriter(VideoSource::Writer &w)
 						oldVideo->release();
 						oldVideo.reset();
 
-						const auto fileSize = std::filesystem::file_size(oldFilename);
+						const auto fileSize = fs::file_size(oldFilename);
 						ByteList bytes(fileSize);
 						{
 							std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
@@ -454,7 +454,7 @@ bool Converter::handleWriter(VideoSource::Writer &w)
 							destroyAndDeallocate(packets);
 						}
 
-						std::filesystem::remove(oldFilename);
+						fs::remove(oldFilename);
 					}
 					catch (const std::bad_alloc &)
 					{

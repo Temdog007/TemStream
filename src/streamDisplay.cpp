@@ -70,10 +70,6 @@ void StreamDisplay::drawContextMenu()
 	if (ImGui::BeginPopupContextWindow("Stream Display Flags"))
 	{
 		drawFlagCheckboxes();
-		if (gui.hasReplayAccess(source) && ImGui::Button("Replay"))
-		{
-			gui.startReplay(source);
-		}
 		if (!std::visit(StreamDisplay::ContextMenu(*this), data))
 		{
 			data = std::monostate{};
@@ -193,6 +189,7 @@ bool StreamDisplay::operator()(Message::Audio &audio)
 }
 bool StreamDisplay::operator()(Message::TimeRange &timeRange)
 {
+	*logger << "Server " << source << " time range: " << timeRange << std::endl;
 	if (auto ptr = std::get_if<ReplayData>(&data))
 	{
 		ptr->timeRange = timeRange;
@@ -226,7 +223,16 @@ bool StreamDisplay::operator()(Message::Replay &r)
 {
 	if (auto ptr = std::get_if<ReplayData>(&data))
 	{
+		ptr->hasData = true;
 		ptr->packets.emplace_back(std::move(r.message));
+	}
+	return true;
+}
+bool StreamDisplay::operator()(Message::NoReplay)
+{
+	if (auto ptr = std::get_if<ReplayData>(&data))
+	{
+		ptr->hasData = true;
 	}
 	return true;
 }
@@ -500,41 +506,48 @@ bool StreamDisplay::Draw::operator()(CheckAudio &t)
 
 bool StreamDisplay::Draw::operator()(ReplayData &v)
 {
-	--v.frames;
-	if (v.frames <= 0 && !v.packets.empty())
+	if (!v.hasData)
 	{
-		try
+	}
+	else if (v.packets.empty())
+	{
+		v.hasData = false;
+		++v.replayCursor;
+		display.gui.getReplays(display.source, v.replayCursor);
+	}
+	else
+	{
+		--v.frames;
+		if (v.frames <= 0)
 		{
-			v.packets.erase(v.packets.begin());
-			ByteList bytes = base64_decode(v.packets[0]);
-			MemoryStream m(std::move(bytes));
-			Message::Packet packet;
+			try
 			{
-				cereal::PortableBinaryInputArchive ar(m);
-				ar(packet);
+				v.packets.erase(v.packets.begin());
+				ByteList bytes = base64_decode(v.packets[0]);
+				MemoryStream m(std::move(bytes));
+				Message::Packet packet;
+				{
+					cereal::PortableBinaryInputArchive ar(m);
+					ar(packet);
+				}
+				// Send audio data to playback immediately to avoid audio delay
+				if (auto message = std::get_if<Message::Audio>(&packet.payload))
+				{
+					display.gui.useAudio(packet.source, [&message](AudioSource &a) {
+						if (!a.isRecording())
+						{
+							a.enqueueAudio(message->bytes);
+						}
+					});
+				}
+				std::visit(display, packet.payload);
+				v.frames = v.fps;
 			}
-			// Send audio data to playback immediately to avoid audio delay
-			if (auto message = std::get_if<Message::Audio>(&packet.payload))
+			catch (const std::exception &e)
 			{
-				display.gui.useAudio(packet.source, [&message](AudioSource &a) {
-					if (!a.isRecording())
-					{
-						a.enqueueAudio(message->bytes);
-					}
-				});
+				(*logger)(Logger::Error) << "Packet failure: " << e.what() << std::endl;
+				return false;
 			}
-			std::visit(display, packet.payload);
-			v.frames = v.fps;
-			if (v.packets.empty())
-			{
-				++v.replayCursor;
-				display.gui.getReplays(packet.source, v.replayCursor);
-			}
-		}
-		catch (const std::exception &e)
-		{
-			(*logger)(Logger::Error) << "Packet failure: " << e.what() << std::endl;
-			return false;
 		}
 	}
 	return operator()(v.texture);

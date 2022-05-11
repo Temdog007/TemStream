@@ -161,8 +161,12 @@ class TemStreamGui
 
 	bool addVideo(shared_ptr<VideoSource>);
 
-	void startReplay(const Message::Source &);
-	void getReplays(const Message::Source &, int64_t);
+	bool startReplay(const Message::Source &);
+	static bool startReplay(ClientConnection &);
+
+	bool getReplays(const Message::Source &, int64_t);
+	static bool getReplays(ClientConnection &, int64_t);
+
 	bool hasReplayAccess(const Message::Source &);
 
 	void connect(const Address &);
