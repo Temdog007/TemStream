@@ -307,9 +307,9 @@ bool TemStreamGui::init()
 	}
 
 #if TEMSTREAM_USE_OPENCV
-	const int flags = IMG_INIT_PNG | IMG_INIT_WEBP;
+	const int flags = IMG_INIT_PNG;
 #else
-	const int flags = IMG_INIT_JPG | IMG_INIT_PNG | IMG_INIT_WEBP;
+	const int flags = IMG_INIT_JPG | IMG_INIT_PNG;
 #endif
 	if (IMG_Init(flags) != flags)
 	{

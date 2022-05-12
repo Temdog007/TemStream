@@ -113,6 +113,8 @@ release/
 
 python/
 
+webbuild/
+
 font_compressor
 
 !json/*.json
