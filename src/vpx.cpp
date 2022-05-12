@@ -181,7 +181,9 @@ unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, cons
 	cfg.g_timebase.num = 1;
 	cfg.g_timebase.den = fd.fps;
 	cfg.rc_target_bitrate = fd.bitrateInMbps * 1024;
+#if TEMSTREAM_THREADS
 	cfg.g_threads = std::thread::hardware_concurrency();
+#endif
 	cfg.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT | VPX_ERROR_RESILIENT_PARTITIONS;
 
 	if (vpx_codec_enc_init(&vpx.ctx, codec_encoder_interface(), &cfg, 0) == 0)
@@ -195,7 +197,9 @@ unique_ptr<Video::EncoderDecoder> Video::createDecoder()
 {
 	VPX vpx;
 	struct vpx_codec_dec_cfg cfg;
+#if TEMSTREAM_THREADS
 	cfg.threads = std::thread::hardware_concurrency();
+#endif
 	if (vpx_codec_dec_init(&vpx.ctx, codec_decoder_interface(), &cfg, 0) == 0)
 	{
 		return tem_unique<VPX>(std::move(vpx));

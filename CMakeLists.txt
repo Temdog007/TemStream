@@ -36,7 +36,7 @@ add_subdirectory(cereal)
 add_subdirectory(opus)
 
 if(EMSCRIPTEN)
-  set(USE_FLAGS "-s USE_FREETYPE=1")
+  set(USE_FLAGS "-s USE_FREETYPE=1 -fno-stack-protector -pthread")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS}")
@@ -126,8 +126,8 @@ if(COMPILE_CLIENT)
 
   if(EMSCRIPTEN)
     set(CMAKE_EXE_LINKER_FLAGS 
-      "${CMAKE_EXE_LINKER_FLAGS} -s MINIMAL_RUNTIME -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -pthread")
-    set(CMAKE_EXECUTABLE_SUFFIX .html)
+      "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1")
+    # set(CMAKE_EXECUTABLE_SUFFIX .html)
   endif()
 
   if(XCB_RECORD)
@@ -157,6 +157,9 @@ if(COMPILE_CLIENT)
     target_compile_options(TemStream PRIVATE /W4 /WX)
   else()
     target_compile_options(TemStream PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    if(EMSCRIPTEN)
+      target_compile_options(TemStream PRIVATE -Wno-unused-but-set-variable)
+    endif()
   endif()
 
   target_include_directories(TemStream PRIVATE 
@@ -182,32 +185,36 @@ if(COMPILE_CLIENT)
       ${OpenCV_DIR}/webbuild/lib/libopencv_core.a
       ${OpenCV_DIR}/webbuild/lib/libopencv_video.a)
     target_include_directories(TemStream PRIVATE 
-      "/usr/include/opencv4")
+      "/usr/include/opencv4"
+      ${PROJECT_SOURCE_DIR}/opus/include )
+    target_link_libraries(TemStream PRIVATE ${PROJECT_SOURCE_DIR}/webbuild/libopus.a)
   else()
     find_package(OpenCV REQUIRED)
-    target_link_libraries(TemStream PRIVATE ${OpenCV_LIBS})
+    target_link_libraries(TemStream PRIVATE opus ${OpenCV_LIBS})
   endif()
 
   target_link_libraries(TemStream PRIVATE 
     SDL2 
     SDL2_image 
-    cereal 
-    opus
+    cereal
     ImGui 
     ${FREETYPE_LIBRARIES})
 
+  if(EMSCRIPTEN)
+  else()
   set(THREADS_PREFER_PTHREAD_FLAG ON)
-  find_package(Threads REQUIRED)
-  target_link_libraries(TemStream PRIVATE Threads::Threads)
-
-  set(SERVER_SOURCES
-    src/serverConnection.cpp
-    src/serverConfiguration.cpp
-    )
+    find_package(Threads REQUIRED)
+    target_link_libraries(TemStream PRIVATE Threads::Threads)
+  endif()
+  
 endif()
 
 # Compile Server
 if(COMPILE_SERVER)
+  set(SERVER_SOURCES
+    src/serverConnection.cpp
+    src/serverConfiguration.cpp
+  )
   add_executable(TemStreamServer ${SOURCES} ${SERVER_SOURCES})
 
   if(MSVC)

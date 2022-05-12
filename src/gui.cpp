@@ -272,7 +272,7 @@ void TemStreamGui::decodeVideoPackets()
 					}
 
 					const auto delay = std::chrono::duration<double, std::milli>(1000.0 / cap->get(cv::CAP_PROP_FPS));
-					*nextFrame = now + delay;
+					*nextFrame = std::chrono::time_point_cast<std::chrono::milliseconds>(now + delay);
 					return true;
 				});
 		}
@@ -677,7 +677,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 					{
 						StringStream ss;
 						ss << peer;
-						s = std::move(ss.str());
+						s = ss.str();
 					}
 					const PushedID id(s.c_str());
 					ImGui::TableNextColumn();
@@ -989,7 +989,7 @@ void TemStreamGui::draw()
 				ImGui::TableSetupColumn("Device Name");
 				ImGui::TableSetupColumn("Stop");
 				ImGui::TableHeadersRow();
-				video.removeIfNot([this](const auto &, auto &v) {
+				video.removeIfNot([](const auto &, auto &v) {
 					if (!v->isRunning())
 					{
 						return false;
@@ -1681,11 +1681,8 @@ String32 TemStreamGui::getAllUTF32()
 	return s;
 }
 
-void runLoop(TemStreamGui::LoopArgs &args)
+void runLoop(TemStreamGui &gui)
 {
-	auto &gui = args.gui;
-	const bool multiThread = args.multiThread;
-
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
@@ -1935,11 +1932,10 @@ void runLoop(TemStreamGui::LoopArgs &args)
 		gui.dirty = false;
 	}
 
-	if (!multiThread)
-	{
-		using namespace std::chrono_literals;
-		WorkPool::workPool.handleWork(0ms);
-	}
+#if !TEMSTREAM_THREADS
+	using namespace std::chrono_literals;
+	WorkPool::workPool.handleWork(0ms);
+#endif
 
 	ImGui_ImplSDLRenderer_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
@@ -2002,19 +1998,15 @@ int runApp(Configuration &configuration)
 
 	gui.LoadFonts();
 
-	const bool multiThread = std::thread::hardware_concurrency() > 1;
+#if TEMSTREAM_THREADS
 	(*logger)(Logger::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
-	if (multiThread)
-	{
-		WorkPool::handleWorkInAnotherThread();
-	}
-
-	TemStreamGui::LoopArgs args{gui, multiThread};
+	WorkPool::handleWorkInAnotherThread();
+#endif
 
 #if __EMSCRIPTEN__
-	emscripten_set_main_loop(runLoop, args, 0, 1);
+	emscripten_set_main_loop_arg(reinterpret_cast<em_arg_callback_func>(runLoop), &gui, 0, 1);
 #else
-	runLoop(args);
+	runLoop(gui);
 #endif
 
 	gui.audio.clear();

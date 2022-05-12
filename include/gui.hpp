@@ -47,13 +47,8 @@ using VideoPacket = std::pair<Message::Source, Message::Video>;
 class TemStreamGui
 {
   private:
-	struct LoopArgs
-	{
-		TemStreamGui &gui;
-		const bool multiThread;
-	};
 	friend int runApp(Configuration &);
-	friend void runLoop(LoopArgs &);
+	friend void runLoop(TemStreamGui &);
 
 	std::array<char, KB(1)> strBuffer;
 

@@ -6,7 +6,6 @@ class TemStreamGui;
 class WorkPool
 {
   private:
-	List<std::thread> threads;
 	ConcurrentQueue<std::function<bool()>> workList;
 
   public:

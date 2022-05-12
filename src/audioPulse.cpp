@@ -268,8 +268,6 @@ std::optional<WindowProcesses> AudioSource::getWindowsWithAudio()
 unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source &source, const WindowProcess &wp,
 														  const float silenceThreshold)
 {
-	using namespace std::chrono_literals;
-
 	const auto sinks = SinkInput::getSinks();
 	if (!sinks.has_value())
 	{
@@ -338,7 +336,8 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 	// Wait for Pulse AudioSource or SDL to update. SDL will fail to find the device if this is done too soon
 	// (Is there a better way to do this?)
 	(*logger)(Logger::Trace) << "Waiting 1 second for audio server to update" << std::endl;
-	std::this_thread::sleep_for(1s);
+	// std::this_thread::sleep_for(1s);
+	SDL_Delay(1000u);
 
 	snprintf(commandBuffer, sizeof(commandBuffer), "%s_remapped", sinkName);
 	SinkInputAudio *audio = allocateAndConstruct<SinkInputAudio>(source, silenceThreshold, std::move(nullSink),

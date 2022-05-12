@@ -12,7 +12,7 @@ const char *TemStream::ApplicationPath = nullptr;
 void signalHandler(int s);
 void parseMemory(int, const char **, size_t);
 
-int main(const int argc, const char **argv)
+extern "C" int main(const int argc, const char **argv)
 {
 	srand(time(nullptr));
 

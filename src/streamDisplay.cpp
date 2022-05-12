@@ -171,9 +171,9 @@ bool StreamDisplay::ImageMessageHandler::operator()(ByteList &&bytes)
 	ptr->append(bytes);
 	return true;
 }
-bool StreamDisplay::operator()(Message::Audio &audio)
+bool StreamDisplay::operator()(Message::Audio &)
 {
-	if (!gui.useAudio(source, [this, &audio](AudioSource &a) {
+	if (!gui.useAudio(source, [this](AudioSource &a) {
 			if (!std::holds_alternative<CheckAudio>(data))
 			{
 				data.emplace<CheckAudio>(nullptr, a.isRecording());

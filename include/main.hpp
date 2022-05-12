@@ -34,17 +34,18 @@
 #include <queue>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
 
 #if __EMSCRIPTEN__
+#define TEMSTREAM_THREADS false
 #include <emscripten.h>
-#include <emscripten/threading.h>
 using TimePoint = std::chrono::time_point<std::chrono::system_clock>;
 #else
+#include <thread>
+#define TEMSTREAM_THREADS true
 using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
 #endif
 

@@ -17,7 +17,7 @@ VideoSource::VideoSource(const Message::Source &source, const Address &address)
 {
 	StringStream ss;
 	ss << address;
-	name = std::move(ss.str());
+	name = ss.str();
 }
 VideoSource::~VideoSource()
 {
@@ -89,7 +89,7 @@ bool WebCamCapture::execute()
 		frame.height = image.rows;
 		frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
 		e->addFrame(std::move(frame));
-		nextFrame = now + delay;
+		nextFrame = std::chrono::time_point_cast<std::chrono::milliseconds>(now + delay);
 		return true;
 	}
 
