@@ -65,33 +65,24 @@ void checkFile(TemStreamGui &gui, const Message::Source &source, const String &f
 		if (isJpeg(filename.c_str()) || isXPM(filename.c_str()))
 		{
 			data = allocateAndConstruct<QueryImage>(gui, source, filename);
-			goto end;
 		}
-
-		if (fileIsBinary(filename))
+		else if (fileIsBinary(filename))
 		{
 			if (isImage(filename.c_str()))
 			{
 				data = allocateAndConstruct<QueryImage>(gui, source, filename);
-				goto end;
 			}
-
-#if TEMSTREAM_USE_OPENCV
-			if (cv::VideoCapture(cv::String(filename)).isOpened())
+			else if (cv::VideoCapture(cv::String(filename)).isOpened())
 			{
 				data = allocateAndConstruct<QueryVideo>(gui, source, filename);
-				goto end;
 			}
-#endif
 		}
 		else
 		{
 			std::ifstream file(filename.c_str());
 			String s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 			data = allocateAndConstruct<QueryText>(gui, source, std::move(s));
-			goto end;
 		}
-	end:
 		SDL_Event e;
 		e.type = SDL_USEREVENT;
 		e.user.code = TemStreamEvent::SetQueryData;

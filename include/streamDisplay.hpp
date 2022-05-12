@@ -18,7 +18,7 @@ struct CheckAudio
 	{
 	}
 	CheckAudio(CheckAudio &&a)
-		: left(std::move(left)), right(std::move(right)), currentAudio(std::move(a.currentAudio)),
+		: left(std::move(a.left)), right(std::move(a.right)), currentAudio(std::move(a.currentAudio)),
 		  texture(std::move(a.texture)), isRecording(a.isRecording)
 	{
 	}

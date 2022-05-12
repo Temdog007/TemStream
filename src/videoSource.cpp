@@ -98,7 +98,6 @@ bool WebCamCapture::execute()
 shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, const Message::Source &source,
 												  FrameData fd)
 {
-#if TEMSTREAM_USE_OPENCV
 	cv::VideoCapture cap(std::visit(MakeVideoCapture{}, arg));
 	if (!cap.isOpened())
 	{
@@ -155,9 +154,6 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 		return true;
 	});
 	return video;
-#else
-	return nullptr;
-#endif
 }
 shared_ptr<VideoSource> VideoSource::listenToUdpPort(const Address &address, const Message::Source &source)
 {
@@ -317,7 +313,6 @@ void VideoSource::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr
 }
 void VideoSource::Frame::resizeTo(const uint32_t w, const uint32_t h)
 {
-#if TEMSTREAM_USE_OPENCV
 	cv::Mat output;
 	{
 		cv::Mat m(height + height / 2U, width, CV_8UC1, bytes.data());
@@ -325,12 +320,7 @@ void VideoSource::Frame::resizeTo(const uint32_t w, const uint32_t h)
 				   cv::InterpolationFlags::INTER_AREA);
 	}
 	bytes = ByteList(output.data, output.total() * output.elemSize());
-#else
-	ByteList Y = resizePlane(bytes.data(), width, height, w, h);
-	ByteList U = resizePlane(bytes.data() + (width * height), width / 2, height / 2, w / 2, h / 2);
-	ByteList V = resizePlane(U + (width * height / 4), width / 2, height / 2, w / 2, h / 2);
-	bytes = Y + U + V;
-#endif
+
 	width = w;
 	height = h;
 }

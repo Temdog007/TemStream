@@ -177,7 +177,6 @@ std::optional<VideoSource::Frame> Converter::convertToFrame(Screenshot &&s)
 	frame.width = (s.width - (s.width % 2));
 	frame.height = (s.height - (s.height % 2));
 
-#if TEMSTREAM_USE_OPENCV
 	// Must copy in case other scalings use this image
 	temp.clear();
 	temp.append(data, s.width * s.height * 4);
@@ -185,19 +184,6 @@ std::optional<VideoSource::Frame> Converter::convertToFrame(Screenshot &&s)
 	cv::cvtColor(m, m, cv::COLOR_BGRA2YUV_IYUV);
 	frame.bytes.append(m.data, m.total() * m.elemSize());
 	return frame;
-#else
-	frame->bytes.resize((s.width * s.height) * 2, '\0');
-	if (SDL_ConvertPixels(s.width, s.height, SDL_PIXELFORMAT_BGRA32, data, s.width * 4, SDL_PIXELFORMAT_YV12,
-						  frame->bytes.data(), s.width) == 0)
-	{
-		return frame;
-	}
-	else
-	{
-		logSDLError("Failed to convert pixels");
-		return nullptr;
-	}
-#endif
 }
 Screenshotter::Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr,
 							 shared_ptr<VideoSource> v, const uint32_t fps)
@@ -338,7 +324,6 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 }
 bool Converter::handleWriter(VideoSource::Writer &w)
 {
-#if TEMSTREAM_USE_OPENCV
 	if (first)
 	{
 		if (!VideoSource::resetVideo(w, video, frameData))
@@ -485,9 +470,6 @@ bool Converter::handleWriter(VideoSource::Writer &w)
 		return false;
 	}
 	return true;
-#else
-	return false;
-#endif
 }
 shared_ptr<VideoSource> VideoSource::recordWindow(const WindowProcess &wp, const Message::Source &source, FrameData fd)
 {

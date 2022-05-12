@@ -5,16 +5,15 @@
 namespace TemStream
 {
 using Dimensions = std::optional<std::pair<uint16_t, uint16_t>>;
-#if TEMSTREAM_USE_OPENCV
 using VideoCaptureArg = std::variant<int32_t, String>;
-#endif
+
 class VideoSource
 {
 	friend class Allocator<VideoSource>;
 
 	template <typename T, typename... Args> friend T *allocate(Args &&...args);
 
-	friend class Deleter<VideoSource>;
+	friend struct Deleter<VideoSource>;
 
   private:
 	Message::Source source;
@@ -287,7 +286,6 @@ template <typename T> bool VideoSource::RGBA2YUV<T>::convertFrames(std::weak_ptr
 	}
 	return true;
 }
-#if TEMSTREAM_USE_OPENCV
 struct MakeVideoCapture
 {
 	cv::VideoCapture operator()(const String &s)
@@ -307,12 +305,11 @@ struct WebCamCapture
 	VideoSource::FrameData frameData;
 	VideoCaptureArg arg;
 	Message::Source source;
-	std::chrono::_V2::system_clock::time_point nextFrame;
+	TimePoint nextFrame;
 	std::shared_ptr<VideoSource> video;
 	std::weak_ptr<VideoSource::FrameEncoder> encoder;
 	bool first;
 
 	bool execute();
 };
-#endif
 } // namespace TemStream

@@ -8,7 +8,7 @@ class Time
 {
   private:
 	String name;
-	const std::chrono::_V2::system_clock::time_point start;
+	const TimePoint start;
 
   public:
 	Time(const String &);

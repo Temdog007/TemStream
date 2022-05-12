@@ -14,9 +14,10 @@ option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
 option(XCB_RECORD "Record windows with XCB" ON)
 option(VPX_ENCODING "Use libvpx to encode video")
 option(OPENH264_ENCODING "Use OpenH264 to encode video" ON)
-option(USE_OPEN_CV "Use OpenCV library" ON)
 
+set(BUILD_DOC OFF)
 set(BUILD_SANDBOX OFF)
+set(SKIP_PERFORMANCE_COMPARISON ON)
 set(SUPPORT_JPG ON)
 set(SUPPORT_PNG ON)
 set(SUPPORT_WEBP OFF)
@@ -28,14 +29,20 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-add_subdirectory(cereal)
 add_subdirectory(SDL)
 add_subdirectory(SDL_image)
+
+add_subdirectory(cereal)
 add_subdirectory(opus)
 
 if(EMSCRIPTEN)
+  set(USE_FLAGS "-s USE_FREETYPE=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS}")
+  # set(CMAKE_EXECUTABLE_SUFFIX .html)
 else()
-find_package(Freetype REQUIRED)
+  find_package(Freetype REQUIRED)
 endif()
 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
@@ -117,6 +124,12 @@ if(COMPILE_CLIENT)
     ${VIDEO_SOURCE} 
     ${ENCODING_SOURCE})
 
+  if(EMSCRIPTEN)
+    set(CMAKE_EXE_LINKER_FLAGS 
+      "${CMAKE_EXE_LINKER_FLAGS} -s MINIMAL_RUNTIME -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -pthread")
+    set(CMAKE_EXECUTABLE_SUFFIX .html)
+  endif()
+
   if(XCB_RECORD)
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
     include(FindXCB)
@@ -163,9 +176,15 @@ if(COMPILE_CLIENT)
     target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_OPENH264)
   endif()
 
-  if(USE_OPEN_CV)
+  if(EMSCRIPTEN)
+    set(OpenCV_DIR ${PROJECT_SOURCE_DIR}/opencv)
+    target_sources(TemStream PRIVATE 
+      ${OpenCV_DIR}/webbuild/lib/libopencv_core.a
+      ${OpenCV_DIR}/webbuild/lib/libopencv_video.a)
+    target_include_directories(TemStream PRIVATE 
+      "/usr/include/opencv4")
+  else()
     find_package(OpenCV REQUIRED)
-    target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_OPENCV)
     target_link_libraries(TemStream PRIVATE ${OpenCV_LIBS})
   endif()
 

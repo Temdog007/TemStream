@@ -46,9 +46,15 @@ class SDL_MemoryFunctions
 using VideoPacket = std::pair<Message::Source, Message::Video>;
 class TemStreamGui
 {
-	friend int runApp(Configuration &);
-
   private:
+	struct LoopArgs
+	{
+		TemStreamGui &gui;
+		const bool multiThread;
+	};
+	friend int runApp(Configuration &);
+	friend void runLoop(LoopArgs &);
+
 	std::array<char, KB(1)> strBuffer;
 
 	Mutex connectionMutex;

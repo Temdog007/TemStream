@@ -198,7 +198,7 @@ template <class T> class Allocator
 	Allocator() noexcept : ad(globalAllocatorData)
 	{
 	}
-	Allocator(const AllocatorData &ad) noexcept : ad(ad)
+	Allocator(AllocatorData &ad) noexcept : ad(ad)
 	{
 	}
 	~Allocator()

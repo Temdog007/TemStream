@@ -306,11 +306,7 @@ bool TemStreamGui::init()
 		return false;
 	}
 
-#if TEMSTREAM_USE_OPENCV
-	const int flags = IMG_INIT_PNG;
-#else
 	const int flags = IMG_INIT_JPG | IMG_INIT_PNG;
-#endif
 	if (IMG_Init(flags) != flags)
 	{
 		(*logger)(Logger::Error) << "Image error: " << IMG_GetError() << std::endl;
@@ -1685,6 +1681,296 @@ String32 TemStreamGui::getAllUTF32()
 	return s;
 }
 
+void runLoop(TemStreamGui::LoopArgs &args)
+{
+	auto &gui = args.gui;
+	const bool multiThread = args.multiThread;
+
+	SDL_Event event;
+	while (SDL_PollEvent(&event))
+	{
+		ImGui_ImplSDL2_ProcessEvent(&event);
+		switch (event.type)
+		{
+		case SDL_QUIT:
+			appDone = true;
+			break;
+		case SDL_WINDOWEVENT:
+			if (event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(gui.window))
+			{
+				appDone = true;
+			}
+			break;
+		case SDL_DROPTEXT: {
+			if (auto ptr = dynamic_cast<QueryText *>(gui.queryData.get()))
+			{
+				const size_t size = strlen(event.drop.file);
+				String s(event.drop.file, event.drop.file + size);
+				ptr->setText(std::move(s));
+			}
+			else
+			{
+				(*logger)(Logger::Error) << "Text can only be sent to a text server" << std::endl;
+			}
+			SDL_free(event.drop.file);
+		}
+		break;
+		case SDL_DROPFILE: {
+			if (isTTF(event.drop.file))
+			{
+				*logger << "Adding new font: " << event.drop.file << std::endl;
+				gui.configuration.fontFiles.emplace_back(event.drop.file);
+				gui.configuration.fontIndex = IM_ARRAYSIZE(Fonts) + gui.configuration.fontFiles.size() - 1;
+				gui.LoadFonts();
+			}
+			else
+			{
+				if (gui.queryData == nullptr)
+				{
+					(*logger)(Logger::Error) << "No server to send file to..." << std::endl;
+					break;
+				}
+				Message::Source source = gui.queryData->getSource();
+				String s(event.drop.file);
+				WorkPool::workPool.addWork([&gui, s = std::move(s), source = std::move(source)]() {
+					Work::checkFile(gui, source, s);
+					return false;
+				});
+			}
+			SDL_free(event.drop.file);
+		}
+		break;
+		case SDL_USEREVENT:
+			switch (event.user.code)
+			{
+			case TemStreamEvent::SendSingleMessagePacket: {
+				Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
+				const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
+				gui.sendPacket(std::move(*packet), b);
+				destroyAndDeallocate(packet);
+			}
+			break;
+			case TemStreamEvent::HandleMessagePacket: {
+				Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
+				gui.handleMessage(std::move(*packet));
+				destroyAndDeallocate(packet);
+			}
+			break;
+			case TemStreamEvent::SendMessagePackets: {
+				MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
+				const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
+				gui.sendPackets(std::move(*packets), b);
+				destroyAndDeallocate(packets);
+			}
+			break;
+			case TemStreamEvent::HandleMessagePackets: {
+				MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
+				auto pair = toMoveIterator(std::move(*packets));
+				std::for_each(pair.first, pair.second,
+							  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
+				destroyAndDeallocate(packets);
+			}
+			break;
+			case TemStreamEvent::ReloadFont:
+				gui.LoadFonts();
+				break;
+			case TemStreamEvent::SetQueryData: {
+				IQuery *query = reinterpret_cast<IQuery *>(event.user.data1);
+				auto ptr = unique_ptr<IQuery>(query);
+				gui.queryData.swap(ptr);
+			}
+			break;
+			case TemStreamEvent::SetSurfaceToStreamDisplay: {
+				SDL_Surface *surfacePtr = reinterpret_cast<SDL_Surface *>(event.user.data1);
+				SDL_SurfaceWrapper surface(surfacePtr);
+				Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
+				auto source = unique_ptr<Message::Source>(sourcePtr);
+				auto iter = gui.displays.find(*source);
+				if (iter == gui.displays.end())
+				{
+					if (!gui.hasConnection(*source))
+					{
+						break;
+					}
+
+					auto [iterR, result] = gui.displays.try_emplace(*source, StreamDisplay(gui, *source));
+					if (!result)
+					{
+						break;
+					}
+					iter = iterR;
+				}
+				iter->second.setSurface(*surface);
+			}
+			break;
+			case TemStreamEvent::AddAudio: {
+				auto audio = reinterpret_cast<AudioSource *>(event.user.data1);
+				auto ptr = unique_ptr<AudioSource>(audio);
+				String name = ptr->getName();
+				if (gui.addAudio(std::move(ptr)))
+				{
+					*logger << "Using audio device: " << name << std::endl;
+				}
+			}
+			break;
+			case TemStreamEvent::HandleFrame: {
+				VideoSource::Frame *framePtr = reinterpret_cast<VideoSource::Frame *>(event.user.data1);
+				auto frame = unique_ptr<VideoSource::Frame>(framePtr);
+				Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
+				auto source = unique_ptr<Message::Source>(sourcePtr);
+				if (!gui.hasConnection(*source))
+				{
+					break;
+				}
+				auto iter = gui.displays.find(*source);
+				if (iter == gui.displays.end())
+				{
+					auto [newIter, added] = gui.displays.try_emplace(*source, StreamDisplay(gui, *source));
+					if (!added)
+					{
+						break;
+					}
+					iter = newIter;
+				}
+				iter->second.updateTexture(*frame);
+			}
+			break;
+			default:
+				break;
+			}
+			break;
+		case SDL_AUDIODEVICEADDED:
+			(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
+									 << " device added" << std::endl;
+			break;
+		case SDL_AUDIODEVICEREMOVED:
+			(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
+									 << " device removed" << std::endl;
+			break;
+		case SDL_KEYDOWN:
+			if (gui.getIO().WantCaptureKeyboard)
+			{
+				break;
+			}
+			if ((event.key.keysym.mod & KMOD_CTRL) == 0)
+			{
+				break;
+			}
+			switch (event.key.keysym.sym)
+			{
+			case SDLK_o:
+				if (!gui.fileDirectory.has_value())
+				{
+					gui.fileDirectory.emplace();
+				}
+				break;
+			case SDLK_a:
+				gui.configuration.showAudio = !gui.configuration.showAudio;
+				break;
+			case SDLK_d:
+				gui.configuration.showDisplays = !gui.configuration.showDisplays;
+				break;
+			case SDLK_w:
+				gui.configuration.showConnections = !gui.configuration.showConnections;
+				break;
+			case SDLK_l:
+				gui.configuration.showLogs = !gui.configuration.showLogs;
+				break;
+			case SDLK_h:
+				gui.configuration.showVideo = !gui.configuration.showVideo;
+				break;
+			case SDLK_i:
+				gui.configuration.showStats = !gui.configuration.showStats;
+				break;
+			case SDLK_t:
+				gui.configuration.showColors = !gui.configuration.showColors;
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (gui.dirty)
+	{
+		if (gui.getConnectionCount() == 0)
+		{
+			gui.displays.clear();
+		}
+
+		// Only keep displays, audios, videos if connection is present
+		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
+		{
+			if (gui.hasConnection(iter->first))
+			{
+				++iter;
+			}
+			else
+			{
+				(*logger)(Logger::Trace) << "Removed stream display '" << iter->first
+										 << "' because its connection is gone" << std::endl;
+				iter = gui.displays.erase(iter);
+			}
+		}
+
+		gui.audio.removeIfNot(
+			[&gui](const auto &source, const auto &a) { return gui.hasConnection(source) && a->isActive(); });
+
+		gui.video.removeIfNot([&gui](const auto &source, const auto &v) {
+			if (!v->isRunning())
+			{
+				return false;
+			}
+			else if (!gui.hasConnection(source))
+			{
+				v->setRunning(false);
+				return false;
+			}
+			return true;
+		});
+
+		gui.dirty = false;
+	}
+
+	if (!multiThread)
+	{
+		using namespace std::chrono_literals;
+		WorkPool::workPool.handleWork(0ms);
+	}
+
+	ImGui_ImplSDLRenderer_NewFrame();
+	ImGui_ImplSDL2_NewFrame();
+	ImGui::NewFrame();
+
+	gui.pushFont();
+
+	gui.draw();
+
+	for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
+	{
+		if (iter->second.draw())
+		{
+			++iter;
+		}
+		else
+		{
+			iter = gui.displays.erase(iter);
+		}
+	}
+
+	ImGui::PopFont();
+
+	ImGui::Render();
+
+	SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
+	SDL_RenderClear(gui.renderer);
+	ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
+	SDL_RenderPresent(gui.renderer);
+}
+
 int runApp(Configuration &configuration)
 {
 	IMGUI_CHECKVERSION();
@@ -1723,292 +2009,13 @@ int runApp(Configuration &configuration)
 		WorkPool::handleWorkInAnotherThread();
 	}
 
-	while (!appDone)
-	{
-		SDL_Event event;
-		while (SDL_PollEvent(&event))
-		{
-			ImGui_ImplSDL2_ProcessEvent(&event);
-			switch (event.type)
-			{
-			case SDL_QUIT:
-				appDone = true;
-				break;
-			case SDL_WINDOWEVENT:
-				if (event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(gui.window))
-				{
-					appDone = true;
-				}
-				break;
-			case SDL_DROPTEXT: {
-				if (auto ptr = dynamic_cast<QueryText *>(gui.queryData.get()))
-				{
-					const size_t size = strlen(event.drop.file);
-					String s(event.drop.file, event.drop.file + size);
-					ptr->setText(std::move(s));
-				}
-				else
-				{
-					(*logger)(Logger::Error) << "Text can only be sent to a text server" << std::endl;
-				}
-				SDL_free(event.drop.file);
-			}
-			break;
-			case SDL_DROPFILE: {
-				if (isTTF(event.drop.file))
-				{
-					*logger << "Adding new font: " << event.drop.file << std::endl;
-					gui.configuration.fontFiles.emplace_back(event.drop.file);
-					gui.configuration.fontIndex = IM_ARRAYSIZE(Fonts) + gui.configuration.fontFiles.size() - 1;
-					gui.LoadFonts();
-				}
-				else
-				{
-					if (gui.queryData == nullptr)
-					{
-						(*logger)(Logger::Error) << "No server to send file to..." << std::endl;
-						break;
-					}
-					Message::Source source = gui.queryData->getSource();
-					String s(event.drop.file);
-					WorkPool::workPool.addWork([&gui, s = std::move(s), source = std::move(source)]() {
-						Work::checkFile(gui, source, s);
-						return false;
-					});
-				}
-				SDL_free(event.drop.file);
-			}
-			break;
-			case SDL_USEREVENT:
-				switch (event.user.code)
-				{
-				case TemStreamEvent::SendSingleMessagePacket: {
-					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
-					const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
-					gui.sendPacket(std::move(*packet), b);
-					destroyAndDeallocate(packet);
-				}
-				break;
-				case TemStreamEvent::HandleMessagePacket: {
-					Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
-					gui.handleMessage(std::move(*packet));
-					destroyAndDeallocate(packet);
-				}
-				break;
-				case TemStreamEvent::SendMessagePackets: {
-					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
-					const bool b = reinterpret_cast<size_t>(event.user.data2) != 0;
-					gui.sendPackets(std::move(*packets), b);
-					destroyAndDeallocate(packets);
-				}
-				break;
-				case TemStreamEvent::HandleMessagePackets: {
-					MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
-					auto pair = toMoveIterator(std::move(*packets));
-					std::for_each(pair.first, pair.second,
-								  [&gui](Message::Packet &&packet) { gui.handleMessage(std::move(packet)); });
-					destroyAndDeallocate(packets);
-				}
-				break;
-				case TemStreamEvent::ReloadFont:
-					gui.LoadFonts();
-					break;
-				case TemStreamEvent::SetQueryData: {
-					IQuery *query = reinterpret_cast<IQuery *>(event.user.data1);
-					auto ptr = unique_ptr<IQuery>(query);
-					gui.queryData.swap(ptr);
-				}
-				break;
-				case TemStreamEvent::SetSurfaceToStreamDisplay: {
-					SDL_Surface *surfacePtr = reinterpret_cast<SDL_Surface *>(event.user.data1);
-					SDL_SurfaceWrapper surface(surfacePtr);
-					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
-					auto source = unique_ptr<Message::Source>(sourcePtr);
-					auto iter = gui.displays.find(*source);
-					if (iter == gui.displays.end())
-					{
-						if (!gui.hasConnection(*source))
-						{
-							break;
-						}
+	TemStreamGui::LoopArgs args{gui, multiThread};
 
-						auto [iterR, result] = gui.displays.try_emplace(*source, StreamDisplay(gui, *source));
-						if (!result)
-						{
-							break;
-						}
-						iter = iterR;
-					}
-					iter->second.setSurface(*surface);
-				}
-				break;
-				case TemStreamEvent::AddAudio: {
-					auto audio = reinterpret_cast<AudioSource *>(event.user.data1);
-					auto ptr = unique_ptr<AudioSource>(audio);
-					String name = ptr->getName();
-					if (gui.addAudio(std::move(ptr)))
-					{
-						*logger << "Using audio device: " << name << std::endl;
-					}
-				}
-				break;
-				case TemStreamEvent::HandleFrame: {
-					VideoSource::Frame *framePtr = reinterpret_cast<VideoSource::Frame *>(event.user.data1);
-					auto frame = unique_ptr<VideoSource::Frame>(framePtr);
-					Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
-					auto source = unique_ptr<Message::Source>(sourcePtr);
-					if (!gui.hasConnection(*source))
-					{
-						break;
-					}
-					auto iter = gui.displays.find(*source);
-					if (iter == gui.displays.end())
-					{
-						auto [newIter, added] = gui.displays.try_emplace(*source, StreamDisplay(gui, *source));
-						if (!added)
-						{
-							break;
-						}
-						iter = newIter;
-					}
-					iter->second.updateTexture(*frame);
-				}
-				break;
-				default:
-					break;
-				}
-				break;
-			case SDL_AUDIODEVICEADDED:
-				(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
-										 << " device added" << std::endl;
-				break;
-			case SDL_AUDIODEVICEREMOVED:
-				(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
-										 << " device removed" << std::endl;
-				break;
-			case SDL_KEYDOWN:
-				if (io.WantCaptureKeyboard)
-				{
-					break;
-				}
-				if ((event.key.keysym.mod & KMOD_CTRL) == 0)
-				{
-					break;
-				}
-				switch (event.key.keysym.sym)
-				{
-				case SDLK_o:
-					if (!gui.fileDirectory.has_value())
-					{
-						gui.fileDirectory.emplace();
-					}
-					break;
-				case SDLK_a:
-					gui.configuration.showAudio = !gui.configuration.showAudio;
-					break;
-				case SDLK_d:
-					gui.configuration.showDisplays = !gui.configuration.showDisplays;
-					break;
-				case SDLK_w:
-					gui.configuration.showConnections = !gui.configuration.showConnections;
-					break;
-				case SDLK_l:
-					gui.configuration.showLogs = !gui.configuration.showLogs;
-					break;
-				case SDLK_h:
-					gui.configuration.showVideo = !gui.configuration.showVideo;
-					break;
-				case SDLK_i:
-					gui.configuration.showStats = !gui.configuration.showStats;
-					break;
-				case SDLK_t:
-					gui.configuration.showColors = !gui.configuration.showColors;
-					break;
-				default:
-					break;
-				}
-				break;
-			default:
-				break;
-			}
-		}
-
-		if (gui.dirty)
-		{
-			if (gui.getConnectionCount() == 0)
-			{
-				gui.displays.clear();
-			}
-
-			// Only keep displays, audios, videos if connection is present
-			for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
-			{
-				if (gui.hasConnection(iter->first))
-				{
-					++iter;
-				}
-				else
-				{
-					(*logger)(Logger::Trace)
-						<< "Removed stream display '" << iter->first << "' because its connection is gone" << std::endl;
-					iter = gui.displays.erase(iter);
-				}
-			}
-
-			gui.audio.removeIfNot(
-				[&gui](const auto &source, const auto &a) { return gui.hasConnection(source) && a->isActive(); });
-
-			gui.video.removeIfNot([&gui](const auto &source, const auto &v) {
-				if (!v->isRunning())
-				{
-					return false;
-				}
-				else if (!gui.hasConnection(source))
-				{
-					v->setRunning(false);
-					return false;
-				}
-				return true;
-			});
-
-			gui.dirty = false;
-		}
-
-		if (!multiThread)
-		{
-			using namespace std::chrono_literals;
-			WorkPool::workPool.handleWork(0ms);
-		}
-
-		ImGui_ImplSDLRenderer_NewFrame();
-		ImGui_ImplSDL2_NewFrame();
-		ImGui::NewFrame();
-
-		gui.pushFont();
-
-		gui.draw();
-
-		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
-		{
-			if (iter->second.draw())
-			{
-				++iter;
-			}
-			else
-			{
-				iter = gui.displays.erase(iter);
-			}
-		}
-
-		ImGui::PopFont();
-
-		ImGui::Render();
-
-		SDL_SetRenderDrawColor(gui.renderer, 128u, 128u, 128u, 255u);
-		SDL_RenderClear(gui.renderer);
-		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
-		SDL_RenderPresent(gui.renderer);
-	}
+#if __EMSCRIPTEN__
+	emscripten_set_main_loop(runLoop, args, 0, 1);
+#else
+	runLoop(args);
+#endif
 
 	gui.audio.clear();
 	gui.video.forEach([](const auto &, auto &value) { value->setRunning(false); });

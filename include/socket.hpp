@@ -7,7 +7,7 @@ namespace TemStream
 class ByteList;
 namespace Message
 {
-class Packet;
+struct Packet;
 }
 class Socket
 {

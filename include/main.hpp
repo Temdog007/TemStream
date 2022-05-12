@@ -5,12 +5,12 @@
 #include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -40,6 +40,14 @@
 #include <variant>
 #include <vector>
 
+#if __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/threading.h>
+using TimePoint = std::chrono::time_point<std::chrono::system_clock>;
+#else
+using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
+#endif
+
 namespace fs = std::filesystem;
 
 #include <cereal/cereal.hpp>
@@ -56,8 +64,14 @@ namespace fs = std::filesystem;
 #include <cereal/archives/json.hpp>
 #include <cereal/archives/portable_binary.hpp>
 
-#if TEMSTREAM_USE_OPENCV
-#include <opencv4/opencv2/opencv.hpp>
+#if TEMSTREAM_SERVER || TEMSTREAM_CHAT_TEST
+#define TEMSTREAM_HAS_GUI false
+#else
+#define TEMSTREAM_HAS_GUI true
+#endif
+
+#if TEMSTREAM_HAS_GUI
+#include <opencv2/opencv.hpp>
 #endif
 
 namespace std
@@ -72,12 +86,6 @@ template <class Archive, typename T1, typename T2> void load(Archive &archive, s
 	archive(pair.first, pair.second);
 }
 } // namespace std
-
-#if TEMSTREAM_SERVER || TEMSTREAM_CHAT_TEST
-#define TEMSTREAM_HAS_GUI false
-#else
-#define TEMSTREAM_HAS_GUI true
-#endif
 
 #if TEMSTREAM_HAS_GUI
 #include <SDL.h>
@@ -186,9 +194,7 @@ extern int64_t getTimestamp();
 
 extern const char *getExtension(const char *filename);
 
-using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
-
-class Configuration;
+struct Configuration;
 extern Configuration loadConfiguration(int, const char **);
 extern void saveConfiguration(const Configuration &);
 extern int runApp(Configuration &);
