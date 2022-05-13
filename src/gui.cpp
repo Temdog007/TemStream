@@ -681,7 +681,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 					}
 					const PushedID id(s.c_str());
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", s.c_str());
+					ImGui::TextUnformatted(s.c_str());
 
 					ImGui::TableNextColumn();
 					if (ImGui::Button("Ban User"))
@@ -702,14 +702,14 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 	}
 
 	ImGui::TableNextColumn();
-	ImGui::Text("%s", source.serverName.c_str());
+	ImGui::TextUnformatted(source.serverName.c_str());
 
 	ImGui::TableNextColumn();
 	const auto &info = con.getInfo();
 	{
 		StringStream ss;
 		ss << info.serverType;
-		ImGui::Text("%s", ss.str().c_str());
+		ImGui::TextUnformatted(ss.str().c_str());
 	}
 
 	int selected;
@@ -759,7 +759,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 	case 1: {
 		if (!info.peerInformation.hasWriteAccess())
 		{
-			ImGui::Text("?");
+			ImGui::Dummy(ImVec2());
 			selected = 0;
 			break;
 		}
@@ -793,7 +793,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 		}
 		if (!wrote && ImGui::Button("Upload"))
 		{
-			queryData = getQuery(info.serverType, source);
+			setQuery(info.serverType, source);
 		}
 	}
 	break;
@@ -844,7 +844,7 @@ void TemStreamGui::renderConnection(const Message::Source &source, shared_ptr<Cl
 		}
 		break;
 	default:
-		ImGui::Text("?");
+		ImGui::Dummy(ImVec2());
 		break;
 	}
 
@@ -907,7 +907,7 @@ void TemStreamGui::draw()
 					ImGui::TableNextColumn();
 					if (a->getType() == AudioSource::Type::RecordWindow)
 					{
-						ImGui::Text("%s", a->getName().c_str());
+						ImGui::TextUnformatted(a->getName().c_str());
 					}
 					else
 					{
@@ -918,7 +918,7 @@ void TemStreamGui::draw()
 					}
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", source.serverName.c_str());
+					ImGui::TextUnformatted(source.serverName.c_str());
 
 					const bool isLight = colorIsLight(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
 					if (a->isRecording())
@@ -1010,7 +1010,7 @@ void TemStreamGui::draw()
 					PushedID id(name.c_str());
 
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", name.c_str());
+					ImGui::TextUnformatted(name.c_str());
 
 					ImGui::TableNextColumn();
 					bool result = true;
@@ -1246,7 +1246,7 @@ void TemStreamGui::draw()
 			{
 				if (configuration.customColors.empty())
 				{
-					ImGui::Text("None");
+					ImGui::TextUnformatted("None");
 				}
 				else
 				{
@@ -1358,7 +1358,7 @@ void TemStreamGui::draw()
 								opened = false;
 							}
 							ImGui::TableNextColumn();
-							ImGui::Text("Text");
+							ImGui::TextUnformatted("Text");
 						}
 					}
 					ImGui::EndTable();
@@ -1481,6 +1481,11 @@ unique_ptr<IQuery> TemStreamGui::getQuery(const ServerType i, const Message::Sou
 	default:
 		return nullptr;
 	}
+}
+
+void TemStreamGui::setQuery(const ServerType t, const Message::Source &source)
+{
+	queryData = getQuery(t, source);
 }
 
 bool TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally)

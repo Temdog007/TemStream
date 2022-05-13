@@ -324,7 +324,7 @@
 - [x] Add message to get recorded messages at time interval
 
 ### May 13, 2022
-- [ ] Make background togglable
+- [x] Make background togglable
 - [ ] Implement SSL socket
 - [ ] Test on window
 

@@ -6,6 +6,11 @@ namespace TemStream
 {
 class TemStreamGui;
 class StreamDisplay;
+struct StreamDisplayText
+{
+	String message;
+	float scale;
+};
 struct CheckAudio
 {
 	List<float> left;
@@ -51,7 +56,7 @@ struct ChatLog
 	{
 	}
 };
-using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, String, ChatLog, ByteList, CheckAudio,
+using DisplayData = std::variant<std::monostate, SDL_TextureWrapper, StreamDisplayText, ChatLog, ByteList, CheckAudio,
 								 Message::ServerLinks, ReplayData>;
 class StreamDisplay
 {
@@ -73,7 +78,7 @@ class StreamDisplay
 		~ContextMenu();
 
 		bool operator()(std::monostate);
-		bool operator()(String &);
+		bool operator()(StreamDisplayText &);
 		bool operator()(ChatLog &);
 		bool operator()(SDL_TextureWrapper &);
 		bool operator()(CheckAudio &);
@@ -107,7 +112,7 @@ class StreamDisplay
 		~Draw();
 
 		bool operator()(std::monostate);
-		bool operator()(String &);
+		bool operator()(StreamDisplayText &);
 		bool operator()(ChatLog &);
 		bool operator()(SDL_TextureWrapper &);
 		bool operator()(CheckAudio &);

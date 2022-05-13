@@ -111,7 +111,10 @@ bool StreamDisplay::setSurface(SDL_Surface *surface)
 }
 bool StreamDisplay::operator()(Message::Text &message)
 {
-	data = std::move(message);
+	StreamDisplayText s;
+	s.message = std::move(message);
+	s.scale = 1.f;
+	data = std::move(s);
 	return true;
 }
 bool StreamDisplay::operator()(Message::Chat &chat)
@@ -274,23 +277,13 @@ bool StreamDisplay::Draw::operator()(std::monostate)
 {
 	return true;
 }
-bool StreamDisplay::Draw::operator()(String &s)
+bool StreamDisplay::Draw::operator()(StreamDisplayText &sd)
 {
 	SetWindowMinSize(display.gui.getWindow());
 	if (ImGui::Begin(display.source.serverName.c_str(), &display.visible, display.flags))
 	{
 		display.drawContextMenu();
-		const char *str = s.c_str();
-		std::array<char, KB(8)> buffer;
-		for (size_t i = 0; i < s.size(); i += sizeof(buffer))
-		{
-			if (ImGui::BeginChild(1 + (i / sizeof(buffer))))
-			{
-				strncpy(buffer.data(), str + i, sizeof(buffer) - 1);
-				ImGui::TextWrapped("%s", buffer.data());
-			}
-			ImGui::EndChild();
-		}
+		ImGui::TextUnformatted(sd.message.c_str());
 	}
 	ImGui::End();
 	return true;
@@ -375,13 +368,13 @@ bool StreamDisplay::Draw::operator()(Message::ServerLinks &links)
 				}
 
 				ImGui::TableNextColumn();
-				ImGui::Text("%s", link.name.c_str());
+				ImGui::TextUnformatted(link.name.c_str());
 
 				{
 					StringStream ss;
 					ss << link.type;
 					ImGui::TableNextColumn();
-					ImGui::Text("%s", ss.str().c_str());
+					ImGui::TextUnformatted(ss.str().c_str());
 				}
 
 				ImGui::TableNextColumn();
@@ -580,11 +573,12 @@ bool StreamDisplay::ContextMenu::operator()(ByteList &)
 {
 	return true;
 }
-bool StreamDisplay::ContextMenu::operator()(String &s)
+bool StreamDisplay::ContextMenu::operator()(StreamDisplayText &sd)
 {
+	ImGui::SliderFloat("Scale", &sd.scale, 0.01f, 3.f);
 	if (ImGui::Button("Copy"))
 	{
-		if (SDL_SetClipboardText(s.c_str()) == 0)
+		if (SDL_SetClipboardText(sd.message.c_str()) == 0)
 		{
 			(*logger)(Logger::Info) << "Copied text to clipboard" << std::endl;
 		}
@@ -593,10 +587,18 @@ bool StreamDisplay::ContextMenu::operator()(String &s)
 			logSDLError("Failed to copy to clipboard");
 		}
 	}
+	if (ImGui::Button("Upload"))
+	{
+		display.gui.setQuery(ServerType::Text, display.getSource());
+	}
 	return true;
 }
 bool StreamDisplay::ContextMenu::operator()(ChatLog &)
 {
+	if (ImGui::Button("Upload"))
+	{
+		display.gui.setQuery(ServerType::Chat, display.getSource());
+	}
 	return true;
 }
 bool StreamDisplay::ContextMenu::operator()(CheckAudio &a)
