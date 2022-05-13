@@ -88,7 +88,7 @@ void BasicSocket::close()
 {
 	if (fd > 0)
 	{
-		(*logger)(Logger::Level::Trace) << "Closed socket: " << fd << std::endl;
+		// (*logger)(Logger::Level::Trace) << "Closed socket: " << fd << std::endl;
 		::close(fd);
 	}
 	fd = -1;
