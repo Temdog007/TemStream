@@ -69,9 +69,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 	param.bEnableFrameSkip = true;
 	param.bEnableLongTermReference = 0;
 	param.iLtrMarkPeriod = 30;
-#if TEMSTREAM_THREADS
 	param.iMultipleThreadIdc = std::thread::hardware_concurrency();
-#endif
 
 	param.sSpatialLayers[0].iVideoWidth = param.iPicWidth;
 	param.sSpatialLayers[0].iVideoHeight = param.iPicHeight;

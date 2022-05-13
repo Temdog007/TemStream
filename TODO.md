@@ -323,18 +323,12 @@
 - [x] Add message to get stream time range
 - [x] Add message to get recorded messages at time interval
 
-### May 11, 2022
-- [ ] Implement web socket
-- [ ] Test browser
-
-### May 12, 2022
-- [ ] Implement SSL socket
-- [ ] Test android
-
 ### May 13, 2022
+- [ ] Make background togglable
+- [ ] Implement SSL socket
 - [ ] Test on window
 
-### May 12, 2022
+### May 14, 2022
 - [ ] Add comments to code
 
 ### Bugs
@@ -347,5 +341,7 @@
 - [x] Message size is sometimes wrong when server sends data to client (ByteList needed to use memmove on removal; not memcpy)
 
 ### Maybe
+- [ ] Make browser version
+- [ ] Make android version
 - [ ] Make plug in library for OBS to send video and audio to server
 - [ ] Fix loading webp/tga/tiff files

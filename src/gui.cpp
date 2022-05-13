@@ -1932,11 +1932,6 @@ void runLoop(TemStreamGui &gui)
 		gui.dirty = false;
 	}
 
-#if !TEMSTREAM_THREADS
-	using namespace std::chrono_literals;
-	WorkPool::workPool.handleWork(0ms);
-#endif
-
 	ImGui_ImplSDLRenderer_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
@@ -1998,16 +1993,13 @@ int runApp(Configuration &configuration)
 
 	gui.LoadFonts();
 
-#if TEMSTREAM_THREADS
 	(*logger)(Logger::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
 	WorkPool::handleWorkInAnotherThread();
-#endif
 
-#if __EMSCRIPTEN__
-	emscripten_set_main_loop_arg(reinterpret_cast<em_arg_callback_func>(runLoop), &gui, 0, 1);
-#else
-	runLoop(gui);
-#endif
+	while (!appDone)
+	{
+		runLoop(gui);
+	}
 
 	gui.audio.clear();
 	gui.video.forEach([](const auto &, auto &value) { value->setRunning(false); });

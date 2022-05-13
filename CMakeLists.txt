@@ -35,15 +35,7 @@ add_subdirectory(SDL_image)
 add_subdirectory(cereal)
 add_subdirectory(opus)
 
-if(EMSCRIPTEN)
-  set(USE_FLAGS "-s USE_FREETYPE=1 -fno-stack-protector -pthread")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS}")
-  # set(CMAKE_EXECUTABLE_SUFFIX .html)
-else()
-  find_package(Freetype REQUIRED)
-endif()
+find_package(Freetype REQUIRED)
 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 add_library(ImGui STATIC)
@@ -124,12 +116,6 @@ if(COMPILE_CLIENT)
     ${VIDEO_SOURCE} 
     ${ENCODING_SOURCE})
 
-  if(EMSCRIPTEN)
-    set(CMAKE_EXE_LINKER_FLAGS 
-      "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1")
-    # set(CMAKE_EXECUTABLE_SUFFIX .html)
-  endif()
-
   if(XCB_RECORD)
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
     include(FindXCB)
@@ -157,9 +143,6 @@ if(COMPILE_CLIENT)
     target_compile_options(TemStream PRIVATE /W4 /WX)
   else()
     target_compile_options(TemStream PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    if(EMSCRIPTEN)
-      target_compile_options(TemStream PRIVATE -Wno-unused-but-set-variable)
-    endif()
   endif()
 
   target_include_directories(TemStream PRIVATE 
@@ -179,33 +162,20 @@ if(COMPILE_CLIENT)
     target_compile_definitions(TemStream PRIVATE -DTEMSTREAM_USE_OPENH264)
   endif()
 
-  if(EMSCRIPTEN)
-    set(OpenCV_DIR ${PROJECT_SOURCE_DIR}/opencv)
-    target_sources(TemStream PRIVATE 
-      ${OpenCV_DIR}/webbuild/lib/libopencv_core.a
-      ${OpenCV_DIR}/webbuild/lib/libopencv_video.a)
-    target_include_directories(TemStream PRIVATE 
-      "/usr/include/opencv4"
-      ${PROJECT_SOURCE_DIR}/opus/include )
-    target_link_libraries(TemStream PRIVATE ${PROJECT_SOURCE_DIR}/webbuild/libopus.a)
-  else()
-    find_package(OpenCV REQUIRED)
-    target_link_libraries(TemStream PRIVATE opus ${OpenCV_LIBS})
-  endif()
+  find_package(OpenCV REQUIRED)
 
   target_link_libraries(TemStream PRIVATE 
     SDL2 
     SDL2_image 
     cereal
+    opus
     ImGui 
-    ${FREETYPE_LIBRARIES})
+    ${FREETYPE_LIBRARIES}
+    ${OpenCV_LIBS})
 
-  if(EMSCRIPTEN)
-  else()
   set(THREADS_PREFER_PTHREAD_FLAG ON)
-    find_package(Threads REQUIRED)
-    target_link_libraries(TemStream PRIVATE Threads::Threads)
-  endif()
+  find_package(Threads REQUIRED)
+  target_link_libraries(TemStream PRIVATE Threads::Threads)
   
 endif()
 

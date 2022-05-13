@@ -92,6 +92,7 @@ void StreamDisplay::drawFlagCheckboxes()
 
 	ImGui::Checkbox("Visible", &visible);
 	ImGui::CheckboxFlags("No Title Bar", &flags, ImGuiWindowFlags_NoTitleBar);
+	ImGui::CheckboxFlags("No Background", &flags, ImGuiWindowFlags_NoBackground);
 	ImGui::CheckboxFlags("Not Movable", &flags, ImGuiWindowFlags_NoMove);
 	ImGui::CheckboxFlags("Not Resizable", &flags, ImGuiWindowFlags_NoResize);
 

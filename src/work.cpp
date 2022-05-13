@@ -18,7 +18,6 @@ void WorkPool::clear()
 {
 	workList.clear();
 }
-#if TEMSTREAM_THREADS
 void WorkPool::handleWorkInAnotherThread()
 {
 	for (size_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
@@ -34,7 +33,6 @@ void WorkPool::handleWorkInAnotherThread()
 		thread.detach();
 	}
 }
-#endif
 namespace Work
 {
 bool fileIsBinary(const String &filename)
