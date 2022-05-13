@@ -205,7 +205,15 @@ class TemStreamGuiLogger : public InMemoryLogger
 
 	void saveLogs();
 };
-extern void drawAddress(Address &address);
+
+template <typename S> void drawAddress(BaseAddress<S> &address)
+{
+	ImGui::InputText("Hostname", &address.hostname);
+	if (ImGui::InputInt("Port", &address.port, 1, 100))
+	{
+		address.port = std::clamp(address.port, 1, UINT16_MAX);
+	}
+}
 
 struct PushedID
 {
@@ -219,8 +227,3 @@ struct PushedID
 	}
 };
 } // namespace TemStream
-
-template <typename Archive> static inline void serialize(Archive &ar, ImVec4 &v)
-{
-	ar(cereal::make_nvp("x", v.x), cereal::make_nvp("y", v.y), cereal::make_nvp("z", v.z), cereal::make_nvp("w", v.w));
-}

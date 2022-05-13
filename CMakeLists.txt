@@ -42,6 +42,7 @@ add_library(ImGui STATIC)
 
 target_sources(ImGui PRIVATE
     ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
@@ -67,6 +68,7 @@ set(CLIENT_SOURCES
   src/clientConnection.cpp
   src/clientConfiguration.cpp
   src/clientMisc.cpp
+  src/colors.cpp
   src/gui.cpp
   src/query.cpp
   src/sdl.cpp

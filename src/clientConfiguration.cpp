@@ -3,13 +3,33 @@
 namespace TemStream
 {
 Configuration::Configuration()
-	: colors(), fontFiles(), credentials(std::make_pair("User", "Password")), address(), fontSize(16.f),
-	  defaultVolume(100), defaultSilenceThreshold(0), fontIndex(1), maxLogs(10000), showLogs(false),
-	  showConnections(true), showDisplays(false), showAudio(false), showFont(false), showStats(false), showColors(false)
+	: styles(), currentStyle("classic"), newStyleName("newStyle"), fontFiles(),
+	  credentials(std::make_pair("User", "Password")), address(), fontSize(16.f), defaultVolume(100),
+	  defaultSilenceThreshold(0), fontIndex(1), maxLogs(10000), showLogs(false), showConnections(true),
+	  showDisplays(false), showAudio(false), showFont(false), showStats(false), showStyleEditor(false)
 {
 	ImGuiStyle style;
+
 	ImGui::StyleColorsClassic(&style);
-	std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, colors.begin());
+	styles.try_emplace("classic", style);
+
+	ImGui::StyleColorsDark(&style);
+	styles.try_emplace("dark", style);
+
+	ImGui::StyleColorsLight(&style);
+	styles.try_emplace("light", style);
+
+	Colors::StyleDeepDark(style);
+	styles.try_emplace("deep_dark", style);
+
+	Colors::StyleGold(style);
+	styles.try_emplace("gold", style);
+
+	Colors::StyleGreen(style);
+	styles.try_emplace("green", style);
+
+	Colors::StyleRed(style);
+	styles.try_emplace("red", style);
 }
 Configuration::~Configuration()
 {
@@ -62,39 +82,5 @@ void saveConfiguration(const Configuration &configuration)
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to save configuration", e.what(), nullptr);
 	}
-}
-std::unordered_map<std::string, ColorList> Configuration::toCustomColors() const
-{
-	return std::unordered_map<std::string, ColorList>(customColors.begin(), customColors.end());
-}
-void Configuration::fromCustomColors(std::unordered_map<std::string, ColorList> &&c)
-{
-	auto pair = toMoveIterator(std::move(c));
-	customColors.clear();
-	for (auto iter = pair.first; iter != pair.second; ++iter)
-	{
-		customColors.emplace(*iter);
-	}
-}
-std::vector<std::string> Configuration::toFontFiles() const
-{
-	return std::vector<std::string>(fontFiles.begin(), fontFiles.end());
-}
-void Configuration::fromFontFiles(std::vector<std::string> &&v)
-{
-	auto pair = toMoveIterator(std::move(v));
-	fontFiles.clear();
-	for (auto iter = pair.first; iter != pair.second; ++iter)
-	{
-		fontFiles.emplace_back(*iter);
-	}
-}
-std::string Configuration::toAddress() const
-{
-	return std::string(address.hostname);
-}
-void Configuration::fromAddress(std::string &&s)
-{
-	address.hostname = std::move(s);
 }
 } // namespace TemStream

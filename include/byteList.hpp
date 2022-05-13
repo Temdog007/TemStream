@@ -219,13 +219,13 @@ class ByteList
 
 	template <class Archive> void save(Archive &archive) const
 	{
-		archive(used);
+		archive(cereal::make_size_tag(used));
 		archive(cereal::binary_data(buffer, used));
 	}
 
 	template <class Archive> void load(Archive &archive)
 	{
-		archive(used);
+		archive(cereal::make_size_tag(used));
 		reallocate(used);
 		archive(cereal::binary_data(buffer, used));
 	}

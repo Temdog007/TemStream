@@ -308,6 +308,8 @@ template <typename T> ostream &operator<<(ostream &os, const optional<T> &value)
 #else
 #include "work.hpp"
 
+#include "colors.hpp"
+
 #include "sdl.hpp"
 
 #include "audioSource.hpp"

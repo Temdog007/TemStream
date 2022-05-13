@@ -1,7 +1,5 @@
 #include <main.hpp>
 
-#include "colors.hpp"
-
 #include "fonts/Cousine.cpp"
 #include "fonts/DroidSans.cpp"
 #include "fonts/Karla.cpp"
@@ -567,9 +565,9 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 			{
 				configuration.showStats = true;
 			}
-			if (ImGui::MenuItem("Style", "Ctrl+T", nullptr, !configuration.showColors))
+			if (ImGui::MenuItem("Style", "Ctrl+T", nullptr, !configuration.showStyleEditor))
 			{
-				configuration.showColors = true;
+				configuration.showStyleEditor = true;
 			}
 			ImGui::EndMenu();
 		}
@@ -1202,93 +1200,37 @@ void TemStreamGui::draw()
 		ImGui::End();
 	}
 
-	if (configuration.showColors)
+	if (configuration.showStyleEditor)
 	{
-		if (ImGui::Begin("Select a style", &configuration.showColors, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin("Style Editor", &configuration.showStyleEditor))
 		{
-			static const char *styles[]{"Light", "Classic", "Dark", "Deep Dark", "Red", "Green", "Gold"};
-			static int selected = 0;
 			auto &style = ImGui::GetStyle();
-			if (ImGui::Combo("Style", &selected, styles, IM_ARRAYSIZE(styles)))
+			ImGui::ShowStyleEditor(&style);
+
+			if (ImGui::Button("Save"))
 			{
-				switch (selected)
-				{
-				case 0:
-					ImGui::StyleColorsLight(&style);
-					break;
-				case 1:
-					ImGui::StyleColorsClassic(&style);
-					break;
-				case 2:
-					ImGui::StyleColorsDark(&style);
-					break;
-				case 3:
-					Colors::StyleDeepDark(style);
-					break;
-				case 4:
-					Colors::StyleRed(style);
-					break;
-				case 5:
-					Colors::StyleGreen(style);
-					break;
-				case 6:
-					Colors::StyleGold(style);
-					break;
-				default:
-					break;
-				}
-				std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, configuration.colors.begin());
+				configuration.styles[configuration.currentStyle] = style;
 			}
 
-			ImGui::Separator();
-			ImGui::SetNextWindowCollapsed(true, ImGuiCond_FirstUseEver);
-			if (ImGui::CollapsingHeader("Custom Styles"))
+			ImGui::TextUnformatted(configuration.currentStyle.c_str());
+			ImGui::InputText("New Style Name", &configuration.newStyleName);
+			if (ImGui::Button("Create New Style") && !configuration.newStyleName.empty())
 			{
-				if (configuration.customColors.empty())
+				auto [_f, result] = configuration.styles.try_emplace(configuration.newStyleName, style);
+				if (result)
 				{
-					ImGui::TextUnformatted("None");
+					configuration.currentStyle = configuration.newStyleName;
 				}
-				else
+			}
+			if (ImGui::CollapsingHeader("Select Style"))
+			{
+				for (const auto &pair : configuration.styles)
 				{
-					for (const auto &pair : configuration.customColors)
+					if (ImGui::RadioButton(pair.first.c_str(), configuration.currentStyle == pair.first))
 					{
-						if (ImGui::Button(pair.first.c_str()))
-						{
-							configuration.colors = pair.second;
-							std::copy(configuration.colors.begin(), configuration.colors.end(), style.Colors);
-							break;
-						}
+						configuration.currentStyle = pair.first;
+						style = configuration.styles[pair.first];
 					}
-				}
-			}
-
-			ImGui::Separator();
-			ImGui::SetNextWindowCollapsed(true, ImGuiCond_FirstUseEver);
-			if (ImGui::CollapsingHeader("Create Custom Style"))
-			{
-				static int selected = 0;
-				static char name[32];
-				if (ImGui::Button("<"))
-				{
-					selected = std::max(0, selected - 1);
-				}
-				ImGui::SameLine();
-				ImGui::SliderInt(ImGuiColNames[selected], &selected, 0, ImGuiCol_COUNT - 1);
-				ImGui::SameLine();
-				if (ImGui::Button(">"))
-				{
-					selected = std::min(selected + 1, ImGuiCol_COUNT - 1);
-				}
-				ImGui::ColorPicker4("Color", &style.Colors[selected].x);
-
-				ImGui::InputText("Name", name, sizeof(name));
-				if (ImGui::Button("Save"))
-				{
-					ColorList colors;
-					std::copy(style.Colors, style.Colors + ImGuiCol_COUNT, colors.begin());
-					configuration.customColors.emplace(name, std::move(colors));
-					memset(name, 0, sizeof(name));
-					selected = 0;
 				}
 			}
 		}
@@ -1885,7 +1827,7 @@ void runLoop(TemStreamGui &gui)
 				gui.configuration.showStats = !gui.configuration.showStats;
 				break;
 			case SDLK_t:
-				gui.configuration.showColors = !gui.configuration.showColors;
+				gui.configuration.showStyleEditor = !gui.configuration.showStyleEditor;
 				break;
 			default:
 				break;
@@ -1980,7 +1922,16 @@ int runApp(Configuration &configuration)
 
 	{
 		auto &style = ImGui::GetStyle();
-		std::copy(configuration.colors.begin(), configuration.colors.end(), style.Colors);
+		auto iter = configuration.styles.find(configuration.currentStyle);
+		if (iter == configuration.styles.end())
+		{
+			configuration.currentStyle = "classic";
+			style = configuration.styles["classic"];
+		}
+		else
+		{
+			style = configuration.styles[configuration.currentStyle];
+		}
 	}
 
 	TemStreamGui gui(io, configuration);
