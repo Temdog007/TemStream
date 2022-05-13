@@ -162,7 +162,7 @@ namespace TemStream
 {
 using Mutex = std::recursive_mutex;
 #define LOCK(M) std::lock_guard<Mutex> mutexLockGuard(M)
-enum PollState
+enum class PollState
 {
 	Error,
 	GotData,
@@ -175,13 +175,19 @@ template <typename T> inline void hash_combine(std::size_t &seed, const T &v)
 	seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-extern bool openSocket(int &, const char *hostname, const char *port, const bool isServer, const bool isTcp);
+enum class SocketType
+{
+	None,
+	Client,
+	Server
+};
+extern bool openSocket(int &, const char *hostname, const char *port, const SocketType, const bool isTcp);
 
 template <typename T>
-std::optional<T> openSocket(const char *hostname, const char *port, const bool isServer, const bool isTcp)
+std::optional<T> openSocket(const char *hostname, const char *port, const SocketType t, const bool isTcp)
 {
 	int fd = -1;
-	if (!openSocket(fd, hostname, port, isServer, isTcp))
+	if (!openSocket(fd, hostname, port, t, isTcp))
 	{
 		return std::nullopt;
 	}

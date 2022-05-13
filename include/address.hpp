@@ -53,12 +53,12 @@ template <class S> struct BaseAddress
 		return os;
 	}
 
-	template <class T> unique_ptr<T> create(bool isServer) const
+	template <class T> unique_ptr<T> create() const
 	{
 		auto ptr = tem_unique<T>();
 		char portStr[64];
 		snprintf(portStr, sizeof(portStr), "%d", port);
-		if (ptr->connect(hostname.c_str(), portStr, isServer))
+		if (ptr->connect(hostname.c_str(), portStr))
 		{
 			return ptr;
 		}
@@ -67,12 +67,12 @@ template <class S> struct BaseAddress
 };
 using Address = BaseAddress<String>;
 using STL_Address = BaseAddress<std::string>;
-extern bool openSocket(int &, const Address &, const bool isServer, const bool isTcp);
+extern bool openSocket(int &, const Address &, const SocketType t, const bool isTcp);
 
-template <typename T> unique_ptr<T> openSocket(const Address &address, const bool isServer, const bool isTcp)
+template <typename T> unique_ptr<T> openSocket(const Address &address, const SocketType t, const bool isTcp)
 {
 	int fd = -1;
-	if (!openSocket(fd, address, isServer, isTcp))
+	if (!openSocket(fd, address, t, isTcp))
 	{
 		return nullptr;
 	}

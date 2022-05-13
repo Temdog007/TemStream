@@ -276,12 +276,12 @@ template <typename T> bool VideoSource::RGBA2YUV<T>::convertFrames(std::weak_ptr
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory while converting frames" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory while converting frames" << std::endl;
 		return false;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << "Convert thread error: " << e.what() << std::endl;
 		return false;
 	}
 	return true;

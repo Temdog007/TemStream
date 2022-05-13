@@ -25,7 +25,7 @@ class Socket
 
 	bool sendPacket(const Message::Packet &, const bool sendImmediately = false);
 
-	virtual bool connect(const char *hostname, const char *port, const bool isServer) = 0;
+	virtual bool connect(const char *hostname, const char *port) = 0;
 	virtual void send(const uint8_t *, size_t);
 	virtual bool read(const int timeout, ByteList &, const bool readAll) = 0;
 
@@ -71,7 +71,7 @@ class UdpSocket : public BasicSocket
 
 	void send(const uint8_t *, size_t) override;
 
-	bool connect(const char *hostname, const char *port, const bool isServer) override;
+	bool connect(const char *hostname, const char *port) override;
 	bool read(const int timeout, ByteList &, const bool readAll) override;
 };
 class TcpSocket : public BasicSocket
@@ -86,7 +86,7 @@ class TcpSocket : public BasicSocket
 	TcpSocket(int);
 	virtual ~TcpSocket();
 
-	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
+	virtual bool connect(const char *hostname, const char *port) override;
 	virtual bool read(const int timeout, ByteList &, const bool readAll) override;
 
 	virtual unique_ptr<TcpSocket> acceptConnection(bool &, const int timeout = 1000) const;
@@ -95,8 +95,11 @@ struct SSL_Deleter
 {
 	void operator()(SSL *ssl) const
 	{
-		SSL_shutdown(ssl);
-		SSL_free(ssl);
+		if (ssl != nullptr)
+		{
+			SSL_shutdown(ssl);
+			SSL_free(ssl);
+		}
 	}
 };
 using SSLptr = std::unique_ptr<SSL, SSL_Deleter>;
@@ -104,7 +107,10 @@ struct SSL_CTX_Deleter
 {
 	void operator()(SSL_CTX *ctx) const
 	{
-		SSL_CTX_free(ctx);
+		if (ctx != nullptr)
+		{
+			SSL_CTX_free(ctx);
+		}
 	}
 };
 using SSLContext = std::unique_ptr<SSL_CTX, SSL_CTX_Deleter>;
@@ -120,13 +126,14 @@ class SSLSocket : public TcpSocket
   public:
 	SSLSocket();
 	SSLSocket(int);
+	SSLSocket(SSLSocket &&) = delete;
 	SSLSocket(TcpSocket &&, SSLptr &&);
 	~SSLSocket();
 
 	static String cert;
 	static String key;
 
-	bool connect(const char *hostname, const char *port, const bool isServer) override;
+	bool connect(const char *hostname, const char *port) override;
 	bool read(const int timeout, ByteList &, const bool readAll) override;
 
 	unique_ptr<TcpSocket> acceptConnection(bool &, const int timeout = 1000) const override;

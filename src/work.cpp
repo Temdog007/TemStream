@@ -94,11 +94,11 @@ void checkFile(TemStreamGui &gui, const Message::Source &source, const String &f
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Failed to check file: " << filename << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to check file: " << filename << std::endl;
 	}
 }
 void sendImage(const String &filename, const Message::Source &source)
@@ -106,7 +106,7 @@ void sendImage(const String &filename, const Message::Source &source)
 	std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open())
 	{
-		(*logger)(Logger::Error) << "Failed to open file: " << filename << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to open file: " << filename << std::endl;
 		return;
 	}
 
@@ -130,7 +130,7 @@ void sendImage(const String &filename, const Message::Source &source)
 }
 void loadSurface(const Message::Source &source, const ByteList &bytes)
 {
-	(*logger)(Logger::Trace) << "Loading image data: " << bytes.size() / KB(1) << "KB" << std::endl;
+	(*logger)(Logger::Level::Trace) << "Loading image data: " << bytes.size() / KB(1) << "KB" << std::endl;
 
 	SDL_RWops *src = SDL_RWFromConstMem(bytes.data(), bytes.size());
 	if (src == nullptr)
@@ -141,7 +141,7 @@ void loadSurface(const Message::Source &source, const ByteList &bytes)
 	SDL_Surface *surface = IMG_Load_RW(src, 0);
 	if (surface == nullptr)
 	{
-		(*logger)(Logger::Error) << "Surface load error: " << IMG_GetError() << std::endl;
+		(*logger)(Logger::Level::Error) << "Surface load error: " << IMG_GetError() << std::endl;
 		return;
 	}
 

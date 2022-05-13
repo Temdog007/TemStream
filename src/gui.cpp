@@ -93,7 +93,7 @@ void TemStreamGui::decodeVideoPackets()
 		{
 			if (displays.find(iter->first) == displays.end())
 			{
-				(*logger)(Logger::Trace) << "Removed " << iter->first << " from decoding map" << std::endl;
+				(*logger)(Logger::Level::Trace) << "Removed " << iter->first << " from decoding map" << std::endl;
 				iter = decodingMap.erase(iter);
 			}
 			else
@@ -106,7 +106,7 @@ void TemStreamGui::decodeVideoPackets()
 	// This needs to be big enough to handle video files.
 	if (auto result = videoPackets.clearIfGreaterThan(1000))
 	{
-		(*logger)(Logger::Warning) << "Dropping " << *result << " received video frames" << std::endl;
+		(*logger)(Logger::Level::Warning) << "Dropping " << *result << " received video frames" << std::endl;
 	}
 
 	auto result = videoPackets.pop(0ms);
@@ -139,7 +139,7 @@ void TemStreamGui::decodeVideoPackets()
 				}
 				iter = pair.first;
 				gui.lastVideoCheck = std::chrono::system_clock::now();
-				(*logger)(Logger::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
+				(*logger)(Logger::Level::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
 			}
 			auto &decoder = iter->second;
 			// if (decoder->getHeight() != packet.height || decoder->getWidth() != packet.width)
@@ -215,7 +215,7 @@ void TemStreamGui::decodeVideoPackets()
 			}
 
 			const ByteList &videoFile = iter->second;
-			(*logger)(Logger::Trace) << "Got video file: " << printMemory(videoFile.size()) << std::endl;
+			(*logger)(Logger::Level::Trace) << "Got video file: " << printMemory(videoFile.size()) << std::endl;
 			StringStream ss;
 			ss << source << "_temp" << VideoExtension;
 			cv::String filename(ss.str());
@@ -226,7 +226,7 @@ void TemStreamGui::decodeVideoPackets()
 			auto cap = tem_shared<cv::VideoCapture>(filename);
 			if (!cap->isOpened())
 			{
-				(*logger)(Logger::Error) << "Failed to open video file from server" << std::endl;
+				(*logger)(Logger::Level::Error) << "Failed to open video file from server" << std::endl;
 				return;
 			}
 
@@ -307,7 +307,7 @@ bool TemStreamGui::init()
 	const int flags = IMG_INIT_JPG | IMG_INIT_PNG;
 	if (IMG_Init(flags) != flags)
 	{
-		(*logger)(Logger::Error) << "Image error: " << IMG_GetError() << std::endl;
+		(*logger)(Logger::Level::Error) << "Image error: " << IMG_GetError() << std::endl;
 		return false;
 	}
 
@@ -352,11 +352,19 @@ bool TemStreamGui::init()
 void TemStreamGui::connect(const Address &address)
 {
 	*logger << "Connecting to server: " << address << std::endl;
-	WorkPool::workPool.addWork([address = address, this]() {
-		auto s = address.create<TcpSocket>(false);
+	WorkPool::workPool.addWork([address = address, this, isSSL = configuration.isEncrypted]() {
+		unique_ptr<TcpSocket> s = nullptr;
+		if (isSSL)
+		{
+			s = address.create<SSLSocket>();
+		}
+		else
+		{
+			s = address.create<TcpSocket>();
+		}
 		if (s == nullptr)
 		{
-			(*logger)(Logger::Error) << "Failed to connect to server: " << address << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to connect to server: " << address << std::endl;
 			return false;
 		}
 
@@ -368,8 +376,8 @@ void TemStreamGui::connect(const Address &address)
 			packet.payload.emplace<Message::Credentials>(configuration.credentials);
 			if (!clientConnection->sendPacket(packet, true))
 			{
-				(*logger)(Logger::Error) << "Authentication failure for server: " << address
-										 << "; Failed to send message" << std::endl;
+				(*logger)(Logger::Level::Error)
+					<< "Authentication failure for server: " << address << "; Failed to send message" << std::endl;
 			}
 		}
 		// Wait for response to get server type
@@ -378,8 +386,8 @@ void TemStreamGui::connect(const Address &address)
 		{
 			if (!clientConnection->readAndHandle(3000))
 			{
-				(*logger)(Logger::Error) << "Authentication failure for server: " << address << "; No repsonse"
-										 << std::endl;
+				(*logger)(Logger::Level::Error)
+					<< "Authentication failure for server: " << address << "; No repsonse" << std::endl;
 				return false;
 			}
 			if (packets.size() > 0)
@@ -394,8 +402,8 @@ void TemStreamGui::connect(const Address &address)
 			if (!packet)
 			{
 				// This shouldn't ever happen
-				(*logger)(Logger::Error) << "Authentication failure for server: " << address
-										 << "; Internal error: " << std::endl;
+				(*logger)(Logger::Level::Error)
+					<< "Authentication failure for server: " << address << "; Internal error: " << std::endl;
 				return false;
 			}
 
@@ -405,8 +413,8 @@ void TemStreamGui::connect(const Address &address)
 			}
 			else
 			{
-				(*logger)(Logger::Error) << "Authentication failure for server: " << address
-										 << "; Bad message: " << packet->payload.index() << std::endl;
+				(*logger)(Logger::Level::Error) << "Authentication failure for server: " << address
+												<< "; Bad message: " << packet->payload.index() << std::endl;
 				return false;
 			}
 		}
@@ -414,7 +422,8 @@ void TemStreamGui::connect(const Address &address)
 		*logger << "Server information: " << clientConnection->getInfo() << std::endl;
 		if (this->addConnection(clientConnection))
 		{
-			(*logger)(Logger::Trace) << "Adding connection to list: " << clientConnection->getInfo() << std::endl;
+			(*logger)(Logger::Level::Trace)
+				<< "Adding connection to list: " << clientConnection->getInfo() << std::endl;
 			WorkPool::workPool.addWork([this, clientConnection]() {
 				if (TemStreamGui::handleClientConnection(*clientConnection))
 				{
@@ -430,7 +439,7 @@ void TemStreamGui::connect(const Address &address)
 		}
 		else
 		{
-			(*logger)(Logger::Error) << "Failed to add connection" << clientConnection->getInfo() << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to add connection" << clientConnection->getInfo() << std::endl;
 		}
 		return false;
 	});
@@ -626,7 +635,7 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 					{
 						const auto s = std::to_string(m);
 						i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
-						(*logger)(Logger::Error) << "Failed to reset the application: " << i << std::endl;
+						(*logger)(Logger::Level::Error) << "Failed to reset the application: " << i << std::endl;
 					}
 				}
 				else
@@ -1101,6 +1110,7 @@ void TemStreamGui::draw()
 			if (ImGui::CollapsingHeader("Connect to stream"))
 			{
 				drawAddress(configuration.address);
+				ImGui::Checkbox("Encrypted", &configuration.isEncrypted);
 				if (ImGui::Button("Connect"))
 				{
 					connect(configuration.address);
@@ -1134,25 +1144,25 @@ void TemStreamGui::draw()
 				mLogger.viewLogs([&style, isLight, &filter](const Logger::Log &log) {
 					switch (log.first)
 					{
-					case Logger::Trace:
+					case Logger::Level::Trace:
 						if (filter.trace)
 						{
 							ImGui::TextColored(Colors::GetCyan(isLight), "%s", log.second.c_str());
 						}
 						break;
-					case Logger::Info:
+					case Logger::Level::Info:
 						if (filter.info)
 						{
 							ImGui::TextColored(style.Colors[ImGuiCol_Text], "%s", log.second.c_str());
 						}
 						break;
-					case Logger::Warning:
+					case Logger::Level::Warning:
 						if (filter.warnings)
 						{
 							ImGui::TextColored(Colors::GetYellow(isLight), "%s", log.second.c_str());
 						}
 						break;
-					case Logger::Error:
+					case Logger::Level::Error:
 						if (filter.errors)
 						{
 							ImGui::TextColored(Colors::GetRed(isLight), "%s", log.second.c_str());
@@ -1447,7 +1457,7 @@ bool TemStreamGui::sendPacket(Message::Packet &&packet, const bool handleLocally
 	}
 	else
 	{
-		(*logger)(Logger::Error) << "Cannot send data to server: " << packet.source.serverName << std::endl;
+		(*logger)(Logger::Level::Error) << "Cannot send data to server: " << packet.source.serverName << std::endl;
 		return false;
 	}
 }
@@ -1520,7 +1530,7 @@ bool TemStreamGui::startReplay(const Message::Source &source)
 	auto con = getConnection(source);
 	if (!con)
 	{
-		(*logger)(Logger::Error) << "Requested replay of disconnected server" << std::endl;
+		(*logger)(Logger::Level::Error) << "Requested replay of disconnected server" << std::endl;
 		return false;
 	}
 
@@ -1540,7 +1550,7 @@ bool TemStreamGui::getReplays(const Message::Source &source, const int64_t times
 	auto con = getConnection(source);
 	if (!con)
 	{
-		(*logger)(Logger::Error) << "Requested replay of disconnected server" << std::endl;
+		(*logger)(Logger::Level::Error) << "Requested replay of disconnected server" << std::endl;
 		return false;
 	}
 
@@ -1654,7 +1664,7 @@ void runLoop(TemStreamGui &gui)
 			}
 			else
 			{
-				(*logger)(Logger::Error) << "Text can only be sent to a text server" << std::endl;
+				(*logger)(Logger::Level::Error) << "Text can only be sent to a text server" << std::endl;
 			}
 			SDL_free(event.drop.file);
 		}
@@ -1671,7 +1681,7 @@ void runLoop(TemStreamGui &gui)
 			{
 				if (gui.queryData == nullptr)
 				{
-					(*logger)(Logger::Error) << "No server to send file to..." << std::endl;
+					(*logger)(Logger::Level::Error) << "No server to send file to..." << std::endl;
 					break;
 				}
 				Message::Source source = gui.queryData->getSource();
@@ -1784,12 +1794,12 @@ void runLoop(TemStreamGui &gui)
 			}
 			break;
 		case SDL_AUDIODEVICEADDED:
-			(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
-									 << " device added" << std::endl;
+			(*logger)(Logger::Level::Trace)
+				<< "Audio " << (event.adevice.iscapture ? "capture" : "playback") << " device added" << std::endl;
 			break;
 		case SDL_AUDIODEVICEREMOVED:
-			(*logger)(Logger::Trace) << "Audio " << (event.adevice.iscapture ? "capture" : "playback")
-									 << " device removed" << std::endl;
+			(*logger)(Logger::Level::Trace)
+				<< "Audio " << (event.adevice.iscapture ? "capture" : "playback") << " device removed" << std::endl;
 			break;
 		case SDL_KEYDOWN:
 			if (gui.getIO().WantCaptureKeyboard)
@@ -1854,8 +1864,8 @@ void runLoop(TemStreamGui &gui)
 			}
 			else
 			{
-				(*logger)(Logger::Trace) << "Removed stream display '" << iter->first
-										 << "' because its connection is gone" << std::endl;
+				(*logger)(Logger::Level::Trace)
+					<< "Removed stream display '" << iter->first << "' because its connection is gone" << std::endl;
 				iter = gui.displays.erase(iter);
 			}
 		}
@@ -1937,7 +1947,7 @@ int runApp(Configuration &configuration)
 	TemStreamGui gui(io, configuration);
 	logger = tem_unique<TemStreamGuiLogger>(gui);
 	initialLogs();
-	(*logger)(Logger::Info) << "Dear ImGui v" << ImGui::GetVersion() << std::endl;
+	(*logger)(Logger::Level::Info) << "Dear ImGui v" << ImGui::GetVersion() << std::endl;
 
 	if (!gui.init())
 	{
@@ -1949,7 +1959,7 @@ int runApp(Configuration &configuration)
 
 	gui.LoadFonts();
 
-	(*logger)(Logger::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
+	(*logger)(Logger::Level::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
 	WorkPool::handleWorkInAnotherThread();
 
 	while (!appDone)
@@ -2024,11 +2034,11 @@ void FileDisplay::loadFiles()
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << e.what() << std::endl;
 		cleanSwap(files);
 	}
 }

@@ -15,7 +15,7 @@ class Logger
   public:
 	typedef std::ostream &(*ManipFn)(std::ostream &);
 	typedef std::ios_base &(*FlagsFn)(std::ios_base &);
-	enum Level
+	enum class Level
 	{
 		Error,
 		Warning,

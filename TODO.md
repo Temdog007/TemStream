@@ -325,8 +325,8 @@
 
 ### May 13, 2022
 - [x] Make background togglable
-- [ ] Implement SSL socket
-- [ ] Test on window
+- [x] Implement SSL socket
+- [ ] Test on Windows
 
 ### May 14, 2022
 - [ ] Add comments to code

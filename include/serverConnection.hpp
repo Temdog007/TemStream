@@ -94,8 +94,8 @@ class ServerConnection : public Connection
 
 	template <const size_t N> static void getFilename(std::array<char, N> &arr)
 	{
-		snprintf(arr.data(), arr.size(), "%s_%u_%" PRId64 ".tsd", configuration.name.c_str(), configuration.serverType,
-				 configuration.startTime);
+		snprintf(arr.data(), arr.size(), "%s_%u_%" PRId64 ".tsd", configuration.name.c_str(),
+				 (uint32_t)configuration.serverType, configuration.startTime);
 	}
 };
 } // namespace TemStream

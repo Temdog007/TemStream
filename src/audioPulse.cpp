@@ -163,7 +163,7 @@ bool SinkInput::runCommand(const char *command, Deque<String> &s)
 	if (file == nullptr)
 	{
 		perror("popen");
-		(*logger)(Logger::Error) << "Failed to start process: " << strerror(errno) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to start process: " << strerror(errno) << std::endl;
 		return false;
 	}
 
@@ -181,7 +181,7 @@ std::optional<String> SinkInput::runCommand(const char *command)
 	if (file == nullptr)
 	{
 		perror("popen");
-		(*logger)(Logger::Error) << "Failed to start process: " << strerror(errno) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to start process: " << strerror(errno) << std::endl;
 		return std::nullopt;
 	}
 
@@ -199,7 +199,7 @@ std::optional<String> SinkInput::getSinkName() const
 	if (file == nullptr)
 	{
 		perror("popen");
-		(*logger)(Logger::Error) << "Failed to start process: " << strerror(errno) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to start process: " << strerror(errno) << std::endl;
 		return std::nullopt;
 	}
 
@@ -236,7 +236,7 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 	Deque<String> deque;
 	if (!runCommand("pactl list sink-inputs", deque))
 	{
-		(*logger)(Logger::Error) << "Failed to get list of sinks" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to get list of sinks" << std::endl;
 		return std::nullopt;
 	}
 
@@ -292,7 +292,7 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 	auto tempStr = SinkInput::runCommand(commandBuffer);
 	if (!tempStr.has_value())
 	{
-		(*logger)(Logger::Error) << "Failed to create new audio sink" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create new audio sink" << std::endl;
 		return nullptr;
 	}
 	Sink nullSink = Sink((int32_t)strtol(tempStr->c_str(), nullptr, 10));
@@ -308,7 +308,7 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 	tempStr = SinkInput::runCommand(commandBuffer);
 	if (!tempStr.has_value())
 	{
-		(*logger)(Logger::Error) << "Failed to remap audio source" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to remap audio source" << std::endl;
 		return nullptr;
 	}
 	Sink remapSink = (int32_t)strtol(tempStr->c_str(), nullptr, 10);
@@ -319,7 +319,7 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 	tempStr = SinkInput::runCommand(commandBuffer);
 	if (!tempStr.has_value())
 	{
-		(*logger)(Logger::Error) << "Failed to create new audio sink" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create new audio sink" << std::endl;
 		return nullptr;
 	}
 	Sink comboSink = (int32_t)strtol(tempStr->c_str(), nullptr, 10);
@@ -329,13 +329,13 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 	tempStr = SinkInput::runCommand(commandBuffer);
 	if (!tempStr.has_value())
 	{
-		(*logger)(Logger::Error) << "Failed to move process audio source" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to move process audio source" << std::endl;
 		return nullptr;
 	}
 
 	// Wait for Pulse AudioSource or SDL to update. SDL will fail to find the device if this is done too soon
 	// (Is there a better way to do this?)
-	(*logger)(Logger::Trace) << "Waiting 1 second for audio server to update" << std::endl;
+	(*logger)(Logger::Level::Trace) << "Waiting 1 second for audio server to update" << std::endl;
 	// std::this_thread::sleep_for(1s);
 	SDL_Delay(1000u);
 
@@ -361,11 +361,11 @@ void Sink::unloadSink(const int32_t id)
 	snprintf(buffer, sizeof(buffer), "pactl unload-module %d", id);
 	if (system(buffer) == EXIT_SUCCESS)
 	{
-		(*logger)(Logger::Trace) << "Unloaded sink: " << id << std::endl;
+		(*logger)(Logger::Level::Trace) << "Unloaded sink: " << id << std::endl;
 	}
 	else
 	{
-		(*logger)(Logger::Warning) << "Failed to unload sink: " << id << std::endl;
+		(*logger)(Logger::Level::Warning) << "Failed to unload sink: " << id << std::endl;
 	}
 }
 } // namespace TemStream

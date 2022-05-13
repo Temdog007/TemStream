@@ -13,13 +13,13 @@ void onWelsLog(void *, const int level, const char *string)
 	switch (level)
 	{
 	case WELS_LOG_ERROR:
-		(*logger)(Logger::Error) << string << std::endl;
+		(*logger)(Logger::Level::Error) << string << std::endl;
 		break;
 	case WELS_LOG_WARNING:
-		(*logger)(Logger::Warning) << string << std::endl;
+		(*logger)(Logger::Level::Warning) << string << std::endl;
 		break;
 	default:
-		(*logger)(Logger::Trace) << string << std::endl;
+		(*logger)(Logger::Level::Trace) << string << std::endl;
 		break;
 	}
 }
@@ -42,7 +42,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 		const int rv = WelsCreateSVCEncoder(&encoderPtr);
 		if (rv != cmResultSuccess || encoderPtr == nullptr)
 		{
-			(*logger)(Logger::Error) << "Failed to create encoder" << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to create encoder" << std::endl;
 			return nullptr;
 		}
 		encoder = std::unique_ptr<ISVCEncoder, EncoderDeleter>(encoderPtr, EncoderDeleter());
@@ -51,7 +51,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 	SEncParamExt param{};
 	if (encoder->GetDefaultParams(&param) != cmResultSuccess)
 	{
-		(*logger)(Logger::Error) << "Failed to create encoder" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create encoder" << std::endl;
 		return nullptr;
 	}
 
@@ -80,7 +80,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 
 	if (encoder->InitializeExt(&param) != cmResultSuccess)
 	{
-		(*logger)(Logger::Error) << "Failed to create encoder" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create encoder" << std::endl;
 		return nullptr;
 	}
 
@@ -164,7 +164,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createDecoder()
 		ISVCDecoder *decoderPtr = nullptr;
 		if (WelsCreateDecoder(&decoderPtr))
 		{
-			(*logger)(Logger::Error) << "Failed to create decoder" << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to create decoder" << std::endl;
 			return nullptr;
 		}
 		decoder = std::unique_ptr<ISVCDecoder, DecoderDeleter>(decoderPtr, DecoderDeleter());
@@ -173,7 +173,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createDecoder()
 	SDecodingParam param{};
 	if (decoder->Initialize(&param) != cmResultSuccess)
 	{
-		(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to initialize decoder" << std::endl;
 		return nullptr;
 	}
 
@@ -202,7 +202,7 @@ bool OpenH264::decode(ByteList &bytes)
 			++decodingFails;
 			if (decodingFails == 1)
 			{
-				(*logger)(Logger::Warning) << "Failed to decode video frame" << std::endl;
+				(*logger)(Logger::Level::Warning) << "Failed to decode video frame" << std::endl;
 			}
 			return false;
 		}

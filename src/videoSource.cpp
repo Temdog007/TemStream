@@ -24,8 +24,8 @@ VideoSource::~VideoSource()
 }
 void VideoSource::logDroppedPackets(const size_t count, const Message::Source &source, const char *target)
 {
-	(*logger)(Logger::Warning) << target << " is dropping " << count << " video frames from " << source.serverName
-							   << std::endl;
+	(*logger)(Logger::Level::Warning) << target << " is dropping " << count << " video frames from "
+									  << source.serverName << std::endl;
 }
 bool WebCamCapture::execute()
 {
@@ -101,14 +101,14 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 	cv::VideoCapture cap(std::visit(MakeVideoCapture{}, arg));
 	if (!cap.isOpened())
 	{
-		(*logger)(Logger::Error) << "Failed to start video capture" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to start video capture" << std::endl;
 		return nullptr;
 	}
 
 	cv::Mat image;
 	if (!cap.read(image) || image.empty())
 	{
-		(*logger)(Logger::Error) << "Failed to read initial image from video capture" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to read initial image from video capture" << std::endl;
 		return nullptr;
 	}
 	fd.width = image.cols;
@@ -157,7 +157,7 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 }
 shared_ptr<VideoSource> VideoSource::listenToUdpPort(const Address &address, const Message::Source &source)
 {
-	auto ptr = address.create<UdpSocket>(true);
+	auto ptr = address.create<UdpSocket>();
 	if (ptr == nullptr)
 	{
 		return nullptr;
@@ -166,7 +166,7 @@ shared_ptr<VideoSource> VideoSource::listenToUdpPort(const Address &address, con
 	shared_ptr<UdpSocket> udp = std::move(ptr);
 
 	auto video = tem_shared<VideoSource>(source, address);
-	(*logger)(Logger::Trace) << "Listening to port: " << address << std::endl;
+	(*logger)(Logger::Level::Trace) << "Listening to port: " << address << std::endl;
 	WorkPool::workPool.addWork([udp, video]() {
 		if (!video->isRunning())
 		{
@@ -268,8 +268,8 @@ bool VideoSource::FrameEncoder::encodeFrames()
 		auto size = encoder->getSize();
 		if (frame->width != size->first || frame->height != size->second)
 		{
-			(*logger)(Logger::Trace) << "Resizing video encoder to " << frame->width << 'x' << frame->height
-									 << std::endl;
+			(*logger)(Logger::Level::Trace)
+				<< "Resizing video encoder to " << frame->width << 'x' << frame->height << std::endl;
 			FrameData fd = frameData;
 			fd.width = frame->width;
 			fd.height = frame->height;
@@ -357,7 +357,7 @@ bool VideoSource::resetVideo(VideoSource::Writer &w, shared_ptr<VideoSource> vid
 			cv::Size(frameData.width * frameData.scale / 100u, frameData.height * frameData.scale / 100u));
 		if (!w.writer->isOpened())
 		{
-			(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to create new video" << std::endl;
 			return false;
 		}
 	}
@@ -365,7 +365,7 @@ bool VideoSource::resetVideo(VideoSource::Writer &w, shared_ptr<VideoSource> vid
 				 w.filename, VideoSource::getFourcc(), frameData.fps,
 				 cv::Size(frameData.width * frameData.scale / 100u, frameData.height * frameData.scale / 100u)))
 	{
-		(*logger)(Logger::Error) << "Failed to create new video" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create new video" << std::endl;
 		return false;
 	}
 	return true;

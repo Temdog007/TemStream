@@ -31,7 +31,7 @@ void AudioSource::enqueueAudio(const ByteList &bytes)
 										 fbuffer.data(), audioLengthToFrames(spec.freq, OPUS_FRAMESIZE_120_MS), 0);
 	if (result < 0)
 	{
-		(*logger)(Logger::Error) << "Failed to decode audio: " << opus_strerror(result) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to decode audio: " << opus_strerror(result) << std::endl;
 	}
 	else
 	{
@@ -43,7 +43,7 @@ void AudioSource::enqueueAudio(const ByteList &bytes)
 		Lock lock(id);
 		if (!storedAudio.append(buffer.data(), bytesRead))
 		{
-			(*logger)(Logger::Warning)
+			(*logger)(Logger::Level::Warning)
 				<< "AudioSource delay is occurring for playback. AudioSource packets will be dropped." << std::endl;
 		}
 	}
@@ -94,7 +94,7 @@ unique_ptr<AudioSource> AudioSource::startRecording(AudioSource *audioPtr, const
 	const int error = opus_encoder_init(a->encoder, a->spec.freq, a->spec.channels, application);
 	if (error < 0)
 	{
-		(*logger)(Logger::Error) << "Failed to create audio encoder: " << opus_strerror(error) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create audio encoder: " << opus_strerror(error) << std::endl;
 		return nullptr;
 	}
 
@@ -122,7 +122,7 @@ unique_ptr<AudioSource> AudioSource::startPlayback(const Message::Source &source
 	const int error = opus_decoder_init(a->decoder, a->spec.freq, a->spec.channels);
 	if (error < 0)
 	{
-		(*logger)(Logger::Error) << "Failed to create audio decoder: " << opus_strerror(error) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to create audio decoder: " << opus_strerror(error) << std::endl;
 		return nullptr;
 	}
 
@@ -174,7 +174,7 @@ void AudioSource::recordAudio(uint8_t *data, const int count)
 	}
 	else
 	{
-		(*logger)(Logger::Warning)
+		(*logger)(Logger::Level::Warning)
 			<< "AudioSource delay is occurring for recording. AudioSource packets will be dropped." << std::endl;
 		storedAudio.clear();
 	}
@@ -226,8 +226,8 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 		outgoing.remove(bytesUsed);
 		if (result < 0)
 		{
-			(*logger)(Logger::Error) << "Failed to encode audio packet: " << opus_strerror(result)
-									 << "; Frame size: " << frameSize << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to encode audio packet: " << opus_strerror(result)
+											<< "; Frame size: " << frameSize << std::endl;
 			break;
 		}
 
@@ -247,7 +247,7 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 		Lock lock(id);
 		if (!storedAudio.prepend(outgoing))
 		{
-			(*logger)(Logger::Warning)
+			(*logger)(Logger::Level::Warning)
 				<< "AudioSource delay is occurring for recording. AudioSource packets will be dropped." << std::endl;
 			storedAudio.clear();
 		}

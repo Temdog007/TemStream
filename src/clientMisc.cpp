@@ -60,7 +60,7 @@ bool tryPushEvent(SDL_Event &e)
 }
 void logSDLError(const char *str)
 {
-	(*logger)(Logger::Error) << str << ": " << SDL_GetError() << std::endl;
+	(*logger)(Logger::Level::Error) << str << ": " << SDL_GetError() << std::endl;
 }
 } // namespace TemStream
 

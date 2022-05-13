@@ -4,7 +4,7 @@
 
 namespace TemStream
 {
-enum PlacementPolicy
+enum class PlacementPolicy
 {
 	First,
 	Best

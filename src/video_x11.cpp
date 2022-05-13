@@ -138,7 +138,7 @@ XCB_Connection getXCBConnection(int &screenNum)
 	auto con = XCB_Connection(xcb_connect(NULL, &screenNum), XCB_ConnectionDeleter());
 	if (xcb_connection_has_error(con.get()))
 	{
-		(*logger)(Logger::Error) << "Error establishing connection with X11 server" << std::endl;
+		(*logger)(Logger::Level::Error) << "Error establishing connection with X11 server" << std::endl;
 		return nullptr;
 	}
 
@@ -230,7 +230,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	Dimensions dim = data->getSize(data->con.get());
 	if (!dim)
 	{
-		(*logger)(Logger::Error) << "Failed to get size of window: " << data->window.name << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to get size of window: " << data->window.name << std::endl;
 		return false;
 	}
 
@@ -252,7 +252,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	{
 		if (data->visible)
 		{
-			(*logger)(Logger::Warning) << "Window '" << data->window.name << "' is not visible." << std::endl;
+			(*logger)(Logger::Level::Warning) << "Window '" << data->window.name << "' is not visible." << std::endl;
 			data->visible = false;
 		}
 		return true;
@@ -268,7 +268,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	{
 		if (data->visible)
 		{
-			(*logger)(Logger::Warning) << "Window '" << data->window.name << "' is not visible." << std::endl;
+			(*logger)(Logger::Level::Warning) << "Window '" << data->window.name << "' is not visible." << std::endl;
 			data->visible = false;
 		}
 		return true;
@@ -311,12 +311,12 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 		return false;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Error: " << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << "Error: " << e.what() << std::endl;
 		return false;
 	}
 
@@ -393,64 +393,64 @@ bool Converter::handleWriter(VideoSource::Writer &w)
 
 			shared_ptr<cv::VideoWriter> oldVideo = tem_shared<cv::VideoWriter>();
 			oldVideo.swap(w.writer);
-			WorkPool::workPool.addWork(
-				[oldFilename = w.filename, video = this->video, oldVideo = std::move(oldVideo)]() mutable {
-					try
-					{
-						oldVideo->release();
-						oldVideo.reset();
+			WorkPool::workPool.addWork([oldFilename = w.filename, video = this->video,
+										oldVideo = std::move(oldVideo)]() mutable {
+				try
+				{
+					oldVideo->release();
+					oldVideo.reset();
 
-						const auto fileSize = fs::file_size(oldFilename);
-						ByteList bytes(fileSize);
+					const auto fileSize = fs::file_size(oldFilename);
+					ByteList bytes(fileSize);
+					{
+						std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
+						// Stop eating new lines in binary mode!!!
+						file.unsetf(std::ios::skipws);
+
+						(*logger)(Logger::Level::Trace) << "Saving file of size " << printMemory(fileSize) << std::endl;
+
+						// reserve capacity
+						bytes.reallocate(fileSize);
+						bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
+						if (fileSize != bytes.size())
 						{
-							std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
-							// Stop eating new lines in binary mode!!!
-							file.unsetf(std::ios::skipws);
-
-							(*logger)(Logger::Trace) << "Saving file of size " << printMemory(fileSize) << std::endl;
-
-							// reserve capacity
-							bytes.reallocate(fileSize);
-							bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
-							if (fileSize != bytes.size())
-							{
-								(*logger)(Logger::Warning) << "Failed to write entire video file. Wrote "
-														   << bytes.size() << ". Expected " << fileSize << std::endl;
-							}
+							(*logger)(Logger::Level::Warning) << "Failed to write entire video file. Wrote "
+															  << bytes.size() << ". Expected " << fileSize << std::endl;
 						}
-
-						auto packets = allocateAndConstruct<MessagePackets>();
-
-						Message::prepareLargeBytes(bytes,
-												   [&packets, &source = video->getSource()](Message::LargeFile &&lf) {
-													   Message::Packet packet;
-													   packet.source = source;
-													   packet.payload.emplace<Message::Video>(std::move(lf));
-													   packets->emplace_back(std::move(packet));
-												   });
-
-						SDL_Event e;
-						e.type = SDL_USEREVENT;
-						e.user.code = TemStreamEvent::SendMessagePackets;
-						e.user.data1 = packets;
-						e.user.data2 = nullptr;
-						if (!tryPushEvent(e))
-						{
-							destroyAndDeallocate(packets);
-						}
-
-						fs::remove(oldFilename);
 					}
-					catch (const std::bad_alloc &)
+
+					auto packets = allocateAndConstruct<MessagePackets>();
+
+					Message::prepareLargeBytes(bytes,
+											   [&packets, &source = video->getSource()](Message::LargeFile &&lf) {
+												   Message::Packet packet;
+												   packet.source = source;
+												   packet.payload.emplace<Message::Video>(std::move(lf));
+												   packets->emplace_back(std::move(packet));
+											   });
+
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::SendMessagePackets;
+					e.user.data1 = packets;
+					e.user.data2 = nullptr;
+					if (!tryPushEvent(e))
 					{
-						(*logger)(Logger::Error) << "Ran out of memory saving video file" << std::endl;
+						destroyAndDeallocate(packets);
 					}
-					catch (const std::exception &e)
-					{
-						(*logger)(Logger::Error) << e.what() << std::endl;
-					}
-					return false;
-				});
+
+					fs::remove(oldFilename);
+				}
+				catch (const std::bad_alloc &)
+				{
+					(*logger)(Logger::Level::Error) << "Ran out of memory saving video file" << std::endl;
+				}
+				catch (const std::exception &e)
+				{
+					(*logger)(Logger::Level::Error) << e.what() << std::endl;
+				}
+				return false;
+			});
 			++w.vidsWritten;
 			w.framesWritten = 0;
 			if (!VideoSource::resetVideo(w, video, frameData))
@@ -461,12 +461,12 @@ bool Converter::handleWriter(VideoSource::Writer &w)
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 		return false;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Convert thread error: " << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << "Convert thread error: " << e.what() << std::endl;
 		return false;
 	}
 	return true;

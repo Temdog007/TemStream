@@ -2,11 +2,7 @@
 
 namespace TemStream
 {
-bool validServerType(const ServerType type)
-{
-	return ServerType::UnknownServerType < type && type < ServerType::ServerTypeCount;
-}
-const char *ServerTypeStrings[ServerType::ServerTypeCount];
+const char *ServerTypeStrings[ServerTypeCount()];
 std::ostream &operator<<(std::ostream &os, const ServerType type)
 {
 	static bool first = true;
@@ -22,7 +18,7 @@ std::ostream &operator<<(std::ostream &os, const ServerType type)
 	}
 	if (validServerType(type))
 	{
-		os << ServerTypeStrings[type];
+		os << ServerTypeStrings[(uint32_t)type];
 	}
 	else
 	{
@@ -34,19 +30,19 @@ std::ostream &operator<<(std::ostream &os, const ServerType type)
 std::ostream &operator<<(std::ostream &os, const PeerFlags flags)
 {
 	os << '[';
-	if (peerFlagsOverlap(flags, WriteAccess))
+	if (peerFlagsOverlap(flags, PeerFlags::WriteAccess))
 	{
 		os << "WriteAcess,";
 	}
-	if (peerFlagsOverlap(flags, ReplayAccess))
+	if (peerFlagsOverlap(flags, PeerFlags::ReplayAccess))
 	{
 		os << "ReplayAcess,";
 	}
-	if (peerFlagsOverlap(flags, Moderator))
+	if (peerFlagsOverlap(flags, PeerFlags::Moderator))
 	{
 		os << "Moderator,";
 	}
-	if (peerFlagsOverlap(flags, Owner))
+	if (peerFlagsOverlap(flags, PeerFlags::Owner))
 	{
 		os << "Owner";
 	}
@@ -150,14 +146,14 @@ String printMemory(const size_t mem)
 	return String(buffer);
 }
 
-bool openSocket(int &fd, const Address &address, const bool isServer, const bool isTcp)
+bool openSocket(int &fd, const Address &address, const SocketType t, const bool isTcp)
 {
 	char port[64];
 	snprintf(port, sizeof(port), "%d", address.port);
-	return openSocket(fd, address.hostname.c_str(), port, isServer, isTcp);
+	return openSocket(fd, address.hostname.c_str(), port, t, isTcp);
 }
 
-bool openSocket(int &fd, const char *hostname, const char *port, const bool isServer, const bool isTcp)
+bool openSocket(int &fd, const char *hostname, const char *port, const SocketType t, const bool isTcp)
 {
 	struct addrinfo hints;
 	memset(&hints, 0, sizeof(hints));
@@ -177,8 +173,9 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 		return false;
 	}
 
-	if (isServer)
+	switch (t)
 	{
+	case SocketType::Server:
 		if (!info.bind(fd))
 		{
 			perror("bind");
@@ -189,11 +186,16 @@ bool openSocket(int &fd, const char *hostname, const char *port, const bool isSe
 			perror("listen");
 			return false;
 		}
-	}
-	else if (!info.connect(fd))
-	{
-		perror("connect");
-		return false;
+		break;
+	case SocketType::Client:
+		if (!info.connect(fd))
+		{
+			perror("connect");
+			return false;
+		}
+		break;
+	default:
+		break;
 	}
 
 	return true;

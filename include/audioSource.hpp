@@ -9,7 +9,7 @@ class ClientConnection;
 class AudioSource
 {
   public:
-	enum Type
+	enum class Type
 	{
 		Playback,
 		Record,

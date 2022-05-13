@@ -46,7 +46,7 @@ extern "C" int main(const int argc, const char **argv)
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 		return EXIT_FAILURE;
 	}
 	catch (const std::exception &e)
@@ -70,11 +70,11 @@ void TemStream::initialLogs()
 	*logger << AppName << ' ' << TemStream_VERSION_MAJOR << '.' << TemStream_VERSION_MINOR << '.'
 			<< TemStream_VERSION_PATCH << std::endl;
 #if _DEBUG
-	(*logger)(Logger::Trace) << "Debug mode" << std::endl;
+	(*logger)(Logger::Level::Trace) << "Debug mode" << std::endl;
 #endif
 	(*logger) << "Using " << printMemory(globalAllocatorData.getTotal()) << std::endl;
 #if TEMSTREAM_USE_CUSTOM_ALLOCATOR
-	(*logger)(Logger::Trace) << "Using custom allocator" << std::endl;
+	(*logger)(Logger::Level::Trace) << "Using custom allocator" << std::endl;
 #endif
 }
 
@@ -91,7 +91,7 @@ void signalHandler(int s)
 		logger->AddInfo("Received end signal");
 		break;
 	case SIGPIPE:
-		(*logger)(Logger::Error) << "Broken pipe error occurred" << std::endl;
+		(*logger)(Logger::Level::Error) << "Broken pipe error occurred" << std::endl;
 		break;
 	default:
 		break;

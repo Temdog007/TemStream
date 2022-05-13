@@ -93,7 +93,7 @@ void VPX::encodeAndSend(ByteList &bytes, const Message::Source &source)
 	res = vpx_codec_encode(&ctx, &image, frameCount++, 1, flags, VPX_DL_REALTIME);
 	if (res != VPX_CODEC_OK)
 	{
-		(*logger)(Logger::Error) << "Encoding failed: " << vpx_codec_err_to_string(res) << std::endl;
+		(*logger)(Logger::Level::Error) << "Encoding failed: " << vpx_codec_err_to_string(res) << std::endl;
 		return;
 	}
 	vpx_codec_iter_t iter = NULL;
@@ -131,7 +131,7 @@ bool VPX::decode(ByteList &bytes)
 		vpx_codec_decode(&ctx, reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size(), NULL, VPX_DL_REALTIME);
 	if (res != VPX_CODEC_OK)
 	{
-		(*logger)(Logger::Error) << "Failed to decode video: " << vpx_codec_err_to_string(res) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to decode video: " << vpx_codec_err_to_string(res) << std::endl;
 		return false;
 	}
 	vpx_codec_iter_t iter = NULL;
@@ -162,17 +162,17 @@ unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, cons
 	vpx_codec_enc_cfg_t cfg;
 	if (vpx_img_alloc(&vpx.image, VPX_IMG_FMT_I420, fd.width, fd.height, 1) == nullptr)
 	{
-		(*logger)(Logger::Error) << "Failed to allocate image" << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to allocate image" << std::endl;
 		return nullptr;
 	}
 
-	(*logger)(Logger::Trace) << "Encoder: " << vpx_codec_iface_name(codec_encoder_interface()) << std::endl;
+	(*logger)(Logger::Level::Trace) << "Encoder: " << vpx_codec_iface_name(codec_encoder_interface()) << std::endl;
 
 	const vpx_codec_err_t res = vpx_codec_enc_config_default(codec_encoder_interface(), &cfg, 0);
 	if (res)
 	{
-		(*logger)(Logger::Error) << "Failed to get default video encoder configuration: "
-								 << vpx_codec_err_to_string(res) << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to get default video encoder configuration: "
+										<< vpx_codec_err_to_string(res) << std::endl;
 		return nullptr;
 	}
 
@@ -188,7 +188,7 @@ unique_ptr<Video::EncoderDecoder> Video::createEncoder(Video::FrameData fd, cons
 	{
 		return tem_unique<VPX>(std::move(vpx));
 	}
-	(*logger)(Logger::Error) << "Failed to initialize encoder" << std::endl;
+	(*logger)(Logger::Level::Error) << "Failed to initialize encoder" << std::endl;
 	return nullptr;
 }
 unique_ptr<Video::EncoderDecoder> Video::createDecoder()
@@ -200,7 +200,7 @@ unique_ptr<Video::EncoderDecoder> Video::createDecoder()
 	{
 		return tem_unique<VPX>(std::move(vpx));
 	}
-	(*logger)(Logger::Error) << "Failed to initialize decoder" << std::endl;
+	(*logger)(Logger::Level::Error) << "Failed to initialize decoder" << std::endl;
 	return nullptr;
 }
 ByteList resizePlane(const char *bytes, const uint32_t oldWidth, const uint32_t oldHeight, const uint32_t newWidth,

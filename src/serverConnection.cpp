@@ -9,8 +9,8 @@
 		return false;                                                                                                  \
 	} // namespace TemStream
 #define BAD_MESSAGE(X)                                                                                                 \
-	(*logger)(Logger::Error) << "Client " << connection.information.name << " sent invalid message: '" #X "'"          \
-							 << std::endl;                                                                             \
+	(*logger)(Logger::Level::Error) << "Client " << connection.information.name << " sent invalid message: '" #X "'"   \
+									<< std::endl;                                                                      \
 	return false
 
 namespace TemStream
@@ -126,7 +126,7 @@ int runApp(Configuration &configuration)
 
 				if (!packet->save(filename))
 				{
-					(*logger)(Logger::Warning) << "Failed to save packet" << std::endl;
+					(*logger)(Logger::Level::Warning) << "Failed to save packet" << std::endl;
 				}
 			}
 			packetsToRecord.flush([&filename](RecordedPacket &&packet) { packet.save(filename); });
@@ -145,11 +145,11 @@ int runApp(Configuration &configuration)
 		SSL_load_error_strings();
 		SSLSocket::cert = configuration.ssl->cert;
 		SSLSocket::key = configuration.ssl->key;
-		socket = openSocket<SSLSocket>(configuration.address, true, true);
+		socket = openSocket<SSLSocket>(configuration.address, SocketType::Server, true);
 	}
 	else
 	{
-		socket = openSocket<TcpSocket>(configuration.address, true, true);
+		socket = openSocket<TcpSocket>(configuration.address, SocketType::Server, true);
 	}
 	if (!socket)
 	{
@@ -166,8 +166,8 @@ int runApp(Configuration &configuration)
 
 		if (ServerConnection::totalPeers() >= configuration.maxClients)
 		{
-			(*logger)(Logger::Warning) << "Max clients reached (" << configuration.maxClients
-									   << ") Cannot accept new client" << std::endl;
+			(*logger)(Logger::Level::Warning)
+				<< "Max clients reached (" << configuration.maxClients << ") Cannot accept new client" << std::endl;
 			continue;
 		}
 
@@ -244,16 +244,17 @@ void ServerConnection::handleInput()
 			}
 			if (!isAuthenticated() && std::chrono::system_clock::now() - startingTime > 10s)
 			{
+				(*logger)(Logger::Level::Warning) << "Client failed to authenticate within 10 seconds" << std::endl;
 				break;
 			}
 		}
 		catch (const std::bad_alloc &)
 		{
-			(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+			(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 		}
 		catch (const std::exception &e)
 		{
-			(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
+			(*logger)(Logger::Level::Error) << "Exception occurred: " << e.what() << std::endl;
 		}
 	}
 
@@ -278,11 +279,11 @@ void ServerConnection::handleOutput()
 		}
 		catch (const std::bad_alloc &)
 		{
-			(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+			(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 		}
 		catch (const std::exception &e)
 		{
-			(*logger)(Logger::Error) << "Exception occurred: " << e.what() << std::endl;
+			(*logger)(Logger::Level::Error) << "Exception occurred: " << e.what() << std::endl;
 		}
 	}
 }
@@ -424,7 +425,7 @@ void ServerConnection::sendLinks(const String &filename)
 						   return link;
 					   });
 
-		(*logger)(Logger::Trace) << "Sending links: " << links.size() << std::endl;
+		(*logger)(Logger::Level::Trace) << "Sending links: " << links.size() << std::endl;
 		Message::Packet packet;
 		packet.source = ServerConnection::getSource();
 		packet.payload.emplace<Message::ServerLinks>(std::move(links));
@@ -432,7 +433,7 @@ void ServerConnection::sendLinks(const String &filename)
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << e.what() << std::endl;
 	}
 }
 ServerConnection::ServerConnection(Address &&address, unique_ptr<Socket> s)
@@ -464,12 +465,12 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 {
 	if (packet.payload.index() != ServerTypeToIndex(configuration.serverType))
 	{
-		(*logger)(Logger::Error) << "Server got invalid message type: " << packet.payload.index() << std::endl;
+		(*logger)(Logger::Level::Error) << "Server got invalid message type: " << packet.payload.index() << std::endl;
 		return false;
 	}
 	if (!connection.information.hasWriteAccess())
 	{
-		(*logger)(Logger::Error) << "Peer doesn't have write access: " << connection.information << std::endl;
+		(*logger)(Logger::Level::Error) << "Peer doesn't have write access: " << connection.information << std::endl;
 		return false;
 	}
 	const auto now = std::chrono::system_clock::now();
@@ -479,8 +480,8 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 			connection.lastMessage + std::chrono::duration<uint32_t>(configuration.messageRateInSeconds);
 		if (now < timepoint)
 		{
-			(*logger)(Logger::Error) << "Peer is sending packets too frequently: " << connection.information
-									 << std::endl;
+			(*logger)(Logger::Level::Error)
+				<< "Peer is sending packets too frequently: " << connection.information << std::endl;
 			return false;
 		}
 	}
@@ -497,7 +498,8 @@ bool ServerConnection::MessageHandler::operator()()
 {
 	if (!std::holds_alternative<Message::Credentials>(packet.payload) && packet.source != ServerConnection::getSource())
 	{
-		(*logger)(Logger::Error) << "Server got message with wrong server address: " << packet.source << std::endl;
+		(*logger)(Logger::Level::Error) << "Server got message with wrong server address: " << packet.source
+										<< std::endl;
 		return false;
 	}
 	return std::visit(*this, packet.payload);
@@ -560,25 +562,25 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 {
 	if (!connection.information.name.empty())
 	{
-		(*logger)(Logger::Error) << "Peer sent credentials more than once" << std::endl;
+		(*logger)(Logger::Level::Error) << "Peer sent credentials more than once" << std::endl;
 		return false;
 	}
 	auto info = ServerConnection::login(credentials);
 	if (!info.has_value() || info->name.empty())
 	{
-		(*logger)(Logger::Error) << "Invalid credentials sent" << std::endl;
+		(*logger)(Logger::Level::Error) << "Invalid credentials sent" << std::endl;
 		return false;
 	}
 	if (ServerConnection::peerExists(info->name))
 	{
-		(*logger)(Logger::Error) << "Duplicate peer " << *info << " attempted to connect" << std::endl;
+		(*logger)(Logger::Level::Error) << "Duplicate peer " << *info << " attempted to connect" << std::endl;
 		return false;
 	}
 	connection.information.swap(*info);
 	checkAccess();
 	if (!connection.stayConnected)
 	{
-		(*logger)(Logger::Warning) << "Peer " << connection.information << "  is banned" << std::endl;
+		(*logger)(Logger::Level::Warning) << "Peer " << connection.information << "  is banned" << std::endl;
 		return false;
 	}
 	*logger << "Peer: " << connection.address << " -> " << connection.information << std::endl;
@@ -600,14 +602,14 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 {
 	if (!connection.information.isModerator())
 	{
-		(*logger)(Logger::Error) << "Non-moderator peer " << connection.information << " tried to change ban a user"
-								 << std::endl;
+		(*logger)(Logger::Level::Error) << "Non-moderator peer " << connection.information
+										<< " tried to change ban a user" << std::endl;
 		return false;
 	}
 	if (!ServerConnection::configuration.access.banList)
 	{
-		(*logger)(Logger::Error) << "Peer " << connection.information
-								 << " tried to change ban a user when there is no ban list" << std::endl;
+		(*logger)(Logger::Level::Error) << "Peer " << connection.information
+										<< " tried to change ban a user when there is no ban list" << std::endl;
 		return false;
 	}
 	{
@@ -620,8 +622,8 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 				{
 					if (ptr->information.isModerator())
 					{
-						(*logger)(Logger::Warning) << "Moderator " << connection.information
-												   << " tried to ban user: " << ptr->information << std::endl;
+						(*logger)(Logger::Level::Warning) << "Moderator " << connection.information
+														  << " tried to ban user: " << ptr->information << std::endl;
 					}
 					else
 					{
@@ -645,7 +647,8 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 {
 	if (!connection.information.hasReplayAccess())
 	{
-		(*logger)(Logger::Error) << "Peer " << connection.information << " does not have replay access" << std::endl;
+		(*logger)(Logger::Level::Error) << "Peer " << connection.information << " does not have replay access"
+										<< std::endl;
 		return false;
 	}
 
@@ -702,7 +705,8 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 {
 	if (!connection.information.hasReplayAccess())
 	{
-		(*logger)(Logger::Error) << "Peer " << connection.information << " does not have replay access" << std::endl;
+		(*logger)(Logger::Level::Error) << "Peer " << connection.information << " does not have replay access"
+										<< std::endl;
 		return false;
 	}
 
@@ -716,7 +720,7 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 		{
 			if (!success)
 			{
-				(*logger)(Logger::Warning) << "Peer requested replay but no replay available" << std::endl;
+				(*logger)(Logger::Level::Warning) << "Peer requested replay but no replay available" << std::endl;
 			}
 		}
 	};
@@ -798,7 +802,7 @@ bool ServerConnection::MessageHandler::operator()(Message::RequestServerInformat
 	CHECK_INFO(Message::RequestServerInformation)
 	if (!connection.information.isModerator())
 	{
-		(*logger)(Logger::Error) << "Non-moderator peer " << connection.information << " tried to get peer list";
+		(*logger)(Logger::Level::Error) << "Non-moderator peer " << connection.information << " tried to get peer list";
 		return false;
 	}
 	Message::Packet packet;
@@ -846,12 +850,12 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Failed to save payload for stream " << configuration.name << ": " << e.what()
-								 << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to save payload for stream " << configuration.name << ": "
+										<< e.what() << std::endl;
 	}
 	return false;
 }
@@ -885,7 +889,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 		}
 		catch (const std::exception &e)
 		{
-			(*logger)(Logger::Error) << "Failed to load payload for server: " << e.what() << std::endl;
+			(*logger)(Logger::Level::Error) << "Failed to load payload for server: " << e.what() << std::endl;
 			return false;
 		}
 		break;

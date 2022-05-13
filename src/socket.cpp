@@ -53,11 +53,11 @@ bool Socket::sendPacket(const Message::Packet &packet, const bool sendImmediatel
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Socket::sendMessage " << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << "Socket::sendMessage " << e.what() << std::endl;
 	}
 	return false;
 }
@@ -86,7 +86,11 @@ BasicSocket::~BasicSocket()
 }
 void BasicSocket::close()
 {
-	::close(fd);
+	if (fd > 0)
+	{
+		(*logger)(Logger::Level::Trace) << "Closed socket: " << fd << std::endl;
+		::close(fd);
+	}
 	fd = -1;
 }
 PollState BasicSocket::pollRead(const int timeout) const
@@ -107,6 +111,7 @@ bool BasicSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t
 	socklen_t size = sizeof(addr);
 	if (getpeername(fd, (struct sockaddr *)&addr, &size) < 0)
 	{
+		// (*logger)(Logger::Level::Error) << "Error with socket: " << fd << std::endl;
 		perror("getpeername");
 		return false;
 	}
@@ -134,10 +139,10 @@ UdpSocket::UdpSocket(const int fd) : BasicSocket(fd)
 UdpSocket::~UdpSocket()
 {
 }
-bool UdpSocket::connect(const char *hostname, const char *port, const bool isServer)
+bool UdpSocket::connect(const char *hostname, const char *port)
 {
 	close();
-	return openSocket(fd, hostname, port, isServer, false);
+	return openSocket(fd, hostname, port, SocketType::Server, false);
 }
 void UdpSocket::send(const uint8_t *, size_t)
 {
@@ -186,10 +191,10 @@ TcpSocket::TcpSocket(TcpSocket &&s) : BasicSocket(std::move(s))
 TcpSocket::~TcpSocket()
 {
 }
-bool TcpSocket::connect(const char *hostname, const char *port, const bool isServer)
+bool TcpSocket::connect(const char *hostname, const char *port)
 {
 	close();
-	return openSocket(fd, hostname, port, isServer, true);
+	return openSocket(fd, hostname, port, SocketType::Client, true);
 }
 bool TcpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 {
@@ -246,7 +251,7 @@ unique_ptr<TcpSocket> TcpSocket::acceptConnection(bool &error, const int timeout
 }
 String SSLSocket::cert;
 String SSLSocket::key;
-SSLSocket::SSLSocket() : TcpSocket(), data(createContext())
+SSLSocket::SSLSocket() : TcpSocket(), data(SSLptr(nullptr))
 {
 }
 SSLSocket::SSLSocket(const int fd) : TcpSocket(fd), data(createContext())
@@ -286,75 +291,105 @@ SSLContext SSLSocket::createContext()
 }
 bool SSLSocket::flush(const ByteList &bytes)
 {
-	if (auto ptr = std::get_if<SSLptr>(&data))
+	struct Foo
 	{
-		return writeAll(ptr->get(), bytes.data(), bytes.size());
-	}
-	return false;
+		const ByteList &bytes;
+
+		bool operator()(SSLptr &ptr)
+		{
+			return writeAll(ptr.get(), bytes.data(), bytes.size());
+		}
+		bool operator()(SSLContext &)
+		{
+			return false;
+		}
+		bool operator()(std::pair<SSLContext, SSLptr> &pair)
+		{
+			return operator()(pair.second);
+		}
+	};
+	return std::visit(Foo{bytes}, data);
 }
-bool SSLSocket::connect(const char *hostname, const char *port, const bool isServer)
+bool SSLSocket::connect(const char *hostname, const char *port)
 {
-	if (!TcpSocket::connect(hostname, port, isServer))
+	close();
+	if (!openSocket(fd, hostname, port, SocketType::Client, true))
 	{
 		return false;
 	}
-	if (!isServer)
+
+	const SSL_METHOD *method = TLS_client_method();
+	auto ctx = SSLContext(SSL_CTX_new(method));
+	auto ssl = SSLptr(SSL_new(ctx.get()));
+	if (ssl == nullptr)
 	{
-		const SSL_METHOD *method = TLS_client_method();
-		auto ctx = SSLContext(SSL_CTX_new(method));
-		auto ssl = SSLptr(SSL_new(ctx.get()));
-		if (ssl == nullptr)
-		{
-			ERR_print_errors_cb(LogError, nullptr);
-			return false;
-		}
-
-		int err = SSL_connect(ssl.get());
-		if (err <= 0)
-		{
-			perror("SSL_connect");
-			ERR_print_errors_cb(LogError, nullptr);
-			return false;
-		}
-
-		auto pair = std::make_pair(std::move(ctx), std::move(ssl));
-		data.emplace<std::pair<SSLContext, SSLptr>>(std::move(pair));
+		ERR_print_errors_cb(LogError, nullptr);
+		return false;
 	}
+
+	SSL_set_fd(ssl.get(), fd);
+	int err = SSL_connect(ssl.get());
+	if (err <= 0)
+	{
+		perror("SSL_connect");
+		ERR_print_errors_cb(LogError, nullptr);
+		return false;
+	}
+
+	auto pair = std::make_pair(std::move(ctx), std::move(ssl));
+	data.emplace<std::pair<SSLContext, SSLptr>>(std::move(pair));
+
 	return true;
 }
 bool SSLSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 {
-	if (auto ptr = std::get_if<SSLptr>(&data))
+	struct Foo
 	{
-		int reads = 0;
-		do
-		{
-			switch (pollRead(timeout))
-			{
-			case PollState::Error:
-				return false;
-			case PollState::GotData:
-				break;
-			default:
-				return true;
-			}
+		SSLSocket &s;
+		ByteList &bytes;
+		int timeout;
+		bool readAll;
 
-			const ssize_t r = SSL_read(ptr->get(), buffer.data(), buffer.size());
-			if (r < 0)
+		bool operator()(SSLptr &ptr)
+		{
+			int reads = 0;
+			do
 			{
-				ERR_print_errors_cb(LogError, nullptr);
-				perror("SSL_read");
-				return false;
-			}
-			if (r == 0)
-			{
-				return false;
-			}
-			bytes.append(buffer.begin(), r);
-		} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
-		return true;
-	}
-	return false;
+				switch (s.pollRead(timeout))
+				{
+				case PollState::Error:
+					return false;
+				case PollState::GotData:
+					break;
+				default:
+					return true;
+				}
+
+				const ssize_t r = SSL_read(ptr.get(), s.buffer.data(), s.buffer.size());
+				if (r < 0)
+				{
+					ERR_print_errors_cb(LogError, nullptr);
+					perror("SSL_read");
+					return false;
+				}
+				if (r == 0)
+				{
+					return false;
+				}
+				bytes.append(s.buffer.begin(), r);
+			} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
+			return true;
+		}
+		bool operator()(SSLContext &)
+		{
+			return false;
+		}
+		bool operator()(std::pair<SSLContext, SSLptr> &pair)
+		{
+			return operator()(pair.second);
+		}
+	};
+	return std::visit(Foo{*this, bytes, timeout, readAll}, data);
 }
 unique_ptr<TcpSocket> SSLSocket::acceptConnection(bool &error, const int timeout) const
 {
@@ -425,6 +460,6 @@ int LogError(const char *str, size_t len, void *)
 {
 	using namespace TemStream;
 	String s(str, len);
-	(*logger)(Logger::Error) << s << std::endl;
+	(*logger)(Logger::Level::Error) << s << std::endl;
 	return 0;
 }

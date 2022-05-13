@@ -16,7 +16,7 @@ void ClientConnection::close()
 		return;
 	}
 	opened = false;
-	(*logger)(Logger::Info) << "Closing connection: " << getSource() << std::endl;
+	(*logger)(Logger::Level::Info) << "Closing connection: " << getSource() << std::endl;
 }
 bool ClientConnection::sendPacket(const Message::Packet &packet, const bool sendImmediately)
 {

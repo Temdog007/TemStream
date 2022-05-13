@@ -30,7 +30,7 @@ Configuration::~Configuration()
 }
 bool Configuration::valid() const
 {
-	return validServerType(serverType);
+	return validServerType(serverType) && (ssl.has_value() ? (!ssl->cert.empty() && !ssl->key.empty()) : true);
 }
 #define SET_TYPE(ShortArg, LongArg, s)                                                                                 \
 	if (strcasecmp("-" #ShortArg, argv[i]) == 0 || strcasecmp("--" #LongArg, argv[i]) == 0)                            \
@@ -157,6 +157,26 @@ Configuration loadConfiguration(const int argc, const char **argv)
 			i += 2;
 			continue;
 		}
+		if (strcasecmp("-CT", argv[i]) == 0 || strcasecmp("--certificate", argv[i]) == 0)
+		{
+			if (!configuration.ssl)
+			{
+				configuration.ssl = SSLConfig();
+			}
+			configuration.ssl->cert = argv[i + 1];
+			i += 2;
+			continue;
+		}
+		if (strcasecmp("-K", argv[i]) == 0 || strcasecmp("--key", argv[i]) == 0)
+		{
+			if (!configuration.ssl)
+			{
+				configuration.ssl = SSLConfig();
+			}
+			configuration.ssl->key = argv[i + 1];
+			i += 2;
+			continue;
+		}
 		std::string err("Unexpected argument: ");
 		err += argv[i];
 		throw std::invalid_argument(std::move(err));
@@ -209,6 +229,10 @@ std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
 	   << "\nMessage Rate (in seconds): " << configuration.messageRateInSeconds << '\n';
 	printMemory(os, "Max Message Size", configuration.maxMessageSize)
 		<< "\nRecording: " << (configuration.record ? "Yes" : "No") << "\nAuthentication: " << configuration.handle;
+	if (configuration.ssl)
+	{
+		os << "\nCertificate: " << configuration.ssl->cert << "\nKey: " << configuration.ssl->key;
+	}
 	return os;
 }
 } // namespace TemStream

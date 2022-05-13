@@ -165,7 +165,7 @@ void QueryAudio::execute() const
 		const int count = SDL_GetNumAudioDevices(SDL_TRUE);
 		if (selected < 0 || selected >= count)
 		{
-			(*logger)(Logger::Error) << "Invalid audio device selected" << std::endl;
+			(*logger)(Logger::Level::Error) << "Invalid audio device selected" << std::endl;
 			return;
 		}
 		const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
@@ -361,7 +361,7 @@ void QueryVideo::execute() const
 					auto ptr = VideoSource::recordWindow(wp, source, ws.frameData);
 					if (ptr == nullptr)
 					{
-						(*logger)(Logger::Error) << "Failed to start recording window " << wp.name << std::endl;
+						(*logger)(Logger::Level::Error) << "Failed to start recording window " << wp.name << std::endl;
 					}
 					else
 					{
@@ -377,7 +377,7 @@ void QueryVideo::execute() const
 			auto ptr = VideoSource::recordWebcam(wb.arg, source, wb.frameData);
 			if (ptr == nullptr)
 			{
-				(*logger)(Logger::Error) << "Failed to start recording webcam " << wb.arg << std::endl;
+				(*logger)(Logger::Level::Error) << "Failed to start recording webcam " << wb.arg << std::endl;
 			}
 			else
 			{
@@ -389,7 +389,7 @@ void QueryVideo::execute() const
 			auto ptr = VideoSource::listenToUdpPort(address, source);
 			if (ptr == nullptr)
 			{
-				(*logger)(Logger::Error) << "Failed to start listening to port: " << address << std::endl;
+				(*logger)(Logger::Level::Error) << "Failed to start listening to port: " << address << std::endl;
 			}
 			else
 			{

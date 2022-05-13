@@ -39,11 +39,12 @@ bool Connection::readAndHandle(const int timeout)
 				if (header.size > maxMessageSize || header.size == 0 || header.id != Message::MagicGuid)
 				{
 #if _DEBUG
-					(*logger)(Logger::Error) << "Got invalid message header: " << header << "; Max size allowed "
-											 << maxMessageSize << "; Magic Guid: " << Message::MagicGuid << std::endl;
+					(*logger)(Logger::Level::Error)
+						<< "Got invalid message header: " << header << "; Max size allowed " << maxMessageSize
+						<< "; Magic Guid: " << Message::MagicGuid << std::endl;
 #else
-					(*logger)(Logger::Error) << "Got invalid message header: " << header.size << "; Max size allowed "
-											 << maxMessageSize << std::endl;
+					(*logger)(Logger::Level::Error) << "Got invalid message header: " << header.size
+													<< "; Max size allowed " << maxMessageSize << std::endl;
 #endif
 					return false;
 				}
@@ -65,8 +66,8 @@ bool Connection::readAndHandle(const int timeout)
 				const auto &tempBytes = m->getBytes();
 				if (static_cast<size_t>(m->getReadPoint()) != tempBytes.size())
 				{
-					(*logger)(Logger::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
-											 << tempBytes.size() << " bytes" << std::endl;
+					(*logger)(Logger::Level::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
+													<< tempBytes.size() << " bytes" << std::endl;
 					return false;
 				}
 
@@ -84,8 +85,8 @@ bool Connection::readAndHandle(const int timeout)
 				}
 				if (static_cast<size_t>(m->getReadPoint()) != *nextMessageSize)
 				{
-					(*logger)(Logger::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
-											 << bytes.size() << " bytes" << std::endl;
+					(*logger)(Logger::Level::Error) << "Expected to read " << m->getReadPoint() << "bytes. Read "
+													<< bytes.size() << " bytes" << std::endl;
 					return false;
 				}
 
@@ -102,11 +103,11 @@ bool Connection::readAndHandle(const int timeout)
 	}
 	catch (const std::bad_alloc &)
 	{
-		(*logger)(Logger::Error) << "Ran out of memory" << std::endl;
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Error) << "Connection::readAndHandle: " << e.what() << std::endl;
+		(*logger)(Logger::Level::Error) << "Connection::readAndHandle: " << e.what() << std::endl;
 	}
 	return false;
 }

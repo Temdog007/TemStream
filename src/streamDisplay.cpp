@@ -23,7 +23,7 @@ void StreamDisplay::updateTexture(const VideoSource::Frame &frame)
 	}
 	if (!std::holds_alternative<SDL_TextureWrapper>(data))
 	{
-		(*logger)(Logger::Trace) << "Resized video texture " << frame.width << 'x' << frame.height << std::endl;
+		(*logger)(Logger::Level::Trace) << "Resized video texture " << frame.width << 'x' << frame.height << std::endl;
 		SDL_Texture *texture =
 			SDL_CreateTexture(gui.getRenderer(), frame.format, SDL_TEXTUREACCESS_STREAMING, frame.width, frame.height);
 		data.emplace<SDL_TextureWrapper>(texture);
@@ -539,7 +539,7 @@ bool StreamDisplay::Draw::operator()(ReplayData &v)
 		}
 		catch (const std::exception &e)
 		{
-			(*logger)(Logger::Error) << "Packet failure: " << e.what() << std::endl;
+			(*logger)(Logger::Level::Error) << "Packet failure: " << e.what() << std::endl;
 			return false;
 		}
 	}
@@ -580,7 +580,7 @@ bool StreamDisplay::ContextMenu::operator()(StreamDisplayText &sd)
 	{
 		if (SDL_SetClipboardText(sd.message.c_str()) == 0)
 		{
-			(*logger)(Logger::Info) << "Copied text to clipboard" << std::endl;
+			(*logger)(Logger::Level::Info) << "Copied text to clipboard" << std::endl;
 		}
 		else
 		{
@@ -664,7 +664,7 @@ bool StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 			}
 			else
 			{
-				(*logger)(Logger::Error) << "Failed to save screenshot: " << IMG_GetError() << std::endl;
+				(*logger)(Logger::Level::Error) << "Failed to save screenshot: " << IMG_GetError() << std::endl;
 			}
 		}
 	}

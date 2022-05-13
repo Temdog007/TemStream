@@ -8,8 +8,8 @@
 			CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold),                      \
 			CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showConnections),      \
 			CEREAL_NVP(showDisplays), CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont),              \
-			CEREAL_NVP(showStats), CEREAL_NVP(showStyleEditor), CEREAL_NVP(showLogsFilter), CEREAL_NVP(currentStyle),  \
-			CEREAL_NVP(styles))
+			CEREAL_NVP(showStats), CEREAL_NVP(showStyleEditor), CEREAL_NVP(showLogsFilter), CEREAL_NVP(isEncrypted),   \
+			CEREAL_NVP(currentStyle), CEREAL_NVP(styles))
 namespace TemStream
 {
 struct Configuration
@@ -34,6 +34,7 @@ struct Configuration
 	bool showFont;
 	bool showStats;
 	bool showStyleEditor;
+	bool isEncrypted;
 
 	struct ShowLogsFilter
 	{

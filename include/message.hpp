@@ -4,9 +4,9 @@
 
 namespace TemStream
 {
-#define WRITE_STRING_TO_STRING_ARRAY(Name, X) Name##Strings[Name::X] = #X
+#define WRITE_STRING_TO_STRING_ARRAY(Name, X) Name##Strings[(uint32_t)Name::X] = #X
 
-enum ServerType : uint8_t
+enum class ServerType : uint8_t
 {
 	UnknownServerType = 0u,
 	Link,
@@ -15,13 +15,20 @@ enum ServerType : uint8_t
 	Image,
 	Audio,
 	Video,
-	ServerTypeCount
+	Count
 };
-extern const char *ServerTypeStrings[ServerType::ServerTypeCount];
+constexpr uint8_t ServerTypeCount()
+{
+	return static_cast<uint8_t>(ServerType::Count);
+}
+extern const char *ServerTypeStrings[ServerTypeCount()];
 extern std::ostream &operator<<(std::ostream &, ServerType);
-extern bool validServerType(const ServerType);
+constexpr bool validServerType(const ServerType type)
+{
+	return (uint32_t)ServerType::UnknownServerType < (uint32_t)type && (uint32_t)type < ServerTypeCount();
+}
 
-enum PeerFlags : uint32_t
+enum class PeerFlags : uint32_t
 {
 	None = 0u,
 	WriteAccess = 1u << 0u,
@@ -31,7 +38,7 @@ enum PeerFlags : uint32_t
 };
 constexpr bool peerFlagsOverlap(const PeerFlags a, const PeerFlags b)
 {
-	return (a & b) != 0;
+	return ((uint32_t)a & (uint32_t)b) != 0;
 }
 extern std::ostream &operator<<(std::ostream &, const PeerFlags);
 constexpr PeerFlags operator|(const PeerFlags a, const PeerFlags b)
@@ -57,22 +64,22 @@ struct PeerInformation
 
 	constexpr bool isOwner() const
 	{
-		return is(Owner);
+		return is(PeerFlags::Owner);
 	}
 
 	constexpr bool hasWriteAccess() const
 	{
-		return is(Owner | WriteAccess);
+		return is(PeerFlags::Owner | PeerFlags::WriteAccess);
 	}
 
 	constexpr bool hasReplayAccess() const
 	{
-		return is(Owner | ReplayAccess);
+		return is(PeerFlags::Owner | PeerFlags::ReplayAccess);
 	}
 
 	constexpr bool isModerator() const
 	{
-		return is(Owner | Moderator);
+		return is(PeerFlags::Owner | PeerFlags::Moderator);
 	}
 
 	template <class Archive> void save(Archive &ar) const
