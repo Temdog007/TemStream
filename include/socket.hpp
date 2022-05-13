@@ -45,14 +45,16 @@ class BasicSocket : public Socket
   protected:
 	int fd;
 
-	bool flush(const ByteList &) override;
+	virtual bool flush(const ByteList &) override;
 	void close();
+
+	BasicSocket(BasicSocket &&);
 
   public:
 	BasicSocket();
 	BasicSocket(int);
 	BasicSocket(const BasicSocket &) = delete;
-	BasicSocket(BasicSocket &&) = delete;
+
 	virtual ~BasicSocket();
 
 	PollState pollRead(const int timeout) const;
@@ -67,18 +69,6 @@ class UdpSocket : public BasicSocket
 	UdpSocket(int);
 	virtual ~UdpSocket();
 
-	template <class S> static unique_ptr<UdpSocket> create(const BaseAddress<S> &addr)
-	{
-		auto ptr = tem_unique<UdpSocket>();
-		char port[64];
-		snprintf(port, sizeof(port), "%d", addr.port);
-		if (ptr->connect(addr.hostname.c_str(), port, true))
-		{
-			return ptr;
-		}
-		return nullptr;
-	}
-
 	void send(const uint8_t *, size_t) override;
 
 	bool connect(const char *hostname, const char *port, const bool isServer) override;
@@ -86,24 +76,59 @@ class UdpSocket : public BasicSocket
 };
 class TcpSocket : public BasicSocket
 {
+	friend class SSLSocket;
+
+  protected:
+	TcpSocket(TcpSocket &&);
+
   public:
 	TcpSocket();
 	TcpSocket(int);
 	virtual ~TcpSocket();
 
-	template <class S> static unique_ptr<TcpSocket> create(const BaseAddress<S> &addr)
+	virtual bool connect(const char *hostname, const char *port, const bool isServer) override;
+	virtual bool read(const int timeout, ByteList &, const bool readAll) override;
+
+	virtual unique_ptr<TcpSocket> acceptConnection(bool &, const int timeout = 1000) const;
+};
+struct SSL_Deleter
+{
+	void operator()(SSL *ssl) const
 	{
-		auto ptr = tem_unique<TcpSocket>();
-		char port[64];
-		snprintf(port, sizeof(port), "%d", addr.port);
-		if (ptr->connect(addr.hostname.c_str(), port, false))
-		{
-			return ptr;
-		}
-		return nullptr;
+		SSL_shutdown(ssl);
+		SSL_free(ssl);
 	}
+};
+using SSLptr = std::unique_ptr<SSL, SSL_Deleter>;
+struct SSL_CTX_Deleter
+{
+	void operator()(SSL_CTX *ctx) const
+	{
+		SSL_CTX_free(ctx);
+	}
+};
+using SSLContext = std::unique_ptr<SSL_CTX, SSL_CTX_Deleter>;
+class SSLSocket : public TcpSocket
+{
+  private:
+	std::variant<SSLContext, SSLptr, std::pair<SSLContext, SSLptr>> data;
+
+	static SSLContext createContext();
+
+	bool flush(const ByteList &) override;
+
+  public:
+	SSLSocket();
+	SSLSocket(int);
+	SSLSocket(TcpSocket &&, SSLptr &&);
+	~SSLSocket();
+
+	static String cert;
+	static String key;
 
 	bool connect(const char *hostname, const char *port, const bool isServer) override;
 	bool read(const int timeout, ByteList &, const bool readAll) override;
+
+	unique_ptr<TcpSocket> acceptConnection(bool &, const int timeout = 1000) const override;
 };
 } // namespace TemStream

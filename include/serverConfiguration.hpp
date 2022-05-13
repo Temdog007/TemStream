@@ -4,7 +4,11 @@
 
 namespace TemStream
 {
-
+struct SSLConfig
+{
+	String key;
+	String cert;
+};
 typedef bool (*VerifyToken)(const char *, char (&username)[32], uint32_t &);
 typedef bool (*VerifyUsernameAndPassword)(const char *, const char *, uint32_t &);
 struct Configuration
@@ -12,6 +16,7 @@ struct Configuration
 	Access access;
 	Address address;
 	String name;
+	std::optional<SSLConfig> ssl;
 	int64_t startTime;
 	void *handle;
 	VerifyToken verifyToken;

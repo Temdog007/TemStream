@@ -353,7 +353,7 @@ void TemStreamGui::connect(const Address &address)
 {
 	*logger << "Connecting to server: " << address << std::endl;
 	WorkPool::workPool.addWork([address = address, this]() {
-		auto s = TcpSocket::create(address);
+		auto s = address.create<TcpSocket>(false);
 		if (s == nullptr)
 		{
 			(*logger)(Logger::Error) << "Failed to connect to server: " << address << std::endl;

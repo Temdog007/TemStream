@@ -52,10 +52,33 @@ template <class S> struct BaseAddress
 		os << a.hostname << ':' << a.port;
 		return os;
 	}
+
+	template <class T> unique_ptr<T> create(bool isServer) const
+	{
+		auto ptr = tem_unique<T>();
+		char portStr[64];
+		snprintf(portStr, sizeof(portStr), "%d", port);
+		if (ptr->connect(hostname.c_str(), portStr, isServer))
+		{
+			return ptr;
+		}
+		return nullptr;
+	}
 };
 using Address = BaseAddress<String>;
 using STL_Address = BaseAddress<std::string>;
 extern bool openSocket(int &, const Address &, const bool isServer, const bool isTcp);
+
+template <typename T> unique_ptr<T> openSocket(const Address &address, const bool isServer, const bool isTcp)
+{
+	int fd = -1;
+	if (!openSocket(fd, address, isServer, isTcp))
+	{
+		return nullptr;
+	}
+
+	return tem_unique<T>(fd);
+}
 } // namespace TemStream
 
 namespace std

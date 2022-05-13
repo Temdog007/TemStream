@@ -36,6 +36,7 @@ add_subdirectory(cereal)
 add_subdirectory(opus)
 
 find_package(Freetype REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 add_library(ImGui STATIC)
@@ -173,6 +174,7 @@ if(COMPILE_CLIENT)
     opus
     ImGui 
     ${FREETYPE_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
     ${OpenCV_LIBS})
 
   set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -205,7 +207,7 @@ if(COMPILE_SERVER)
     "${PROJECT_SOURCE_DIR}/include"
     "${CEREAL_SOURCE_DIR}/include")
 
-  target_link_libraries(TemStreamServer PRIVATE cereal dl)
+  target_link_libraries(TemStreamServer PRIVATE cereal dl ${OPENSSL_LIBRARIES})
 
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)

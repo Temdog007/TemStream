@@ -40,6 +40,9 @@
 #include <variant>
 #include <vector>
 
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+
 using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
 
 namespace fs = std::filesystem;
@@ -173,6 +176,18 @@ template <typename T> inline void hash_combine(std::size_t &seed, const T &v)
 }
 
 extern bool openSocket(int &, const char *hostname, const char *port, const bool isServer, const bool isTcp);
+
+template <typename T>
+std::optional<T> openSocket(const char *hostname, const char *port, const bool isServer, const bool isTcp)
+{
+	int fd = -1;
+	if (!openSocket(fd, hostname, port, isServer, isTcp))
+	{
+		return std::nullopt;
+	}
+
+	return std::make_optional<T>(fd);
+}
 
 extern bool sendData(int, const void *, size_t);
 

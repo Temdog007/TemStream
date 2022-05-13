@@ -26,7 +26,7 @@ int runApp(Configuration &configuration)
 
 void runConnection(const Message::Source &source)
 {
-	auto socket = TcpSocket::create(source.address);
+	auto socket = source.address.create<TcpSocket>();
 	if (socket == nullptr)
 	{
 		std::cerr << "Failed to connect to server" << std::endl;

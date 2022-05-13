@@ -76,9 +76,6 @@ int runApp(Configuration &configuration)
 
 	*logger << configuration << std::endl;
 
-	int result = EXIT_FAILURE;
-	int fd = -1;
-
 	{
 		String s(reinterpret_cast<char *>(List_of_Dirty_Naughty_Obscene_and_Otherwise_Bad_Words_en),
 				 List_of_Dirty_Naughty_Obscene_and_Otherwise_Bad_Words_en_len);
@@ -138,48 +135,49 @@ int runApp(Configuration &configuration)
 		thread.detach();
 	}
 
-	if (!openSocket(fd, configuration.address, true, true))
+	int result = EXIT_FAILURE;
+
+	unique_ptr<TcpSocket> socket = nullptr;
+	if (configuration.ssl)
+	{
+		SSL_library_init();
+		SSLeay_add_ssl_algorithms();
+		SSL_load_error_strings();
+		SSLSocket::cert = configuration.ssl->cert;
+		SSLSocket::key = configuration.ssl->key;
+		socket = openSocket<SSLSocket>(configuration.address, true, true);
+	}
+	else
+	{
+		socket = openSocket<TcpSocket>(configuration.address, true, true);
+	}
+	if (!socket)
 	{
 		goto end;
 	}
 
 	while (!appDone)
 	{
-		switch (pollSocket(fd, 1000, POLLIN))
+		auto newCon = socket->acceptConnection(appDone);
+		if (newCon == nullptr)
 		{
-		case PollState::GotData:
-			break;
-		case PollState::Error:
-			appDone = true;
-			continue;
-		default:
-			continue;
-		}
-
-		struct sockaddr_storage addr;
-		socklen_t size = sizeof(addr);
-		const int newfd = accept(fd, (struct sockaddr *)&addr, &size);
-		if (newfd < 0)
-		{
-			perror("accept");
 			continue;
 		}
 
 		if (ServerConnection::totalPeers() >= configuration.maxClients)
 		{
-			::close(newfd);
+			(*logger)(Logger::Warning) << "Max clients reached (" << configuration.maxClients
+									   << ") Cannot accept new client" << std::endl;
 			continue;
 		}
 
-		auto s = tem_unique<TcpSocket>(newfd);
-
 		std::array<char, INET6_ADDRSTRLEN> str;
 		uint16_t port;
-		if (s->getIpAndPort(str, port))
+		if (newCon->getIpAndPort(str, port))
 		{
 			*logger << "New connection: " << str.data() << ':' << port << std::endl;
 
-			auto peer = tem_shared<ServerConnection>(Address(str.data(), port), std::move(s));
+			auto peer = tem_shared<ServerConnection>(Address(str.data(), port), std::move(newCon));
 			++ServerConnection::runningThreads;
 			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
 			thread.detach();
@@ -189,7 +187,6 @@ int runApp(Configuration &configuration)
 	result = EXIT_SUCCESS;
 
 end:
-	::close(fd);
 	*logger << "Ending server: " << configuration.name << std::endl;
 	while (ServerConnection::runningThreads > 0)
 	{

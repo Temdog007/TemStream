@@ -157,7 +157,7 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 }
 shared_ptr<VideoSource> VideoSource::listenToUdpPort(const Address &address, const Message::Source &source)
 {
-	auto ptr = UdpSocket::create(address);
+	auto ptr = address.create<UdpSocket>(true);
 	if (ptr == nullptr)
 	{
 		return nullptr;

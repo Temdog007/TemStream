@@ -1,6 +1,8 @@
 #include <main.hpp>
 
-bool sendAll(const int fd, const char *data, size_t size);
+bool sendAll(const int fd, const void *, size_t size);
+bool writeAll(SSL *, const void *, int);
+int LogError(const char *str, size_t len, void *u);
 
 namespace TemStream
 {
@@ -74,6 +76,10 @@ BasicSocket::BasicSocket() : Socket(), fd(-1)
 BasicSocket::BasicSocket(const int fd) : Socket(), fd(fd)
 {
 }
+BasicSocket::BasicSocket(BasicSocket &&b) : Socket(), fd(b.fd)
+{
+	b.fd = -1;
+}
 BasicSocket::~BasicSocket()
 {
 	close();
@@ -93,7 +99,7 @@ PollState BasicSocket::pollWrite(const int timeout) const
 }
 bool BasicSocket::flush(const ByteList &bytes)
 {
-	return sendAll(fd, reinterpret_cast<const char *>(bytes.data()), bytes.size());
+	return sendAll(fd, bytes.data(), bytes.size());
 }
 bool BasicSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t &port) const
 {
@@ -174,6 +180,9 @@ TcpSocket::TcpSocket() : BasicSocket()
 TcpSocket::TcpSocket(const int fd) : BasicSocket(fd)
 {
 }
+TcpSocket::TcpSocket(TcpSocket &&s) : BasicSocket(std::move(s))
+{
+}
 TcpSocket::~TcpSocket()
 {
 }
@@ -211,11 +220,168 @@ bool TcpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 	} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
 	return true;
 }
+unique_ptr<TcpSocket> TcpSocket::acceptConnection(bool &error, const int timeout) const
+{
+	switch (pollSocket(fd, timeout, POLLIN))
+	{
+	case PollState::GotData:
+		break;
+	case PollState::Error:
+		error = true;
+		return nullptr;
+	default:
+		return nullptr;
+	}
+
+	struct sockaddr_storage addr;
+	socklen_t size = sizeof(addr);
+	const int newfd = accept(fd, (struct sockaddr *)&addr, &size);
+	if (newfd < 0)
+	{
+		perror("accept");
+		return nullptr;
+	}
+
+	return tem_unique<TcpSocket>(newfd);
+}
+String SSLSocket::cert;
+String SSLSocket::key;
+SSLSocket::SSLSocket() : TcpSocket(), data(createContext())
+{
+}
+SSLSocket::SSLSocket(const int fd) : TcpSocket(fd), data(createContext())
+{
+}
+SSLSocket::SSLSocket(TcpSocket &&tcp, SSLptr &&s) : TcpSocket(std::move(tcp)), data(std::move(s))
+{
+}
+SSLSocket::~SSLSocket()
+{
+}
+SSLContext SSLSocket::createContext()
+{
+	const SSL_METHOD *method = TLS_server_method();
+
+	SSL_CTX *ctx = SSL_CTX_new(method);
+	if (!ctx)
+	{
+		perror("Unable to create SSL context");
+		ERR_print_errors_cb(LogError, nullptr);
+		throw std::runtime_error("Unable to create SSL context");
+	}
+
+	if (SSL_CTX_use_certificate_file(ctx, SSLSocket::cert.c_str(), SSL_FILETYPE_PEM) <= 0)
+	{
+		ERR_print_errors_cb(LogError, nullptr);
+		throw std::runtime_error("Unable to use certificate file");
+	}
+
+	if (SSL_CTX_use_PrivateKey_file(ctx, SSLSocket::key.c_str(), SSL_FILETYPE_PEM) <= 0)
+	{
+		ERR_print_errors_cb(LogError, nullptr);
+		throw std::runtime_error("Unable to use private key");
+	}
+
+	return SSLContext(ctx);
+}
+bool SSLSocket::flush(const ByteList &bytes)
+{
+	if (auto ptr = std::get_if<SSLptr>(&data))
+	{
+		return writeAll(ptr->get(), bytes.data(), bytes.size());
+	}
+	return false;
+}
+bool SSLSocket::connect(const char *hostname, const char *port, const bool isServer)
+{
+	if (!TcpSocket::connect(hostname, port, isServer))
+	{
+		return false;
+	}
+	if (!isServer)
+	{
+		const SSL_METHOD *method = TLS_client_method();
+		auto ctx = SSLContext(SSL_CTX_new(method));
+		auto ssl = SSLptr(SSL_new(ctx.get()));
+		if (ssl == nullptr)
+		{
+			ERR_print_errors_cb(LogError, nullptr);
+			return false;
+		}
+
+		int err = SSL_connect(ssl.get());
+		if (err <= 0)
+		{
+			perror("SSL_connect");
+			ERR_print_errors_cb(LogError, nullptr);
+			return false;
+		}
+
+		auto pair = std::make_pair(std::move(ctx), std::move(ssl));
+		data.emplace<std::pair<SSLContext, SSLptr>>(std::move(pair));
+	}
+	return true;
+}
+bool SSLSocket::read(const int timeout, ByteList &bytes, const bool readAll)
+{
+	if (auto ptr = std::get_if<SSLptr>(&data))
+	{
+		int reads = 0;
+		do
+		{
+			switch (pollRead(timeout))
+			{
+			case PollState::Error:
+				return false;
+			case PollState::GotData:
+				break;
+			default:
+				return true;
+			}
+
+			const ssize_t r = SSL_read(ptr->get(), buffer.data(), buffer.size());
+			if (r < 0)
+			{
+				ERR_print_errors_cb(LogError, nullptr);
+				perror("SSL_read");
+				return false;
+			}
+			if (r == 0)
+			{
+				return false;
+			}
+			bytes.append(buffer.begin(), r);
+		} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
+		return true;
+	}
+	return false;
+}
+unique_ptr<TcpSocket> SSLSocket::acceptConnection(bool &error, const int timeout) const
+{
+	auto ptr = TcpSocket::acceptConnection(error, timeout);
+	if (ptr == nullptr)
+	{
+		return nullptr;
+	}
+
+	auto &ctx = std::get<SSLContext>(data);
+	auto ssl = SSLptr(SSL_new(ctx.get()));
+	SSL_set_fd(ssl.get(), ptr->fd);
+
+	if (SSL_accept(ssl.get()) <= 0)
+	{
+		ERR_print_errors_cb(LogError, nullptr);
+		return nullptr;
+	}
+
+	return tem_unique<SSLSocket>(std::move(*ptr), std::move(ssl));
+}
 } // namespace TemStream
 
-bool sendAll(const int fd, const char *data, size_t size)
+bool sendAll(const int fd, const void *ptr, size_t size)
 {
 	size_t written = 0;
+	const char *data = reinterpret_cast<const char *>(ptr);
 	while (written < size)
 	{
 		const ssize_t sent = ::send(fd, data + written, size - written, 0);
@@ -231,4 +397,34 @@ bool sendAll(const int fd, const char *data, size_t size)
 		written += sent;
 	}
 	return true;
+}
+
+bool writeAll(SSL *ssl, const void *ptr, const int size)
+{
+	int written = 0;
+	const char *data = reinterpret_cast<const char *>(ptr);
+	while (written < size)
+	{
+		const int sent = SSL_write(ssl, data + written, size - written);
+		if (sent < 0)
+		{
+			perror("SSL_write");
+			ERR_print_errors_cb(LogError, nullptr);
+			return false;
+		}
+		if (sent == 0)
+		{
+			return false;
+		}
+		written += sent;
+	}
+	return true;
+}
+
+int LogError(const char *str, size_t len, void *)
+{
+	using namespace TemStream;
+	String s(str, len);
+	(*logger)(Logger::Error) << s << std::endl;
+	return 0;
 }
