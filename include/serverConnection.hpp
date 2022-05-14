@@ -4,15 +4,28 @@
 
 namespace TemStream
 {
+struct RecordedPacket
+{
+	Message::Packet packet;
+	int64_t timestamp;
+
+	RecordedPacket(const Message::Packet &);
+	~RecordedPacket();
+
+	bool save(const String &filename) const;
+
+	static std::optional<int64_t> getTimestamp(const String &s, std::string::size_type &pos);
+	static std::optional<String> getEncodedPacket(const String &s, const int64_t target);
+};
 class ServerConnection : public Connection
 {
 	friend int runApp(Configuration &configuration);
 
   private:
 	static std::atomic_int32_t runningThreads;
-	static Configuration configuration;
 	static Mutex peersMutex;
-	static LinkedList<std::weak_ptr<ServerConnection>> peers;
+	static unique_ptr<StringList> badWords;
+	static unique_ptr<LinkedList<std::weak_ptr<ServerConnection>>> peers;
 
 	static void sendToPeers(Message::Packet &&, const ServerConnection *author = nullptr);
 
@@ -22,17 +35,15 @@ class ServerConnection : public Connection
 
 	static List<PeerInformation> getPeers();
 
-	static void sendLinks(const String &);
+	static String sendLinks(Configuration &);
 
-	static void sendLinks();
+	static void checkAccess(Configuration &);
 
-	static void checkAccess();
-
-	static std::optional<PeerInformation> login(const Message::Credentials &);
+	std::optional<PeerInformation> login(const Message::Credentials &);
 
 	static void runPeerConnection(shared_ptr<ServerConnection>);
 
-	static String getReplayFilename();
+	static String getReplayFilename(Configuration &);
 
 	class MessageHandler
 	{
@@ -80,19 +91,19 @@ class ServerConnection : public Connection
 	PeerInformation information;
 	const TimePoint startingTime;
 	TimePoint lastMessage;
+	Configuration &configuration;
+	ConcurrentQueue<RecordedPacket> &packetsToRecord;
 	bool stayConnected;
 
   public:
-	ServerConnection(Address &&, unique_ptr<Socket>);
+	ServerConnection(Configuration &, ConcurrentQueue<RecordedPacket> &, Address &&, unique_ptr<Socket>);
 	ServerConnection(const ServerConnection &) = delete;
 	ServerConnection(ServerConnection &&) = delete;
 	~ServerConnection();
 
-	static Message::Source getSource();
-
 	bool isAuthenticated() const;
 
-	template <const size_t N> static void getFilename(std::array<char, N> &arr)
+	template <const size_t N> void getFilename(std::array<char, N> &arr)
 	{
 		snprintf(arr.data(), arr.size(), "%s_%u_%" PRId64 ".tsd", configuration.name.c_str(),
 				 (uint32_t)configuration.serverType, configuration.startTime);

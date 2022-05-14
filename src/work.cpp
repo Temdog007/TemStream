@@ -2,7 +2,7 @@
 
 namespace TemStream
 {
-WorkPool WorkPool::workPool;
+shared_ptr<WorkPool> WorkPool::globalWorkPool = nullptr;
 WorkPool::WorkPool() : workList()
 {
 }
@@ -10,13 +10,21 @@ WorkPool::~WorkPool()
 {
 	clear();
 }
-void WorkPool::addWork(std::function<bool()> &&f)
+void WorkPool::add(std::function<bool()> &&f)
 {
 	workList.push(std::move(f));
+}
+void WorkPool::addWork(std::function<bool()> &&f)
+{
+	globalWorkPool->add(std::move(f));
 }
 void WorkPool::clear()
 {
 	workList.clear();
+}
+void WorkPool::setGlobalWorkPool(shared_ptr<WorkPool> work)
+{
+	globalWorkPool = work;
 }
 void WorkPool::handleWorkInAnotherThread()
 {
@@ -24,9 +32,9 @@ void WorkPool::handleWorkInAnotherThread()
 	{
 		std::thread thread([]() {
 			using namespace std::chrono_literals;
-			while (!appDone)
+			while (!appDone && globalWorkPool != nullptr)
 			{
-				WorkPool::workPool.handleWork(500ms);
+				globalWorkPool->handleWork(500ms);
 				std::this_thread::sleep_for(1ms);
 			}
 		});

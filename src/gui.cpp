@@ -232,47 +232,46 @@ void TemStreamGui::decodeVideoPackets()
 
 			auto nextFrame = tem_shared<TimePoint>(std::chrono::system_clock::now());
 
-			WorkPool::workPool.addWork(
-				[nextFrame = std::move(nextFrame), cap = std::move(cap), source = source]() mutable {
-					if (!cap->isOpened())
-					{
-						return false;
-					}
-					const auto now = std::chrono::system_clock::now();
-					if (now < *nextFrame)
-					{
-						return true;
-					}
-					cv::Mat image;
-					if (!cap->read(image) || image.empty())
-					{
-						return false;
-					}
-
-					SDL_Event e;
-					e.type = SDL_USEREVENT;
-					e.user.code = TemStreamEvent::HandleFrame;
-
-					auto frame = allocateAndConstruct<VideoSource::Frame>();
-					frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
-					frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
-					frame->bytes = ByteList(image.data, static_cast<uint32_t>(image.total() * image.elemSize()));
-					frame->format = SDL_PIXELFORMAT_BGR24;
-					e.user.data1 = frame;
-
-					auto sourcePtr = allocateAndConstruct<Message::Source>(source);
-					e.user.data2 = sourcePtr;
-
-					if (!tryPushEvent(e))
-					{
-						destroyAndDeallocate(frame);
-						destroyAndDeallocate(sourcePtr);
-					}
-
-					const auto delay = std::chrono::duration<double, std::milli>(1000.0 / cap->get(cv::CAP_PROP_FPS));
-					*nextFrame = std::chrono::time_point_cast<std::chrono::milliseconds>(now + delay);
+			WorkPool::addWork([nextFrame = std::move(nextFrame), cap = std::move(cap), source = source]() mutable {
+				if (!cap->isOpened())
+				{
+					return false;
+				}
+				const auto now = std::chrono::system_clock::now();
+				if (now < *nextFrame)
+				{
 					return true;
-				});
+				}
+				cv::Mat image;
+				if (!cap->read(image) || image.empty())
+				{
+					return false;
+				}
+
+				SDL_Event e;
+				e.type = SDL_USEREVENT;
+				e.user.code = TemStreamEvent::HandleFrame;
+
+				auto frame = allocateAndConstruct<VideoSource::Frame>();
+				frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
+				frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
+				frame->bytes = ByteList(image.data, static_cast<uint32_t>(image.total() * image.elemSize()));
+				frame->format = SDL_PIXELFORMAT_BGR24;
+				e.user.data1 = frame;
+
+				auto sourcePtr = allocateAndConstruct<Message::Source>(source);
+				e.user.data2 = sourcePtr;
+
+				if (!tryPushEvent(e))
+				{
+					destroyAndDeallocate(frame);
+					destroyAndDeallocate(sourcePtr);
+				}
+
+				const auto delay = std::chrono::duration<double, std::milli>(1000.0 / cap->get(cv::CAP_PROP_FPS));
+				*nextFrame = std::chrono::time_point_cast<std::chrono::milliseconds>(now + delay);
+				return true;
+			});
 		}
 	};
 
@@ -326,12 +325,12 @@ bool TemStreamGui::init()
 		return false;
 	}
 
-	WorkPool::workPool.addWork([this]() {
+	WorkPool::addWork([this]() {
 		this->decodeVideoPackets();
 		return true;
 	});
 
-	WorkPool::workPool.addWork([this]() {
+	WorkPool::addWork([this]() {
 		audio.removeIfNot([this](const auto &source, const auto &a) {
 			if (auto con = this->getConnection(source))
 			{
@@ -352,7 +351,7 @@ bool TemStreamGui::init()
 void TemStreamGui::connect(const Address &address)
 {
 	*logger << "Connecting to server: " << address << std::endl;
-	WorkPool::workPool.addWork([address = address, this, isSSL = configuration.isEncrypted]() {
+	WorkPool::addWork([address = address, this, isSSL = configuration.isEncrypted]() {
 		unique_ptr<TcpSocket> s = nullptr;
 		if (isSSL)
 		{
@@ -424,7 +423,7 @@ void TemStreamGui::connect(const Address &address)
 		{
 			(*logger)(Logger::Level::Trace)
 				<< "Adding connection to list: " << clientConnection->getInfo() << std::endl;
-			WorkPool::workPool.addWork([this, clientConnection]() {
+			WorkPool::addWork([this, clientConnection]() {
 				if (TemStreamGui::handleClientConnection(*clientConnection))
 				{
 					return true;
@@ -1689,7 +1688,7 @@ void runLoop(TemStreamGui &gui)
 				}
 				Message::Source source = gui.queryData->getSource();
 				String s(event.drop.file);
-				WorkPool::workPool.addWork([&gui, s = std::move(s), source = std::move(source)]() {
+				WorkPool::addWork([&gui, s = std::move(s), source = std::move(source)]() {
 					Work::checkFile(gui, source, s);
 					return false;
 				});
@@ -1929,6 +1928,9 @@ int runApp(Configuration &configuration)
 	ImGui::SetAllocatorFunctions((ImGuiMemAllocFunc)allocatorImGuiAlloc, (ImGuiMemFreeFunc)allocatorImGuiFree, nullptr);
 #endif
 
+	auto workPool = tem_shared<WorkPool>();
+	WorkPool::setGlobalWorkPool(workPool);
+
 	ImGui::CreateContext();
 
 	ImGuiIO &io = ImGui::GetIO();
@@ -1973,7 +1975,9 @@ int runApp(Configuration &configuration)
 	gui.audio.clear();
 	gui.video.forEach([](const auto &, auto &value) { value->setRunning(false); });
 	gui.video.clear();
-	WorkPool::workPool.clear();
+	workPool->clear();
+	workPool = nullptr;
+	WorkPool::setGlobalWorkPool(nullptr);
 
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();

@@ -8,17 +8,19 @@ class WorkPool
   private:
 	ConcurrentQueue<std::function<bool()>> workList;
 
+	static shared_ptr<WorkPool> globalWorkPool;
+
   public:
 	WorkPool();
 	~WorkPool();
 
-	static WorkPool workPool;
-
 	void clear();
 
-	void addWork(std::function<bool()> &&);
+	void add(std::function<bool()> &&);
 
+	static void setGlobalWorkPool(shared_ptr<WorkPool>);
 	static void handleWorkInAnotherThread();
+	static void addWork(std::function<bool()> &&);
 
 	template <typename _Rep, typename _Period> bool handleWork(const std::chrono::duration<_Rep, _Period> &maxWaitTime)
 	{

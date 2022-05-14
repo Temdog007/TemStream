@@ -152,7 +152,7 @@ bool StreamDisplay::ImageMessageHandler::operator()(std::monostate)
 {
 	if (ByteList *bytes = std::get_if<ByteList>(&display.data))
 	{
-		WorkPool::workPool.addWork([source = display.getSource(), bytes = std::move(*bytes)]() {
+		WorkPool::addWork([source = display.getSource(), bytes = std::move(*bytes)]() {
 			Work::loadSurface(source, std::move(bytes));
 			return false;
 		});

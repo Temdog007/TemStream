@@ -16,58 +16,9 @@
 namespace TemStream
 {
 std::atomic_int32_t ServerConnection::runningThreads = 0;
-Configuration ServerConnection::configuration;
 Mutex ServerConnection::peersMutex;
-LinkedList<std::weak_ptr<ServerConnection>> ServerConnection::peers;
-StringList badWords;
-struct RecordedPacket
-{
-	Message::Packet packet;
-	int64_t timestamp;
-
-	RecordedPacket(const Message::Packet &packet) : packet(packet), timestamp(static_cast<int64_t>(time(nullptr)))
-	{
-	}
-	~RecordedPacket()
-	{
-	}
-
-	bool save(const String &filename) const
-	{
-		std::ofstream file(filename.c_str(), std::ios::app | std::ios::out);
-		if (!file.is_open())
-		{
-			return false;
-		}
-
-		file << timestamp << ':' << packet << std::endl;
-		return true;
-	}
-
-	static std::optional<int64_t> getTimestamp(const String &s, std::string::size_type &pos)
-	{
-		pos = s.find(":");
-		if (pos == std::string::npos)
-		{
-			return std::nullopt;
-		}
-
-		const String t(s.begin(), s.begin() + pos);
-		return static_cast<int64_t>(strtoll(t.c_str(), nullptr, 10));
-	}
-
-	static std::optional<String> getEncodedPacket(const String &s, const int64_t target)
-	{
-		std::string::size_type pos;
-		const auto timestamp = getTimestamp(s, pos);
-		if (*timestamp != target)
-		{
-			return std::nullopt;
-		}
-		return String(s.begin() + pos + 1, s.end());
-	}
-};
-ConcurrentQueue<RecordedPacket> packetsToRecord;
+unique_ptr<LinkedList<std::weak_ptr<ServerConnection>>> ServerConnection::peers = nullptr;
+unique_ptr<StringList> ServerConnection::badWords = nullptr;
 
 int runApp(Configuration &configuration)
 {
@@ -81,19 +32,21 @@ int runApp(Configuration &configuration)
 				 List_of_Dirty_Naughty_Obscene_and_Otherwise_Bad_Words_en_len);
 		StringStream ss(s);
 		String to;
+		ServerConnection::badWords = tem_unique<StringList>();
 		while (std::getline(ss, to))
 		{
-			badWords.emplace_back(std::move(to));
+			ServerConnection::badWords->emplace_back(std::move(to));
 		}
 	}
 
-	ServerConnection::configuration = configuration;
+	ConcurrentQueue<RecordedPacket> packetsToRecord;
+	ServerConnection::peers = tem_unique<LinkedList<std::weak_ptr<ServerConnection>>>();
 
 	if (configuration.serverType == ServerType::Link)
 	{
-		std::thread thread([]() {
-			const String filename = ServerConnection::configuration.name + ".json";
-			ServerConnection::sendLinks(filename);
+		++ServerConnection::runningThreads;
+		std::thread thread([&configuration]() {
+			String filename = ServerConnection::sendLinks(configuration);
 			auto lastWrite = fs::last_write_time(filename);
 			using namespace std::chrono_literals;
 			while (!appDone)
@@ -101,11 +54,12 @@ int runApp(Configuration &configuration)
 				const auto now = fs::last_write_time(filename);
 				if (now != lastWrite)
 				{
-					ServerConnection::sendLinks(filename);
+					ServerConnection::sendLinks(configuration);
 					lastWrite = now;
 				}
 				std::this_thread::sleep_for(1s);
 			}
+			--ServerConnection::runningThreads;
 		});
 		thread.detach();
 	}
@@ -113,8 +67,8 @@ int runApp(Configuration &configuration)
 	if (configuration.record)
 	{
 		++ServerConnection::runningThreads;
-		std::thread thread([]() {
-			const String filename = ServerConnection::getReplayFilename();
+		std::thread thread([&configuration, &packetsToRecord]() {
+			const String filename = ServerConnection::getReplayFilename(configuration);
 			using namespace std::chrono_literals;
 			while (!appDone)
 			{
@@ -143,8 +97,8 @@ int runApp(Configuration &configuration)
 		SSL_library_init();
 		SSLeay_add_ssl_algorithms();
 		SSL_load_error_strings();
-		SSLSocket::cert = configuration.ssl->cert;
-		SSLSocket::key = configuration.ssl->key;
+		SSLSocket::cert = configuration.ssl->cert.c_str();
+		SSLSocket::key = configuration.ssl->key.c_str();
 		socket = openSocket<SSLSocket>(configuration.address, SocketType::Server, true);
 	}
 	else
@@ -177,7 +131,8 @@ int runApp(Configuration &configuration)
 		{
 			*logger << "New connection: " << str.data() << ':' << port << std::endl;
 
-			auto peer = tem_shared<ServerConnection>(Address(str.data(), port), std::move(newCon));
+			auto peer = tem_shared<ServerConnection>(configuration, packetsToRecord, Address(str.data(), port),
+													 std::move(newCon));
 			++ServerConnection::runningThreads;
 			std::thread thread(ServerConnection::runPeerConnection, std::move(peer));
 			thread.detach();
@@ -193,6 +148,8 @@ end:
 		using namespace std::chrono_literals;
 		std::this_thread::sleep_for(100ms);
 	}
+	ServerConnection::peers = nullptr;
+	ServerConnection::badWords = nullptr;
 	logger = nullptr;
 	return result;
 }
@@ -200,7 +157,7 @@ void ServerConnection::runPeerConnection(shared_ptr<ServerConnection> peer)
 {
 	{
 		LOCK(peersMutex);
-		peers.emplace_back(peer);
+		peers->emplace_back(peer);
 	}
 	peer->handleInput();
 	--ServerConnection::runningThreads;
@@ -295,7 +252,7 @@ void ServerConnection::sendToPeers(Message::Packet &&packet, const ServerConnect
 		ar(packet);
 	}
 	LOCK(peersMutex);
-	for (auto iter = peers.begin(); iter != peers.end();)
+	for (auto iter = peers->begin(); iter != peers->end();)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
@@ -309,7 +266,7 @@ void ServerConnection::sendToPeers(Message::Packet &&packet, const ServerConnect
 		}
 		else
 		{
-			iter = peers.erase(iter);
+			iter = peers->erase(iter);
 		}
 	}
 }
@@ -317,7 +274,7 @@ void ServerConnection::sendToPeers(Message::Packet &&packet, const ServerConnect
 bool ServerConnection::peerExists(const String &name)
 {
 	LOCK(peersMutex);
-	for (auto iter = peers.begin(); iter != peers.end();)
+	for (auto iter = peers->begin(); iter != peers->end();)
 	{
 		if (shared_ptr<ServerConnection> ptr = iter->lock())
 		{
@@ -329,7 +286,7 @@ bool ServerConnection::peerExists(const String &name)
 		}
 		else
 		{
-			iter = peers.erase(iter);
+			iter = peers->erase(iter);
 		}
 	}
 	return false;
@@ -337,13 +294,13 @@ bool ServerConnection::peerExists(const String &name)
 size_t ServerConnection::totalPeers()
 {
 	LOCK(peersMutex);
-	return ServerConnection::peers.size();
+	return ServerConnection::peers->size();
 }
 List<PeerInformation> ServerConnection::getPeers()
 {
 	List<PeerInformation> list;
 	LOCK(peersMutex);
-	for (auto iter = peers.begin(); iter != peers.end();)
+	for (auto iter = peers->begin(); iter != peers->end();)
 	{
 		if (auto ptr = iter->lock())
 		{
@@ -352,15 +309,15 @@ List<PeerInformation> ServerConnection::getPeers()
 		}
 		else
 		{
-			iter = peers.erase(iter);
+			iter = peers->erase(iter);
 		}
 	}
 	return list;
 }
-void ServerConnection::checkAccess()
+void ServerConnection::checkAccess(Configuration &configuration)
 {
 	LOCK(peersMutex);
-	for (auto iter = peers.begin(); iter != peers.end();)
+	for (auto iter = peers->begin(); iter != peers->end();)
 	{
 		if (auto ptr = iter->lock())
 		{
@@ -372,18 +329,18 @@ void ServerConnection::checkAccess()
 		}
 		else
 		{
-			iter = peers.erase(iter);
+			iter = peers->erase(iter);
 		}
 	}
 }
-String ServerConnection::getReplayFilename()
+String ServerConnection::getReplayFilename(Configuration &configuration)
 {
-	return ServerConnection::configuration.name + "_replay.tsr";
+	return configuration.name + "_replay.tsr";
 }
 shared_ptr<ServerConnection> ServerConnection::getPointer() const
 {
 	LOCK(peersMutex);
-	for (auto iter = peers.begin(); iter != peers.end();)
+	for (auto iter = peers->begin(); iter != peers->end();)
 	{
 		if (auto ptr = iter->lock())
 		{
@@ -395,24 +352,21 @@ shared_ptr<ServerConnection> ServerConnection::getPointer() const
 		}
 		else
 		{
-			iter = peers.erase(iter);
+			iter = peers->erase(iter);
 		}
 	}
 	return nullptr;
 }
-void ServerConnection::sendLinks()
+String ServerConnection::sendLinks(Configuration &configuration)
 {
-	String filename = ServerConnection::configuration.name;
-	filename += ".json";
-	return sendLinks(filename);
-}
-void ServerConnection::sendLinks(const String &filename)
-{
+	String filename;
 	try
 	{
 		// Required to use STL containers for JSON serializing
 		std::vector<Message::BaseServerLink<std::string>> temp;
 		{
+			filename = configuration.name;
+			filename += ".json";
 			std::ifstream file(filename.c_str());
 			cereal::JSONInputArchive ar(file);
 			ar(cereal::make_nvp("servers", temp));
@@ -427,7 +381,7 @@ void ServerConnection::sendLinks(const String &filename)
 
 		(*logger)(Logger::Level::Trace) << "Sending links: " << links.size() << std::endl;
 		Message::Packet packet;
-		packet.source = ServerConnection::getSource();
+		packet.source = configuration.getSource();
 		packet.payload.emplace<Message::ServerLinks>(std::move(links));
 		ServerConnection::sendToPeers(std::move(packet));
 	}
@@ -435,9 +389,12 @@ void ServerConnection::sendLinks(const String &filename)
 	{
 		(*logger)(Logger::Level::Error) << e.what() << std::endl;
 	}
+	return filename;
 }
-ServerConnection::ServerConnection(Address &&address, unique_ptr<Socket> s)
-	: Connection(std::move(address), std::move(s)), startingTime(std::chrono::system_clock::now()), stayConnected(true)
+ServerConnection::ServerConnection(Configuration &configuration, ConcurrentQueue<RecordedPacket> &packetsToRecord,
+								   Address &&address, unique_ptr<Socket> s)
+	: Connection(std::move(address), std::move(s)), startingTime(std::chrono::system_clock::now()),
+	  configuration(configuration), packetsToRecord(packetsToRecord), stayConnected(true)
 {
 }
 ServerConnection::~ServerConnection()
@@ -446,13 +403,6 @@ ServerConnection::~ServerConnection()
 bool ServerConnection::isAuthenticated() const
 {
 	return !information.name.empty();
-}
-Message::Source ServerConnection::getSource()
-{
-	Message::Source source;
-	source.address = ServerConnection::configuration.address;
-	source.serverName = ServerConnection::configuration.name;
-	return source;
 }
 ServerConnection::MessageHandler::MessageHandler(ServerConnection &connection, Message::Packet &&packet)
 	: connection(connection), packet(std::move(packet))
@@ -463,7 +413,7 @@ ServerConnection::MessageHandler::~MessageHandler()
 }
 bool ServerConnection::MessageHandler::processCurrentMessage()
 {
-	if (packet.payload.index() != ServerTypeToIndex(configuration.serverType))
+	if (packet.payload.index() != ServerTypeToIndex(connection.configuration.serverType))
 	{
 		(*logger)(Logger::Level::Error) << "Server got invalid message type: " << packet.payload.index() << std::endl;
 		return false;
@@ -474,10 +424,10 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 		return false;
 	}
 	const auto now = std::chrono::system_clock::now();
-	if (configuration.messageRateInSeconds != 0)
+	if (connection.configuration.messageRateInSeconds != 0)
 	{
 		const auto timepoint =
-			connection.lastMessage + std::chrono::duration<uint32_t>(configuration.messageRateInSeconds);
+			connection.lastMessage + std::chrono::duration<uint32_t>(connection.configuration.messageRateInSeconds);
 		if (now < timepoint)
 		{
 			(*logger)(Logger::Level::Error)
@@ -486,9 +436,9 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 		}
 	}
 
-	if (ServerConnection::configuration.record)
+	if (connection.configuration.record)
 	{
-		packetsToRecord.emplace(packet);
+		connection.packetsToRecord.emplace(packet);
 	}
 	connection.lastMessage = now;
 	ServerConnection::sendToPeers(std::move(packet), &connection);
@@ -496,7 +446,8 @@ bool ServerConnection::MessageHandler::processCurrentMessage()
 }
 bool ServerConnection::MessageHandler::operator()()
 {
-	if (!std::holds_alternative<Message::Credentials>(packet.payload) && packet.source != ServerConnection::getSource())
+	if (!std::holds_alternative<Message::Credentials>(packet.payload) &&
+		packet.source != connection.configuration.getSource())
 	{
 		(*logger)(Logger::Level::Error) << "Server got message with wrong server address: " << packet.source
 										<< std::endl;
@@ -519,7 +470,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Chat &chat)
 	CHECK_INFO(Message::Chat)
 	// Check for profainity
 	auto &message = chat.message;
-	for (const auto &word : badWords)
+	for (const auto &word : *ServerConnection::badWords)
 	{
 		while (true)
 		{
@@ -556,16 +507,17 @@ bool ServerConnection::MessageHandler::operator()(Message::Audio &)
 }
 std::optional<PeerInformation> ServerConnection::login(const Message::Credentials &credentials)
 {
-	return std::visit(CredentialHandler(ServerConnection::configuration), credentials);
+	return std::visit(CredentialHandler(configuration), credentials);
 }
 bool ServerConnection::MessageHandler::operator()(Message::Credentials &credentials)
 {
+	auto &configuration = connection.configuration;
 	if (!connection.information.name.empty())
 	{
 		(*logger)(Logger::Level::Error) << "Peer sent credentials more than once" << std::endl;
 		return false;
 	}
-	auto info = ServerConnection::login(credentials);
+	auto info = connection.login(credentials);
 	if (!info.has_value() || info->name.empty())
 	{
 		(*logger)(Logger::Level::Error) << "Invalid credentials sent" << std::endl;
@@ -577,7 +529,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 		return false;
 	}
 	connection.information.swap(*info);
-	checkAccess();
+	checkAccess(configuration);
 	if (!connection.stayConnected)
 	{
 		(*logger)(Logger::Level::Warning) << "Peer " << connection.information << "  is banned" << std::endl;
@@ -586,7 +538,7 @@ bool ServerConnection::MessageHandler::operator()(Message::Credentials &credenti
 	*logger << "Peer: " << connection.address << " -> " << connection.information << std::endl;
 	{
 		Message::Packet packet;
-		packet.source = ServerConnection::getSource();
+		packet.source = configuration.getSource();
 		Message::VerifyLogin login;
 		login.serverName = configuration.name;
 		login.sendRate = configuration.messageRateInSeconds;
@@ -606,7 +558,7 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 										<< " tried to change ban a user" << std::endl;
 		return false;
 	}
-	if (!ServerConnection::configuration.access.banList)
+	if (!connection.configuration.access.banList)
 	{
 		(*logger)(Logger::Level::Error) << "Peer " << connection.information
 										<< " tried to change ban a user when there is no ban list" << std::endl;
@@ -614,7 +566,7 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 	}
 	{
 		LOCK(peersMutex);
-		for (auto iter = ServerConnection::peers.begin(); iter != ServerConnection::peers.end();)
+		for (auto iter = ServerConnection::peers->begin(); iter != ServerConnection::peers->end();)
 		{
 			if (auto ptr = iter->lock())
 			{
@@ -628,7 +580,7 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 					else
 					{
 						*logger << "Banned user: " << ptr->information << std::endl;
-						ServerConnection::configuration.access.members.insert(ptr->information.name);
+						connection.configuration.access.members.insert(ptr->information.name);
 					}
 					break;
 				}
@@ -636,11 +588,11 @@ bool ServerConnection::MessageHandler::operator()(Message::BanUser &banUser)
 			}
 			else
 			{
-				iter = ServerConnection::peers.erase(iter);
+				iter = ServerConnection::peers->erase(iter);
 			}
 		}
 	}
-	ServerConnection::checkAccess();
+	ServerConnection::checkAccess(connection.configuration);
 	return true;
 }
 bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
@@ -664,7 +616,7 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 			if (sent == 0)
 			{
 				Message::Packet packet;
-				packet.source = ServerConnection::getSource();
+				packet.source = connection.configuration.getSource();
 				packet.payload.emplace<Message::NoReplay>();
 				connection->sendPacket(packet);
 			}
@@ -672,7 +624,8 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 	};
 	Foo foo(connection);
 
-	const String filename = ServerConnection::getReplayFilename();
+	auto &configuration = connection.configuration;
+	const String filename = ServerConnection::getReplayFilename(configuration);
 	std::ifstream file(filename.c_str());
 	if (!file.is_open())
 	{
@@ -686,7 +639,7 @@ bool ServerConnection::MessageHandler::operator()(Message::GetReplay replay)
 		if (message)
 		{
 			Message::Packet packet;
-			packet.source = ServerConnection::getSource();
+			packet.source = configuration.getSource();
 			packet.payload.emplace<Message::Replay>(Message::Replay{std::move(*message)});
 			if (!connection->sendPacket(packet))
 			{
@@ -730,8 +683,9 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 	std::optional<int64_t> start = std::nullopt;
 	std::optional<int64_t> last = std::nullopt;
 
+	auto &configuration = connection.configuration;
 	{
-		const String filename = ServerConnection::getReplayFilename();
+		const String filename = ServerConnection::getReplayFilename(configuration);
 		std::ifstream file(filename.c_str());
 		if (!file.is_open())
 		{
@@ -755,7 +709,7 @@ bool ServerConnection::MessageHandler::operator()(Message::GetTimeRange)
 	if (start.has_value())
 	{
 		Message::Packet packet;
-		packet.source = ServerConnection::getSource();
+		packet.source = configuration.getSource();
 		Message::TimeRange range;
 		range.start = *start;
 		if (last.has_value())
@@ -806,12 +760,12 @@ bool ServerConnection::MessageHandler::operator()(Message::RequestServerInformat
 		return false;
 	}
 	Message::Packet packet;
-	packet.source = ServerConnection::getSource();
+	packet.source = connection.configuration.getSource();
 	Message::ServerInformation info;
 	info.peers = getPeers();
-	if (ServerConnection::configuration.access.banList)
+	if (connection.configuration.access.banList)
 	{
-		info.banList = ServerConnection::configuration.access.members;
+		info.banList = connection.configuration.access.members;
 	}
 	packet.payload.emplace<Message::ServerInformation>(std::move(info));
 	connection->sendPacket(packet);
@@ -819,13 +773,13 @@ bool ServerConnection::MessageHandler::operator()(Message::RequestServerInformat
 }
 bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 {
-	if (packet.source != ServerConnection::getSource())
+	if (packet.source != connection.configuration.getSource())
 	{
 		return false;
 	}
 
 	std::array<char, KB(1)> buffer;
-	ServerConnection::getFilename(buffer);
+	connection.getFilename(buffer);
 #if WIN32
 	int
 #else
@@ -859,7 +813,7 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Level::Error) << "Failed to save payload for stream " << configuration.name << ": "
+		(*logger)(Logger::Level::Error) << "Failed to save payload for stream " << connection.configuration.name << ": "
 										<< e.what() << std::endl;
 	}
 	return false;
@@ -867,12 +821,13 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 bool ServerConnection::MessageHandler::sendStoredPayload()
 {
 	std::array<char, KB(1)> buffer;
-	ServerConnection::getFilename(buffer);
+	connection.getFilename(buffer);
 
-	switch (configuration.serverType)
+	auto &configuration = connection.configuration;
+	switch (connection.configuration.serverType)
 	{
 	case ServerType::Link:
-		ServerConnection::sendLinks();
+		ServerConnection::sendLinks(configuration);
 		return true;
 	case ServerType::Text:
 		try
@@ -888,7 +843,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 				ar(payload);
 			}
 			Message::Packet packet;
-			packet.source = ServerConnection::getSource();
+			packet.source = configuration.getSource();
 			packet.payload = std::move(payload);
 			connection->sendPacket(packet);
 		}
@@ -899,7 +854,7 @@ bool ServerConnection::MessageHandler::sendStoredPayload()
 		}
 		break;
 	case ServerType::Image: {
-		std::thread thread(MessageHandler::sendImageBytes, connection.getPointer(), ServerConnection::getSource(),
+		std::thread thread(MessageHandler::sendImageBytes, connection.getPointer(), configuration.getSource(),
 						   String(buffer.data()));
 		thread.detach();
 	}
@@ -941,13 +896,13 @@ void ServerConnection::ImageSaver::operator()(const Message::LargeFile &lf)
 void ServerConnection::ImageSaver::operator()(uint64_t)
 {
 	std::array<char, KB(1)> buffer;
-	ServerConnection::getFilename(buffer);
+	connection.getFilename(buffer);
 	fs::remove(buffer.data());
 }
 void ServerConnection::ImageSaver::operator()(const ByteList &bytes)
 {
 	std::array<char, KB(1)> buffer;
-	ServerConnection::getFilename(buffer);
+	connection.getFilename(buffer);
 	std::ofstream file(buffer.data(), std::ios::app | std::ios::out | std::ios::binary);
 	if (!file.is_open())
 	{
@@ -1021,5 +976,47 @@ std::optional<PeerInformation> CredentialHandler::operator()(const Message::User
 		info.flags = PeerFlags::Owner;
 	}
 	return info;
+}
+RecordedPacket::RecordedPacket(const Message::Packet &packet)
+	: packet(packet), timestamp(static_cast<int64_t>(time(nullptr)))
+{
+}
+RecordedPacket::~RecordedPacket()
+{
+}
+
+bool RecordedPacket::save(const String &filename) const
+{
+	std::ofstream file(filename.c_str(), std::ios::app | std::ios::out);
+	if (!file.is_open())
+	{
+		return false;
+	}
+
+	file << timestamp << ':' << packet << std::endl;
+	return true;
+}
+
+std::optional<int64_t> RecordedPacket::getTimestamp(const String &s, std::string::size_type &pos)
+{
+	pos = s.find(":");
+	if (pos == std::string::npos)
+	{
+		return std::nullopt;
+	}
+
+	const String t(s.begin(), s.begin() + pos);
+	return static_cast<int64_t>(strtoll(t.c_str(), nullptr, 10));
+}
+
+std::optional<String> RecordedPacket::getEncodedPacket(const String &s, const int64_t target)
+{
+	std::string::size_type pos;
+	const auto timestamp = getTimestamp(s, pos);
+	if (*timestamp != target)
+	{
+		return std::nullopt;
+	}
+	return String(s.begin() + pos + 1, s.end());
 }
 } // namespace TemStream

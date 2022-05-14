@@ -102,7 +102,7 @@ bool QueryImage::draw()
 }
 void QueryImage::execute() const
 {
-	WorkPool::workPool.addWork([image = image, source = getSource()]() {
+	WorkPool::addWork([image = image, source = getSource()]() {
 		Work::sendImage(image, source);
 		return false;
 	});
@@ -170,11 +170,10 @@ void QueryAudio::execute() const
 		}
 		const char *name = SDL_GetAudioDeviceName(selected, SDL_TRUE);
 		const auto s = name == nullptr ? std::nullopt : std::make_optional<String>(name);
-		WorkPool::workPool.addWork(
-			[s, source = getSource(), silence = gui.getConfiguration().defaultSilenceThreshold]() {
-				Work::startRecordingAudio(source, s, silence / 100.f);
-				return false;
-			});
+		WorkPool::addWork([s, source = getSource(), silence = gui.getConfiguration().defaultSilenceThreshold]() {
+			Work::startRecordingAudio(source, s, silence / 100.f);
+			return false;
+		});
 	}
 	break;
 	case Source::Window: {
@@ -184,7 +183,7 @@ void QueryAudio::execute() const
 		{
 			if (i == index)
 			{
-				WorkPool::workPool.addWork(
+				WorkPool::addWork(
 					[wp, source = getSource(), silence = gui.getConfiguration().defaultSilenceThreshold]() {
 						Work::startRecordingWindowAudio(source, wp, silence / 100.f);
 						return false;

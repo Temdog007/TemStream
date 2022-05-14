@@ -110,11 +110,11 @@ Configuration loadConfiguration(const int argc, const char **argv)
 		}
 		if (strcasecmp("-AU", argv[i]) == 0 || strcasecmp("--authentication", argv[i]) == 0)
 		{
-			#if __unix__
+#if __unix__
 			configuration.handle = dlopen(argv[i + 1], RTLD_LAZY);
-			#else
+#else
 			configuration.handle = dlopen(argv[i + 1]);
-			#endif
+#endif
 			if (configuration.handle == nullptr)
 			{
 				perror("dlopen");
@@ -244,5 +244,12 @@ std::ostream &operator<<(std::ostream &os, const Configuration &configuration)
 		os << "\nCertificate: " << configuration.ssl->cert << "\nKey: " << configuration.ssl->key;
 	}
 	return os;
+}
+Message::Source Configuration::getSource() const
+{
+	Message::Source source;
+	source.address = address;
+	source.serverName = name;
+	return source;
 }
 } // namespace TemStream

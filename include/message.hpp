@@ -384,6 +384,7 @@ static void prepareLargeBytes(Iterator start, Iterator end, const uint64_t size,
 extern void prepareLargeBytes(std::ifstream &, const std::function<void(LargeFile &&)> &);
 extern void prepareLargeBytes(const ByteList &, const std::function<void(LargeFile &&)> &);
 } // namespace Message
+using MessagePackets = List<Message::Packet>;
 constexpr size_t ServerTypeToIndex(const ServerType t)
 {
 	switch (t)

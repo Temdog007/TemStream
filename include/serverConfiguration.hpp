@@ -18,11 +18,11 @@ struct Configuration
 	String name;
 	std::optional<SSLConfig> ssl;
 	int64_t startTime;
-	#if __unix__
+#if __unix__
 	void *handle;
-	#else
+#else
 	HMODULE handle;
-	#endif
+#endif
 	VerifyToken verifyToken;
 	VerifyUsernameAndPassword verifyUsernameAndPassword;
 	uint32_t messageRateInSeconds;
@@ -35,6 +35,8 @@ struct Configuration
 	~Configuration();
 
 	bool valid() const;
+
+	Message::Source getSource() const;
 };
 extern std::ostream &operator<<(std::ostream &, const Configuration &);
 class CredentialHandler

@@ -184,7 +184,7 @@ class VideoSource
 		bool convertFrames(std::weak_ptr<FrameEncoder>);
 		virtual std::optional<Frame> convertToFrame(T &&) = 0;
 
-		virtual bool handleWriter(Writer &) = 0;
+		bool handleWriter(Writer &);
 
 		bool doWork()
 		{
@@ -227,7 +227,7 @@ class VideoSource
 
 		static void startConverteringFrames(shared_ptr<RGBA2YUV> ptr)
 		{
-			WorkPool::workPool.addWork([ptr]() { return ptr->doWork(); });
+			WorkPool::addWork([ptr]() { return ptr->doWork(); });
 		}
 	};
 };
@@ -312,4 +312,153 @@ struct WebCamCapture
 
 	bool execute();
 };
+template <typename T> bool VideoSource::RGBA2YUV<T>::handleWriter(VideoSource::Writer &w)
+{
+	if (first)
+	{
+		if (!VideoSource::resetVideo(w, video, frameData))
+		{
+			return false;
+		}
+
+		*logger << "Starting video converter: " << video->getSource() << std::endl;
+		first = false;
+	}
+	if (!video->isRunning())
+	{
+		return false;
+	}
+	try
+	{
+		using namespace std::chrono_literals;
+		while (!appDone)
+		{
+			auto result = frames.clearIfGreaterThan(VideoSource::MaxVideoPackets);
+			if (result)
+			{
+				VideoSource::logDroppedPackets(*result, video->getSource(), "VideoSource writer");
+			}
+
+			auto data = frames.pop(0s);
+			if (!data)
+			{
+				return true;
+			}
+
+			{
+				if (frameData.width != data->width || frameData.height != data->height)
+				{
+					frameData.width = data->width;
+					frameData.height = data->height;
+					if (!VideoSource::resetVideo(w, video, frameData))
+					{
+						return false;
+					}
+					continue;
+				}
+				cv::Mat image(data->height, data->width, CV_8UC4, xcb_get_image_data(data->reply.get()));
+				cv::Mat output;
+				if (frameData.scale == 100)
+				{
+					output = std::move(image);
+				}
+				else
+				{
+					const double scale = frameData.scale / 100.0;
+					cv::resize(image, output, cv::Size(), scale, scale, cv::InterpolationFlags::INTER_AREA);
+				}
+				{
+					cv::Mat dst;
+					cv::cvtColor(output, dst, cv::COLOR_BGRA2BGR);
+					output = std::move(dst);
+				}
+				*w.writer << output;
+				++w.framesWritten;
+			}
+
+			if (w.framesWritten < frameData.fps * (*frameData.delay))
+			{
+				continue;
+			}
+
+			shared_ptr<cv::VideoWriter> oldVideo = tem_shared<cv::VideoWriter>();
+			oldVideo.swap(w.writer);
+			WorkPool::addWork([oldFilename = w.filename, video = this->video,
+							   oldVideo = std::move(oldVideo)]() mutable {
+				try
+				{
+					oldVideo->release();
+					oldVideo.reset();
+
+					const auto fileSize = fs::file_size(oldFilename);
+					ByteList bytes(fileSize);
+					{
+						std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
+						// Stop eating new lines in binary mode!!!
+						file.unsetf(std::ios::skipws);
+
+						(*logger)(Logger::Level::Trace) << "Saving file of size " << printMemory(fileSize) << std::endl;
+
+						// reserve capacity
+						bytes.reallocate(fileSize);
+						bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
+						if (fileSize != bytes.size())
+						{
+							(*logger)(Logger::Level::Warning) << "Failed to write entire video file. Wrote "
+															  << bytes.size() << ". Expected " << fileSize << std::endl;
+						}
+					}
+
+					auto packets = allocateAndConstruct<MessagePackets>();
+
+					Message::prepareLargeBytes(bytes,
+											   [&packets, &source = video->getSource()](Message::LargeFile &&lf) {
+												   Message::Packet packet;
+												   packet.source = source;
+												   packet.payload.emplace<Message::Video>(std::move(lf));
+												   packets->emplace_back(std::move(packet));
+											   });
+
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::SendMessagePackets;
+					e.user.data1 = packets;
+					e.user.data2 = nullptr;
+					if (!tryPushEvent(e))
+					{
+						destroyAndDeallocate(packets);
+					}
+
+					fs::remove(oldFilename);
+				}
+				catch (const std::bad_alloc &)
+				{
+					(*logger)(Logger::Level::Error) << "Ran out of memory saving video file" << std::endl;
+				}
+				catch (const std::exception &e)
+				{
+					(*logger)(Logger::Level::Error) << e.what() << std::endl;
+				}
+				return false;
+			});
+			++w.vidsWritten;
+			w.framesWritten = 0;
+			if (!VideoSource::resetVideo(w, video, frameData))
+			{
+				return false;
+			}
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
+		return false;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Level::Error) << "Convert thread error: " << e.what() << std::endl;
+		return false;
+	}
+	return true;
+}
 } // namespace TemStream

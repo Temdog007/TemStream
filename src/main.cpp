@@ -26,11 +26,11 @@ struct WSAHandler
 };
 #endif
 
-#if __cpluscplus__
+#if __cplusplus
 extern "C"
 #endif
 	int
-	main(const int argc, const char **argv)
+	main(int argc, char *argv[])
 {
 	srand(static_cast<uint32_t>(time(nullptr)));
 
@@ -79,8 +79,8 @@ extern "C"
 			256
 #endif
 			;
-		parseMemory(argc, argv, defaultMemory);
-		Configuration configuration = loadConfiguration(argc, argv);
+		parseMemory(argc, (const char **)argv, defaultMemory);
+		Configuration configuration = loadConfiguration(argc, (const char **)argv);
 		const int result = runApp(configuration);
 		saveConfiguration(configuration);
 		return result;

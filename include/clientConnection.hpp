@@ -5,7 +5,6 @@
 namespace TemStream
 {
 class TemStreamGui;
-using MessagePackets = List<Message::Packet>;
 class ClientConnection : public Connection
 {
   private:

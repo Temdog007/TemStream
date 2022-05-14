@@ -144,7 +144,7 @@ shared_ptr<VideoSource> VideoSource::recordWebcam(const VideoCaptureArg &arg, co
 	capture->source = source;
 	capture->first = true;
 
-	WorkPool::workPool.addWork([capture = std::move(capture)]() mutable {
+	WorkPool::addWork([capture = std::move(capture)]() mutable {
 		if (!capture->execute())
 		{
 			*logger << "Ending webcam recording: " << capture->arg << std::endl;
@@ -167,7 +167,7 @@ shared_ptr<VideoSource> VideoSource::listenToUdpPort(const Address &address, con
 
 	auto video = tem_shared<VideoSource>(source, address);
 	(*logger)(Logger::Level::Trace) << "Listening to port: " << address << std::endl;
-	WorkPool::workPool.addWork([udp, video]() {
+	WorkPool::addWork([udp, video]() {
 		if (!video->isRunning())
 		{
 			return false;
@@ -302,7 +302,7 @@ bool VideoSource::FrameEncoder::encodeFrames()
 }
 void VideoSource::FrameEncoder::startEncodingFrames(shared_ptr<FrameEncoder> ptr)
 {
-	WorkPool::workPool.addWork([ptr]() {
+	WorkPool::addWork([ptr]() {
 		if (!ptr->encodeFrames())
 		{
 			(*logger) << "Ending encoding: " << ptr->video->getSource().serverName << std::endl;

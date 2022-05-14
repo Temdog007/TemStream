@@ -130,8 +130,8 @@ class SSLSocket : public TcpSocket
 	SSLSocket(TcpSocket &&, SSLptr &&);
 	~SSLSocket();
 
-	static String cert;
-	static String key;
+	static const char *cert;
+	static const char *key;
 
 	bool connect(const char *hostname, const char *port) override;
 	bool read(const int timeout, ByteList &, const bool readAll) override;

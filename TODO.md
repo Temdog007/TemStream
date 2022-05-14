@@ -326,9 +326,13 @@
 ### May 13, 2022
 - [x] Make background togglable
 - [x] Implement SSL socket
-- [ ] Test on Windows
 
 ### May 14, 2022
+- [x] Test on Windows
+- [ ] Make recording window audio on windows work
+- [ ] Make recording window video on windows work
+
+### May 15, 2022
 - [ ] Add comments to code
 
 ### Bugs

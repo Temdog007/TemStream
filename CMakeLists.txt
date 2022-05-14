@@ -10,19 +10,13 @@ option(COMPILE_SERVER "Compile TemStream server" ON)
 option(COMPILE_CHAT_TEST "Compile TemStream chat test")
 option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
-option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio")
-option(XCB_RECORD "Record windows with XCB")
 option(VPX_ENCODING "Use libvpx to encode video")
 option(OPENH264_ENCODING "Use OpenH264 to encode video" ON)
 
 if(WIN32)
   message("Compiling for Windows")
-  set(XCB_RECORD OFF)
-  set(RECORD_PULSE_AUDIO OFF)
 else()
   message("Compiling for Linux")
-  set(XCB_RECORD ON)
-  set(RECORD_PULSE_AUDIO ON)
 endif()
 
 set(BUILD_DOC OFF)
@@ -96,11 +90,12 @@ set(CLIENT_SOURCES
   src/videoSource.cpp
   src/work.cpp
   )
-if(RECORD_PULSE_AUDIO)
-  set(AUDIO_SOURCE src/audioPulse.cpp)
-endif()
 
-if(XCB_RECORD)
+if(WIN32)
+  set(AUDIO_SOURCE src/audioWASAPI.cpp)
+  set(VIDEO_SOURCE src/video_windows.cpp)
+else()
+  set(AUDIO_SOURCE src/audioPulse.cpp)
   set(VIDEO_SOURCE src/video_x11.cpp)
 endif()
 
@@ -138,7 +133,8 @@ if(COMPILE_CLIENT)
     ${VIDEO_SOURCE} 
     ${ENCODING_SOURCE})
 
-  if(XCB_RECORD)
+  if(WIN32)
+  else()
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
     include(FindXCB)
     find_package(XCB REQUIRED)
@@ -152,13 +148,18 @@ if(COMPILE_CLIENT)
 
   if(OPENH264_ENCODING)
     target_include_directories(TemStream PRIVATE ${PROJECT_SOURCE_DIR})
-    target_link_libraries(TemStream PRIVATE
-    ${PROJECT_SOURCE_DIR}/openh264/libcommon.a
-    ${PROJECT_SOURCE_DIR}/openh264/libconsole_common.a
-    ${PROJECT_SOURCE_DIR}/openh264/libdecoder.a
-    ${PROJECT_SOURCE_DIR}/openh264/libencoder.a
-    ${PROJECT_SOURCE_DIR}/openh264/libopenh264.a
-    ${PROJECT_SOURCE_DIR}/openh264/libprocessing.a)
+    if(WIN32)
+      find_library(OPENH264_LIBRARY openh264)
+      target_link_libraries(TemStream PRIVATE ${OPENH264_LIBRARY})
+    else()
+      target_link_libraries(TemStream PRIVATE
+        ${PROJECT_SOURCE_DIR}/openh264/libcommon.a
+        ${PROJECT_SOURCE_DIR}/openh264/libconsole_common.a
+        ${PROJECT_SOURCE_DIR}/openh264/libdecoder.a
+        ${PROJECT_SOURCE_DIR}/openh264/libencoder.a
+        ${PROJECT_SOURCE_DIR}/openh264/libopenh264.a
+        ${PROJECT_SOURCE_DIR}/openh264/libprocessing.a)
+    endif()
   endif()
 
   if(MSVC)

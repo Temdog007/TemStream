@@ -211,7 +211,7 @@ bool TcpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 			return true;
 		}
 
-		const auto r = recv(fd, buffer.data(),static_cast<int>(buffer.size()), 0);
+		const auto r = recv(fd, buffer.data(), static_cast<int>(buffer.size()), 0);
 		if (r < 0)
 		{
 			perror("recv");
@@ -249,8 +249,8 @@ unique_ptr<TcpSocket> TcpSocket::acceptConnection(bool &error, const int timeout
 
 	return tem_unique<TcpSocket>(newfd);
 }
-String SSLSocket::cert;
-String SSLSocket::key;
+const char *SSLSocket::cert = nullptr;
+const char *SSLSocket::key = nullptr;
 SSLSocket::SSLSocket() : TcpSocket(), data(SSLptr(nullptr))
 {
 }
@@ -275,13 +275,13 @@ SSLContext SSLSocket::createContext()
 		throw std::runtime_error("Unable to create SSL context");
 	}
 
-	if (SSL_CTX_use_certificate_file(ctx, SSLSocket::cert.c_str(), SSL_FILETYPE_PEM) <= 0)
+	if (SSL_CTX_use_certificate_file(ctx, SSLSocket::cert, SSL_FILETYPE_PEM) <= 0)
 	{
 		ERR_print_errors_cb(LogError, nullptr);
 		throw std::runtime_error("Unable to use certificate file");
 	}
 
-	if (SSL_CTX_use_PrivateKey_file(ctx, SSLSocket::key.c_str(), SSL_FILETYPE_PEM) <= 0)
+	if (SSL_CTX_use_PrivateKey_file(ctx, SSLSocket::key, SSL_FILETYPE_PEM) <= 0)
 	{
 		ERR_print_errors_cb(LogError, nullptr);
 		throw std::runtime_error("Unable to use private key");
@@ -365,7 +365,7 @@ bool SSLSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 					return true;
 				}
 
-				const auto r = SSL_read(ptr.get(), s.buffer.data(),static_cast<int>(s.buffer.size()));
+				const auto r = SSL_read(ptr.get(), s.buffer.data(), static_cast<int>(s.buffer.size()));
 				if (r < 0)
 				{
 					ERR_print_errors_cb(LogError, nullptr);
