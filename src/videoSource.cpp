@@ -419,7 +419,7 @@ std::optional<VideoSource::Frame> VideoSource::RGBA2YUV::convertToFrame(unique_p
 	temp.append(data, s->getWidth() * s->getHeight() * 4);
 	cv::Mat m(frame.height, frame.width, CV_8UC4, temp.data());
 	cv::cvtColor(m, m, cv::COLOR_BGRA2YUV_IYUV);
-	frame.bytes.append(m.data, m.total() * m.elemSize());
+	frame.bytes.append(m.data, static_cast<uint32_t>(m.total() * m.elemSize()));
 	return frame;
 }
 bool VideoSource::RGBA2YUV::convertFrames(std::weak_ptr<FrameEncoder> encoder)
@@ -555,7 +555,7 @@ bool VideoSource::RGBA2YUV::handleWriter(VideoSource::Writer &w)
 					oldVideo->release();
 					oldVideo.reset();
 
-					const auto fileSize = fs::file_size(oldFilename);
+					const auto fileSize = static_cast<uint32_t>(fs::file_size(oldFilename));
 					ByteList bytes(fileSize);
 					{
 						std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
@@ -567,7 +567,7 @@ bool VideoSource::RGBA2YUV::handleWriter(VideoSource::Writer &w)
 						// reserve capacity
 						bytes.reallocate(fileSize);
 						bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
-						if (fileSize != bytes.size())
+						if (fileSize != bytes.size<uint32_t>())
 						{
 							(*logger)(Logger::Level::Warning) << "Failed to write entire video file. Wrote "
 															  << bytes.size() << ". Expected " << fileSize << std::endl;

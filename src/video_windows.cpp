@@ -3,7 +3,7 @@
 #include <video_windows.hpp>
 
 BOOL CALLBACK EnumWindowsCallback(HWND, LPARAM) noexcept;
-BOOL CaptureImage(HWND);
+TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND);
 BOOL GetWindowSize(HWND, uint32_t&, uint32_t&);
 
 namespace TemStream
@@ -13,11 +13,6 @@ WindowProcesses VideoSource::getRecordableWindows()
 	WindowProcesses procs;
 	EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>( & procs));
 	return procs;
-}
-
-std::optional<VideoSource::Frame> Converter::convertToFrame(Screenshot &&s)
-{
-	return std::nullopt;
 }
 
 Screenshotter::Screenshotter(const WindowProcess &w, shared_ptr<Converter> ptr, shared_ptr<VideoSource> v,
@@ -40,9 +35,90 @@ void Screenshotter::startTakingScreenshots(shared_ptr<Screenshotter> ss)
 		return true;
 	});
 }
-bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter>)
+bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 {
-	return false;
+	if (data->first)
+	{
+		*logger << "Starting recording " << data->window.name << std::endl;
+		data->first = false;
+	}
+	{
+		const auto now = std::chrono::system_clock::now();
+		if (now < data->nextFrame)
+		{
+			return true;
+		}
+
+		const auto delay = std::chrono::duration<double, std::milli>(1000.0 / data->fps);
+		data->nextFrame = std::chrono::time_point_cast<std::chrono::milliseconds>(now + delay);
+	}
+
+	if (!data->video->isRunning())
+	{
+		return false;
+	}
+
+	auto ss = CaptureScreenshot(reinterpret_cast<HWND>(data->window.data));
+	if (!ss)
+	{
+		if (data->visible)
+		{
+			(*logger)(Logger::Level::Warning) << "Window '" << data->window.name << "' is not visible" << std::endl;
+			data->visible = false;
+		}
+		return true;
+	}
+	if (!data->visible)
+	{
+		*logger << "Window '" << data->window.name << "' is visible again" << std::endl;
+		data->visible = true;
+	}
+
+	const auto &source = data->video->getSource();
+
+	auto converter = data->converter.lock();
+	if (!converter)
+	{
+		return false;
+	}
+
+	try
+	{
+		auto frame = tem_unique<VideoSource::Frame>();
+		frame->width = ss->getWidth();
+		frame->height = ss->getHeight();
+		frame->format = SDL_PIXELFORMAT_BGRA32;
+		uint8_t *data = ss->getData();
+		frame->bytes.append(data, frame->width * frame->height * 4);
+
+		auto sourcePtr = tem_unique<Message::Source>(source);
+
+		SDL_Event e;
+		e.type = SDL_USEREVENT;
+		e.user.code = TemStreamEvent::HandleFrame;
+		e.user.data1 = frame.get();
+		e.user.data2 = sourcePtr.get();
+		if (tryPushEvent(e))
+		{
+			// Pointers are now owned by the event
+			frame.release();
+			sourcePtr.release();
+		}
+
+		converter->addFrame(std::move(ss));
+	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
+		return false;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Level::Error) << "Error: " << e.what() << std::endl;
+		return false;
+	}
+
+	return true;
 }
 shared_ptr<VideoSource> VideoSource::recordWindow(const WindowProcess &wp, const Message::Source &source, FrameData fd)
 {
@@ -107,4 +183,77 @@ BOOL GetWindowSize(HWND hwnd, uint32_t& width, uint32_t& height)
 		return TRUE;
 	}
 	return FALSE;
+}
+
+TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND hwnd)
+{
+	using namespace TemStream;
+
+	unique_ptr<WindowsScreenshot> rval = nullptr;
+
+	auto hdcWindow = GetWindowDC(hwnd);
+	if (hdcWindow == nullptr)
+	{
+		goto done;
+	}
+
+	HBITMAP hbmScreen = nullptr;
+
+	RECT rcClient;
+	if (GetClientRect(hwnd, &rcClient) != TRUE)
+	{
+		goto done;
+	}
+
+	hbmScreen = CreateCompatibleBitmap(hdcWindow, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
+	if (hbmScreen == nullptr)
+	{
+		goto done;
+	}
+
+	SelectObject(hdcWindow, hbmScreen);
+
+	BITMAP bmpScreen;
+	GetObject(hbmScreen, sizeof(BITMAP), &bmpScreen);
+
+	BITMAPINFOHEADER bi;
+	bi.biSize = sizeof(BITMAPINFOHEADER);
+	bi.biWidth = bmpScreen.bmWidth;
+	bi.biHeight = bmpScreen.bmHeight;
+	bi.biPlanes = 1;
+	bi.biBitCount = 32;
+	bi.biCompression = BI_RGB;
+	bi.biSizeImage = 0;
+	bi.biXPelsPerMeter = 0;
+	bi.biYPelsPerMeter = 0;
+	bi.biClrUsed = 0;
+	bi.biClrImportant = 0;
+
+	const DWORD dwBmpSize = ((bmpScreen.bmWidth * bi.biBitCount + 31) / 32) * 4 * bmpScreen.bmHeight;
+	auto hDIB = GlobalAlloc(GHND, dwBmpSize);
+	if (hDIB == nullptr)
+	{
+		goto done;
+	}
+	auto lpbitmap = (char *)GlobalLock(hDIB);
+	GetDIBits(hdcWindow, hbmScreen, 0, (UINT)bmpScreen.bmHeight, lpbitmap, (BITMAPINFO *)&bi, DIB_RGB_COLORS);
+
+	rval = tem_unique<WindowsScreenshot>();
+	rval->setWidth(static_cast<uint16_t>(bmpScreen.bmWidth));
+	rval->setHeight(static_cast<uint16_t>(bmpScreen.bmHeight));
+	rval->bytes.append(lpbitmap, dwBmpSize);
+
+	GlobalUnlock(hDIB);
+	GlobalFree(hDIB);
+
+done:
+	if (hbmScreen != nullptr)
+	{
+		DeleteObject(hbmScreen);
+	}
+	if (hdcWindow != nullptr)
+	{
+		ReleaseDC(hwnd, hdcWindow);
+	}
+	return rval;
 }

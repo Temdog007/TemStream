@@ -6,11 +6,15 @@
 
 namespace TemStream
 {
-struct Screenshot
+class WindowsScreenshot : public Screenshot
 {
+  public:
 	ByteList bytes;
-	uint16_t width;
-	uint16_t height;
+	
+	uint8_t *getData() override
+	{
+		return bytes.data();
+	}
 };
 class Screenshotter
 {
