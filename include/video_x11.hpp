@@ -43,31 +43,14 @@ struct XCB_ConnectionDeleter
 
 using XCB_Connection = std::unique_ptr<xcb_connection_t, XCB_ConnectionDeleter>;
 
-struct Screenshot
+class X11Screenshot : public Screenshot
 {
-	xcb_ptr<xcb_get_image_reply_t> reply;
-	uint16_t width;
-	uint16_t height;
-};
-class Converter : public VideoSource::RGBA2YUV<Screenshot>
-{
-  private:
-	ByteList temp;
-
-	std::optional<VideoSource::Frame> convertToFrame(Screenshot &&) override;
-
   public:
-	Converter(std::shared_ptr<VideoSource::FrameEncoder> encoder, std::shared_ptr<VideoSource> video,
-			  VideoSource::FrameData frameData)
-		: VideoSource::RGBA2YUV<Screenshot>(encoder, video, frameData), temp()
+	xcb_ptr<xcb_get_image_reply_t> reply;
+
+	uint8_t *getData() override
 	{
-	}
-	Converter(std::shared_ptr<VideoSource> video, VideoSource::FrameData frameData)
-		: VideoSource::RGBA2YUV<Screenshot>(video, frameData), temp()
-	{
-	}
-	~Converter()
-	{
+		return xcb_get_image_data(reply.get());
 	}
 };
 

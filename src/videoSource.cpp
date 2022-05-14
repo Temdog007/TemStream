@@ -374,4 +374,256 @@ int VideoSource::getFourcc()
 {
 	return cv::VideoWriter::fourcc('H', '2', '6', '4');
 }
+VideoSource::RGBA2YUV::RGBA2YUV(shared_ptr<VideoSource::FrameEncoder> encoder, shared_ptr<VideoSource> video,
+								FrameData frameData)
+	: frames(), frameData(frameData), temp(), video(video), data(encoder), first(true)
+{
+}
+VideoSource::RGBA2YUV::RGBA2YUV(shared_ptr<VideoSource> video, FrameData frameData)
+	: frames(), frameData(frameData), temp(), video(video), data(Writer()), first(true)
+{
+}
+VideoSource::RGBA2YUV::~RGBA2YUV()
+{
+}
+bool VideoSource::RGBA2YUV::doWork()
+{
+	if (auto ptr = std::get_if<std::weak_ptr<FrameEncoder>>(&data))
+	{
+		if (!convertFrames(*ptr))
+		{
+			*logger << "Ending RGBA to YUV converter: " << video->getSource() << std::endl;
+			return false;
+		}
+	}
+	else if (auto ptr = std::get_if<Writer>(&data))
+	{
+		if (!handleWriter(*ptr))
+		{
+			*logger << "Ending video converter: " << video->getSource() << std::endl;
+			return false;
+		}
+	}
+	return true;
+}
+std::optional<VideoSource::Frame> VideoSource::RGBA2YUV::convertToFrame(unique_ptr<Screenshot> &&s)
+{
+	const uint8_t *data = s->getData();
+
+	VideoSource::Frame frame;
+	frame.width = (s->getWidth() - (s->getWidth() % 2));
+	frame.height = (s->getHeight() - (s->getHeight() % 2));
+
+	// Must copy in case other scalings use this image
+	temp.clear();
+	temp.append(data, s->getWidth() * s->getHeight() * 4);
+	cv::Mat m(frame.height, frame.width, CV_8UC4, temp.data());
+	cv::cvtColor(m, m, cv::COLOR_BGRA2YUV_IYUV);
+	frame.bytes.append(m.data, m.total() * m.elemSize());
+	return frame;
+}
+bool VideoSource::RGBA2YUV::convertFrames(std::weak_ptr<FrameEncoder> encoder)
+{
+	if (first)
+	{
+		*logger << "Starting RGBA to YUV converter: " << video->getSource() << std::endl;
+		first = false;
+	}
+	if (!video->isRunning())
+	{
+		return false;
+	}
+	try
+	{
+		using namespace std::chrono_literals;
+		while (!appDone)
+		{
+			auto result = frames.clearIfGreaterThan(MaxVideoPackets);
+			if (result)
+			{
+				logDroppedPackets(*result, video->getSource(), "BGRA to YUV converter");
+			}
+
+			auto data = frames.pop(0s);
+			if (!data)
+			{
+				return true;
+			}
+
+			auto frame = convertToFrame(std::move(*data));
+			if (!frame)
+			{
+				return true;
+			}
+			if (auto e = encoder.lock())
+			{
+				e->addFrame(std::move(*frame));
+			}
+			else
+			{
+				return false;
+			}
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Level::Error) << "Ran out of memory while converting frames" << std::endl;
+		return false;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Level::Error) << "Convert thread error: " << e.what() << std::endl;
+		return false;
+	}
+	return true;
+}
+bool VideoSource::RGBA2YUV::handleWriter(VideoSource::Writer &w)
+{
+	if (first)
+	{
+		if (!VideoSource::resetVideo(w, video, frameData))
+		{
+			return false;
+		}
+
+		*logger << "Starting video converter: " << video->getSource() << std::endl;
+		first = false;
+	}
+	if (!video->isRunning())
+	{
+		return false;
+	}
+	try
+	{
+		using namespace std::chrono_literals;
+		while (!appDone)
+		{
+			auto result = frames.clearIfGreaterThan(VideoSource::MaxVideoPackets);
+			if (result)
+			{
+				VideoSource::logDroppedPackets(*result, video->getSource(), "VideoSource writer");
+			}
+
+			auto data = frames.tryPop(0s);
+			if (!data)
+			{
+				return true;
+			}
+
+			{
+				if (frameData.width != data->getWidth() || frameData.height != data->getHeight())
+				{
+					frameData.width = data->getWidth();
+					frameData.height = data->getHeight();
+					if (!VideoSource::resetVideo(w, video, frameData))
+					{
+						return false;
+					}
+					continue;
+				}
+				cv::Mat image(data->getHeight(), data->getWidth(), CV_8UC4, data->getData());
+				cv::Mat output;
+				if (frameData.scale == 100)
+				{
+					output = std::move(image);
+				}
+				else
+				{
+					const double scale = frameData.scale / 100.0;
+					cv::resize(image, output, cv::Size(), scale, scale, cv::InterpolationFlags::INTER_AREA);
+				}
+				{
+					cv::Mat dst;
+					cv::cvtColor(output, dst, cv::COLOR_BGRA2BGR);
+					output = std::move(dst);
+				}
+				*w.writer << output;
+				++w.framesWritten;
+			}
+
+			if (w.framesWritten < frameData.fps * (*frameData.delay))
+			{
+				continue;
+			}
+
+			shared_ptr<cv::VideoWriter> oldVideo = tem_shared<cv::VideoWriter>();
+			oldVideo.swap(w.writer);
+			WorkPool::addWork([oldFilename = w.filename, video = this->video,
+							   oldVideo = std::move(oldVideo)]() mutable {
+				try
+				{
+					oldVideo->release();
+					oldVideo.reset();
+
+					const auto fileSize = fs::file_size(oldFilename);
+					ByteList bytes(fileSize);
+					{
+						std::ifstream file(oldFilename.c_str(), std::ios::in | std::ios::binary);
+						// Stop eating new lines in binary mode!!!
+						file.unsetf(std::ios::skipws);
+
+						(*logger)(Logger::Level::Trace) << "Saving file of size " << printMemory(fileSize) << std::endl;
+
+						// reserve capacity
+						bytes.reallocate(fileSize);
+						bytes.append(std::istream_iterator<uint8_t>(file), std::istream_iterator<uint8_t>());
+						if (fileSize != bytes.size())
+						{
+							(*logger)(Logger::Level::Warning) << "Failed to write entire video file. Wrote "
+															  << bytes.size() << ". Expected " << fileSize << std::endl;
+						}
+					}
+
+					auto packets = allocateAndConstruct<MessagePackets>();
+
+					Message::prepareLargeBytes(bytes,
+											   [&packets, &source = video->getSource()](Message::LargeFile &&lf) {
+												   Message::Packet packet;
+												   packet.source = source;
+												   packet.payload.emplace<Message::Video>(std::move(lf));
+												   packets->emplace_back(std::move(packet));
+											   });
+
+					SDL_Event e;
+					e.type = SDL_USEREVENT;
+					e.user.code = TemStreamEvent::SendMessagePackets;
+					e.user.data1 = packets;
+					e.user.data2 = nullptr;
+					if (!tryPushEvent(e))
+					{
+						destroyAndDeallocate(packets);
+					}
+
+					fs::remove(oldFilename);
+				}
+				catch (const std::bad_alloc &)
+				{
+					(*logger)(Logger::Level::Error) << "Ran out of memory saving video file" << std::endl;
+				}
+				catch (const std::exception &e)
+				{
+					(*logger)(Logger::Level::Error) << e.what() << std::endl;
+				}
+				return false;
+			});
+			++w.vidsWritten;
+			w.framesWritten = 0;
+			if (!VideoSource::resetVideo(w, video, frameData))
+			{
+				return false;
+			}
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		(*logger)(Logger::Level::Error) << "Ran out of memory" << std::endl;
+		return false;
+	}
+	catch (const std::exception &e)
+	{
+		(*logger)(Logger::Level::Error) << "Convert thread error: " << e.what() << std::endl;
+		return false;
+	}
+	return true;
+}
 } // namespace TemStream

@@ -60,6 +60,21 @@ template <typename T> class ConcurrentQueue
 		return t;
 	}
 
+	template <typename _Rep, typename _Period> T tryPop(const std::chrono::duration<_Rep, _Period> &maxWaitTime)
+	{
+		auto lck = lock();
+		while (queue.empty())
+		{
+			if (cv.wait_for(lck, maxWaitTime) == std::cv_status::timeout)
+			{
+				return nullptr;
+			}
+		}
+		auto t = std::move(queue.front());
+		queue.pop();
+		return t;
+	}
+
 	void flush(const std::function<void(T &&)> &func)
 	{
 		auto lck = lock();

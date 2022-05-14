@@ -2,33 +2,15 @@
 
 #include <main.hpp>
 
+#include <WinUser.h>
+
 namespace TemStream
 {
 struct Screenshot
 {
+	ByteList bytes;
 	uint16_t width;
 	uint16_t height;
-};
-class Converter : public VideoSource::RGBA2YUV<Screenshot>
-{
-  private:
-	ByteList temp;
-
-	std::optional<VideoSource::Frame> convertToFrame(Screenshot &&) override;
-
-  public:
-	Converter(std::shared_ptr<VideoSource::FrameEncoder> encoder, std::shared_ptr<VideoSource> video,
-			  VideoSource::FrameData frameData)
-		: VideoSource::RGBA2YUV<Screenshot>(encoder, video, frameData), temp()
-	{
-	}
-	Converter(std::shared_ptr<VideoSource> video, VideoSource::FrameData frameData)
-		: VideoSource::RGBA2YUV<Screenshot>(video, frameData), temp()
-	{
-	}
-	~Converter()
-	{
-	}
 };
 class Screenshotter
 {

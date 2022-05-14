@@ -7,24 +7,25 @@ namespace TemStream
 struct WindowProcess
 {
 	String name;
+	void *data;
 	union {
 		int32_t id;
 		uint32_t windowId;
 	};
 
-	WindowProcess() : name(), id(0)
+	WindowProcess() : name(), data(nullptr), id(0)
 	{
 	}
-	WindowProcess(const String &name, const int32_t id) : name(name), id(id)
+	WindowProcess(const String &name, const int32_t id) : name(name), data(nullptr), id(id)
 	{
 	}
-	WindowProcess(const String &name, const uint32_t id) : name(name), windowId(id)
+	WindowProcess(const String &name, const uint32_t id) : name(name), data(nullptr), windowId(id)
 	{
 	}
-	WindowProcess(String &&name, const int32_t id) : name(std::move(name)), id(id)
+	WindowProcess(String &&name, const int32_t id) : name(std::move(name)), data(nullptr), id(id)
 	{
 	}
-	WindowProcess(String &&name, const uint32_t id) : name(std::move(name)), windowId(id)
+	WindowProcess(String &&name, const uint32_t id) : name(std::move(name)), data(nullptr), windowId(id)
 	{
 	}
 	~WindowProcess()

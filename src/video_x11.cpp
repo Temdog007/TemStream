@@ -169,22 +169,6 @@ WindowProcesses VideoSource::getRecordableWindows()
 	return getAllX11Windows(con, screenNum);
 }
 
-std::optional<VideoSource::Frame> Converter::convertToFrame(Screenshot &&s)
-{
-	uint8_t *data = xcb_get_image_data(s.reply.get());
-
-	VideoSource::Frame frame;
-	frame.width = (s.width - (s.width % 2));
-	frame.height = (s.height - (s.height % 2));
-
-	// Must copy in case other scalings use this image
-	temp.clear();
-	temp.append(data, s.width * s.height * 4);
-	cv::Mat m(frame.height, frame.width, CV_8UC4, temp.data());
-	cv::cvtColor(m, m, cv::COLOR_BGRA2YUV_IYUV);
-	frame.bytes.append(m.data, m.total() * m.elemSize());
-	return frame;
-}
 Screenshotter::Screenshotter(XCB_Connection &&con, const WindowProcess &w, shared_ptr<Converter> ptr,
 							 shared_ptr<VideoSource> v, const uint32_t fps)
 	: converter(ptr), window(w), video(v), con(std::move(con)), fps(fps), visible(true), first(true)
@@ -303,10 +287,10 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 			sourcePtr.release();
 		}
 
-		Screenshot s;
-		s.reply = std::move(reply);
-		s.width = dim->first;
-		s.height = dim->second;
+		auto s = tem_unique<X11Screenshot>();
+		s->reply = std::move(reply);
+		s->setWidth(dim->first);
+		s->setHeight(dim->second);
 		converter->addFrame(std::move(s));
 	}
 	catch (const std::bad_alloc &)
