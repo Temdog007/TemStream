@@ -259,6 +259,11 @@ bool VideoSource::FrameEncoder::encodeFrames()
 			return true;
 		}
 
+		if (frame->width < 16 || frame->height < 16)
+		{
+			return true;
+		}
+
 		if (frameData.scale != 100)
 		{
 			frame->resize(frameData.scale);
@@ -408,6 +413,10 @@ bool VideoSource::RGBA2YUV::doWork()
 }
 std::optional<VideoSource::Frame> VideoSource::RGBA2YUV::convertToFrame(unique_ptr<Screenshot> &&s)
 {
+	if (s->getWidth() < 16 || s->getHeight() < 16)
+	{
+		return std::nullopt;
+	}
 	const uint8_t *data = s->getData();
 
 	VideoSource::Frame frame;
@@ -416,7 +425,7 @@ std::optional<VideoSource::Frame> VideoSource::RGBA2YUV::convertToFrame(unique_p
 
 	// Must copy in case other scalings use this image
 	temp.clear();
-	temp.append(data, s->getWidth() * s->getHeight() * 4);
+	temp.append(data, s->getSize());
 	cv::Mat m(frame.height, frame.width, CV_8UC4, temp.data());
 	cv::cvtColor(m, m, cv::COLOR_BGRA2YUV_IYUV);
 	frame.bytes.append(m.data, static_cast<uint32_t>(m.total() * m.elemSize()));
@@ -444,13 +453,13 @@ bool VideoSource::RGBA2YUV::convertFrames(std::weak_ptr<FrameEncoder> encoder)
 				logDroppedPackets(*result, video->getSource(), "BGRA to YUV converter");
 			}
 
-			auto data = frames.pop(0s);
+			auto data = frames.tryPop(0s);
 			if (!data)
 			{
 				return true;
 			}
 
-			auto frame = convertToFrame(std::move(*data));
+			auto frame = convertToFrame(std::move(data));
 			if (!frame)
 			{
 				return true;

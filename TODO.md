@@ -330,7 +330,7 @@
 ### May 14, 2022
 - [x] Test on Windows
 - [ ] Make recording window audio on windows work
-- [?] Make recording window video on windows work (Need to test on actual device)
+- [x] Make recording window video on windows work
 
 ### May 15, 2022
 - [ ] Add comments to code

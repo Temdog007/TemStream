@@ -19,7 +19,7 @@ class WorkPool
 	void add(std::function<bool()> &&);
 
 	static void setGlobalWorkPool(shared_ptr<WorkPool>);
-	static void handleWorkInAnotherThread();
+	static List<std::thread> handleWorkAsync();
 	static void addWork(std::function<bool()> &&);
 
 	template <typename _Rep, typename _Period> bool handleWork(const std::chrono::duration<_Rep, _Period> &maxWaitTime)

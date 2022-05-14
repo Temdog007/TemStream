@@ -39,6 +39,11 @@ class Screenshot
 		height = h;
 	}
 
+	constexpr uint32_t getSize() const
+	{
+		return width * height * 4u;
+	}
+
 	virtual uint8_t *getData() = 0;
 };
 class VideoSource

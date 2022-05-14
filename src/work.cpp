@@ -26,20 +26,22 @@ void WorkPool::setGlobalWorkPool(shared_ptr<WorkPool> work)
 {
 	globalWorkPool = work;
 }
-void WorkPool::handleWorkInAnotherThread()
+List<std::thread> WorkPool::handleWorkAsync()
 {
+	List<std::thread> threads;
 	for (size_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
 	{
 		std::thread thread([]() {
 			using namespace std::chrono_literals;
-			while (!appDone && globalWorkPool != nullptr)
+			while (!appDone)
 			{
 				globalWorkPool->handleWork(500ms);
 				std::this_thread::sleep_for(1ms);
 			}
 		});
-		thread.detach();
+		threads.push_back(std::move(thread));
 	}
+	return threads;
 }
 namespace Work
 {

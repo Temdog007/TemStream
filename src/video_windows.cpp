@@ -88,8 +88,7 @@ bool Screenshotter::takeScreenshot(shared_ptr<Screenshotter> data)
 		frame->width = ss->getWidth();
 		frame->height = ss->getHeight();
 		frame->format = SDL_PIXELFORMAT_BGRA32;
-		uint8_t *data = ss->getData();
-		frame->bytes.append(data, frame->width * frame->height * 4);
+		ss->getData(frame->bytes);
 
 		auto sourcePtr = tem_unique<Message::Source>(source);
 
@@ -191,13 +190,20 @@ TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND hwnd)
 
 	unique_ptr<WindowsScreenshot> rval = nullptr;
 
-	auto hdcWindow = GetWindowDC(hwnd);
+	auto hdcWindow = GetDC(hwnd);
+	HDC hdcMemDC = nullptr;
+	HBITMAP hbmWindow = nullptr;
+
 	if (hdcWindow == nullptr)
 	{
 		goto done;
 	}
 
-	HBITMAP hbmScreen = nullptr;
+	hdcMemDC = CreateCompatibleDC(hdcWindow);
+	if (hdcMemDC == nullptr)
+	{
+		goto done;
+	}
 
 	RECT rcClient;
 	if (GetClientRect(hwnd, &rcClient) != TRUE)
@@ -205,21 +211,32 @@ TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND hwnd)
 		goto done;
 	}
 
-	hbmScreen = CreateCompatibleBitmap(hdcWindow, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
-	if (hbmScreen == nullptr)
+	hbmWindow = CreateCompatibleBitmap(hdcWindow, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
+	if (hbmWindow == nullptr)
 	{
 		goto done;
 	}
 
-	SelectObject(hdcWindow, hbmScreen);
+	SelectObject(hdcMemDC, hbmWindow);
+
+	if (!BitBlt(hdcMemDC, 0, 0, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, hdcWindow, 0, 0,
+				SRCCOPY))
+	{
+		goto done;
+	}
 
 	BITMAP bmpScreen;
-	GetObject(hbmScreen, sizeof(BITMAP), &bmpScreen);
+	GetObject(hbmWindow, sizeof(BITMAP), &bmpScreen);
+
+	if (bmpScreen.bmWidth < 16 || bmpScreen.bmHeight < 16)
+	{
+		goto done;
+	}
 
 	BITMAPINFOHEADER bi;
 	bi.biSize = sizeof(BITMAPINFOHEADER);
 	bi.biWidth = bmpScreen.bmWidth;
-	bi.biHeight = bmpScreen.bmHeight;
+	bi.biHeight = -bmpScreen.bmHeight;
 	bi.biPlanes = 1;
 	bi.biBitCount = 32;
 	bi.biCompression = BI_RGB;
@@ -230,26 +247,45 @@ TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND hwnd)
 	bi.biClrImportant = 0;
 
 	const DWORD dwBmpSize = ((bmpScreen.bmWidth * bi.biBitCount + 31) / 32) * 4 * bmpScreen.bmHeight;
+	//const DWORD dwBmpSize = bmpScreen.bmWidth * bmpScreen.bmHeight * 4u;
 	auto hDIB = GlobalAlloc(GHND, dwBmpSize);
 	if (hDIB == nullptr)
 	{
 		goto done;
 	}
-	auto lpbitmap = (char *)GlobalLock(hDIB);
-	GetDIBits(hdcWindow, hbmScreen, 0, (UINT)bmpScreen.bmHeight, lpbitmap, (BITMAPINFO *)&bi, DIB_RGB_COLORS);
+	auto lpbitmap = (uint8_t*)GlobalLock(hDIB);
+	GetDIBits(hdcWindow, hbmWindow, 0, (UINT)bmpScreen.bmHeight, lpbitmap, (BITMAPINFO *)&bi, DIB_RGB_COLORS);
 
 	rval = tem_unique<WindowsScreenshot>();
 	rval->setWidth(static_cast<uint16_t>(bmpScreen.bmWidth));
 	rval->setHeight(static_cast<uint16_t>(bmpScreen.bmHeight));
 	rval->bytes.append(lpbitmap, dwBmpSize);
 
+	/*auto hFile = CreateFileA("captureqwsx.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	DWORD dwSizeofDIB = dwBmpSize + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+
+	BITMAPFILEHEADER bmfHeader;
+	bmfHeader.bfOffBits = (DWORD)sizeof(BITMAPFILEHEADER) + (DWORD)sizeof(BITMAPINFOHEADER);
+	bmfHeader.bfSize = dwSizeofDIB;
+	bmfHeader.bfType = 0x4D42;
+
+	DWORD dwBytesWritten;
+	WriteFile(hFile, (LPSTR)&bmfHeader, sizeof(BITMAPFILEHEADER), &dwBytesWritten, NULL);
+	WriteFile(hFile, (LPSTR)&bi, sizeof(BITMAPINFOHEADER), &dwBytesWritten, NULL);
+	WriteFile(hFile, (LPSTR)lpbitmap, dwBmpSize, &dwBytesWritten, NULL);
+	CloseHandle(hFile);*/
+
 	GlobalUnlock(hDIB);
 	GlobalFree(hDIB);
 
 done:
-	if (hbmScreen != nullptr)
+	if (hdcMemDC != nullptr)
 	{
-		DeleteObject(hbmScreen);
+		DeleteObject(hdcMemDC);
+	}
+	if (hbmWindow != nullptr)
+	{
+		DeleteObject(hbmWindow);
 	}
 	if (hdcWindow != nullptr)
 	{

@@ -1965,11 +1965,16 @@ int runApp(Configuration &configuration)
 	gui.LoadFonts();
 
 	(*logger)(Logger::Level::Trace) << "Threads available: " << std::thread::hardware_concurrency() << std::endl;
-	WorkPool::handleWorkInAnotherThread();
+	auto threads = WorkPool::handleWorkAsync();
 
 	while (!appDone)
 	{
 		runLoop(gui);
+	}
+
+	for (auto &thread : threads)
+	{
+		thread.join();
 	}
 
 	gui.audio.clear();
@@ -1982,6 +1987,11 @@ int runApp(Configuration &configuration)
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
+
+	// Sleep and hope all of the video threads have stopped
+	using namespace std::chrono_literals;
+	*logger << "Ending TemStream..." << std::endl;
+	std::this_thread::sleep_for(100ms);
 	logger = nullptr;
 	return EXIT_SUCCESS;
 }

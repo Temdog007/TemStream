@@ -15,6 +15,11 @@ class WindowsScreenshot : public Screenshot
 	{
 		return bytes.data();
 	}
+
+	void getData(ByteList &dst) const
+	{
+		dst.append(bytes);
+	}
 };
 class Screenshotter
 {
