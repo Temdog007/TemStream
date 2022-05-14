@@ -195,7 +195,7 @@ void TemStreamGui::decodeVideoPackets()
 				iter = rIter;
 			}
 			iter->second.clear();
-			iter->second.reallocate(fileSize);
+			iter->second.reallocate(static_cast<uint32_t>(fileSize));
 		}
 		void operator()(const ByteList &bytes)
 		{
@@ -256,7 +256,7 @@ void TemStreamGui::decodeVideoPackets()
 					auto frame = allocateAndConstruct<VideoSource::Frame>();
 					frame->width = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_WIDTH));
 					frame->height = static_cast<uint32_t>(cap->get(cv::CAP_PROP_FRAME_HEIGHT));
-					frame->bytes = ByteList(image.data, image.total() * image.elemSize());
+					frame->bytes = ByteList(image.data, static_cast<uint32_t>(image.total() * image.elemSize()));
 					frame->format = SDL_PIXELFORMAT_BGR24;
 					e.user.data1 = frame;
 
@@ -533,10 +533,10 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 			if (ImGui::BeginMenu("Font"))
 			{
 				ImGui::Checkbox("Font Display", &configuration.showFont);
-				int value = configuration.fontSize;
-				constexpr int minFontSize = 12;
-				constexpr int maxFontSize = 96;
-				if (ImGui::InputInt("Font Size", &value) && minFontSize <= value && value <= maxFontSize)
+				float value = configuration.fontSize;
+				constexpr float minFontSize = 12.f;
+				constexpr float maxFontSize = 96.f;
+				if (ImGui::InputFloat("Font Size", &value, 1.f, 3.f) && minFontSize <= value && value <= maxFontSize)
 				{
 					configuration.fontSize = std::clamp(value, minFontSize, maxFontSize);
 					SDL_Event e;
@@ -585,7 +585,7 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 		if (ImGui::BeginMenu("Credentials"))
 		{
 			static const char *Options[]{"Token", "Username And Password"};
-			int selected = configuration.credentials.index();
+			int selected = static_cast<int>(configuration.credentials.index());
 			if (ImGui::Combo("Credential Type", &selected, Options, IM_ARRAYSIZE(Options)))
 			{
 				switch (selected)
@@ -626,7 +626,8 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 				if (SDL_ShowMessageBox(&data, &i) == 0 && i == 1)
 				{
 					appDone = true;
-					const int pid = fork();
+#if __unix__
+					const intptr_t pid = fork();
 					if (pid < 0)
 					{
 						perror("fork");
@@ -634,9 +635,14 @@ ImVec2 TemStreamGui::drawMainMenuBar()
 					else if (pid == 0)
 					{
 						const auto s = std::to_string(m);
-						i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
+						auto i = execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
 						(*logger)(Logger::Level::Error) << "Failed to reset the application: " << i << std::endl;
 					}
+#else
+					const auto s = std::to_string(m);
+					auto i = _execl(ApplicationPath, ApplicationPath, "--memory", s.c_str(), NULL);
+					(*logger)(Logger::Level::Error) << "Failed to reset the application: " << i << std::endl;
+#endif
 				}
 				else
 				{
@@ -1042,16 +1048,7 @@ void TemStreamGui::draw()
 		{
 			UTF8Converter cvt;
 			const String s = cvt.to_bytes(allUTF32);
-			const size_t size = 1000;
-			for (size_t i = 0; i < s.size(); i += size)
-			{
-				if (ImGui::BeginChild(1 + (i / size)))
-				{
-					const String k(s.begin() + i, (i + size > s.size()) ? s.end() : (s.begin() + i + size));
-					ImGui::TextWrapped("%s", k.c_str());
-				}
-				ImGui::EndChild();
-			}
+			ImGui::TextUnformatted(s.c_str());
 		}
 		ImGui::End();
 	}
@@ -1256,7 +1253,7 @@ void TemStreamGui::draw()
 			if (ImGui::Button("^"))
 			{
 				fs::path path(fileDirectory->getDirectory());
-				fileDirectory.emplace(path.parent_path().c_str());
+				fileDirectory.emplace(path.parent_path().u8string());
 			}
 			ImGui::SameLine();
 
@@ -1302,7 +1299,12 @@ void TemStreamGui::draw()
 								e.drop.timestamp = SDL_GetTicks();
 								e.drop.windowID = SDL_GetWindowID(window);
 								e.drop.file = reinterpret_cast<char *>(SDL_malloc(file.size() + 1));
+#if __unix__
 								strcpy(e.drop.file, file.c_str());
+#else
+								auto len = strlen(e.drop.file);
+								strcpy_s(e.drop.file, len, file.c_str());
+#endif
 								if (!tryPushEvent(e))
 								{
 									SDL_free(e.drop.file);
@@ -1674,7 +1676,8 @@ void runLoop(TemStreamGui &gui)
 			{
 				*logger << "Adding new font: " << event.drop.file << std::endl;
 				gui.configuration.fontFiles.emplace_back(event.drop.file);
-				gui.configuration.fontIndex = IM_ARRAYSIZE(Fonts) + gui.configuration.fontFiles.size() - 1;
+				gui.configuration.fontIndex =
+					static_cast<int>(IM_ARRAYSIZE(Fonts) + gui.configuration.fontFiles.size() - 1);
 				gui.LoadFonts();
 			}
 			else
@@ -2011,7 +2014,7 @@ void TemStreamGuiLogger::checkError(const Level level)
 		gui.setShowLogs(true);
 	}
 }
-FileDisplay::FileDisplay() : directory(fs::current_path().c_str()), files()
+FileDisplay::FileDisplay() : directory(fs::current_path().u8string()), files()
 {
 	loadFiles();
 }
@@ -2028,7 +2031,7 @@ void FileDisplay::loadFiles()
 	{
 		for (auto file : fs::directory_iterator(directory))
 		{
-			files.emplace_back(file.path().c_str());
+			files.emplace_back(file.path().u8string());
 		}
 		std::sort(files.begin(), files.end());
 	}

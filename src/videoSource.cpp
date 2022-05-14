@@ -64,7 +64,7 @@ bool WebCamCapture::execute()
 		frame->width = image.cols;
 		frame->height = image.rows;
 		frame->format = SDL_PIXELFORMAT_BGR24;
-		frame->bytes.append(image.data, image.elemSize() * image.total());
+		frame->bytes.append(image.data, static_cast<uint32_t>(image.elemSize() * image.total()));
 
 		auto sourcePtr = allocateAndConstruct<Message::Source>(source);
 
@@ -87,7 +87,7 @@ bool WebCamCapture::execute()
 		VideoSource::Frame frame;
 		frame.width = image.cols;
 		frame.height = image.rows;
-		frame.bytes.append(yuv.data, yuv.elemSize() * yuv.total());
+		frame.bytes.append(yuv.data, static_cast<uint32_t>(yuv.elemSize() * yuv.total()));
 		e->addFrame(std::move(frame));
 		nextFrame = std::chrono::time_point_cast<std::chrono::milliseconds>(now + delay);
 		return true;
@@ -319,7 +319,7 @@ void VideoSource::Frame::resizeTo(const uint32_t w, const uint32_t h)
 		cv::resize(m, output, cv::Size(), (double)w / (double)width, (double)h / (double)height,
 				   cv::InterpolationFlags::INTER_AREA);
 	}
-	bytes = ByteList(output.data, output.total() * output.elemSize());
+	bytes = ByteList(output.data, static_cast<uint32_t>(output.total() * output.elemSize()));
 
 	width = w;
 	height = h;

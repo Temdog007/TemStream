@@ -50,7 +50,7 @@ bool Connection::readAndHandle(const int timeout)
 				}
 
 				nextMessageSize = header.size;
-				const auto read = m->getReadPoint();
+				const auto read = static_cast<uint32_t>(m->getReadPoint());
 				bytes = std::move(m->moveBytes());
 				bytes.remove(read);
 			}
@@ -92,7 +92,7 @@ bool Connection::readAndHandle(const int timeout)
 
 				packets.push(std::move(packet));
 				bytes = std::move(m->moveBytes());
-				bytes.remove(*nextMessageSize);
+				bytes.remove(static_cast<uint32_t>(*nextMessageSize));
 				nextMessageSize = std::nullopt;
 			}
 			else

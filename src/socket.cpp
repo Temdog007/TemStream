@@ -1,6 +1,6 @@
 #include <main.hpp>
 
-bool sendAll(const int fd, const void *, size_t size);
+bool sendAll(const SOCKET fd, const void *, size_t size);
 bool writeAll(SSL *, const void *, int);
 int LogError(const char *str, size_t len, void *u);
 
@@ -16,7 +16,7 @@ void Socket::send(const ByteList &bytes)
 {
 	send(bytes.data(), bytes.size());
 }
-void Socket::send(const uint8_t *data, const size_t size)
+void Socket::send(const uint8_t *data, const uint32_t size)
 {
 	LOCK(mutex);
 	{
@@ -70,15 +70,15 @@ bool Socket::flush()
 	}
 	return flush(t);
 }
-BasicSocket::BasicSocket() : Socket(), fd(-1)
+BasicSocket::BasicSocket() : Socket(), fd(INVALID_SOCKET)
 {
 }
-BasicSocket::BasicSocket(const int fd) : Socket(), fd(fd)
+BasicSocket::BasicSocket(const SOCKET fd) : Socket(), fd(fd)
 {
 }
 BasicSocket::BasicSocket(BasicSocket &&b) : Socket(), fd(b.fd)
 {
-	b.fd = -1;
+	b.fd = INVALID_SOCKET;
 }
 BasicSocket::~BasicSocket()
 {
@@ -89,9 +89,9 @@ void BasicSocket::close()
 	if (fd > 0)
 	{
 		// (*logger)(Logger::Level::Trace) << "Closed socket: " << fd << std::endl;
-		::close(fd);
+		closesocket(fd);
 	}
-	fd = -1;
+	fd = INVALID_SOCKET;
 }
 PollState BasicSocket::pollRead(const int timeout) const
 {
@@ -133,7 +133,7 @@ bool BasicSocket::getIpAndPort(std::array<char, INET6_ADDRSTRLEN> &str, uint16_t
 UdpSocket::UdpSocket() : BasicSocket()
 {
 }
-UdpSocket::UdpSocket(const int fd) : BasicSocket(fd)
+UdpSocket::UdpSocket(const SOCKET fd) : BasicSocket(fd)
 {
 }
 UdpSocket::~UdpSocket()
@@ -144,7 +144,7 @@ bool UdpSocket::connect(const char *hostname, const char *port)
 	close();
 	return openSocket(fd, hostname, port, SocketType::Server, false);
 }
-void UdpSocket::send(const uint8_t *, size_t)
+void UdpSocket::send(const uint8_t *, uint32_t)
 {
 	throw std::runtime_error("Invalid call to UdpSocket::send");
 }
@@ -165,7 +165,7 @@ bool UdpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 		}
 
 		socklen_t len = sizeof(addr);
-		const ssize_t r = recvfrom(fd, buffer.data(), buffer.size(), 0, (struct sockaddr *)&addr, &len);
+		const auto r = recvfrom(fd, buffer.data(), static_cast<int>(buffer.size()), 0, (struct sockaddr *)&addr, &len);
 		if (r < 0)
 		{
 			perror("recvfrom");
@@ -175,14 +175,14 @@ bool UdpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 		{
 			return false;
 		}
-		bytes.append(buffer.begin(), r);
+		bytes.append(buffer.data(), static_cast<uint32_t>(r));
 	} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
 	return true;
 }
 TcpSocket::TcpSocket() : BasicSocket()
 {
 }
-TcpSocket::TcpSocket(const int fd) : BasicSocket(fd)
+TcpSocket::TcpSocket(const SOCKET fd) : BasicSocket(fd)
 {
 }
 TcpSocket::TcpSocket(TcpSocket &&s) : BasicSocket(std::move(s))
@@ -211,7 +211,7 @@ bool TcpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 			return true;
 		}
 
-		const ssize_t r = recv(fd, buffer.data(), buffer.size(), 0);
+		const auto r = recv(fd, buffer.data(),static_cast<int>(buffer.size()), 0);
 		if (r < 0)
 		{
 			perror("recv");
@@ -221,7 +221,7 @@ bool TcpSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 		{
 			return false;
 		}
-		bytes.append(buffer.begin(), r);
+		bytes.append(buffer.data(), static_cast<uint32_t>(r));
 	} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
 	return true;
 }
@@ -240,7 +240,7 @@ unique_ptr<TcpSocket> TcpSocket::acceptConnection(bool &error, const int timeout
 
 	struct sockaddr_storage addr;
 	socklen_t size = sizeof(addr);
-	const int newfd = accept(fd, (struct sockaddr *)&addr, &size);
+	const auto newfd = accept(fd, (struct sockaddr *)&addr, &size);
 	if (newfd < 0)
 	{
 		perror("accept");
@@ -254,7 +254,7 @@ String SSLSocket::key;
 SSLSocket::SSLSocket() : TcpSocket(), data(SSLptr(nullptr))
 {
 }
-SSLSocket::SSLSocket(const int fd) : TcpSocket(fd), data(createContext())
+SSLSocket::SSLSocket(const SOCKET fd) : TcpSocket(fd), data(createContext())
 {
 }
 SSLSocket::SSLSocket(TcpSocket &&tcp, SSLptr &&s) : TcpSocket(std::move(tcp)), data(std::move(s))
@@ -327,7 +327,7 @@ bool SSLSocket::connect(const char *hostname, const char *port)
 		return false;
 	}
 
-	SSL_set_fd(ssl.get(), fd);
+	SSL_set_fd(ssl.get(), static_cast<int>(fd));
 	int err = SSL_connect(ssl.get());
 	if (err <= 0)
 	{
@@ -365,7 +365,7 @@ bool SSLSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 					return true;
 				}
 
-				const ssize_t r = SSL_read(ptr.get(), s.buffer.data(), s.buffer.size());
+				const auto r = SSL_read(ptr.get(), s.buffer.data(),static_cast<int>(s.buffer.size()));
 				if (r < 0)
 				{
 					ERR_print_errors_cb(LogError, nullptr);
@@ -376,7 +376,7 @@ bool SSLSocket::read(const int timeout, ByteList &bytes, const bool readAll)
 				{
 					return false;
 				}
-				bytes.append(s.buffer.begin(), r);
+				bytes.append(s.buffer.data(), static_cast<uint32_t>(r));
 			} while (readAll && timeout == 0 && ++reads < 100 && bytes.size() < KB(64));
 			return true;
 		}
@@ -401,7 +401,7 @@ unique_ptr<TcpSocket> SSLSocket::acceptConnection(bool &error, const int timeout
 
 	auto &ctx = std::get<SSLContext>(data);
 	auto ssl = SSLptr(SSL_new(ctx.get()));
-	SSL_set_fd(ssl.get(), ptr->fd);
+	SSL_set_fd(ssl.get(), static_cast<int>(ptr->fd));
 
 	if (SSL_accept(ssl.get()) <= 0)
 	{
@@ -413,13 +413,13 @@ unique_ptr<TcpSocket> SSLSocket::acceptConnection(bool &error, const int timeout
 }
 } // namespace TemStream
 
-bool sendAll(const int fd, const void *ptr, size_t size)
+bool sendAll(const SOCKET fd, const void *ptr, size_t size)
 {
 	size_t written = 0;
 	const char *data = reinterpret_cast<const char *>(ptr);
 	while (written < size)
 	{
-		const ssize_t sent = ::send(fd, data + written, size - written, 0);
+		const auto sent = ::send(fd, data + written, static_cast<int>(size - written), 0);
 		if (sent < 0)
 		{
 			perror("send");

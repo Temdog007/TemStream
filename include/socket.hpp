@@ -26,12 +26,12 @@ class Socket
 	bool sendPacket(const Message::Packet &, const bool sendImmediately = false);
 
 	virtual bool connect(const char *hostname, const char *port) = 0;
-	virtual void send(const uint8_t *, size_t);
+	virtual void send(const uint8_t *, uint32_t);
 	virtual bool read(const int timeout, ByteList &, const bool readAll) = 0;
 
 	bool flush();
 
-	template <typename T> void send(const T *t, const size_t count)
+	template <typename T> void send(const T *t, const uint32_t count)
 	{
 		send(reinterpret_cast<const uint8_t *>(t), sizeof(T) * count);
 	}
@@ -43,7 +43,7 @@ class Socket
 class BasicSocket : public Socket
 {
   protected:
-	int fd;
+	SOCKET fd;
 
 	virtual bool flush(const ByteList &) override;
 	void close();
@@ -52,7 +52,7 @@ class BasicSocket : public Socket
 
   public:
 	BasicSocket();
-	BasicSocket(int);
+	BasicSocket(SOCKET);
 	BasicSocket(const BasicSocket &) = delete;
 
 	virtual ~BasicSocket();
@@ -66,10 +66,10 @@ class UdpSocket : public BasicSocket
 {
   public:
 	UdpSocket();
-	UdpSocket(int);
+	UdpSocket(SOCKET);
 	virtual ~UdpSocket();
 
-	void send(const uint8_t *, size_t) override;
+	void send(const uint8_t *, uint32_t) override;
 
 	bool connect(const char *hostname, const char *port) override;
 	bool read(const int timeout, ByteList &, const bool readAll) override;
@@ -83,7 +83,7 @@ class TcpSocket : public BasicSocket
 
   public:
 	TcpSocket();
-	TcpSocket(int);
+	TcpSocket(SOCKET);
 	virtual ~TcpSocket();
 
 	virtual bool connect(const char *hostname, const char *port) override;
@@ -125,7 +125,7 @@ class SSLSocket : public TcpSocket
 
   public:
 	SSLSocket();
-	SSLSocket(int);
+	SSLSocket(SOCKET);
 	SSLSocket(SSLSocket &&) = delete;
 	SSLSocket(TcpSocket &&, SSLptr &&);
 	~SSLSocket();

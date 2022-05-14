@@ -143,7 +143,7 @@ bool QueryAudio::draw()
 	}
 	break;
 	case Source::Window: {
-		size_t i = 0;
+		int i = 0;
 		for (const auto &wp : windowNames)
 		{
 			snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.id);
@@ -237,7 +237,7 @@ bool QueryVideo::draw()
 		void operator()(WindowSelection &ws)
 		{
 			char buffer[KB(1)];
-			size_t i = 0;
+			int i = 0;
 			for (const auto &wp : ws.windows)
 			{
 				snprintf(buffer, sizeof(buffer), "%s (%d)", wp.name.c_str(), wp.windowId);
@@ -259,7 +259,7 @@ bool QueryVideo::draw()
 				}
 			};
 			static const char *selections[]{"Index", "Filename"};
-			int selected = w.arg.index();
+			int selected = static_cast<int>(w.arg.index());
 			if (ImGui::Combo("Type", &selected, selections, IM_ARRAYSIZE(selections)))
 			{
 				switch (selected)

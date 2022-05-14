@@ -826,7 +826,12 @@ bool ServerConnection::MessageHandler::savePayloadIfNedded(bool append) const
 
 	std::array<char, KB(1)> buffer;
 	ServerConnection::getFilename(buffer);
-	auto flags = std::ios::out;
+#if WIN32
+	int
+#else
+	auto
+#endif
+		flags = std::ios::out;
 	if (append)
 	{
 		flags |= std::ios::app;

@@ -53,6 +53,13 @@ class Logger
 	LOG_FUNC(Info);
 	LOG_FUNC(Trace);
 
+	Logger &operator<<(const uint64_t data)
+	{
+		LOCK(mutex);
+		os << data;
+		return *this;
+	}
+
 	template <typename T> Logger &operator<<(const T &data)
 	{
 		LOCK(mutex);

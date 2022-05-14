@@ -36,12 +36,13 @@ template <typename T> void destroyAndDeallocate(T *const t)
 template <typename T> struct Deleter
 {
 	constexpr Deleter() noexcept = default;
-#if __EMSCRIPTEN__
-	template <typename U> Deleter(const Deleter<U> &) noexcept
+#if __unix__
+	template <typename U, typename = std::_Require<std::is_convertible<U *, T *>>>
+	constexpr Deleter(Deleter<U>) noexcept
 	{
 	}
 #else
-	template <typename U, typename = std::_Require<std::is_convertible<U *, T *>>> Deleter(const Deleter<U> &) noexcept
+	template <typename U> constexpr Deleter(Deleter<U>) noexcept
 	{
 	}
 #endif

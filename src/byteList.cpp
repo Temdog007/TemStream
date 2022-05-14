@@ -5,11 +5,11 @@ namespace TemStream
 ByteList::ByteList() noexcept : buffer(nullptr), used(0), total(0)
 {
 }
-ByteList::ByteList(const size_t initialSize) : buffer(nullptr), used(0), total(0)
+ByteList::ByteList(const uint32_t initialSize) : buffer(nullptr), used(0), total(0)
 {
 	reallocate(initialSize);
 }
-ByteList::ByteList(const uint8_t *data, const size_t size) : buffer(nullptr), used(0), total(0)
+ByteList::ByteList(const uint8_t *data, const uint32_t size) : buffer(nullptr), used(0), total(0)
 {
 	append(data, size);
 }
@@ -65,7 +65,7 @@ uint8_t &ByteList::operator[](const size_t index)
 {
 	return buffer[index];
 }
-void ByteList::reallocate(const size_t newSize)
+void ByteList::reallocate(const uint32_t newSize)
 {
 	if (total == 0 || buffer == nullptr || total < newSize)
 	{
@@ -88,7 +88,7 @@ void ByteList::append(uint8_t d)
 	buffer[used] = d;
 	++used;
 }
-void ByteList::append(const uint8_t *data, const size_t count)
+void ByteList::append(const uint8_t *data, const uint32_t count)
 {
 	if (count == 0 || data == nullptr)
 	{
@@ -117,7 +117,7 @@ void ByteList::append(const ByteList &list, const uint32_t count, const uint32_t
 		append(list.buffer + offset, count);
 	}
 }
-void ByteList::insert(const uint8_t *data, const size_t count, const size_t offset)
+void ByteList::insert(const uint8_t *data, const uint32_t count, const uint32_t offset)
 {
 	if (offset >= used)
 	{
@@ -140,7 +140,7 @@ ByteList &ByteList::operator+=(const ByteList &other)
 	append(other);
 	return *this;
 }
-void ByteList::remove(const size_t count)
+void ByteList::remove(const uint32_t count)
 {
 	if (count == 0 || empty())
 	{

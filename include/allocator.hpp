@@ -250,7 +250,7 @@ template <class T> T *Allocator<T>::allocate(const size_t requestedCount)
 
 	LOCK(ad.mutex);
 
-	size_t size = std::max(requestedSize, ALLOCATOR_ALIGNMENT);
+	size_t size = std::max<size_t>(requestedSize, ALLOCATOR_ALIGNMENT);
 	size += ALLOCATOR_ALIGNMENT - (size % ALLOCATOR_ALIGNMENT);
 	const size_t allocateSize = size + sizeof(FreeListNode);
 
@@ -293,7 +293,7 @@ template <class T> T *Allocator<T>::reallocate(T *oldPtr, const size_t count)
 	}
 
 	size_t size = sizeof(T) * count;
-	size = std::max(size, ALLOCATOR_ALIGNMENT);
+	size = std::max<size_t>(size, ALLOCATOR_ALIGNMENT);
 	size += ALLOCATOR_ALIGNMENT - (size % ALLOCATOR_ALIGNMENT);
 
 	const size_t currentAddress = (size_t)oldPtr;

@@ -1,6 +1,8 @@
 #include <main.hpp>
 
+#if TEMSTREAM_HAS_GUI
 #include <SDL2/SDL_main.h>
+#endif
 
 using namespace TemStream;
 
@@ -9,14 +11,52 @@ AllocatorData TemStream::globalAllocatorData;
 unique_ptr<Logger> TemStream::logger = nullptr;
 const char *TemStream::ApplicationPath = nullptr;
 
+#if __unix__
 void signalHandler(int s);
+#endif
 void parseMemory(int, const char **, size_t);
 
-extern "C" int main(const int argc, const char **argv)
+#if WIN32
+struct WSAHandler
 {
-	srand(time(nullptr));
+	~WSAHandler()
+	{
+		WSACleanup();
+	}
+};
+#endif
+
+#if __cpluscplus__
+extern "C"
+#endif
+	int
+	main(const int argc, const char **argv)
+{
+	srand(static_cast<uint32_t>(time(nullptr)));
+
+#if WIN32
+	{
+		WORD wVersionRequested;
+		WSADATA wsaData;
+		int err;
+
+		/* Use the MAKEWORD(lowbyte, highbyte) macro declared in Windef.h */
+		wVersionRequested = MAKEWORD(2, 2);
+
+		err = WSAStartup(wVersionRequested, &wsaData);
+		if (err != 0)
+		{
+			/* Tell the user that we could not find a usable */
+			/* Winsock DLL.                                  */
+			fprintf(stderr, "WSAStartup failed with error: %d\n", err);
+			return EXIT_FAILURE;
+		}
+	}
+	WSAHandler handler;
+#endif
 
 	TemStream::ApplicationPath = argv[0];
+#if __unix__
 	{
 		struct sigaction action;
 		action.sa_handler = &signalHandler;
@@ -27,6 +67,7 @@ extern "C" int main(const int argc, const char **argv)
 			return EXIT_FAILURE;
 		}
 	}
+#endif
 	try
 	{
 		const size_t defaultMemory =
@@ -78,6 +119,7 @@ void TemStream::initialLogs()
 #endif
 }
 
+#if __unix__
 void signalHandler(int s)
 {
 	if (TemStream::appDone)
@@ -97,6 +139,7 @@ void signalHandler(int s)
 		break;
 	}
 }
+#endif
 
 void parseMemory(const int argc, const char **argv, size_t size)
 {

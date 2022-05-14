@@ -56,7 +56,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 	}
 
 	param.iUsageType = forCamera ? CAMERA_VIDEO_REAL_TIME : SCREEN_CONTENT_REAL_TIME;
-	param.fMaxFrameRate = fd.fps;
+	param.fMaxFrameRate = static_cast<float>(fd.fps);
 	param.iPicWidth = fd.width;
 	param.iPicHeight = fd.height;
 	param.iTargetBitrate = fd.bitrateInMbps * 1024u * 1024u;
@@ -125,7 +125,7 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 			return;
 		}
 
-		size_t layerSize[MAX_LAYER_NUM_OF_FRAME] = {0};
+		uint32_t layerSize[MAX_LAYER_NUM_OF_FRAME] = {0};
 		for (int layerNum = 0; layerNum < info.iLayerNum; ++layerNum)
 		{
 			for (int i = 0; i < info.sLayerInfo[layerNum].iNalCount; ++i)

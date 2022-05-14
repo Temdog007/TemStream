@@ -18,7 +18,11 @@ struct Configuration
 	String name;
 	std::optional<SSLConfig> ssl;
 	int64_t startTime;
+	#if __unix__
 	void *handle;
+	#else
+	HMODULE handle;
+	#endif
 	VerifyToken verifyToken;
 	VerifyUsernameAndPassword verifyUsernameAndPassword;
 	uint32_t messageRateInSeconds;

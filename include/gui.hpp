@@ -17,6 +17,11 @@ class FileDisplay
   public:
 	FileDisplay();
 	FileDisplay(const String &);
+	template <class S>
+	FileDisplay(const S &s) : directory(s), files()
+	{
+		loadFiles();
+	}
 	~FileDisplay();
 
 	const String &getDirectory() const
@@ -211,7 +216,7 @@ template <typename S> void drawAddress(BaseAddress<S> &address)
 	ImGui::InputText("Hostname", &address.hostname);
 	if (ImGui::InputInt("Port", &address.port, 1, 100))
 	{
-		address.port = std::clamp(address.port, 1, UINT16_MAX);
+		address.port = std::clamp(address.port, 1, static_cast<int>(UINT16_MAX));
 	}
 }
 

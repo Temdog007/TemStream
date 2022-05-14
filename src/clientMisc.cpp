@@ -47,7 +47,7 @@ void SetWindowMinSize(SDL_Window *window)
 {
 	int w, h;
 	SDL_GetWindowSize(window, &w, &h);
-	ImGui::SetNextWindowSize(ImVec2(w / 4, w / 4), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(w / 4.f, w / 4.f), ImGuiCond_FirstUseEver);
 }
 bool tryPushEvent(SDL_Event &e)
 {

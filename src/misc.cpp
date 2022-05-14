@@ -94,9 +94,9 @@ void prepareLargeBytes(const ByteList &bytes, const std::function<void(LargeFile
 		LargeFile lf = bytes.size<uint64_t>();
 		func(std::move(lf));
 	}
-	for (size_t i = 0; i < bytes.size(); i += MAX_FILE_CHUNK)
+	for (uint32_t i = 0; i < bytes.size(); i += MAX_FILE_CHUNK)
 	{
-		LargeFile lf = ByteList(bytes, MAX_FILE_CHUNK, i);
+		LargeFile lf = ByteList(bytes, static_cast<uint32_t>(MAX_FILE_CHUNK), i);
 		func(std::move(lf));
 	}
 	{
@@ -146,14 +146,14 @@ String printMemory(const size_t mem)
 	return String(buffer);
 }
 
-bool openSocket(int &fd, const Address &address, const SocketType t, const bool isTcp)
+bool openSocket(SOCKET &fd, const Address &address, const SocketType t, const bool isTcp)
 {
 	char port[64];
 	snprintf(port, sizeof(port), "%d", address.port);
 	return openSocket(fd, address.hostname.c_str(), port, t, isTcp);
 }
 
-bool openSocket(int &fd, const char *hostname, const char *port, const SocketType t, const bool isTcp)
+bool openSocket(SOCKET &fd, const char *hostname, const char *port, const SocketType t, const bool isTcp)
 {
 	struct addrinfo hints;
 	memset(&hints, 0, sizeof(hints));
@@ -207,7 +207,7 @@ int64_t getTimestamp()
 	return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
 }
 
-PollState pollSocket(const int fd, const int timeout, const int events)
+PollState pollSocket(const SOCKET fd, const int timeout, const int events)
 {
 	struct pollfd inputfd;
 	inputfd.fd = fd;

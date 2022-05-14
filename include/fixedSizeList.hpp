@@ -14,7 +14,7 @@ template <class T, const size_t N> class FixedSizeList
 	void reset()
 	{
 		const auto s = size();
-		memmove(buffer.begin(), begin(), s);
+		memmove(buffer.data(), data(), s);
 		startPoint = 0;
 		endPoint = s;
 	}
@@ -79,6 +79,16 @@ template <class T, const size_t N> class FixedSizeList
 		return buffer.begin() + endPoint;
 	}
 
+	constexpr const uint8_t* data() const noexcept
+	{
+		return &*begin();
+	}
+
+	constexpr uint8_t* data()  noexcept
+	{
+		return &*begin();
+	}
+
 	bool append(const T *data, const size_t count)
 	{
 		if (size() + count > N)
@@ -89,14 +99,14 @@ template <class T, const size_t N> class FixedSizeList
 		{
 			reset();
 		}
-		memcpy(end(), data, count * sizeof(T));
+		memcpy(&*end(), data, count * sizeof(T));
 		endPoint += count;
 		return true;
 	}
 
 	template <class T2, const size_t N2> bool append(const FixedSizeList<T2, N2> &list)
 	{
-		return append(list.begin(), list.size());
+		return append(list.data(), list.size());
 	}
 
 	template <class U> bool append(const U *data, const size_t count)
@@ -118,15 +128,15 @@ template <class T, const size_t N> class FixedSizeList
 		{
 			reset();
 		}
-		memmove(begin() + count, begin(), size() * sizeof(T));
-		memcpy(begin(), data, count * sizeof(T));
+		memmove(this->data() + count, this->data(), size() * sizeof(T));
+		memcpy(this->data(), data, count * sizeof(T));
 		endPoint += count;
 		return true;
 	}
 
 	template <class T2, const size_t N2> bool prepend(const FixedSizeList<T2, N2> &list)
 	{
-		return prepend(list.begin(), list.size());
+		return prepend(list.data(), list.size());
 	}
 
 	template <class U> bool prepend(const U *data, const size_t count)
@@ -137,14 +147,14 @@ template <class T, const size_t N> class FixedSizeList
 	size_t peek(T *dst, const size_t count) const
 	{
 		const auto toCopy = std::min(size(), count);
-		memcpy(dst, begin(), toCopy * sizeof(T));
+		memcpy(dst, data(), toCopy * sizeof(T));
 		return toCopy;
 	}
 
 	size_t peek(ByteList &list, const std::optional<size_t> &max = std::nullopt) const
 	{
 		const auto s = max.value_or(size());
-		list.append(begin(), s * sizeof(T));
+		list.append(data(), static_cast<uint32_t>(s * sizeof(T)));
 		return s;
 	}
 

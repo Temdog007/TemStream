@@ -10,17 +10,17 @@ class ByteList
   private:
 	uint8_t *buffer;
 	uint32_t used;
-	size_t total;
+	uint32_t total;
 
 	void deepClear();
 
   public:
 	ByteList() noexcept;
-	ByteList(size_t initialSize);
-	ByteList(const uint8_t *, size_t);
+	ByteList(uint32_t initialSize);
+	ByteList(const uint8_t *, uint32_t);
 	ByteList(const MemoryStream &);
 	ByteList(MemoryStream &&);
-	template <typename T> ByteList(const T *t, const size_t count) : buffer(nullptr), used(0), total(0)
+	template <typename T> ByteList(const T *t, const uint32_t count) : buffer(nullptr), used(0), total(0)
 	{
 		append(t, count);
 	}
@@ -53,7 +53,7 @@ class ByteList
 		return reinterpret_cast<const T *>(buffer);
 	}
 
-	constexpr size_t size() const
+	constexpr uint32_t size() const
 	{
 		return used;
 	}
@@ -68,13 +68,13 @@ class ByteList
 		return used == 0 || buffer == nullptr || total == 0;
 	}
 
-	void reallocate(size_t);
+	void reallocate(uint32_t);
 
 	void append(uint8_t);
 
-	void append(const uint8_t *, const size_t);
+	void append(const uint8_t *, const uint32_t);
 
-	void insert(const uint8_t *, const size_t, const size_t offset);
+	void insert(const uint8_t *, const uint32_t, const uint32_t offset);
 
 	void append(const ByteList &);
 	void append(const ByteList &, const uint32_t len, const uint32_t offset = 0);
@@ -87,7 +87,7 @@ class ByteList
 		}
 	}
 
-	template <typename T> void append(const T *t, const size_t count = 1)
+	template <typename T> void append(const T *t, const uint32_t count = 1)
 	{
 		return append(reinterpret_cast<const uint8_t *>(t), sizeof(T) * count);
 	}
@@ -96,7 +96,7 @@ class ByteList
 	ByteList operator+(const ByteList &) const;
 
 	// Remove bytes starting from the front
-	void remove(size_t);
+	void remove(uint32_t);
 
 	void clear(bool deep = false);
 

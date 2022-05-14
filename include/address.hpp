@@ -67,11 +67,11 @@ template <class S> struct BaseAddress
 };
 using Address = BaseAddress<String>;
 using STL_Address = BaseAddress<std::string>;
-extern bool openSocket(int &, const Address &, const SocketType t, const bool isTcp);
+extern bool openSocket(SOCKET &, const Address &, const SocketType t, const bool isTcp);
 
 template <typename T> unique_ptr<T> openSocket(const Address &address, const SocketType t, const bool isTcp)
 {
-	int fd = -1;
+	SOCKET fd = INVALID_SOCKET;
 	if (!openSocket(fd, address, t, isTcp))
 	{
 		return nullptr;

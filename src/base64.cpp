@@ -96,7 +96,7 @@ ByteList base64_decode(const String &str)
 		return ByteList();
 	}
 
-	ByteList ret(str.size() / 4 * 3);
+	ByteList ret(static_cast<uint32_t>(str.size() / 4 * 3));
 	for (size_t pos = 0; pos < str.size(); pos += 4)
 	{
 		const auto c1 = pos_of_char(str[pos + 1]);

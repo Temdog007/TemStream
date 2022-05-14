@@ -146,7 +146,7 @@ void AudioSource::playbackAudio(uint8_t *data, const int count)
 	}
 	memset(data, spec.silence, count);
 
-	storedAudio.peek(data, count);
+	storedAudio.peek(data, static_cast<size_t>(count));
 
 	currentAudio.clear();
 	storedAudio.pop(currentAudio, static_cast<size_t>(count));
@@ -168,9 +168,9 @@ void AudioSource::recordAudio(uint8_t *data, const int count)
 		memset(data, spec.silence, count);
 	}
 	currentAudio.clear();
-	if (storedAudio.append(data, count))
+	if (storedAudio.append(data, static_cast<size_t>(count)))
 	{
-		currentAudio.append(data, count);
+		currentAudio.append(data,static_cast<uint32_t>( count));
 	}
 	else
 	{
@@ -211,7 +211,7 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 
 	while (true)
 	{
-		int frameSize = outgoing.size() / (spec.channels * sizeof(float));
+		int frameSize = static_cast<int>(outgoing.size() / (spec.channels * sizeof(float)));
 		if (frameSize < minDuration)
 		{
 			break;
@@ -219,8 +219,8 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 
 		frameSize = closestValidFrameCount(spec.freq, frameSize);
 
-		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(outgoing.begin()), frameSize,
-											 reinterpret_cast<unsigned char *>(buffer.data()), buffer.size());
+		const int result = opus_encode_float(encoder, reinterpret_cast<float *>(outgoing.data()), frameSize,
+											 reinterpret_cast<unsigned char *>(buffer.data()), static_cast<opus_int32>(buffer.size()));
 
 		const size_t bytesUsed = (frameSize * spec.channels * sizeof(float));
 		outgoing.remove(bytesUsed);

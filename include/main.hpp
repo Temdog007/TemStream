@@ -1,19 +1,38 @@
 #pragma once
 
+#if WIN32
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2def.h>
+#include <ws2tcpip.h>
+#define poll WSAPoll
+#define SOL_TCP IPPROTO_TCP
+#define strcasecmp _stricmp
+#else
 #include <arpa/inet.h>
-#include <inttypes.h>
-#include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+static inline void closesocket(const int fd)
+{
+	close(fd);
+}
+typedef int SOCKET;
+constexpr SOCKET INVALID_SOCKET = -1;
+#endif
+
+#include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <array>
@@ -37,13 +56,18 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
+#if __linux__
 using TimePoint = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<double, std::nano>>;
+#else
+using TimePoint = std::chrono::time_point<std::chrono::system_clock>;
+#endif
 
 namespace fs = std::filesystem;
 
@@ -87,7 +111,11 @@ template <class Archive, typename T1, typename T2> void load(Archive &archive, s
 #if TEMSTREAM_HAS_GUI
 #include <SDL.h>
 
+#if WIN32
+#include <SDL2/SDL_image.h>
+#else
 #include <SDL_image.h>
+#endif
 
 #include <imgui.h>
 #include <imgui_freetype.h>
@@ -148,9 +176,11 @@ extern void logSDLError(const char *);
 
 #define MAX_FILE_CHUNK KB(64)
 
+#ifndef _DEBUG
 #define _DEBUG !NDEBUG
+#endif
+
 #if _DEBUG
-#include <cxxabi.h>
 #define LOG_MESSAGE_TYPE false
 #else
 #define LOG_MESSAGE_TYPE false
@@ -181,12 +211,12 @@ enum class SocketType
 	Client,
 	Server
 };
-extern bool openSocket(int &, const char *hostname, const char *port, const SocketType, const bool isTcp);
+extern bool openSocket(SOCKET &, const char *hostname, const char *port, const SocketType, const bool isTcp);
 
 template <typename T>
 std::optional<T> openSocket(const char *hostname, const char *port, const SocketType t, const bool isTcp)
 {
-	int fd = -1;
+	SOCKET fd = INVALID_SOCKET;
 	if (!openSocket(fd, hostname, port, t, isTcp))
 	{
 		return std::nullopt;
@@ -195,9 +225,9 @@ std::optional<T> openSocket(const char *hostname, const char *port, const Socket
 	return std::make_optional<T>(fd);
 }
 
-extern bool sendData(int, const void *, size_t);
+extern bool sendData(SOCKET, const void *, size_t);
 
-extern PollState pollSocket(const int fd, const int timeout, const int events);
+extern PollState pollSocket(const SOCKET fd, const int timeout, const int events);
 
 extern bool appDone;
 

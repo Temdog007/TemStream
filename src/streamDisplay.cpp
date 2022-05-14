@@ -144,7 +144,7 @@ bool StreamDisplay::ImageMessageHandler::operator()(Message::LargeFile &&lf)
 }
 bool StreamDisplay::ImageMessageHandler::operator()(const uint64_t size)
 {
-	ByteList bytes(size);
+	ByteList bytes(static_cast<uint32_t>(size));
 	display.data.emplace<ByteList>(std::move(bytes));
 	return true;
 }
@@ -308,14 +308,20 @@ bool StreamDisplay::Draw::operator()(ChatLog &chatLog)
 				{
 					ImGui::TableNextColumn();
 					const auto t = static_cast<time_t>(log.timestamp);
+#if __unix__
 					std::strftime(buffer, sizeof(buffer), "%D %T", std::gmtime(&t));
-					ImGui::TextWrapped("%s", buffer);
+#else
+					struct tm _Tm;
+					gmtime_s(&_Tm, &t);
+					std::strftime(buffer, sizeof(buffer), "%D %T", &_Tm);
+#endif
+					ImGui::TextUnformatted(buffer);
 
 					ImGui::TableNextColumn();
-					ImGui::TextWrapped("%s", log.author.c_str());
+					ImGui::TextUnformatted(log.author.c_str());
 
 					ImGui::TableNextColumn();
-					ImGui::TextWrapped("%s", log.message.c_str());
+					ImGui::TextUnformatted(log.message.c_str());
 				}
 				ImGui::EndTable();
 			}
@@ -657,7 +663,13 @@ bool StreamDisplay::ContextMenu::operator()(SDL_TextureWrapper &w)
 		{
 			char buffer[1024];
 			const time_t t = time(nullptr);
-			strftime(buffer, sizeof(buffer), "screenshot_%y_%m_%d_%H_%M_%S.png", localtime(&t));
+#if __unix__
+			std::strftime(buffer, sizeof(buffer), "screenshot_%y_%m_%d_%H_%M_%S.png", localtime(&t));
+#else
+			struct tm _Tm;
+			localtime_s(&_Tm, &t);
+			std::strftime(buffer, sizeof(buffer), "screenshot_%y_%m_%d_%H_%M_%S.png", &_Tm);
+#endif
 			if (IMG_SavePNG(*surface, buffer) == 0)
 			{
 				*logger << "Saved screenshot to " << buffer << std::endl;

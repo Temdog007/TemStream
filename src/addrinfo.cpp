@@ -1,6 +1,8 @@
 #include <main.hpp>
 
+#if __linux__
 #include <netinet/tcp.h>
+#endif
 
 namespace TemStream
 {
@@ -35,7 +37,7 @@ bool AddrInfo::getInfo(const char *hostname, const char *port, const struct addr
 	return true;
 }
 
-bool AddrInfo::makeSocket(int &sockfd, const bool isTcp) const
+bool AddrInfo::makeSocket(SOCKET &sockfd, const bool isTcp) const
 {
 	if (res == nullptr)
 	{
@@ -43,13 +45,13 @@ bool AddrInfo::makeSocket(int &sockfd, const bool isTcp) const
 	}
 	int yes = 1;
 	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
+	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes)) < 0)
 	{
 		perror("setsockopt");
 		return false;
 	}
 	yes = 1;
-	if (isTcp && setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(yes)) < 0)
+	if (isTcp && setsockopt(sockfd, SOL_TCP, TCP_NODELAY, reinterpret_cast<const char *>(&yes), sizeof(yes)) < 0)
 	{
 		perror("setsockopt");
 		return false;
@@ -57,13 +59,13 @@ bool AddrInfo::makeSocket(int &sockfd, const bool isTcp) const
 	return true;
 }
 
-bool AddrInfo::bind(const int sockfd) const
+bool AddrInfo::bind(const SOCKET sockfd) const
 {
 	if (res == nullptr)
 	{
 		return false;
 	}
-	if (::bind(sockfd, res->ai_addr, res->ai_addrlen) < 0)
+	if (::bind(sockfd, res->ai_addr, static_cast<socklen_t>(res->ai_addrlen)) < 0)
 	{
 		perror("bind");
 		return false;
@@ -71,13 +73,13 @@ bool AddrInfo::bind(const int sockfd) const
 	return true;
 }
 
-bool AddrInfo::connect(const int sockfd) const
+bool AddrInfo::connect(const SOCKET sockfd) const
 {
 	if (res == nullptr)
 	{
 		return false;
 	}
-	if (::connect(sockfd, res->ai_addr, res->ai_addrlen) < 0)
+	if (::connect(sockfd, res->ai_addr, static_cast<socklen_t>(res->ai_addrlen)) < 0)
 	{
 		perror("connect");
 		return false;

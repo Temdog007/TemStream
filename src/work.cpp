@@ -98,7 +98,7 @@ void checkFile(TemStreamGui &gui, const Message::Source &source, const String &f
 	}
 	catch (const std::exception &e)
 	{
-		(*logger)(Logger::Level::Error) << "Failed to check file: " << filename << std::endl;
+		(*logger)(Logger::Level::Error) << "Failed to check file: " << filename << "; " << e.what() << std::endl;
 	}
 }
 void sendImage(const String &filename, const Message::Source &source)

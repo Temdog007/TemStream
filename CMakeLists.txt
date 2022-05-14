@@ -10,10 +10,20 @@ option(COMPILE_SERVER "Compile TemStream server" ON)
 option(COMPILE_CHAT_TEST "Compile TemStream chat test")
 option(CUSTOM_ALLOCATOR "Use custom allocator instead of malloc" ON)
 option(JSON_CONFIG "Serialize client configurations to JSON" ON)
-option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio" ON)
-option(XCB_RECORD "Record windows with XCB" ON)
+option(RECORD_PULSE_AUDIO "Record windows' audio with pulse audio")
+option(XCB_RECORD "Record windows with XCB")
 option(VPX_ENCODING "Use libvpx to encode video")
 option(OPENH264_ENCODING "Use OpenH264 to encode video" ON)
+
+if(WIN32)
+  message("Compiling for Windows")
+  set(XCB_RECORD OFF)
+  set(RECORD_PULSE_AUDIO OFF)
+else()
+  message("Compiling for Linux")
+  set(XCB_RECORD ON)
+  set(RECORD_PULSE_AUDIO ON)
+endif()
 
 set(BUILD_DOC OFF)
 set(BUILD_SANDBOX OFF)
@@ -29,8 +39,13 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-add_subdirectory(SDL)
-add_subdirectory(SDL_image)
+if(WIN32)
+  find_package(SDL2 CONFIG REQUIRED)
+  find_package(sdl2-image CONFIG REQUIRED)
+else()
+  add_subdirectory(SDL)
+  add_subdirectory(SDL_image)
+endif()
 
 add_subdirectory(cereal)
 add_subdirectory(opus)
@@ -62,7 +77,11 @@ target_include_directories(ImGui PUBLIC
   "${IMGUI_DIR}/misc/cpp"
   ${FREETYPE_INCLUDE_DIRS})
 
-target_link_libraries(ImGui PRIVATE SDL2)
+if(WIN32)
+  target_link_libraries(ImGui PRIVATE SDL2::SDL2 SDL2::SDL2main)
+else()
+  target_link_libraries(ImGui PRIVATE SDL2)
+endif()
 
 set(CLIENT_SOURCES
   src/audioSource.cpp
@@ -143,7 +162,8 @@ if(COMPILE_CLIENT)
   endif()
 
   if(MSVC)
-    target_compile_options(TemStream PRIVATE /W4 /WX)
+    target_compile_options(TemStream PRIVATE /WX)
+    target_link_libraries(TemStream PRIVATE wsock32 ws2_32)
   else()
     target_compile_options(TemStream PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
@@ -168,14 +188,19 @@ if(COMPILE_CLIENT)
   find_package(OpenCV REQUIRED)
 
   target_link_libraries(TemStream PRIVATE 
-    SDL2 
-    SDL2_image 
     cereal
     opus
     ImGui 
     ${FREETYPE_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
     ${OpenCV_LIBS})
+
+  if(WIN32)
+    target_link_libraries(TemStream PRIVATE SDL2::SDL2 SDL2::SDL2main SDL2::SDL2_image)
+  else()
+    target_link_libraries(TemStream PRIVATE SDL2_image)
+  endif()
+
+  target_link_libraries(TemStream PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)
@@ -192,7 +217,8 @@ if(COMPILE_SERVER)
   add_executable(TemStreamServer ${SOURCES} ${SERVER_SOURCES})
 
   if(MSVC)
-    target_compile_options(TemStreamServer PRIVATE /W4 /WX)
+    target_compile_options(TemStreamServer PRIVATE /WX)
+    target_link_libraries(TemStreamServer PRIVATE wsock32 ws2_32)
   else()
     target_compile_options(TemStreamServer PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
@@ -207,7 +233,12 @@ if(COMPILE_SERVER)
     "${PROJECT_SOURCE_DIR}/include"
     "${CEREAL_SOURCE_DIR}/include")
 
-  target_link_libraries(TemStreamServer PRIVATE cereal dl ${OPENSSL_LIBRARIES})
+  target_link_libraries(TemStreamServer PRIVATE cereal OpenSSL::SSL OpenSSL::Crypto)
+
+  if(WIN32)
+  else()
+    target_link_libraries(TemStreamServer PRIVATE dl)
+  endif()
 
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)
@@ -219,7 +250,8 @@ if(COMPILE_CHAT_TEST)
   add_executable(TemStreamChatTest ${SOURCES} tests/chatTester.cpp)
 
   if(MSVC)
-    target_compile_options(TemStreamChatTest PRIVATE /W4 /WX)
+    target_compile_options(TemStreamChatTest PRIVATE /WX)
+    target_link_libraries(TemStreamChatTest PRIVATE wsock32 ws2_32)
   else()
     target_compile_options(TemStreamChatTest PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()

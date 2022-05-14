@@ -9,12 +9,12 @@ class Connection
   private:
 	ByteList bytes;
 	ConcurrentQueue<Message::Packet> packets;
-	std::optional<uint32_t> nextMessageSize;
+	std::optional<uint64_t> nextMessageSize;
 
   protected:
 	const Address address;
 	unique_ptr<Socket> mSocket;
-	size_t maxMessageSize;
+	uint64_t maxMessageSize;
 
   public:
 	Connection(const Address &, unique_ptr<Socket>);

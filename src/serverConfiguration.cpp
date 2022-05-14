@@ -1,6 +1,12 @@
 #include <main.hpp>
 
+#if __unix__
 #include <dlfcn.h>
+#else
+#define dlopen LoadLibrary
+#define dlsym GetProcAddress
+#define dlclose FreeLibrary
+#endif
 
 #define LOAD_LIBRARY(m, X)                                                                                             \
 	configuration.m = reinterpret_cast<X>(dlsym(configuration.handle, #X));                                            \
@@ -104,7 +110,11 @@ Configuration loadConfiguration(const int argc, const char **argv)
 		}
 		if (strcasecmp("-AU", argv[i]) == 0 || strcasecmp("--authentication", argv[i]) == 0)
 		{
+			#if __unix__
 			configuration.handle = dlopen(argv[i + 1], RTLD_LAZY);
+			#else
+			configuration.handle = dlopen(argv[i + 1]);
+			#endif
 			if (configuration.handle == nullptr)
 			{
 				perror("dlopen");

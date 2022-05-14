@@ -115,6 +115,10 @@ python/
 
 webbuild/
 
+out/
+.vs/
+windows/
+
 font_compressor
 
 !json/*.json

@@ -24,14 +24,15 @@ std::streamsize MemoryBuffer::xsgetn(char *c, const std::streamsize size)
 		return 0;
 	}
 
-	const auto copy = std::min(left, size);
-	memcpy(c, byteList.data() + readPoint, copy);
-	readPoint += copy;
-	return copy;
+	const auto toCopy = std::min<std::streamsize>(left, size);
+	memcpy(c, byteList.data() + readPoint, toCopy);
+	readPoint += toCopy;
+	return toCopy;
 }
 std::streamsize MemoryBuffer::xsputn(const char *c, const std::streamsize size)
 {
-	byteList.insert(reinterpret_cast<const uint8_t *>(c), size, writePoint);
+	byteList.insert(reinterpret_cast<const uint8_t *>(c), static_cast<uint32_t>(size),
+					static_cast<uint32_t>(writePoint));
 	writePoint += size;
 	return size;
 }
