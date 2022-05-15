@@ -4,6 +4,9 @@
 
 namespace TemStream
 {
+/**
+ * @brief Wrapper for struct addrinfo
+ */
 class AddrInfo
 {
   private:
@@ -14,12 +17,46 @@ class AddrInfo
 	AddrInfo();
 	~AddrInfo();
 
-	bool getInfo(const char *hostname, const char *port, const struct addrinfo &);
-	bool makeSocket(SOCKET &, const bool isTcp) const;
-	bool bind(SOCKET) const;
-	bool connect(SOCKET) const;
+	/**
+	 * @brief Store addrinfo from parameters.
+	 *
+	 * This closes the pointer to the previous addrinfo and tries to get the new addrinfo
+	 * from the parameters
+	 *
+	 * @param hostname
+	 * @param port
+	 * @param info
+	 *
+	 * @return True if addrinfo was acquired.
+	 */
+	bool getInfo(const char *hostname, const char *port, const struct addrinfo &info);
 
-	struct addrinfo *getRes();
-	const struct addrinfo *getRes() const;
+	/**
+	 * @brief Create socket from addrinfo
+	 *
+	 * @param socket [out] Will contain the new socket
+	 * @param isTcp If true, establish a TCP connection. Else, UDP.
+	 *
+	 * @return True if socket was created.
+	 */
+	bool makeSocket(SOCKET &socket, const bool isTcp) const;
+
+	/**
+	 * @brief Bind socket using addrinfo
+	 *
+	 * @param socket
+	 *
+	 * @return True if successful
+	 */
+	bool bind(SOCKET socket) const;
+
+	/**
+	 * @brief Connect socket using addrinfo
+	 *
+	 * @param socket
+	 *
+	 * @return True if successful
+	 */
+	bool connect(SOCKET socket) const;
 };
 } // namespace TemStream

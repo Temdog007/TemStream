@@ -4,6 +4,10 @@
 
 namespace TemStream
 {
+/**
+ * @brief Address to a server
+ * @tparam S string type
+ */
 template <class S> struct BaseAddress
 {
 	S hostname;
@@ -25,12 +29,22 @@ template <class S> struct BaseAddress
 	{
 	}
 
+	/**
+	 * Save for cereal serialization
+	 *
+	 * @param ar The archive
+	 */
 	template <class Archive> void save(Archive &archive) const
 	{
 		std::string h(hostname);
 		archive(cereal::make_nvp("hostname", h), cereal::make_nvp("port", port));
 	}
 
+	/**
+	 * Loading for cereal serialization
+	 *
+	 * @param ar The archive
+	 */
 	template <class Archive> void load(Archive &archive)
 	{
 		std::string h(hostname);
@@ -53,6 +67,12 @@ template <class S> struct BaseAddress
 		return os;
 	}
 
+	/**
+	 * @brief Creates a connection with this address
+	 * @tparam T socket type (i.e. UpSocket, TcpSocket)
+	 *
+	 * @return This pointer to a socket connection or nullptr
+	 */
 	template <class T> unique_ptr<T> create() const
 	{
 		auto ptr = tem_unique<T>();
@@ -67,18 +87,40 @@ template <class S> struct BaseAddress
 };
 using Address = BaseAddress<String>;
 using STL_Address = BaseAddress<std::string>;
-extern bool openSocket(SOCKET &, const Address &, const SocketType t, const bool isTcp);
 
-template <typename T> unique_ptr<T> openSocket(const Address &address, const SocketType t, const bool isTcp)
+/**
+ * @brief Open a socket with these parameters
+ *
+ * @param socket [out] Will contain the newly created socket on success
+ * @param address
+ * @param socketType
+ * @param isTcp If true, establish a TCP connection. Else, UDP.
+ *
+ * @return True if successful
+ */
+extern bool openSocket(SOCKET &socket, const Address &address, const SocketType socketType, const bool isTcp);
+
+/**
+ * @brief Open a socket with these parameters
+ * @tparam T socket type (i.e. UpSocket, TcpSocket)
+ *
+ * @param address
+ * @param socketType
+ * @param isTcp If true, establish a TCP connection. Else, UDP.
+ *
+ * @return This pointer to a socket connection or nullptr
+ */
+template <typename T> unique_ptr<T> openSocket(const Address &address, const SocketType socketType, const bool isTcp)
 {
 	SOCKET fd = INVALID_SOCKET;
-	if (!openSocket(fd, address, t, isTcp))
+	if (!openSocket(fd, address, socketType, isTcp))
 	{
 		return nullptr;
 	}
 
 	return tem_unique<T>(fd);
 }
+
 } // namespace TemStream
 
 namespace std

@@ -144,14 +144,41 @@ template <typename T> static inline shared_ptr<T> tem_shared(T *t)
 }
 #endif
 
-extern String &trim(String &);
-extern String &ltrim(String &);
-extern String &rtrim(String &);
+/**
+ * @brief Remove whitespace from left and right side of string
+ *
+ * @param string
+ * @return New string
+ */
+extern String &trim(String &string);
+
+/**
+ * @brief Remove whitespace from left side of string
+ *
+ * @param string
+ * @return New string
+ */
+extern String &ltrim(String &string);
+
+/**
+ * @brief Remove whitespace from right side of string
+ *
+ * @param string
+ * @return New string
+ */
+extern String &rtrim(String &string);
 
 using StringList = List<String>;
 
 extern std::ostream &printMemory(std::ostream &os, const char *label, const size_t mem);
 
+/**
+ * @brief Print byte count as a human-friendly string
+ *
+ * @param mem The amount of bytes
+ *
+ * @return the string
+ */
 extern String printMemory(const size_t mem);
 
 } // namespace TemStream

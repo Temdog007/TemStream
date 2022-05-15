@@ -6,14 +6,18 @@ namespace TemStream
 {
 using AudioBuffer = FixedSizeList<uint8_t, MB(1)>;
 class ClientConnection;
+
+/**
+ * The audio source for playing audio or recording audio
+ */
 class AudioSource
 {
   public:
 	enum class Type
 	{
-		Playback,
-		Record,
-		RecordWindow
+		Playback,	 ///< Sending audio to a playback device
+		Record,		 ///< Recording from device (i.e. microphone)
+		RecordWindow ///< Recording audio from a process
 	};
 
   private:
@@ -49,8 +53,30 @@ class AudioSource
 	static void recordCallback(AudioSource *, uint8_t *, int);
 	static void playbackCallback(AudioSource *, uint8_t *, int);
 
+	/**
+	 * Opus can only encode certain intervals (See ::closestValidFrameCount) of audio at once. So when a large chunk of
+	 * audio is ready to be encoded, it must be encoded in chunks. This function returns the best number of audio frames
+	 * that can be encoded by Opus
+	 *
+	 * @param frequency bytes per second (i.e. 48000 Hz)
+	 * @param duration length in milliseconds
+	 *
+	 * @return The number of frames that can be encoded
+	 */
 	constexpr static int audioLengthToFrames(const int frequency, const int duration);
 
+	/**
+	 * Opus can only encode certain intervals at once:
+	 *
+	 * 120 ms, 100 ms, 80 ms, 60 ms, 40 ms, 20 ms, 10 ms, 5 ms, 2.5 ms.
+	 *
+	 * This function will given the closest number without going over
+	 *
+	 * @param frequency bytes per second (i.e. 48000 Hz)
+	 * @param frames Number of audio frames
+	 *
+	 * @return The enum representing the interval count
+	 */
 	constexpr static int closestValidFrameCount(const int frequency, const int frames);
 
 	friend class Allocator<AudioSource>;
@@ -64,6 +90,10 @@ class AudioSource
 
 	static unique_ptr<AudioSource> startRecording(AudioSource *, int);
 
+	/**
+	 * Object will lock the audio device. Will unlock on deletion. Used to protect memory that
+	 * is accessed during the audio callbacks.
+	 */
 	class Lock
 	{
 	  private:
@@ -80,7 +110,12 @@ class AudioSource
 	AudioSource(AudioSource &&) = delete;
 	virtual ~AudioSource();
 
-	void enqueueAudio(const ByteList &);
+	/**
+	 * Add Opus packet to playback. Audio will be decoded and sent to the playback device
+	 *
+	 * @param bytes
+	 */
+	void enqueueAudio(const ByteList &bytes);
 
 	void encodeAndSendAudio(ClientConnection &);
 
@@ -91,6 +126,11 @@ class AudioSource
 
 	bool isRecording() const;
 
+	/**
+	 * Check if the audio source is still playing or recording audio
+	 *
+	 * @return True if is playing or recording audio
+	 */
 	bool isActive() const;
 
 	float getVolume() const
@@ -124,6 +164,9 @@ class AudioSource
 		SDL_PauseAudioDevice(id, b);
 	}
 
+	/**
+	 * Remove all audio that has been recorded or about to be sent to the audio device.
+	 */
 	void clearAudio();
 
 	const Message::Source &getSource() const
@@ -136,9 +179,23 @@ class AudioSource
 		return name;
 	}
 
-	void getCurrentAudio(ByteList &) const;
+	/**
+	 * Get the last chunk of audio that was recorded or sent to the audio device
+	 *
+	 * @param bytes [out] Will contain the current audio bytes
+	 */
+	void getCurrentAudio(ByteList &bytes) const;
 
-	bool isLoudEnough(const float *, int) const;
+	/**
+	 * Calculate the volume of the audio samples.
+	 *
+	 * @param samples
+	 * @param size
+	 *
+	 * @return If the sum is greater than the silenceThreshold, return true
+	 * enough
+	 */
+	bool isLoudEnough(const float *samples, const int size) const;
 
 	static std::optional<WindowProcesses> getWindowsWithAudio();
 	static unique_ptr<AudioSource> startRecordingWindow(const Message::Source &, const WindowProcess &, float);
