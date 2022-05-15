@@ -180,12 +180,6 @@ extern void logSDLError(const char *);
 #define _DEBUG !NDEBUG
 #endif
 
-#if _DEBUG
-#define LOG_MESSAGE_TYPE false
-#else
-#define LOG_MESSAGE_TYPE false
-#endif
-
 #define THREADS_AVAILABLE (!__EMSCRIPTEN__ || !SDL_THREADS_DISABLED)
 
 namespace TemStream

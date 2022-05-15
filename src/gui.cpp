@@ -74,6 +74,9 @@ TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
 
 TemStreamGui::~TemStreamGui()
 {
+	SDL_GetWindowSize(window, &configuration.width, &configuration.height);
+	auto flags = SDL_GetWindowFlags(window);
+	configuration.fullscreen = (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
 	SDL_DestroyRenderer(renderer);
 	renderer = nullptr;
 	SDL_DestroyWindow(window);
@@ -310,8 +313,10 @@ bool TemStreamGui::init()
 		return false;
 	}
 
-	window = SDL_CreateWindow("TemStream", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 800, 600,
-							  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+	window = SDL_CreateWindow("TemStream", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, configuration.width,
+							  configuration.height,
+							  (SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI) |
+								  (configuration.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
 	if (window == nullptr)
 	{
 		logSDLError("Failed to create window");
@@ -1972,11 +1977,6 @@ int runApp(Configuration &configuration)
 		runLoop(gui);
 	}
 
-	for (auto &thread : threads)
-	{
-		thread.join();
-	}
-
 	gui.audio.clear();
 	gui.video.forEach([](const auto &, auto &value) { value->setRunning(false); });
 	gui.video.clear();
@@ -1988,10 +1988,11 @@ int runApp(Configuration &configuration)
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
 
-	// Sleep and hope all of the video threads have stopped
-	using namespace std::chrono_literals;
-	*logger << "Ending TemStream..." << std::endl;
-	std::this_thread::sleep_for(100ms);
+	for (auto &thread : threads)
+	{
+		thread.join();
+	}
+
 	logger = nullptr;
 	return EXIT_SUCCESS;
 }

@@ -6,6 +6,10 @@ namespace TemStream
 {
 extern const ImGuiTableFlags TableFlags;
 class IQuery;
+
+/**
+ * For displaying files in a directory.
+ */
 class FileDisplay
 {
   private:
@@ -17,8 +21,7 @@ class FileDisplay
   public:
 	FileDisplay();
 	FileDisplay(const String &);
-	template <class S>
-	FileDisplay(const S &s) : directory(s), files()
+	template <class S> FileDisplay(const S &s) : directory(s), files()
 	{
 		loadFiles();
 	}
@@ -34,6 +37,9 @@ class FileDisplay
 		return files;
 	}
 };
+/**
+ * Store all memory functions that can be set for usage by SDL2
+ */
 class SDL_MemoryFunctions
 {
   private:
@@ -45,7 +51,14 @@ class SDL_MemoryFunctions
   public:
 	SDL_MemoryFunctions();
 
+	/**
+	 * Set all of the memory functions for SDL to this object's memory functions
+	 */
 	void SetToSDL() const;
+
+	/**
+	 * Get and store all of the memory functions that SDL is currently using
+	 */
 	void GetFromSDL();
 };
 using VideoPacket = std::pair<Message::Source, Message::Video>;
@@ -81,11 +94,22 @@ class TemStreamGui
 
 	void LoadFonts();
 
-	void handleMessage(Message::Packet &&);
+	/**
+	 * Handle a message received from the server
+	 *
+	 * @param packet
+	 */
+	void handleMessage(Message::Packet &&packet);
 
 	ImVec2 drawMainMenuBar();
 
-	void renderConnection(const Message::Source &, shared_ptr<ClientConnection> &);
+	/**
+	 * Render a connection to a server and display options (upload, disconnect, etc.)
+	 *
+	 * @param source
+	 * @param connection
+	 */
+	void renderConnection(const Message::Source &source, shared_ptr<ClientConnection> &connection);
 
 	static String32 getAllUTF32();
 
@@ -97,14 +121,34 @@ class TemStreamGui
 		void operator()(Message::UsernameAndPassword &) const;
 	};
 
+	/**
+	 * Includes operations like initializing SDL and starting async operations
+	 *
+	 * @return True if successful
+	 */
 	bool init();
 
+	/**
+	 * Decode the video packets currently in the video packet list and send them to then event loop to be displayed
+	 */
 	void decodeVideoPackets();
+
+	/**
+	 * All draw calls are handled by this function
+	 */
 	void draw();
 
 	bool addConnection(const shared_ptr<ClientConnection> &);
 	void removeConnection(const Message::Source &);
-	bool handleClientConnection(ClientConnection &);
+
+	/**
+	 * Read incoming packets from this connection and send enqueued packets to the peer
+	 *
+	 * @param con
+	 *
+	 * @return False, if the connection has been closed
+	 */
+	bool handleClientConnection(ClientConnection &con);
 
   public:
 	shared_ptr<ClientConnection> getConnection(const Message::Source &);
@@ -124,12 +168,6 @@ class TemStreamGui
 
 		template <typename T> bool operator()(T &)
 		{
-#if LOG_MESSAGE_TYPE
-			int status;
-			char *realname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
-			std::cout << "Ignoring -> " << realname << ':' << status << std::endl;
-			free(realname);
-#endif
 			return false;
 		}
 	};

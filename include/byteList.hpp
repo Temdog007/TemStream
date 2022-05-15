@@ -217,12 +217,22 @@ class ByteList
 		return ConstIterator(&buffer[used]);
 	}
 
+	/**
+	 * Save for cereal serialization
+	 *
+	 * @param ar The archive
+	 */
 	template <class Archive> void save(Archive &archive) const
 	{
 		archive(cereal::make_size_tag(used));
 		archive(cereal::binary_data(buffer, used));
 	}
 
+	/**
+	 * Loading for cereal serialization
+	 *
+	 * @param ar The archive
+	 */
 	template <class Archive> void load(Archive &archive)
 	{
 		archive(cereal::make_size_tag(used));

@@ -5,10 +5,11 @@
 
 #define CONFIGURATION_ARCHIVE(archive)                                                                                 \
 	archive(cereal::make_nvp("fontFiles", fontFiles), cereal::make_nvp("address", address), CEREAL_NVP(maxLogs),       \
-			CEREAL_NVP(fontSize), CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold),                      \
-			CEREAL_NVP(fontIndex), CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showConnections),      \
-			CEREAL_NVP(showDisplays), CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont),              \
-			CEREAL_NVP(showStats), CEREAL_NVP(showStyleEditor), CEREAL_NVP(showLogsFilter), CEREAL_NVP(isEncrypted),   \
+			CEREAL_NVP(width), CEREAL_NVP(height), CEREAL_NVP(fullscreen), CEREAL_NVP(fontSize),                       \
+			CEREAL_NVP(defaultVolume), CEREAL_NVP(defaultSilenceThreshold), CEREAL_NVP(fontIndex),                     \
+			CEREAL_NVP(showLogs), CEREAL_NVP(autoScrollLogs), CEREAL_NVP(showConnections), CEREAL_NVP(showDisplays),   \
+			CEREAL_NVP(showAudio), CEREAL_NVP(showVideo), CEREAL_NVP(showFont), CEREAL_NVP(showStats),                 \
+			CEREAL_NVP(showStyleEditor), CEREAL_NVP(showLogsFilter), CEREAL_NVP(isEncrypted),                          \
 			CEREAL_NVP(currentStyle), CEREAL_NVP(styles))
 namespace TemStream
 {
@@ -25,6 +26,9 @@ struct Configuration
 	int defaultSilenceThreshold;
 	int fontIndex;
 	int maxLogs;
+	int width;
+	int height;
+	bool fullscreen;
 	bool showLogs;
 	bool autoScrollLogs;
 	bool showConnections;

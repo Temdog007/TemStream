@@ -32,6 +32,11 @@ class Connection
 		return mSocket.get();
 	}
 
+	/**
+	 * Get packets that were received from the connected peer
+	 *
+	 * @return the packets
+	 */
 	ConcurrentQueue<Message::Packet> &getPackets()
 	{
 		return packets;

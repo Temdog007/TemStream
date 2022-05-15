@@ -5,9 +5,9 @@ namespace TemStream
 Configuration::Configuration()
 	: styles(), currentStyle("classic"), newStyleName("newStyle"), fontFiles(),
 	  credentials(std::make_pair("User", "Password")), address(), fontSize(16.f), defaultVolume(100),
-	  defaultSilenceThreshold(0), fontIndex(1), maxLogs(10000), showLogs(false), showConnections(true),
-	  showDisplays(false), showAudio(false), showFont(false), showStats(false), showStyleEditor(false),
-	  isEncrypted(true)
+	  defaultSilenceThreshold(0), fontIndex(1), maxLogs(10000), width(800), height(600), fullscreen(false),
+	  showLogs(false), showConnections(true), showDisplays(false), showAudio(false), showFont(false), showStats(false),
+	  showStyleEditor(false), isEncrypted(true)
 {
 	ImGuiStyle style;
 
