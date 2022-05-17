@@ -109,7 +109,14 @@ namespace Message
 		{                                                                                                              \
 		}                                                                                                              \
 	}
+/**
+ * A random GUID that will always be used in a valid header
+ */
 extern const Guid MagicGuid;
+/**
+ * The header will always be sent before an actual message. The header will contain a magic guid to verify a valid
+ * header and the size of the incoming message
+ */
 struct Header
 {
 	Guid id;
@@ -126,6 +133,9 @@ struct Header
 
 	friend std::ostream &operator<<(std::ostream &, const Header &);
 };
+/**
+ * Message for Text stream
+ */
 using Text = String;
 using UsernameAndPassword = std::pair<String, String>;
 using Credentials = std::variant<String, UsernameAndPassword>;
@@ -185,6 +195,9 @@ template <class S> struct BaseServerLink
 using ServerLink = BaseServerLink<String>;
 using ServerLinks = List<ServerLink>;
 using LargeFile = std::variant<std::monostate, uint64_t, ByteList>;
+/**
+ * Message for Image stream
+ */
 struct Image
 {
 	LargeFile largeFile;
@@ -212,6 +225,9 @@ struct Frame
 		ar(width, height, bytes);
 	}
 };
+/**
+ * Message for Chat stream
+ */
 struct Chat
 {
 	String author;
@@ -226,7 +242,13 @@ struct Chat
 		ar(author, message, timestamp);
 	}
 };
+/**
+ * Message for Video stream
+ */
 using Video = std::variant<Frame, LargeFile>;
+/**
+ * Message for Audio stream
+ */
 struct Audio
 {
 	ByteList bytes;
@@ -344,6 +366,15 @@ struct Packet
 	}
 };
 extern std::ostream &operator<<(std::ostream &, const Packet &);
+
+/**
+ * Get a maximum of MAX_FILE_CHUNK bytes from an iterator
+ *
+ * @param start Initial iterator
+ * @param end Ending iterator
+ *
+ * @return The bytes
+ */
 template <typename Iterator> static ByteList getByteChunk(Iterator &start, Iterator end)
 {
 	ByteList bytes(MAX_FILE_CHUNK);
@@ -358,6 +389,15 @@ template <typename Iterator> static ByteList getByteChunk(Iterator &start, Itera
 	}
 	return bytes;
 }
+
+/**
+ * Create a series of LargeFile data streams and call a function with each LargeFile data
+ *
+ * @param start
+ * @param end
+ * @param size size of the data
+ * @param func callback
+ */
 template <typename Iterator>
 static void prepareLargeBytes(Iterator start, Iterator end, const uint64_t size,
 							  const std::function<void(LargeFile &&)> &func)
@@ -399,6 +439,8 @@ constexpr size_t ServerTypeToIndex(const ServerType t)
 		return variant_index<Message::Payload, Message::Image>();
 	case ServerType::Video:
 		return variant_index<Message::Payload, Message::Video>();
+	case ServerType::Link:
+		return variant_index<Message::Payload, Message::ServerLinks>();
 	default:
 		throw std::runtime_error("Invalid server type");
 	}

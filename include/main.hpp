@@ -155,16 +155,64 @@ class SDL_MutexWrapper
 	void unlock();
 };
 
+/**
+ * Check if filename extension is .ttf
+ *
+ * @param filename
+ *
+ * @return True if extension is .ttf
+ */
 extern bool isTTF(const char *);
+
+/**
+ * Check if filename extension is .jpg or jpeg
+ *
+ * @param filename
+ *
+ * @return True if extension is .jpg or .jpeg
+ */
 extern bool isJpeg(const char *);
+
+/**
+ * Check if filename extension is .xpm
+ *
+ * @param filename
+ *
+ * @return True if extension is .xpm
+ */
 extern bool isXPM(const char *);
 
+/**
+ * Check if filename points to a file. Might try and load the image if it cannot be determined from the file extension
+ *
+ * @param filename
+ *
+ * @return True if is image
+ */
 extern bool isImage(const char *);
 
+/**
+ * Set the size of the next window to a quarter of the size of the window if it is the first time the window has been
+ * opened
+ *
+ * @param window
+ */
 extern void SetWindowMinSize(SDL_Window *window);
 
+/**
+ * Call SDL_PushEvent
+ *
+ * @param event
+ *
+ * @return True if the event was added to the event queue successfully
+ */
 extern bool tryPushEvent(SDL_Event &);
 
+/**
+ * Log error from SDL
+ *
+ * @param message
+ */
 extern void logSDLError(const char *);
 
 } // namespace TemStream
@@ -205,39 +253,95 @@ enum class SocketType
 	Client,
 	Server
 };
+
+/**
+ * @brief Open a socket with these parameters
+ *
+ * @param socket [out] Will contain the newly created socket on success
+ * @param hostname
+ * @param port
+ * @param socketType
+ * @param isTcp If true, establish a TCP connection. Else, UDP.
+ *
+ * @return True if successful
+ */
 extern bool openSocket(SOCKET &, const char *hostname, const char *port, const SocketType, const bool isTcp);
 
-template <typename T>
-std::optional<T> openSocket(const char *hostname, const char *port, const SocketType t, const bool isTcp)
-{
-	SOCKET fd = INVALID_SOCKET;
-	if (!openSocket(fd, hostname, port, t, isTcp))
-	{
-		return std::nullopt;
-	}
-
-	return std::make_optional<T>(fd);
-}
-
+/**
+ * Send data through socket
+ *
+ * @param socket
+ * @param data
+ * @param length
+ *
+ * @return True if all data was sent
+ */
 extern bool sendData(SOCKET, const void *, size_t);
 
-extern PollState pollSocket(const SOCKET fd, const int timeout, const int events);
+/**
+ * Check the state of the socket
+ *
+ * @param socket
+ * @param timeout How long to poll the socket
+ * @param events Which events to poll for
+ *
+ * @return the poll state
+ */
+extern PollState pollSocket(const SOCKET socket, const int timeout, const int events);
 
+/**
+ * Global flag to state when the application should no longer be running
+ */
 extern bool appDone;
 
+/**
+ * Log the application name, the ersion, and the memory consumption
+ */
 extern void initialLogs();
 
+/**
+ * Check if character is a white space character
+ *
+ * @param c
+ *
+ * @return True if character is a white space character
+ */
 extern bool isSpace(char);
 
+/**
+ * Get the number of milliseconds since epoch from the current time
+ *
+ * @return the number of milliseconds since epoch from the current time
+ */
 extern int64_t getTimestamp();
 
+/**
+ * Get the extension of the file
+ *
+ * @return the file extension
+ */
 extern const char *getExtension(const char *filename);
 
 struct Configuration;
 extern Configuration loadConfiguration(int, const char **);
 extern void saveConfiguration(const Configuration &);
+
+/**
+ * The main function for the application
+ *
+ * @param configuration
+ *
+ * @return return code
+ */
 extern int runApp(Configuration &);
 
+/**
+ * The first argument passed to the application
+ *
+ * i.e.
+ * ApplicationPath = argv[0]
+ * if the main function declaration is int main(int argc, char* argv[])
+ */
 extern const char *ApplicationPath;
 
 template <typename T> T lerp(T min, T max, float percent)
@@ -257,6 +361,11 @@ template <typename T> auto toMoveIterator(T &&t)
 	return std::make_pair(begin, end);
 }
 
+/**
+ * Get the index of a type in a varaint
+ *
+ * (i.e. variant<int, float, string>, int = 0, float = 1, string = 2)
+ */
 template <typename VariantType, typename T, std::size_t index = 0> constexpr std::size_t variant_index()
 {
 	static_assert(std::variant_size_v<VariantType> > index, "Type not found in variant");
@@ -279,7 +388,6 @@ template <typename T> void cleanSwap(T &t)
 	T newT;
 	t.swap(newT);
 }
-
 } // namespace TemStream
 
 #include "TemStreamConfig.h"
@@ -317,17 +425,6 @@ template <typename T> void cleanSwap(T &t)
 #include "connection.hpp"
 
 #include "time.hpp"
-
-namespace detail
-{
-class Line : TemStream::String
-{
-	friend std::istream &operator>>(std::istream &is, Line &line)
-	{
-		return std::getline(is, line);
-	}
-};
-} // namespace detail
 
 namespace std
 {

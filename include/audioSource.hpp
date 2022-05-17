@@ -59,11 +59,11 @@ class AudioSource
 	 * that can be encoded by Opus
 	 *
 	 * @param frequency bytes per second (i.e. 48000 Hz)
-	 * @param duration length in milliseconds
+	 * @param frameSize Opus frame size
 	 *
 	 * @return The number of frames that can be encoded
 	 */
-	constexpr static int audioLengthToFrames(const int frequency, const int duration);
+	constexpr static int audioLengthToFrames(const int frequency, const int frameSize);
 
 	/**
 	 * Opus can only encode certain intervals at once:
@@ -192,8 +192,7 @@ class AudioSource
 	 * @param samples
 	 * @param size
 	 *
-	 * @return If the sum is greater than the silenceThreshold, return true
-	 * enough
+	 * @return True if the average of all the samples is greater than the silenceThreshold
 	 */
 	bool isLoudEnough(const float *samples, const int size) const;
 

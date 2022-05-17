@@ -13,6 +13,9 @@ const char remapSourceCommand[] = "pactl load-module module-remap-source source_
 
 const char moveSinkCommand[] = "pactl move-sink-input %d %s_combo";
 
+/**
+ * Audio source for a process acquired from Pulse Audio
+ */
 class SinkInput
 {
   private:
@@ -30,7 +33,24 @@ class SinkInput
 	std::optional<String> getSinkName() const;
 
 	static std::optional<List<SinkInput>> getSinks();
+
+	/**
+	 * Run command and place all output in a string
+	 *
+	 * @param command
+	 *
+	 * @return If command is executed successfully, the output of the command
+	 */
 	static std::optional<String> runCommand(const char *);
+
+	/**
+	 * Run command and place every line of the output in a deque
+	 *
+	 * @param command
+	 * @param deque [out]
+	 *
+	 * @return True if command is executed successfully
+	 */
 	static bool runCommand(const char *, Deque<String> &);
 
 	friend std::optional<WindowProcesses> AudioSource::getWindowsWithAudio();
@@ -243,10 +263,16 @@ std::optional<List<SinkInput>> SinkInput::getSinks()
 	List<SinkInput> list;
 	while (!deque.empty())
 	{
+		// Calls the SinkInput constructor which will drain the deque of elements
 		list.emplace_back(deque);
 	}
+
+	// Remove invalid SinkInputs that may have been inserted
 	auto iter = std::remove_if(list.begin(), list.end(), [](const SinkInput &si) { return !si.valid(); });
+
+	// All removed SinkInputs will be placed at the end of the list. Remove those SinkInputs from the list
 	list.erase(iter, list.end());
+
 	return list;
 }
 std::optional<WindowProcesses> AudioSource::getWindowsWithAudio()
@@ -313,7 +339,8 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 	}
 	Sink remapSink = (int32_t)strtol(tempStr->c_str(), nullptr, 10);
 
-	// Create combo sink. This is so audio from window will go to speaker and null sink.
+	// Create combo sink that will contain the null sink and the sink that the window was originally sending audio to.
+	// This is so audio can still be played while reocrding
 	snprintf(commandBuffer, sizeof(commandBuffer), createComboSinkCommand, sinkName, sinkName, sinkName,
 			 realSinkName->c_str());
 	tempStr = SinkInput::runCommand(commandBuffer);
@@ -333,9 +360,9 @@ unique_ptr<AudioSource> AudioSource::startRecordingWindow(const Message::Source 
 		return nullptr;
 	}
 
-	// Wait for Pulse AudioSource or SDL to update. SDL will fail to find the device if this is done too soon
-	// (Is there a better way to do this?)
-	(*logger)(Logger::Level::Trace) << "Waiting 1 second for audio server to update" << std::endl;
+	// Wait for Pulse Audio or SDL to update. SDL might fail to find the new device for recording if
+	// ::startRecording is called too soon (Is there a better way to do this?)
+	(*logger)(Logger::Level::Trace) << "Waiting 1 second for the audio server to update" << std::endl;
 	// std::this_thread::sleep_for(1s);
 	SDL_Delay(1000u);
 

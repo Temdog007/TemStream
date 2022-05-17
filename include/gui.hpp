@@ -90,6 +90,9 @@ class TemStreamGui
 	Configuration &configuration;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
+
+	// If set to true, need to check the state of all video, audio, and stream displays and remove those that are
+	// invalid
 	bool dirty;
 
 	void LoadFonts();
@@ -150,6 +153,13 @@ class TemStreamGui
 	 */
 	bool handleClientConnection(ClientConnection &con);
 
+	/**
+	 * Push the font based on the index to ImGui
+	 */
+	void pushFont();
+
+	void clearAll();
+
   public:
 	shared_ptr<ClientConnection> getConnection(const Message::Source &);
 	String getUsername(const Message::Source &);
@@ -199,21 +209,64 @@ class TemStreamGui
 	}
 
 	bool addAudio(unique_ptr<AudioSource> &&);
-	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &f, const bool create = false);
+
+	/**
+	 * Find audio with the source and call the function with it
+	 *
+	 * @param source
+	 * @param func
+	 * @param create If audio with source doesn't exist, create new audio source. Newly created audio source will always
+	 * be of type playback
+	 *
+	 * @return False if audio source doesn't exist and create == false
+	 */
+	bool useAudio(const Message::Source &, const std::function<void(AudioSource &)> &func, const bool create = false);
 
 	bool addVideo(shared_ptr<VideoSource>);
 
+	/**
+	 * Start replaying packets for this source. This function will send the GetTimeRange message to the server in which
+	 * the server should reply with the TimeRange message. When the TimeRange message is received, the StreamDisplay
+	 * will be put into replay mode.
+	 *
+	 * @param source
+	 *
+	 * @return True if the message was sent successfully
+	 */
 	bool startReplay(const Message::Source &);
+
+	/**
+	 * See TemStreamGui::startReplay(const Message::Source&)
+	 *
+	 * @param connection
+	 *
+	 * @return True if successful
+	 */
 	static bool startReplay(ClientConnection &);
 
+	/**
+	 * Get one second of replays within a time frame from the server
+	 *
+	 * @param source
+	 * @param timestamp
+	 *
+	 * @return True if the request was sent successfully
+	 */
 	bool getReplays(const Message::Source &, int64_t);
+
+	/**
+	 * See TemStreamGui::getReplays(const Message::Source &, int64_t)
+	 *
+	 * @param connection
+	 * @param timestamp
+	 *
+	 * @return True is successful
+	 */
 	static bool getReplays(ClientConnection &, int64_t);
 
 	bool hasReplayAccess(const Message::Source &);
 
 	void connect(const Address &);
-
-	void pushFont();
 
 	void setShowLogs(bool v)
 	{
@@ -231,12 +284,18 @@ class TemStreamGui
 
 	bool sendPacket(Message::Packet &&, const bool handleLocally = true);
 	bool sendPackets(MessagePackets &&, const bool handleLocally = true);
+
+	void cleanupIfDirty();
 };
 class TemStreamGuiLogger : public InMemoryLogger
 {
   private:
 	TemStreamGui &gui;
 
+	/**
+	 * Check if the log is an error. If so and the log window is not open, display message box about the error and open
+	 * log window.
+	 */
 	void checkError(Level);
 
   protected:
@@ -246,6 +305,9 @@ class TemStreamGuiLogger : public InMemoryLogger
 	TemStreamGuiLogger(TemStreamGui &);
 	~TemStreamGuiLogger();
 
+	/**
+	 * Save logs to a file
+	 */
 	void saveLogs();
 };
 

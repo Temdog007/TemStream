@@ -114,17 +114,17 @@ template <typename T> class ConcurrentQueue
 		cv.notify_all();
 	}
 
-	std::optional<size_t> clearIfGreaterThan(size_t size)
+	std::optional<size_t> clearIfGreaterThan(const size_t size)
 	{
 		auto lck = lock();
+		std::optional<size_t> rval = std::nullopt;
 		if (queue.size() > size)
 		{
-			size = queue.size();
+			rval = queue.size();
 			clearQueue(queue);
-			return size;
 		}
 		cv.notify_all();
-		return std::nullopt;
+		return rval;
 	}
 
 	template <typename R> R use(const std::function<R(Queue<T> &)> &f)
@@ -139,6 +139,12 @@ template <typename T> class ConcurrentQueue
 	{
 		auto lck = lock();
 		return queue.size();
+	}
+
+	bool empty()
+	{
+		auto lck = lock();
+		return queue.empty();
 	}
 
 	void clear()

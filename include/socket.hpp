@@ -16,7 +16,13 @@ class Socket
 	ByteList outgoing;
 	Mutex mutex;
 
-	// Ensure only one thread every calls this
+	/**
+	 * Send all bytes in the outgoing list to the peer. Ensure only one thread every calls this
+	 *
+	 * @param bytes
+	 *
+	 * @return True if successful
+	 */
 	virtual bool flush(const ByteList &) = 0;
 
   public:
@@ -29,6 +35,14 @@ class Socket
 	virtual void send(const uint8_t *, uint32_t);
 	virtual bool read(const int timeout, ByteList &, const bool readAll) = 0;
 
+	/**
+	 * Copies outgoing to temporary and calls ::flush(const ByteList&) with the temporary byte list. This is to avoid
+	 * locking the outgoing list to prevent receiving data from peer in another thread.
+	 *
+	 * @param bytes
+	 *
+	 * @return True if successful
+	 */
 	bool flush();
 
 	template <typename T> void send(const T *t, const uint32_t count)

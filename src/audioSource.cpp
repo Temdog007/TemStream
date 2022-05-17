@@ -154,12 +154,16 @@ void AudioSource::playbackAudio(uint8_t *data, const int count)
 
 bool AudioSource::isLoudEnough(const float *data, const int count) const
 {
+	if (count == 0)
+	{
+		return false;
+	}
 	float sum = 0.f;
 	for (int i = 0; i < count; ++i)
 	{
 		sum += std::abs(data[i]);
 	}
-	return sum / count > silenceThreshold;
+	return (sum / count) > silenceThreshold;
 }
 void AudioSource::recordAudio(uint8_t *data, const int count)
 {
@@ -201,6 +205,7 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 		return;
 	}
 
+	// Grab the stored audio, encoded it, and send it to the server
 	{
 		Lock lock(id);
 		outgoing = std::move(storedAudio);
@@ -242,7 +247,11 @@ void AudioSource::encodeAndSendAudio(ClientConnection &peer)
 	{
 		peer.sendPacket(packet);
 	}
+
+	// Handle packets as if they were sent from the server. Necessary to display the audio state of the recording
 	peer.addPackets(std::move(packets));
+
+	// If not all audio was encoded, store it back into the list and try again next time
 	if (!outgoing.empty())
 	{
 		Lock lock(id);

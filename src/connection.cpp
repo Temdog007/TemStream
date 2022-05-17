@@ -23,6 +23,7 @@ bool Connection::readAndHandle(const int timeout)
 	{
 		while (!appDone)
 		{
+			// If the next message isn't known, message of type Message::Header is expected
 			if (!nextMessageSize.has_value())
 			{
 				if (bytes.size() < sizeof(Message::Header) + 1)
@@ -36,6 +37,7 @@ bool Connection::readAndHandle(const int timeout)
 					cereal::PortableBinaryInputArchive ar(m);
 					ar(header);
 				}
+				// Ensure the size is valid, and the id matches
 				if (header.size > maxMessageSize || header.size == 0 || header.id != Message::MagicGuid)
 				{
 #if _DEBUG
@@ -73,6 +75,9 @@ bool Connection::readAndHandle(const int timeout)
 
 				packets.push(std::move(packet));
 				nextMessageSize = std::nullopt;
+				// Re-acquire the byte list so re-allocation isn't necessary
+				bytes = std::move(m->moveBytes());
+				bytes.clear();
 				return true;
 			}
 			else if (*nextMessageSize < bytes.size())
@@ -91,6 +96,8 @@ bool Connection::readAndHandle(const int timeout)
 				}
 
 				packets.push(std::move(packet));
+
+				// Re-acquire bytes and remove what was read
 				bytes = std::move(m->moveBytes());
 				bytes.remove(static_cast<uint32_t>(*nextMessageSize));
 				nextMessageSize = std::nullopt;

@@ -24,10 +24,17 @@ bool colorIsLight(const ImVec4 &bg)
 	return bg.x + bg.y + bg.z > 1.5f;
 }
 
+// Allocation functions for SDL
 uint8_t *allocatorMalloc(const size_t size)
 {
 	TemStream::Allocator<uint8_t> a;
 	return a.allocate(size);
+}
+
+uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
+{
+	TemStream::Allocator<uint8_t> a;
+	return a.reallocate(old, newSize);
 }
 
 void allocatorFree(uint8_t *old)
@@ -42,7 +49,9 @@ uint8_t *allocatorCalloc(const size_t num, const size_t size)
 	memset(data, 0, size);
 	return data;
 }
+// End
 
+// Allocation functions for ImGui
 uint8_t *allocatorImGuiAlloc(const size_t size, void *)
 {
 	return allocatorMalloc(size);
@@ -52,28 +61,29 @@ void allocatorImGuiFree(uint8_t *ptr, void *)
 {
 	return allocatorFree(ptr);
 }
-
-uint8_t *allocatorReallocate(uint8_t *old, const size_t newSize)
-{
-	TemStream::Allocator<uint8_t> a;
-	return a.reallocate(old, newSize);
-}
+// End
 
 namespace TemStream
 {
 
+// De-allocate memory that would've been allocated for user events
+void freeUserEvents();
+
+// Flag that all Tables will use
 const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp;
-void handleWorkThread(TemStreamGui *gui);
 
 TemStreamGui::TemStreamGui(ImGuiIO &io, Configuration &c)
-	: strBuffer(), audio(connectionMutex), video(connectionMutex), connections(connectionMutex), queryData(nullptr),
-	  allUTF32(getAllUTF32()), lastVideoCheck(std::chrono::system_clock::now()), io(io), configuration(c),
-	  window(nullptr), renderer(nullptr)
+	: strBuffer(), connectionMutex(), audio(connectionMutex), video(connectionMutex), connections(connectionMutex),
+	  queryData(nullptr), allUTF32(getAllUTF32()), lastVideoCheck(std::chrono::system_clock::now()), io(io),
+	  configuration(c), window(nullptr), renderer(nullptr)
 {
 }
 
 TemStreamGui::~TemStreamGui()
 {
+	// Ensure maps cleared in a proper order that prevents seg faults
+	clearAll();
+
 	SDL_GetWindowSize(window, &configuration.width, &configuration.height);
 	auto flags = SDL_GetWindowFlags(window);
 	configuration.fullscreen = (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
@@ -81,8 +91,65 @@ TemStreamGui::~TemStreamGui()
 	renderer = nullptr;
 	SDL_DestroyWindow(window);
 	window = nullptr;
+	freeUserEvents();
 	IMG_Quit();
 	SDL_Quit();
+}
+
+void TemStreamGui::cleanupIfDirty()
+{
+	if (!dirty)
+	{
+		return;
+	}
+
+	if (getConnectionCount() == 0)
+	{
+		displays.clear();
+	}
+
+	// Only keep displays, audios, videos if connection is present
+	for (auto iter = displays.begin(); iter != displays.end();)
+	{
+		if (hasConnection(iter->first))
+		{
+			++iter;
+		}
+		else
+		{
+			(*logger)(Logger::Level::Trace)
+				<< "Removed stream display '" << iter->first << "' because its connection is gone" << std::endl;
+			iter = displays.erase(iter);
+		}
+	}
+
+	audio.removeIfNot([this](const auto &source, const auto &a) { return hasConnection(source) && a->isActive(); });
+
+	video.removeIfNot([this](const auto &source, const auto &v) {
+		if (!v->isRunning())
+		{
+			return false;
+		}
+		else if (!hasConnection(source))
+		{
+			v->setRunning(false);
+			return false;
+		}
+		return true;
+	});
+	dirty = false;
+}
+
+void TemStreamGui::clearAll()
+{
+	audio.clear();
+	video.clear();
+	connections.clear();
+	displays.clear();
+	pendingVideo.clear();
+	actionSelections.clear();
+	videoPackets.clear();
+	decodingMap.clear();
 }
 
 void TemStreamGui::decodeVideoPackets()
@@ -90,6 +157,8 @@ void TemStreamGui::decodeVideoPackets()
 	using namespace std::chrono_literals;
 
 	const auto now = std::chrono::system_clock::now();
+
+	// Every second, check decoder map and remove deocders that won't receive any data
 	if (now - lastVideoCheck > 1s)
 	{
 		for (auto iter = decodingMap.begin(); iter != decodingMap.end();)
@@ -106,7 +175,8 @@ void TemStreamGui::decodeVideoPackets()
 		}
 		lastVideoCheck = now;
 	}
-	// This needs to be big enough to handle video files.
+
+	// Need to clamp the size of the list. But, it needs to be big enough to handle video files.
 	if (auto result = videoPackets.clearIfGreaterThan(1000))
 	{
 		(*logger)(Logger::Level::Warning) << "Dropping " << *result << " received video frames" << std::endl;
@@ -118,6 +188,11 @@ void TemStreamGui::decodeVideoPackets()
 		return;
 	}
 
+	/**
+	 * Used for visitor pattern. Used for Message::Video and Message::LargeFile
+	 *
+	 * LargeFile is expected to be a video file
+	 */
 	struct DecodePacket
 	{
 		const Message::Source &source;
@@ -144,19 +219,8 @@ void TemStreamGui::decodeVideoPackets()
 				gui.lastVideoCheck = std::chrono::system_clock::now();
 				(*logger)(Logger::Level::Trace) << "Added " << iter->first << " to decoding map" << std::endl;
 			}
-			auto &decoder = iter->second;
-			// if (decoder->getHeight() != packet.height || decoder->getWidth() != packet.width)
-			// {
-			// 	auto newDecoder = VideoSource::createDecoder();
-			// 	if (!newDecoder)
-			// 	{
-			// 		return;
-			// 	}
-			// 	decoder->setWidth(packet.width);
-			// 	decoder->setHeight(packet.height);
-			// 	decoder.swap(newDecoder);
-			// }
 
+			auto &decoder = iter->second;
 			if (!decoder->decode(packet.bytes))
 			{
 				return;
@@ -235,6 +299,7 @@ void TemStreamGui::decodeVideoPackets()
 
 			auto nextFrame = tem_shared<TimePoint>(std::chrono::system_clock::now());
 
+			// Read video file periodically
 			WorkPool::addWork([nextFrame = std::move(nextFrame), cap = std::move(cap), source = source]() mutable {
 				if (!cap->isOpened())
 				{
@@ -330,11 +395,13 @@ bool TemStreamGui::init()
 		return false;
 	}
 
+	// Process video packets in another thread
 	WorkPool::addWork([this]() {
 		this->decodeVideoPackets();
 		return true;
 	});
 
+	// Process outgoing audio and send to the server in another thread
 	WorkPool::addWork([this]() {
 		audio.removeIfNot([this](const auto &source, const auto &a) {
 			if (auto con = this->getConnection(source))
@@ -356,6 +423,7 @@ bool TemStreamGui::init()
 void TemStreamGui::connect(const Address &address)
 {
 	*logger << "Connecting to server: " << address << std::endl;
+	// Connect in another thread to avoid freezing the GUI
 	WorkPool::addWork([address = address, this, isSSL = configuration.isEncrypted]() {
 		unique_ptr<TcpSocket> s = nullptr;
 		if (isSSL)
@@ -375,6 +443,8 @@ void TemStreamGui::connect(const Address &address)
 		*logger << "Connected to server: " << address << std::endl;
 
 		auto clientConnection = tem_shared<ClientConnection>(*this, address, std::move(s));
+
+		// First send credentials to the server
 		{
 			Message::Packet packet;
 			packet.payload.emplace<Message::Credentials>(configuration.credentials);
@@ -384,9 +454,11 @@ void TemStreamGui::connect(const Address &address)
 					<< "Authentication failure for server: " << address << "; Failed to send message" << std::endl;
 			}
 		}
-		// Wait for response to get server type
+
 		auto &packets = clientConnection->getPackets();
-		while (true)
+
+		// Wait until there is at least on message from the server
+		while (packets.empty())
 		{
 			if (!clientConnection->readAndHandle(3000))
 			{
@@ -394,20 +466,17 @@ void TemStreamGui::connect(const Address &address)
 					<< "Authentication failure for server: " << address << "; No repsonse" << std::endl;
 				return false;
 			}
-			if (packets.size() > 0)
-			{
-				break;
-			}
 		}
 
 		using namespace std::chrono_literals;
+		// Expecting the packet from the server to be Message::VerifyLogin
 		{
 			auto packet = packets.pop(1s);
 			if (!packet)
 			{
 				// This shouldn't ever happen
 				(*logger)(Logger::Level::Error)
-					<< "Authentication failure for server: " << address << "; Internal error: " << std::endl;
+					<< "Authentication failure for server: " << address << "; Internal error" << std::endl;
 				return false;
 			}
 
@@ -428,6 +497,8 @@ void TemStreamGui::connect(const Address &address)
 		{
 			(*logger)(Logger::Level::Trace)
 				<< "Adding connection to list: " << clientConnection->getInfo() << std::endl;
+
+			// Handle packets for this connection in another thread
 			WorkPool::addWork([this, clientConnection]() {
 				if (TemStreamGui::handleClientConnection(*clientConnection))
 				{
@@ -1483,6 +1554,7 @@ bool TemStreamGui::sendPackets(MessagePackets &&packets, const bool handleLocall
 
 bool TemStreamGui::MessageHandler::operator()(Message::Video &v)
 {
+	// Push video packets to the video packet list. Don't send to any stream display
 	auto pair = std::make_pair(source, std::move(v));
 	gui.videoPackets.push(std::move(pair));
 	gui.dirty = true;
@@ -1612,10 +1684,13 @@ void TemStreamGui::LoadFonts()
 
 void TemStreamGui::handleMessage(Message::Packet &&m)
 {
+	// If message was already handled by the MessageHandler, return
 	if (std::visit(MessageHandler{*this, m.source}, m.payload))
 	{
 		return;
 	}
+
+	// Find stream display to handle message
 	auto iter = displays.find(m.source);
 	if (iter == displays.end())
 	{
@@ -1661,8 +1736,14 @@ void runLoop(TemStreamGui &gui)
 				appDone = true;
 			}
 			break;
-		case SDL_DROPTEXT: {
+		case SDL_DROPTEXT:
 			if (auto ptr = dynamic_cast<QueryText *>(gui.queryData.get()))
+			{
+				const size_t size = strlen(event.drop.file);
+				String s(event.drop.file, event.drop.file + size);
+				ptr->setText(std::move(s));
+			}
+			else if (auto ptr = dynamic_cast<QueryChat *>(gui.queryData.get()))
 			{
 				const size_t size = strlen(event.drop.file);
 				String s(event.drop.file, event.drop.file + size);
@@ -1670,12 +1751,11 @@ void runLoop(TemStreamGui &gui)
 			}
 			else
 			{
-				(*logger)(Logger::Level::Error) << "Text can only be sent to a text server" << std::endl;
+				(*logger)(Logger::Level::Error) << "Text can only be sent to a text server or chat server" << std::endl;
 			}
 			SDL_free(event.drop.file);
-		}
-		break;
-		case SDL_DROPFILE: {
+			break;
+		case SDL_DROPFILE:
 			if (isTTF(event.drop.file))
 			{
 				*logger << "Adding new font: " << event.drop.file << std::endl;
@@ -1699,8 +1779,7 @@ void runLoop(TemStreamGui &gui)
 				});
 			}
 			SDL_free(event.drop.file);
-		}
-		break;
+			break;
 		case SDL_USEREVENT:
 			switch (event.user.code)
 			{
@@ -1767,7 +1846,7 @@ void runLoop(TemStreamGui &gui)
 			case TemStreamEvent::AddAudio: {
 				auto audio = reinterpret_cast<AudioSource *>(event.user.data1);
 				auto ptr = unique_ptr<AudioSource>(audio);
-				String name = ptr->getName();
+				const String name = ptr->getName();
 				if (gui.addAudio(std::move(ptr)))
 				{
 					*logger << "Using audio device: " << name << std::endl;
@@ -1855,46 +1934,7 @@ void runLoop(TemStreamGui &gui)
 		}
 	}
 
-	if (gui.dirty)
-	{
-		if (gui.getConnectionCount() == 0)
-		{
-			gui.displays.clear();
-		}
-
-		// Only keep displays, audios, videos if connection is present
-		for (auto iter = gui.displays.begin(); iter != gui.displays.end();)
-		{
-			if (gui.hasConnection(iter->first))
-			{
-				++iter;
-			}
-			else
-			{
-				(*logger)(Logger::Level::Trace)
-					<< "Removed stream display '" << iter->first << "' because its connection is gone" << std::endl;
-				iter = gui.displays.erase(iter);
-			}
-		}
-
-		gui.audio.removeIfNot(
-			[&gui](const auto &source, const auto &a) { return gui.hasConnection(source) && a->isActive(); });
-
-		gui.video.removeIfNot([&gui](const auto &source, const auto &v) {
-			if (!v->isRunning())
-			{
-				return false;
-			}
-			else if (!gui.hasConnection(source))
-			{
-				v->setRunning(false);
-				return false;
-			}
-			return true;
-		});
-
-		gui.dirty = false;
-	}
+	gui.cleanupIfDirty();
 
 	ImGui_ImplSDLRenderer_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
@@ -1977,21 +2017,20 @@ int runApp(Configuration &configuration)
 		runLoop(gui);
 	}
 
-	gui.audio.clear();
-	gui.video.forEach([](const auto &, auto &value) { value->setRunning(false); });
-	gui.video.clear();
-	workPool->clear();
-	workPool = nullptr;
-	WorkPool::setGlobalWorkPool(nullptr);
-
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
+
+	// Ensure worker threads stop before exiting
+	workPool->clear();
+	workPool = nullptr;
 
 	for (auto &thread : threads)
 	{
 		thread.join();
 	}
+
+	WorkPool::setGlobalWorkPool(nullptr);
 
 	logger = nullptr;
 	return EXIT_SUCCESS;
@@ -2022,7 +2061,7 @@ void TemStreamGuiLogger::Add(const Level level, const String &s, const bool b)
 }
 void TemStreamGuiLogger::checkError(const Level level)
 {
-	if (level == Level::Error && !gui.isShowingLogs())
+	if (!appDone && level == Level::Error && !gui.isShowingLogs())
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "An error has occurred. Check logs for more detail",
 								 gui.window);
@@ -2080,5 +2119,70 @@ void TemStreamGui::RenderCredentials::operator()(std::pair<String, String> &pair
 {
 	ImGui::InputText("Username", &pair.first);
 	ImGui::InputText("Password", &pair.second, ImGuiInputTextFlags_Password);
+}
+void freeUserEvents()
+{
+	SDL_Event event;
+	while (SDL_WaitEventTimeout(&event, 100) != 0)
+	{
+		if (event.type != SDL_USEREVENT)
+		{
+			continue;
+		}
+		switch (event.user.type)
+		{
+		case SDL_USEREVENT:
+			switch (event.user.code)
+			{
+			case TemStreamEvent::SendSingleMessagePacket: {
+				Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
+				destroyAndDeallocate(packet);
+			}
+			break;
+			case TemStreamEvent::HandleMessagePacket: {
+				Message::Packet *packet = reinterpret_cast<Message::Packet *>(event.user.data1);
+				destroyAndDeallocate(packet);
+			}
+			break;
+			case TemStreamEvent::SendMessagePackets: {
+				MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
+				destroyAndDeallocate(packets);
+			}
+			break;
+			case TemStreamEvent::HandleMessagePackets: {
+				MessagePackets *packets = reinterpret_cast<MessagePackets *>(event.user.data1);
+				destroyAndDeallocate(packets);
+			}
+			break;
+			case TemStreamEvent::ReloadFont:
+				break;
+			case TemStreamEvent::SetQueryData: {
+				IQuery *query = reinterpret_cast<IQuery *>(event.user.data1);
+				destroyAndDeallocate(query);
+			}
+			break;
+			case TemStreamEvent::SetSurfaceToStreamDisplay: {
+				SDL_Surface *surfacePtr = reinterpret_cast<SDL_Surface *>(event.user.data1);
+				SDL_SurfaceWrapper surface(surfacePtr);
+
+				Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
+				auto source = unique_ptr<Message::Source>(sourcePtr);
+			}
+			break;
+			case TemStreamEvent::AddAudio: {
+				auto audio = reinterpret_cast<AudioSource *>(event.user.data1);
+				auto ptr = unique_ptr<AudioSource>(audio);
+			}
+			break;
+			case TemStreamEvent::HandleFrame: {
+				VideoSource::Frame *framePtr = reinterpret_cast<VideoSource::Frame *>(event.user.data1);
+				auto frame = unique_ptr<VideoSource::Frame>(framePtr);
+				Message::Source *sourcePtr = reinterpret_cast<Message::Source *>(event.user.data2);
+				auto source = unique_ptr<Message::Source>(sourcePtr);
+			}
+			break;
+			}
+		}
+	}
 }
 } // namespace TemStream

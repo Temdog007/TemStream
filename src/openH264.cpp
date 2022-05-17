@@ -36,7 +36,7 @@ OpenH264::~OpenH264()
 }
 unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::FrameData fd, const bool forCamera)
 {
-	std::unique_ptr<ISVCEncoder, EncoderDeleter> encoder = nullptr;
+	OpenH264::Encoder encoder = nullptr;
 	{
 		ISVCEncoder *encoderPtr = nullptr;
 		const int rv = WelsCreateSVCEncoder(&encoderPtr);
@@ -45,7 +45,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 			(*logger)(Logger::Level::Error) << "Failed to create encoder" << std::endl;
 			return nullptr;
 		}
-		encoder = std::unique_ptr<ISVCEncoder, EncoderDeleter>(encoderPtr, EncoderDeleter());
+		encoder = OpenH264::Encoder(encoderPtr, EncoderDeleter());
 	}
 
 	SEncParamExt param{};
@@ -85,8 +85,8 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createEncoder(VideoSource::
 	}
 
 	WelsTraceCallback callback = onWelsLog;
-	int log_level = WELS_LOG_DETAIL;
-	int videoFormat = videoFormatI420;
+	int32_t log_level = WELS_LOG_DETAIL;
+	int32_t videoFormat = videoFormatI420;
 	const bool result = encoder->SetOption(ENCODER_OPTION_TRACE_CALLBACK, &callback) == cmResultSuccess &&
 						encoder->SetOption(ENCODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess &&
 						encoder->SetOption(ENCODER_OPTION_DATAFORMAT, &videoFormat) == cmResultSuccess;
@@ -159,7 +159,7 @@ void OpenH264::encodeAndSend(ByteList &bytes, const Message::Source &source)
 }
 unique_ptr<VideoSource::EncoderDecoder> VideoSource::createDecoder()
 {
-	std::unique_ptr<ISVCDecoder, DecoderDeleter> decoder = nullptr;
+	OpenH264::Decoder decoder = nullptr;
 	{
 		ISVCDecoder *decoderPtr = nullptr;
 		if (WelsCreateDecoder(&decoderPtr))
@@ -167,7 +167,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createDecoder()
 			(*logger)(Logger::Level::Error) << "Failed to create decoder" << std::endl;
 			return nullptr;
 		}
-		decoder = std::unique_ptr<ISVCDecoder, DecoderDeleter>(decoderPtr, DecoderDeleter());
+		decoder = OpenH264::Decoder(decoderPtr, DecoderDeleter());
 	}
 
 	SDecodingParam param{};
@@ -177,7 +177,7 @@ unique_ptr<VideoSource::EncoderDecoder> VideoSource::createDecoder()
 		return nullptr;
 	}
 
-	int log_level = WELS_LOG_DETAIL;
+	int32_t log_level = WELS_LOG_DETAIL;
 	WelsTraceCallback callback = onWelsLog;
 	const bool result = decoder->SetOption(DECODER_OPTION_TRACE_CALLBACK, (void *)&callback) == cmResultSuccess &&
 						decoder->SetOption(DECODER_OPTION_TRACE_LEVEL, &log_level) == cmResultSuccess;
@@ -255,7 +255,6 @@ void DecoderDeleter::operator()(ISVCDecoder *d) const
 {
 	if (d != nullptr)
 	{
-		d->Uninitialize();
 		WelsDestroyDecoder(d);
 	}
 }
@@ -263,7 +262,6 @@ void EncoderDeleter::operator()(ISVCEncoder *e) const
 {
 	if (e != nullptr)
 	{
-		e->Uninitialize();
 		WelsDestroySVCEncoder(e);
 	}
 }
