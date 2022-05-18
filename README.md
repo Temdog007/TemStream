@@ -2,9 +2,9 @@
 
 TemStream is a streaming application designed for streaming to different sources with different data types. 
 
-## Example
+## Screenshot
 
-Insert screenshot here
+![Screenshot goes here](screenshot.png)
 
 ## Components
 
