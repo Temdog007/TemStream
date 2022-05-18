@@ -42,7 +42,7 @@ Clients can either send a video file or an video packet encoded with [VP8 Codec]
 **NOTE**: *Audio is never sent with video. So, audio from video files will never be played.*
 
 ### Links
-Link servers will provide a list of servers that the client can connect to.
+Link servers will provide a list of servers that the client can connect to. The file that the link server will look for will always be \<server_name\>.json. See the [example](json/example_links.json) to understand how the json should be formatted. 
 
 ## Usage
 
