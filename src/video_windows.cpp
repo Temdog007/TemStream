@@ -1,17 +1,31 @@
+/******************************************************************************
+	Copyright (C) 2022 by Temitope Alaga <temdog007@yaoo.com>
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 2 of the License, or
+	(at your option) any later version.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+******************************************************************************/
+
 #include <main.hpp>
 
 #include <video_windows.hpp>
 
 BOOL CALLBACK EnumWindowsCallback(HWND, LPARAM) noexcept;
 TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND);
-BOOL GetWindowSize(HWND, uint32_t&, uint32_t&);
+BOOL GetWindowSize(HWND, uint32_t &, uint32_t &);
 
 namespace TemStream
 {
 WindowProcesses VideoSource::getRecordableWindows()
 {
 	WindowProcesses procs;
-	EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>( & procs));
+	EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>(&procs));
 	return procs;
 }
 
@@ -172,7 +186,7 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam) noexcept
 	return TRUE;
 }
 
-BOOL GetWindowSize(HWND hwnd, uint32_t& width, uint32_t& height)
+BOOL GetWindowSize(HWND hwnd, uint32_t &width, uint32_t &height)
 {
 	RECT rect;
 	if (GetClientRect(hwnd, &rect) == TRUE)
@@ -247,13 +261,13 @@ TemStream::unique_ptr<TemStream::WindowsScreenshot> CaptureScreenshot(HWND hwnd)
 	bi.biClrImportant = 0;
 
 	const DWORD dwBmpSize = ((bmpScreen.bmWidth * bi.biBitCount + 31) / 32) * 4 * bmpScreen.bmHeight;
-	//const DWORD dwBmpSize = bmpScreen.bmWidth * bmpScreen.bmHeight * 4u;
+	// const DWORD dwBmpSize = bmpScreen.bmWidth * bmpScreen.bmHeight * 4u;
 	auto hDIB = GlobalAlloc(GHND, dwBmpSize);
 	if (hDIB == nullptr)
 	{
 		goto done;
 	}
-	auto lpbitmap = (uint8_t*)GlobalLock(hDIB);
+	auto lpbitmap = (uint8_t *)GlobalLock(hDIB);
 	GetDIBits(hdcWindow, hbmWindow, 0, (UINT)bmpScreen.bmHeight, lpbitmap, (BITMAPINFO *)&bi, DIB_RGB_COLORS);
 
 	rval = tem_unique<WindowsScreenshot>();
