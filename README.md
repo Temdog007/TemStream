@@ -4,7 +4,7 @@ TemStream is a streaming application designed for streaming to different sources
 
 ## Screenshot
 
-![Screenshot goes here](screenshot.png)
+![Screenshot goes here](screenshots/screenshot.png)
 
 ## Components
 

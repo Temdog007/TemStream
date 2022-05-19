@@ -122,3 +122,5 @@ windows/
 font_compressor
 
 !json/*.json
+
+!screenshots/.*png
