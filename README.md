@@ -91,15 +91,15 @@ While this repository uses submodules to clone 3rd party dependencies, it may be
 ### 3rd Party Dependencies
 
 - [SDL2](https://github.com/libsdl-org/SDL)
-- SDL2 image
-- Freetype
+- [SDL2 image](https://github.com/libsdl-org/SDL_image.git)
+- [Freetype](https://github.com/freetype/freetype)
 - [ImGui](https://github.com/ocornut/imgui)
-- OpenCV
-- OpenSSL
-- Opus
-- OpenH264
-- VPX
-- [Cereal](https://uscilab.github.io/cereal/)
+- [OpenCV](https://github.com/opencv/opencv)
+- [OpenSSL](https://github.com/openssl/openssl)
+- [Opus](https://gitlab.xiph.org/xiph/opus.git)
+- [OpenH264](https://github.com/cisco/openh264.git)
+- [VPX](https://github.com/webmproject/libvpx/)
+- [Cereal](https://github.com/USCiLab/cereal)
 
 ### License
 
