@@ -104,3 +104,14 @@ While this repository uses submodules to clone 3rd party dependencies, it may be
 ### License
 
 TemStream is licensed under [GNU GPLv2](LICENSE.txt).
+
+### Future Work
+
+- [ ] Port to web browsers (using Emscripten)
+- [ ] Port to android
+- [ ] Figure out a way to record audio from processes on Windows
+
+
+### Known Bugs
+
+- [ ] Application might segmentation fault when closing while watching a video stream (issue occurs in OpenH264 code)
