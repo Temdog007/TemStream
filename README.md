@@ -107,10 +107,11 @@ TemStream is licensed under [GNU GPLv2](LICENSE.txt).
 
 ### Future Work
 
+- [ ] Make server automatically update the link file on startup and shutdown
+- [ ] Allow Redis to be an optional way to store servers' status
 - [ ] Port to web browsers (using Emscripten)
 - [ ] Port to android
 - [ ] Figure out a way to record audio from processes on Windows
-
 
 ### Known Bugs
 
