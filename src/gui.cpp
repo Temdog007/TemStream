@@ -59,8 +59,9 @@ void allocatorFree(uint8_t *old)
 
 uint8_t *allocatorCalloc(const size_t num, const size_t size)
 {
-	uint8_t *data = allocatorMalloc(size * num);
-	memset(data, 0, size);
+	const size_t total = size * num;
+	uint8_t *data = allocatorMalloc(total);
+	memset(data, 0, total);
 	return data;
 }
 // End
